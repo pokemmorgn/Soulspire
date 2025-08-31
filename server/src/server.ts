@@ -10,6 +10,7 @@ import playerRoutes from "./routes/player";
 import inventoryRoutes from "./routes/inventory";
 import heroesRoutes from "./routes/heroes";
 import gachaRoutes from "./routes/gacha";
+import shopRoutes from "./routes/shop";
 
 // Configuration de l'environnement
 dotenv.config();
@@ -160,6 +161,7 @@ app.use("/api/player", playerRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/heroes", heroesRoutes);
 app.use("/api/gacha", gachaLimiter, gachaRoutes);
+app.use("/api/shop", shopRoutes);
 
 // Route de santé de l'API
 app.get("/", (req: Request, res: Response) => {
