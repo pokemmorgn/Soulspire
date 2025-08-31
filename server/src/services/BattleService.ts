@@ -30,14 +30,31 @@ export class BattleService {
       // Générer l'équipe ennemie
       const enemyTeam = await this.generateEnemyTeam(worldId, levelId, difficulty);
 
-      // Créer le document de combat
+      // Créer le document de combat avec un résultat par défaut
       const battle = new Battle({
         playerId,
         battleType: "campaign",
         playerTeam,
         enemyTeam,
         actions: [],
-        result: {} as IBattleResult,
+        result: {
+          victory: false,
+          winnerTeam: "enemy",
+          totalTurns: 0,
+          battleDuration: 0,
+          rewards: {
+            experience: 0,
+            gold: 0,
+            items: [],
+            fragments: []
+          },
+          stats: {
+            totalDamageDealt: 0,
+            totalHealingDone: 0,
+            criticalHits: 0,
+            ultimatesUsed: 0
+          }
+        },
         status: "preparing",
         context: {
           worldId,
@@ -110,14 +127,31 @@ export class BattleService {
         throw new Error("Both players must have equipped heroes");
       }
 
-      // Créer le combat
+      // Créer le combat avec un résultat par défaut
       const battle = new Battle({
         playerId,
         battleType: "arena",
         playerTeam,
         enemyTeam,
         actions: [],
-        result: {} as IBattleResult,
+        result: {
+          victory: false,
+          winnerTeam: "enemy",
+          totalTurns: 0,
+          battleDuration: 0,
+          rewards: {
+            experience: 0,
+            gold: 0,
+            items: [],
+            fragments: []
+          },
+          stats: {
+            totalDamageDealt: 0,
+            totalHealingDone: 0,
+            criticalHits: 0,
+            ultimatesUsed: 0
+          }
+        },
         status: "preparing"
       });
 
