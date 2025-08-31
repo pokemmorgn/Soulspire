@@ -1,11 +1,37 @@
 import mongoose from "mongoose";
-import Papa from "papaparse";
-import fs from "fs";
-import path from "path";
 import dotenv from "dotenv";
 import Hero from "../models/Hero";
 
 dotenv.config();
+
+// Interface pour les héros générés
+interface GeneratedHero {
+  name: string;
+  role: "Tank" | "DPS Melee" | "DPS Ranged" | "Support";
+  element: "Fire" | "Water" | "Wind" | "Electric" | "Light" | "Dark";
+  rarity: "Common" | "Rare" | "Epic" | "Legendary";
+  baseStats: {
+    hp: number;
+    atk: number;
+    def: number;
+  };
+  skill: {
+    name: string;
+    description: string;
+    type: "Heal" | "Buff" | "AoE" | "Control" | "Damage";
+  };
+  appearance?: string;
+  personality?: string;
+  strengths?: string;
+  weaknesses?: string;
+}
+
+// Type pour la distribution
+type DistributionType = {
+  rarity: Record<string, number>;
+  role: Record<string, number>;
+  element: Record<string, number>;
+};
 
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/unity-gacha-game";
 
@@ -238,8 +264,8 @@ function generateSkill(role: string, element: string, heroName: string) {
 }
 
 // Fonction principale de génération des héros
-function generateAllHeroes() {
-  const allHeroes = [];
+function generateAllHeroes(): GeneratedHero[] {
+  const allHeroes: GeneratedHero[] = [];
   
   // Ajouter les héros du CSV d'abord
   csvHeroesData.forEach(csvHero => {
@@ -270,7 +296,7 @@ function generateAllHeroes() {
   });
 
   // Distribution cible selon votre spec (40 héros total - 10 déjà définis = 30 à générer)
-  const targetDistribution = {
+  const targetDistribution: DistributionType = {
     // Rareté (total 40)
     rarity: {
       "Common": 10,
@@ -306,27 +332,28 @@ function generateAllHeroes() {
   // Générer systématiquement pour équilibrer
   for (const rarity of raritiesToGenerate) {
     const currentCount = allHeroes.filter(h => h.rarity === rarity).length;
-    const needed = targetDistribution.rarity[rarity] - currentCount;
+    const needed = (targetDistribution.rarity as any)[rarity] - currentCount;
     
     for (let i = 0; i < needed; i++) {
       // Choisir rôle et élément selon les besoins
       const availableRoles = rolesToGenerate.filter(role => {
         const currentRoleCount = allHeroes.filter(h => h.role === role).length;
-        return currentRoleCount < targetDistribution.role[role];
+        return currentRoleCount < (targetDistribution.role as any)[role];
       });
       
       const availableElements = elementsToGenerate.filter(element => {
         const currentElementCount = allHeroes.filter(h => h.element === element).length;
-        return currentElementCount < targetDistribution.element[element];
+        return currentElementCount < (targetDistribution.element as any)[element];
       });
 
       if (availableRoles.length === 0 || availableElements.length === 0) continue;
 
-      const selectedRole = availableRoles[Math.floor(Math.random() * availableRoles.length)];
-      const selectedElement = availableElements[Math.floor(Math.random() * availableElements.length)];
+      const selectedRole = availableRoles[Math.floor(Math.random() * availableRoles.length)] as GeneratedHero["role"];
+      const selectedElement = availableElements[Math.floor(Math.random() * availableElements.length)] as GeneratedHero["element"];
       
       // Chercher un template approprié
-      const templates = heroTemplates[selectedRole as keyof typeof heroTemplates]?.[selectedElement];
+      const roleTemplates = heroTemplates[selectedRole];
+      const templates = roleTemplates ? (roleTemplates as any)[selectedElement] : undefined;
       if (templates && templates.length > 0) {
         const template = templates[Math.floor(Math.random() * templates.length)];
         const stats = calculateBaseStats(selectedRole, rarity);
@@ -336,7 +363,7 @@ function generateAllHeroes() {
           name: template.name,
           role: selectedRole,
           element: selectedElement, 
-          rarity: rarity,
+          rarity: rarity as GeneratedHero["rarity"],
           baseStats: stats,
           skill: skill,
           appearance: `${template.name} is a ${rarity.toLowerCase()} ${selectedElement.toLowerCase()} ${selectedRole.toLowerCase()} hero.`,
@@ -379,9 +406,9 @@ const seedHeroes = async (): Promise<void> => {
     // Afficher les statistiques finales
     const stats = {
       total: allHeroes.length,
-      byRarity: {} as any,
-      byRole: {} as any, 
-      byElement: {} as any
+      byRarity: {} as Record<string, number>,
+      byRole: {} as Record<string, number>, 
+      byElement: {} as Record<string, number>
     };
 
     allHeroes.forEach(hero => {
