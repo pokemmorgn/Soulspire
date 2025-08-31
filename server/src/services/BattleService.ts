@@ -55,7 +55,10 @@ export class BattleService {
 
       // Mettre à jour le combat avec les résultats
       battle.actions = battleEngine.getActions();
-      await battle.completeBattle(result);
+      battle.result = result;
+      battle.status = "completed";
+      battle.battleEnded = new Date();
+      await battle.save();
 
       // Appliquer les récompenses si victoire
       if (result.victory) {
@@ -68,7 +71,14 @@ export class BattleService {
       return {
         battleId: battle._id,
         result,
-        replay: battle.getBattleReplay()
+        replay: {
+          battleId: battle._id,
+          playerTeam: battle.playerTeam,
+          enemyTeam: battle.enemyTeam,
+          actions: battle.actions,
+          result: battle.result,
+          duration: Date.now() - battle.battleStarted.getTime()
+        }
       };
 
     } catch (error) {
@@ -119,7 +129,10 @@ export class BattleService {
 
       // Finaliser le combat
       battle.actions = battleEngine.getActions();
-      await battle.completeBattle(result);
+      battle.result = result;
+      battle.status = "completed";
+      battle.battleEnded = new Date();
+      await battle.save();
 
       // Récompenses PvP spécifiques
       if (result.victory) {
@@ -130,7 +143,14 @@ export class BattleService {
       return {
         battleId: battle._id,
         result,
-        replay: battle.getBattleReplay()
+        replay: {
+          battleId: battle._id,
+          playerTeam: battle.playerTeam,
+          enemyTeam: battle.enemyTeam,
+          actions: battle.actions,
+          result: battle.result,
+          duration: Date.now() - battle.battleStarted.getTime()
+        }
       };
 
     } catch (error) {
@@ -147,15 +167,31 @@ export class BattleService {
     const equippedHeroes = player.heroes.filter((hero: any) => hero.equipped);
     
     for (const playerHero of equippedHeroes) {
-      const heroData = playerHero.heroId;
+      let heroData;
       
-      if (!heroData) continue;
+      // Gérer le cas où populate a fonctionné ou non
+      if (typeof playerHero.heroId === 'string') {
+        heroData = await Hero.findById(playerHero.heroId);
+      } else {
+        heroData = playerHero.heroId;
+      }
+      
+      if (!heroData) {
+        console.warn(`⚠️ Héros non trouvé: ${playerHero.heroId}`);
+        continue;
+      }
+
+      // Vérifier que les stats de base existent
+      if (!heroData.baseStats || !heroData.baseStats.hp) {
+        console.error(`❌ Stats manquantes pour le héros: ${heroData.name}`);
+        continue;
+      }
 
       // Calculer les stats de combat
       const combatStats = this.calculateCombatStats(heroData, playerHero.level, playerHero.stars);
       
       const participant: IBattleParticipant = {
-        heroId: heroData._id.toString(),
+        heroId: (heroData._id as any).toString(),
         name: heroData.name,
         role: heroData.role,
         element: heroData.element,
@@ -242,13 +278,26 @@ export class BattleService {
 
   // Calcule les stats de combat d'un héros
   private static calculateCombatStats(heroData: any, level: number, stars: number) {
+    // Vérifier que les stats de base existent
+    if (!heroData.baseStats) {
+      console.error(`❌ baseStats manquant pour ${heroData.name}`);
+      throw new Error(`Hero ${heroData.name} missing baseStats`);
+    }
+
+    const { hp, atk, def } = heroData.baseStats;
+    
+    if (hp === undefined || atk === undefined || def === undefined) {
+      console.error(`❌ Stats incomplètes pour ${heroData.name}:`, heroData.baseStats);
+      throw new Error(`Hero ${heroData.name} has incomplete stats`);
+    }
+
     const levelMultiplier = 1 + (level - 1) * 0.1;
     const starMultiplier = 1 + (stars - 1) * 0.2;
     const totalMultiplier = levelMultiplier * starMultiplier;
     
-    const hp = Math.floor(heroData.baseStats.hp * totalMultiplier);
-    const atk = Math.floor(heroData.baseStats.atk * totalMultiplier);
-    const def = Math.floor(heroData.baseStats.def * totalMultiplier);
+    const finalHp = Math.floor(hp * totalMultiplier);
+    const finalAtk = Math.floor(atk * totalMultiplier);
+    const finalDef = Math.floor(def * totalMultiplier);
     
     // Vitesse basée sur le rôle
     const speedByRole = {
@@ -262,10 +311,10 @@ export class BattleService {
     const speed = Math.floor(baseSpeed * (1 + (level - 1) * 0.01));
     
     return {
-      hp,
-      maxHp: hp,
-      atk,
-      def,
+      hp: finalHp,
+      maxHp: finalHp,
+      atk: finalAtk,
+      def: finalDef,
       speed
     };
   }
@@ -360,6 +409,14 @@ export class BattleService {
       throw new Error("Battle not found");
     }
     
-    return battle.getBattleReplay();
+    return {
+      battleId: battle._id,
+      playerTeam: battle.playerTeam,
+      enemyTeam: battle.enemyTeam,
+      actions: battle.actions,
+      result: battle.result,
+      duration: battle.battleEnded ? 
+        battle.battleEnded.getTime() - battle.battleStarted.getTime() : 0
+    };
   }
 }
