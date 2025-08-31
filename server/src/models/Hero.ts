@@ -1,7 +1,25 @@
 import mongoose, { Document, Schema } from "mongoose";
 import { IHero } from "../types/index";
 
-interface IHeroDocument extends IHero, Document {}
+interface IHeroDocument extends Document {
+  name: string;
+  role: "Tank" | "DPS Melee" | "DPS Ranged" | "Support";
+  element: "Fire" | "Water" | "Wind" | "Electric" | "Light" | "Dark";
+  rarity: "Common" | "Rare" | "Epic" | "Legendary";
+  baseStats: {
+    hp: number;
+    atk: number;
+    def: number;
+  };
+  skill: {
+    name: string;
+    description: string;
+    type: "Heal" | "Buff" | "AoE" | "Control" | "Damage";
+  };
+  getStatsAtLevel(level: number, stars?: number): any;
+  getRarityMultiplier(): number;
+  getElementAdvantage(targetElement: string): number;
+}
 
 const heroSchema = new Schema<IHeroDocument>({
   name: { 
@@ -108,13 +126,13 @@ heroSchema.methods.getStatsAtLevel = function(level: number, stars: number = 1) 
 };
 
 heroSchema.methods.getRarityMultiplier = function(): number {
-  const multipliers = {
+  const multipliers: { [key: string]: number } = {
     Common: 1,
     Rare: 1.25,
     Epic: 1.5,
     Legendary: 2
   };
-  return multipliers[this.rarity] || 1;
+  return multipliers[this.rarity as string] || 1;
 };
 
 heroSchema.methods.getElementAdvantage = function(targetElement: string): number {
