@@ -303,7 +303,7 @@ crossServerConfigSchema.methods.canServersInteract = function(server1: string, s
 };
 
 crossServerConfigSchema.methods.getEventConfig = function(eventType: string) {
-  return this.eventConfigs.find(config => config.eventType === eventType);
+  return this.eventConfigs.find((config: any) => config.eventType === eventType);
 };
 
 export const GameServer = mongoose.model<IGameServerDocument>("GameServer", gameServerSchema);
