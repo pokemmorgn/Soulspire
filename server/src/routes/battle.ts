@@ -105,7 +105,7 @@ router.post("/arena", authMiddleware, async (req: Request, res: Response): Promi
     console.log(`⚔️ Combat d'arène: ${req.userId} vs ${opponentId}`);
 
     // Lancer le combat PvP
-    const battleResult = await BattleService.startArenaBattle(req.userId!, opponentId);
+    const battleResult = await BattleService.startArenaBattle(req.userId!,req.serverId!, opponentId);
 
     res.json({
       message: "Arena battle completed",
@@ -156,7 +156,7 @@ router.get("/history", authMiddleware, async (req: Request, res: Response): Prom
     const { limit } = req.query;
     const limitNum = parseInt(limit as string) || 20;
 
-    const history = await BattleService.getBattleHistory(req.userId!, limitNum);
+    const history = await BattleService.getBattleHistory(req.userId!,req.serverId!, limitNum);
 
     res.json({
       message: "Battle history retrieved successfully",
@@ -176,7 +176,7 @@ router.get("/history", authMiddleware, async (req: Request, res: Response): Prom
 // === GET BATTLE STATS ===
 router.get("/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const stats = await BattleService.getPlayerBattleStats(req.userId!);
+    const stats = await BattleService.getPlayerBattleStats(req.userId!, req.serverId!);
 
     res.json({
       message: "Battle statistics retrieved successfully",
@@ -212,7 +212,7 @@ router.get("/replay/:battleId", authMiddleware, async (req: Request, res: Respon
       return;
     }
 
-    const replay = await BattleService.getBattleReplay(battleId, req.userId!);
+    const replay = await BattleService.getBattleReplay(battleId, req.userId!, req.serverId!);
 
     res.json({
       message: "Battle replay retrieved successfully",
@@ -243,7 +243,7 @@ router.post("/quick", authMiddleware, async (req: Request, res: Response): Promi
     console.log(`⚡ Combat rapide pour ${req.userId}`);
 
     // Combat rapide contre le monde 1, niveau 1
-    const battleResult = await BattleService.startCampaignBattle(req.userId!, 1, 1, "Normal");
+    const battleResult = await BattleService.startCampaignBattle(req.userId!, req.serverId!,  1, 1, "Normal");
 
     res.json({
       message: "Quick battle completed",
@@ -314,7 +314,7 @@ router.post("/test", authMiddleware, async (req: Request, res: Response): Promis
 
     console.log(`🧪 Test de combat pour ${req.userId}`);
 
-    const battleResult = await BattleService.startCampaignBattle(req.userId!, 1, 1, "Normal");
+    const battleResult = await BattleService.startCampaignBattle(req.userId!, req.serverId!, 1, 1, "Normal");
 
     // Réponse détaillée pour les tests
     res.json({
