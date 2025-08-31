@@ -175,6 +175,7 @@ async function runBattleTests(playerId: string) {
       const startTime = Date.now();
       const result = await BattleService.startCampaignBattle(
         playerId, 
+        "S1", // Serveur par défaut pour les tests
         test.world, 
         test.level, 
         test.difficulty
@@ -273,7 +274,7 @@ function displayBattleActions(actions: any[]) {
 // Affiche les statistiques globales du joueur
 async function displayPlayerStats(playerId: string) {
   try {
-    const stats = await BattleService.getPlayerBattleStats(playerId);
+    const stats = await BattleService.getPlayerBattleStats(playerId, "S1");
     
     colorLog(colors.cyan, "\n📈 === STATISTIQUES GLOBALES ===");
     console.log(`🎯 Combats total: ${stats.totalBattles}`);
