@@ -1,7 +1,24 @@
 import mongoose, { Document, Schema } from "mongoose";
 import { IInventory, IEquipment } from "../types/index";
 
-interface IInventoryDocument extends IInventory, Document {}
+interface IInventoryDocument extends Document {
+  playerId: string;
+  gold: number;
+  gems: number;
+  paidGems: number;
+  tickets: number;
+  fragments: Map<string, number>;
+  materials: Map<string, number>;
+  equipment: IEquipment[];
+  addEquipment(equipment: Partial<IEquipment>): any;
+  removeEquipment(itemId: string): any;
+  getEquipmentByType(type: string): IEquipment[];
+  getEquippedItems(): IEquipment[];
+  addMaterial(materialId: string, quantity: number): any;
+  removeMaterial(materialId: string, quantity: number): boolean;
+  addFragment(heroId: string, quantity: number): any;
+  canSummonHero(heroId: string, requiredFragments?: number): boolean;
+}
 
 const equipmentSchema = new Schema<IEquipment>({
   itemId: { 
@@ -44,8 +61,7 @@ const equipmentSchema = new Schema<IEquipment>({
 
 const inventorySchema = new Schema<IInventoryDocument>({
   playerId: { 
-    type: Schema.Types.ObjectId, 
-    ref: "Player",
+    type: String,
     required: true,
     unique: true
   },
