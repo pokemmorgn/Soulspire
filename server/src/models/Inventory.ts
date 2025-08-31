@@ -24,7 +24,6 @@ const equipmentSchema = new Schema<IEquipment>({
   itemId: { 
     type: String, 
     required: true,
-    unique: true
   },
   name: { 
     type: String, 
@@ -166,3 +165,4 @@ inventorySchema.methods.canSummonHero = function(heroId: string, requiredFragmen
 };
 
 export default mongoose.model<IInventoryDocument>("Inventory", inventorySchema);
+
