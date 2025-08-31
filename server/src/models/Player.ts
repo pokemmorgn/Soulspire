@@ -9,6 +9,7 @@ interface IPlayerDocument extends Document {
   paidGems: number;
   world: number;
   level: number;
+  backgroundId?: string; // <-- nouveau champ optionnel
   difficulty: "Normal" | "Hard" | "Nightmare";
   heroes: IPlayerHero[];
   tickets: number;
@@ -87,6 +88,10 @@ const playerSchema = new Schema<IPlayerDocument>({
     default: 1,
     min: 1
   },
+    backgroundId: { // <-- nouveau champ
+    type: String,
+    default: null
+  },
   difficulty: { 
     type: String, 
     enum: ["Normal", "Hard", "Nightmare"],
@@ -157,3 +162,4 @@ playerSchema.methods.spendCurrency = function(cost: { gold?: number, gems?: numb
 };
 
 export default mongoose.model<IPlayerDocument>("Player", playerSchema);
+
