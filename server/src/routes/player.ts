@@ -18,6 +18,10 @@ const currencyUpdateSchema = Joi.object({
   paidGems: Joi.number().min(0).optional()
 });
 
+const formationSchema = Joi.object({
+  heroes: Joi.array().items(Joi.string()).max(9).required() // max 9 slots
+});
+
 // === GET PLAYER INFO ===
 router.get("/me", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -33,7 +37,6 @@ router.get("/me", authMiddleware, async (req: Request, res: Response): Promise<v
       return;
     }
 
-    // Calcul des stats dérivées
     const playerStats = {
       ...player.toObject(),
       totalHeroes: player.heroes.length,
@@ -78,11 +81,9 @@ router.put("/progress", authMiddleware, async (req: Request, res: Response): Pro
       return;
     }
 
-    // Mise à jour des champs autorisés
     const { world, level, difficulty } = req.body;
     
     if (world !== undefined) {
-      // Vérifier que le joueur peut accéder à ce monde
       if (world > player.world + 1) {
         res.status(400).json({ 
           error: "Cannot skip worlds",
@@ -166,6 +167,59 @@ router.put("/currency", authMiddleware, async (req: Request, res: Response): Pro
   }
 });
 
+// === UPDATE FORMATION ===
+router.put("/formation", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { error } = formationSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({
+        error: error.details[0].message,
+        code: "VALIDATION_ERROR"
+      });
+      return;
+    }
+
+    const player = await Player.findById(req.userId);
+    if (!player) {
+      res.status(404).json({
+        error: "Player not found",
+        code: "PLAYER_NOT_FOUND"
+      });
+      return;
+    }
+
+    const { heroes } = req.body;
+
+    // Vérifier que les héros appartiennent au joueur
+    const invalidHeroes = heroes.filter(
+      (heroId: string) => !player.heroes.some(h => h.heroId.toString() === heroId)
+    );
+    if (invalidHeroes.length > 0) {
+      res.status(400).json({
+        error: "Some heroes are not owned by the player",
+        code: "INVALID_HEROES",
+        invalidHeroes
+      });
+      return;
+    }
+
+    // Sauvegarder la formation
+    player.formations = heroes;
+    await player.save();
+
+    res.json({
+      message: "Formation updated successfully",
+      formation: player.formations
+    });
+  } catch (err) {
+    console.error("Update formation error:", err);
+    res.status(500).json({
+      error: "Internal server error",
+      code: "UPDATE_FORMATION_FAILED"
+    });
+  }
+});
+
 // === GET PLAYER STATISTICS ===
 router.get("/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -180,7 +234,6 @@ router.get("/stats", authMiddleware, async (req: Request, res: Response): Promis
       return;
     }
 
-    // Calcul des statistiques détaillées
     const heroStats = player.heroes.reduce((acc, hero: any) => {
       const rarity = hero.heroId?.rarity || "Unknown";
       const role = hero.heroId?.role || "Unknown";
@@ -217,6 +270,7 @@ router.get("/stats", authMiddleware, async (req: Request, res: Response): Promis
         difficulty: player.difficulty
       },
       heroDistribution: heroStats,
+      formation: player.formations || [],
       inventory: {
         totalFragments: Array.from(player.fragments.values()).reduce((sum, count) => sum + count, 0),
         totalMaterials: Array.from(player.materials.values()).reduce((sum, count) => sum + count, 0),
