@@ -10,8 +10,8 @@ const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/unity-gach
 function calculateBaseStats(role: string, rarity: string) {
   const baseStatsByRole = {
     "Tank": { hp: 1200, atk: 80, def: 150 },
-    "Melee DPS": { hp: 800, atk: 140, def: 70 },
-    "Ranged DPS": { hp: 600, atk: 120, def: 50 },
+    "DPS Melee": { hp: 800, atk: 140, def: 70 },
+    "DPS Ranged": { hp: 600, atk: 120, def: 50 },
     "Support": { hp: 700, atk: 60, def: 80 }
   };
 
@@ -23,6 +23,16 @@ function calculateBaseStats(role: string, rarity: string) {
 
   const baseStats = baseStatsByRole[role as keyof typeof baseStatsByRole];
   const multiplier = rarityMultipliers[rarity as keyof typeof rarityMultipliers];
+
+  if (!baseStats) {
+    console.error(`Unknown role: ${role}`);
+    return { hp: 100, atk: 10, def: 10 };
+  }
+
+  if (!multiplier) {
+    console.error(`Unknown rarity: ${rarity}`);
+    return baseStats;
+  }
 
   return {
     hp: Math.floor(baseStats.hp * multiplier),
@@ -160,16 +170,11 @@ const seedHeroes = async (): Promise<void> => {
 
     // Créer vos héros
     for (const heroData of heroesData) {
-      // Normaliser les noms de rôles
-      let normalizedRole = heroData.role;
-      if (heroData.role === "DPS Ranged") normalizedRole = "DPS Ranged";
-      if (heroData.role === "DPS Melee") normalizedRole = "DPS Melee";
-      
-      const stats = calculateBaseStats(normalizedRole, heroData.rarity);
+      const stats = calculateBaseStats(heroData.role, heroData.rarity);
       
       const hero = new Hero({
         name: heroData.name,
-        role: normalizedRole,
+        role: heroData.role,
         element: heroData.element,
         rarity: heroData.rarity,
         baseStats: stats,
@@ -182,7 +187,7 @@ const seedHeroes = async (): Promise<void> => {
       });
       
       await hero.save();
-      console.log(`✅ Created: ${heroData.name} (${heroData.rarity} ${normalizedRole})`);
+      console.log(`✅ Created: ${heroData.name} (${heroData.rarity} ${heroData.role})`);
     }
 
     console.log(`\n🎭 Successfully created ${heroesData.length} heroes`);
