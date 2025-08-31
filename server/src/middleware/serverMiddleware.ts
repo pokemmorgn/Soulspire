@@ -48,7 +48,7 @@ const serverMiddleware = async (req: Request, res: Response, next: NextFunction)
     }
     
     // Valider que le serveur existe et est accessible
-    const serverData = await GameServer.getServerById(serverId);
+    const serverData = await GameServer.findOne({ serverId, status: { $ne: "offline" } });
     if (!serverData) {
       res.status(400).json({
         error: `Server ${serverId} not found or unavailable`,
