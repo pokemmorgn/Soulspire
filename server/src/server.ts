@@ -16,14 +16,14 @@ dotenv.config();
 
 const app: Application = express();
 const PORT = process.env.PORT || 3000;
-const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/soulspire";
+const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/unity-gacha-game";
 const NODE_ENV = process.env.NODE_ENV || "development";
 
 // Configuration CORS
 const corsOptions = {
   origin: NODE_ENV === "production" 
     ? ["https://your-unity-game-domain.com"] // Remplacez par votre domaine
-: ["http://localhost:3000", "http://127.0.0.1:3000", "http://88.99.61.188:3000"],
+    : ["http://localhost:3000", "http://127.0.0.1:3000"], // Dev et Unity local
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
@@ -125,7 +125,6 @@ const connectDB = async (): Promise<void> => {
   try {
     const mongoOptions = {
       retryWrites: true,
-      w: "majority",
       maxPoolSize: 10,
       minPoolSize: 2,
       maxIdleTimeMS: 30000,
@@ -205,22 +204,25 @@ app.get("/health", async (req: Request, res: Response) => {
 // Route pour les métriques (optionnel, pour monitoring)
 app.get("/metrics", async (req: Request, res: Response) => {
   try {
-    const stats = await mongoose.connection.db.stats();
-    const metrics = {
-      database: {
-        collections: stats.collections,
-        dataSize: stats.dataSize,
-        indexSize: stats.indexSize,
-        storageSize: stats.storageSize
-      },
-      server: {
-        memory: process.memoryUsage(),
-        uptime: process.uptime(),
-        cpu: process.cpuUsage()
-      }
-    };
-    
-    res.json(metrics);
+    if (mongoose.connection.db) {
+      const stats = await mongoose.connection.db.stats();
+      const metrics = {
+        database: {
+          collections: stats.collections,
+          dataSize: stats.dataSize,
+          indexSize: stats.indexSize,
+          storageSize: stats.storageSize
+        },
+        server: {
+          memory: process.memoryUsage(),
+          uptime: process.uptime(),
+          cpu: process.cpuUsage()
+        }
+      };
+      res.json(metrics);
+    } else {
+      res.status(500).json({ error: "Database not connected" });
+    }
   } catch (err) {
     res.status(500).json({ error: "Unable to retrieve metrics" });
   }
