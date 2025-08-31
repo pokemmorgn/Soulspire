@@ -45,7 +45,7 @@ const testBattle = async (): Promise<void> => {
     await displayPlayerTeam(testPlayer);
 
     // 4. Lancer plusieurs types de combats
-    await runBattleTests(testPlayer._id.toString());
+    await runBattleTests((testPlayer._id as any).toString());
 
     colorLog(colors.cyan, "\n🎉 === TESTS DE COMBAT TERMINÉS ===\n");
     
@@ -94,7 +94,7 @@ async function equipTestHeroes(player: any) {
     for (let i = 0; i < Math.min(4, allHeroes.length); i++) {
       const hero = allHeroes[i];
       player.heroes.push({
-        heroId: hero._id.toString(),
+        heroId: (hero._id as any).toString(),
         level: 10 + i * 5, // Niveaux variés pour le test
         stars: Math.min(6, 2 + i), // Étoiles variables
         equipped: true
@@ -126,14 +126,26 @@ async function displayPlayerTeam(player: any) {
   
   for (let i = 0; i < equippedHeroes.length; i++) {
     const playerHero = equippedHeroes[i];
-    const heroData = playerHero.heroId;
+    const heroData = playerHero.heroId as any; // Cast pour éviter les erreurs TypeScript
     
-    if (heroData) {
-      const stats = heroData.getStatsAtLevel(playerHero.level, playerHero.stars);
+    if (heroData && heroData.name) {
+      // Calculer les stats manuellement car getStatsAtLevel peut ne pas être disponible
+      const levelMultiplier = 1 + (playerHero.level - 1) * 0.1;
+      const starMultiplier = 1 + (playerHero.stars - 1) * 0.2;
+      const totalMultiplier = levelMultiplier * starMultiplier;
+      
+      const stats = {
+        hp: Math.floor(heroData.baseStats.hp * totalMultiplier),
+        atk: Math.floor(heroData.baseStats.atk * totalMultiplier),
+        def: Math.floor(heroData.baseStats.def * totalMultiplier)
+      };
+      
       console.log(`${i + 1}. ${colors.bright}${heroData.name}${colors.reset}`);
       console.log(`   Role: ${heroData.role} | Element: ${heroData.element} | Rarity: ${heroData.rarity}`);
       console.log(`   Level: ${playerHero.level} | Stars: ${playerHero.stars}`);
       console.log(`   Stats: HP=${stats.hp}, ATK=${stats.atk}, DEF=${stats.def}`);
+    } else {
+      console.log(`${i + 1}. ${colors.red}Héros non trouvé${colors.reset}`);
     }
   }
   console.log("");
