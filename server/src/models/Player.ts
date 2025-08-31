@@ -1,12 +1,29 @@
 import mongoose, { Document, Schema } from "mongoose";
 import { IPlayer, IPlayerHero } from "../types/index";
 
-interface IPlayerDocument extends IPlayer, Document {}
+interface IPlayerDocument extends Document {
+  username: string;
+  password: string;
+  gold: number;
+  gems: number;
+  paidGems: number;
+  world: number;
+  level: number;
+  difficulty: "Normal" | "Hard" | "Nightmare";
+  heroes: IPlayerHero[];
+  tickets: number;
+  fragments: Map<string, number>;
+  materials: Map<string, number>;
+  createdAt?: Date;
+  addHero(heroId: string, level?: number, stars?: number): any;
+  getEquippedHeroes(): IPlayerHero[];
+  canAfford(cost: { gold?: number, gems?: number, paidGems?: number }): boolean;
+  spendCurrency(cost: { gold?: number, gems?: number, paidGems?: number }): any;
+}
 
 const playerHeroSchema = new Schema<IPlayerHero>({
   heroId: { 
-    type: Schema.Types.ObjectId, 
-    ref: "Hero", 
+    type: String,
     required: true 
   },
   level: { 
