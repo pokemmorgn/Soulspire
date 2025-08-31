@@ -39,6 +39,7 @@ router.post("/campaign", authMiddleware, async (req: Request, res: Response): Pr
     // Lancer le combat
     const battleResult = await BattleService.startCampaignBattle(
       req.userId!,
+      req.serverId!,
       worldId,
       levelId,
       difficulty
