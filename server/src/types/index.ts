@@ -11,6 +11,8 @@ export interface IPlayer {
   level: number;
   difficulty: "Normal" | "Hard" | "Nightmare";
   heroes: IPlayerHero[];
+    formationId?: string | null; // <-- ajouté
+
   tickets: number;
   fragments: Map<string, number>;
   materials: Map<string, number>;
@@ -23,6 +25,8 @@ export interface IPlayerHero {
   level: number;
   stars: number;
   equipped: boolean;
+    slot?: number | null; // <-- ajouté
+
 }
 
 export interface IHero {
