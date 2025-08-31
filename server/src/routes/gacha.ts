@@ -305,15 +305,30 @@ router.get("/history", authMiddleware, async (req: Request, res: Response): Prom
 // === GET SUMMON STATISTICS ===
 router.get("/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const [rarityStats, totalStats] = await Promise.all([
-      Summon.getPlayerSummonStats(req.userId!),
-      Summon.getTotalSummons(req.userId!)
+    // Version simplifiée sans les méthodes statiques
+    const rarityStats = await Summon.aggregate([
+      { $match: { playerId: req.userId! } },
+      { $unwind: "$heroesObtained" },
+      { $group: {
+        _id: "$heroesObtained.rarity",
+        count: { $sum: 1 }
+      }},
+      { $sort: { _id: 1 } }
+    ]);
+
+    const totalStats = await Summon.aggregate([
+      { $match: { playerId: req.userId! } },
+      { $group: {
+        _id: null,
+        totalSummons: { $sum: { $size: "$heroesObtained" } },
+        totalSessions: { $sum: 1 }
+      }}
     ]);
 
     const stats = {
       totalSummons: totalStats[0]?.totalSummons || 0,
       totalSessions: totalStats[0]?.totalSessions || 0,
-      rarityDistribution: rarityStats.reduce((acc, stat) => {
+      rarityDistribution: rarityStats.reduce((acc: any, stat: any) => {
         acc[stat._id] = stat.count;
         return acc;
       }, {} as Record<string, number>)
