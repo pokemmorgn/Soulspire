@@ -93,7 +93,7 @@ const heroSchema = new Schema<IHeroDocument>({
 heroSchema.index({ rarity: 1 });
 heroSchema.index({ role: 1 });
 heroSchema.index({ element: 1 });
-heroSchema.index({ name: 1 });
+// heroSchema.index({ name: 1 });
 
 // Méthodes statiques pour les drop rates
 heroSchema.statics.getDropRates = function() {
@@ -151,3 +151,4 @@ heroSchema.methods.getElementAdvantage = function(targetElement: string): number
 };
 
 export default mongoose.model<IHeroDocument>("Hero", heroSchema);
+
