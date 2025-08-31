@@ -16,7 +16,7 @@ import battleRoutes from "./routes/battle";
 dotenv.config();
 
 const app: Application = express();
-const PORT = process.env.PORT || 3000;
+const PORT: number = parseInt(process.env.PORT || "3000", 10);
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/unity-gacha-game";
 const NODE_ENV = process.env.NODE_ENV || "development";
 
@@ -257,15 +257,6 @@ const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🌐 Environment: ${NODE_ENV}`);
   console.log(`📊 API Health: http://${publicIP}:${PORT}/health`);
-
-  if (NODE_ENV === "development") {
-    console.log(`📖 API Documentation:`);
-    console.log(`   Auth: http://${publicIP}:${PORT}/api/auth`);
-    console.log(`   Player: http://${publicIP}:${PORT}/api/player`);
-    console.log(`   Heroes: http://${publicIP}:${PORT}/api/heroes`);
-    console.log(`   Gacha: http://${publicIP}:${PORT}/api/gacha`);
-    console.log(`   Inventory: http://${publicIP}:${PORT}/api/inventory`);
-  }
 });
 
 
