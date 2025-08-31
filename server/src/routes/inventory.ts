@@ -53,14 +53,16 @@ router.get("/", authMiddleware, async (req: Request, res: Response): Promise<voi
     // Récupération de l'équipement depuis le modèle Inventory séparé
     let inventory = await Inventory.findOne({ playerId: req.userId });
     if (!inventory) {
-      // Créer un inventaire vide si il n'existe pas
       inventory = new Inventory({ playerId: req.userId });
       await inventory.save();
     }
 
-    // Conversion des Maps en objets pour la sérialisation JSON
-    const fragmentsObj = Object.fromEntries(player.fragments);
-    const materialsObj = Object.fromEntries(player.materials);
+    // ✅ Sécurisation : fallback sur {} si undefined ou null
+    const fragmentsMap = player.fragments || new Map();
+    const materialsMap = player.materials || new Map();
+
+    const fragmentsObj = Object.fromEntries(fragmentsMap.entries());
+    const materialsObj = Object.fromEntries(materialsMap.entries());
 
     // Statistiques de l'inventaire
     const stats = {
@@ -76,8 +78,8 @@ router.get("/", authMiddleware, async (req: Request, res: Response): Promise<voi
         Epic: inventory.equipment.filter(item => item.rarity === "Epic").length,
         Legendary: inventory.equipment.filter(item => item.rarity === "Legendary").length
       },
-      totalFragments: Object.values(fragmentsObj).reduce((sum, count) => sum + count, 0),
-      totalMaterials: Object.values(materialsObj).reduce((sum, count) => sum + count, 0),
+      totalFragments: Object.values(fragmentsObj).reduce((sum: number, count: number) => sum + count, 0),
+      totalMaterials: Object.values(materialsObj).reduce((sum: number, count: number) => sum + count, 0),
       equippedItems: inventory.equipment.filter(item => item.equippedTo).length
     };
 
@@ -422,3 +424,4 @@ router.post("/fragments/add", authMiddleware, async (req: Request, res: Response
 });
 
 export default router;
+
