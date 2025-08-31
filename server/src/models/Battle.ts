@@ -112,6 +112,11 @@ interface IBattleDocument extends Document {
     difficulty?: "Normal" | "Hard" | "Nightmare";
     enemyType?: "normal" | "elite" | "boss";
   };
+
+  // Méthodes d'instance
+  addAction(action: IBattleAction): Promise<IBattleDocument>;
+  completeBattle(result: IBattleResult): Promise<IBattleDocument>;
+  getBattleReplay(): any;
 }
 
 // Schéma pour les participants
