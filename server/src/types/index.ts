@@ -157,3 +157,127 @@ export interface GachaPullResponse {
     epicPityIn: number;
   };
 }
+export interface IShopItem {
+  itemId: string;
+  type: "Currency" | "Hero" | "Equipment" | "Material" | "Fragment" | "Ticket";
+  name: string;
+  description?: string;
+  rarity?: "Common" | "Rare" | "Epic" | "Legendary";
+  quantity: number;
+  
+  // Coûts
+  cost: {
+    gold?: number;
+    gems?: number;
+    paidGems?: number;
+    tickets?: number;
+  };
+  
+  // Stock et limitations
+  maxStock: number; // -1 = illimité
+  currentStock: number;
+  maxPurchasePerPlayer: number; // -1 = illimité par joueur
+  
+  // Conditions d'achat
+  levelRequirement?: number;
+  worldRequirement?: number;
+  
+  // Données spécifiques selon le type
+  heroData?: {
+    heroId?: string;
+    level?: number;
+    stars?: number;
+  };
+  equipmentData?: {
+    type?: "Weapon" | "Armor" | "Accessory";
+    level?: number;
+    stats?: {
+      atk: number;
+      def: number;
+      hp: number;
+    };
+  };
+  materialData?: {
+    materialType?: string;
+  };
+  
+  // Metadata
+  weight?: number; // Probabilité d'apparition (1-100)
+  isPromotional?: boolean;
+  promotionalText?: string;
+  
+  // Tracking
+  totalPurchased?: number;
+  purchasedBy?: {
+    playerId: string;
+    quantity: number;
+    purchaseDate: Date;
+  }[];
+}
+
+export interface IShop {
+  _id?: string;
+  type: "Daily" | "Weekly" | "Monthly" | "Premium";
+  items: IShopItem[];
+  resetTime: Date;
+  nextResetTime: Date;
+  isActive: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+// Types pour les requêtes/réponses Shop
+export interface ShopPurchaseRequest {
+  shopType: "Daily" | "Weekly" | "Monthly" | "Premium";
+  itemId: string;
+  quantity?: number;
+}
+
+export interface ShopPurchaseResponse {
+  message: string;
+  purchase: {
+    itemId: string;
+    itemName: string;
+    quantity: number;
+    cost: {
+      gold?: number;
+      gems?: number;
+      paidGems?: number;
+      tickets?: number;
+    };
+    reward: {
+      type: string;
+      quantity: number;
+      data?: any;
+    };
+  };
+  remaining: {
+    gold: number;
+    gems: number;
+    paidGems: number;
+    tickets: number;
+  };
+  itemStock: {
+    current: number;
+    max: number;
+  };
+}
+
+export interface ShopRefreshRequest {
+  shopType: "Daily" | "Weekly" | "Monthly" | "Premium";
+  force?: boolean;
+}
+
+export interface ShopListResponse {
+  message: string;
+  shops: {
+    type: string;
+    items: (IShopItem & {
+      canPurchase: boolean;
+      playerPurchases: number;
+      timeUntilReset: number; // en secondes
+    })[];
+    resetTime: Date;
+    nextResetTime: Date;
+  }[];
+}
