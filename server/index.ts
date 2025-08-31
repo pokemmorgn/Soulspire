@@ -1,30 +1,30 @@
-const express = require("express");
-const mongoose = require("mongoose");
-const cors = require("cors");
+import express, { Application, Request, Response } from "express";
+import mongoose from "mongoose";
+import cors from "cors";
+import dotenv from "dotenv";
 
-const authRoutes = require("./routes/auth");
-const playerRoutes = require("./routes/player");
-const inventoryRoutes = require("./routes/inventory");
-const heroesRoutes = require("./routes/heroes");
-const gachaRoutes = require("./routes/gacha");
+// Import des routes
+import authRoutes from "./routes/auth";
+import playerRoutes from "./routes/player";
+import inventoryRoutes from "./routes/inventory";
+import heroesRoutes from "./routes/heroes";
+import gachaRoutes from "./routes/gacha";
 
-require("dotenv").config();
+dotenv.config();
 
-const app = express();
+const app: Application = express();
+const PORT = process.env.PORT || 3000;
+const MONGO_URI = process.env.MONGO_URI || "";
 
-// Middlewares globaux
-app.use(cors()); // autorise les appels depuis Unity/Web
+// Middlewares
+app.use(cors());
 app.use(express.json());
 
-// Connexion DB
-mongoose.connect(process.env.MONGO_URI || "mongodb://localhost:27017/soulspireidle", {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-}).then(() => console.log("✅ Connecté à MongoDB"))
-  .catch(err => console.error("❌ Erreur MongoDB:", err));
-
-// Health check
-app.get("/", (req, res) => res.send("API Soulspire Idle OK 🚀"));
+// Connexion MongoDB
+mongoose
+  .connect(MONGO_URI)
+  .then(() => console.log("✅ MongoDB connecté"))
+  .catch((err) => console.error("❌ Erreur connexion MongoDB:", err));
 
 // Routes
 app.use("/auth", authRoutes);
@@ -33,6 +33,12 @@ app.use("/inventory", inventoryRoutes);
 app.use("/heroes", heroesRoutes);
 app.use("/gacha", gachaRoutes);
 
-// Lancement serveur
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`API lancée sur http://localhost:${PORT}`));
+// Health check
+app.get("/", (req: Request, res: Response) => {
+  res.send("API en ligne ✅");
+});
+
+// Lancement du serveur
+app.listen(PORT, () => {
+  console.log(`🚀 Serveur lancé sur http://localhost:${PORT}`);
+});
