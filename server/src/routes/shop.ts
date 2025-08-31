@@ -73,7 +73,7 @@ router.get("/", authMiddleware, async (req: Request, res: Response): Promise<voi
         const playerPurchases = item.purchasedBy?.filter(p => p.playerId === req.userId!).length || 0;
         
         return {
-          ...item.toObject(),
+          ...item,
           canPurchase: canPurchase && hasResources,
           playerPurchases,
           timeUntilReset: Math.max(0, Math.floor((shop.nextResetTime.getTime() - now.getTime()) / 1000))
@@ -160,7 +160,7 @@ router.get("/:shopType", authMiddleware, async (req: Request, res: Response): Pr
       const playerPurchases = item.purchasedBy?.filter(p => p.playerId === req.userId!).length || 0;
       
       return {
-        ...item.toObject(),
+        ...item,
         canPurchase: canPurchase && hasResources,
         playerPurchases,
         timeUntilReset: Math.max(0, Math.floor((shop.nextResetTime.getTime() - now.getTime()) / 1000))
