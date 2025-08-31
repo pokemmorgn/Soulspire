@@ -12,6 +12,7 @@ import heroesRoutes from "./routes/heroes";
 import gachaRoutes from "./routes/gacha";
 import shopRoutes from "./routes/shop";
 import battleRoutes from "./routes/battle";
+import serverMiddleware, { injectServerIdMiddleware } from "./middleware/serverMiddleware";
 import serverRoutes from "./routes/servers";
 // Configuration de l'environnement
 dotenv.config();
@@ -67,6 +68,8 @@ const gachaLimiter = rateLimit({
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(injectServerIdMiddleware);
+app.use(serverMiddleware);
 
 // Application du rate limiting
 app.use(limiter);
@@ -165,6 +168,7 @@ app.use("/api/gacha", gachaLimiter, gachaRoutes);
 app.use("/api/shop", shopRoutes);
 app.use("/api/battle", battleRoutes);
 app.use("/api/servers", serverRoutes);
+
 // Route de santé de l'API
 app.get("/", (req: Request, res: Response) => {
   res.json({
