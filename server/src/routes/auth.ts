@@ -89,7 +89,7 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
 
     res.status(201).json({ 
       message: "Registration successful",
-      playerId: player._id
+      playerId: (player._id as any).toString()
     });
   } catch (err) {
     console.error("Registration error:", err);
@@ -134,13 +134,13 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
     }
 
     // Génération des tokens
-    const tokens = generateTokens(player._id.toString());
+    const tokens = generateTokens((player._id as any).toString());
 
     const response: LoginResponse = {
       message: "Login successful",
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
-      playerId: player._id.toString()
+      playerId: (player._id as any).toString()
     };
 
     res.json(response);
