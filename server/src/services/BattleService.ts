@@ -8,17 +8,22 @@ export class BattleService {
   // Démarre un combat de campagne
   public static async startCampaignBattle(
     playerId: string, 
+    serverId: string, // NOUVEAU paramètre
     worldId: number, 
     levelId: number, 
     difficulty: "Normal" | "Hard" | "Nightmare" = "Normal"
   ) {
     try {
-      console.log(`🎯 Démarrage combat campagne: Monde ${worldId}, Niveau ${levelId}, ${difficulty}`);
+      console.log(`🎯 Démarrage combat campagne: Monde ${worldId}, Niveau ${levelId}, ${difficulty} sur ${serverId}`);
 
-      // Récupérer le joueur et son équipe
-      const player = await Player.findById(playerId).populate("heroes.heroId");
+      // Récupérer le joueur ET vérifier qu'il est sur le bon serveur
+      const player = await Player.findOne({ 
+        _id: playerId, 
+        serverId: serverId 
+      }).populate("heroes.heroId");
+      
       if (!player) {
-        throw new Error("Player not found");
+        throw new Error("Player not found or not on this server");
       }
 
       // Construire l'équipe du joueur (héros équipés)
@@ -30,9 +35,10 @@ export class BattleService {
       // Générer l'équipe ennemie
       const enemyTeam = await this.generateEnemyTeam(worldId, levelId, difficulty);
 
-      // Créer le document de combat avec un résultat par défaut
+      // Créer le document de combat avec serverId
       const battle = new Battle({
         playerId,
+        serverId: serverId, // NOUVEAU champ
         battleType: "campaign",
         playerTeam,
         enemyTeam,
@@ -105,18 +111,22 @@ export class BattleService {
   }
 
   // Démarre un combat d'arène PvP
-  public static async startArenaBattle(playerId: string, opponentId: string) {
+  public static async startArenaBattle(
+    playerId: string, 
+    serverId: string, // NOUVEAU paramètre
+    opponentId: string
+  ) {
     try {
-      console.log(`⚔️ Combat d'arène: ${playerId} vs ${opponentId}`);
+      console.log(`⚔️ Combat d'arène: ${playerId} vs ${opponentId} sur serveur ${serverId}`);
 
-      // Récupérer les deux joueurs
+      // Récupérer les deux joueurs du même serveur (sauf si cross-server autorisé)
       const [player, opponent] = await Promise.all([
-        Player.findById(playerId).populate("heroes.heroId"),
-        Player.findById(opponentId).populate("heroes.heroId")
+        Player.findOne({ _id: playerId, serverId: serverId }).populate("heroes.heroId"),
+        Player.findOne({ _id: opponentId, serverId: serverId }).populate("heroes.heroId")
       ]);
 
       if (!player || !opponent) {
-        throw new Error("Player or opponent not found");
+        throw new Error("Player or opponent not found on this server");
       }
 
       // Construire les équipes
@@ -127,9 +137,10 @@ export class BattleService {
         throw new Error("Both players must have equipped heroes");
       }
 
-      // Créer le combat avec un résultat par défaut
+      // Créer le combat avec serverId
       const battle = new Battle({
         playerId,
+        serverId: serverId, // NOUVEAU champ
         battleType: "arena",
         playerTeam,
         enemyTeam,
@@ -403,17 +414,25 @@ export class BattleService {
   }
 
   // Récupère l'historique des combats d'un joueur
-  public static async getBattleHistory(playerId: string, limit: number = 20) {
-    return await Battle.find({ playerId, status: "completed" })
+  public static async getBattleHistory(playerId: string, serverId: string, limit: number = 20) {
+    return await Battle.find({ 
+      playerId, 
+      serverId: serverId, // NOUVEAU filtre
+      status: "completed" 
+    })
       .sort({ createdAt: -1 })
       .limit(limit)
       .select("battleType result context createdAt battleDuration");
   }
 
   // Récupère les statistiques de combat d'un joueur
-  public static async getPlayerBattleStats(playerId: string) {
+  public static async getPlayerBattleStats(playerId: string, serverId: string) {
     const stats = await Battle.aggregate([
-      { $match: { playerId, status: "completed" } },
+      { $match: { 
+        playerId: playerId, 
+        serverId: serverId, // NOUVEAU filtre
+        status: "completed" 
+      }},
       { $group: {
         _id: null,
         totalBattles: { $sum: 1 },
@@ -436,8 +455,12 @@ export class BattleService {
   }
 
   // Récupère le replay d'un combat spécifique
-  public static async getBattleReplay(battleId: string, playerId: string) {
-    const battle = await Battle.findOne({ _id: battleId, playerId });
+  public static async getBattleReplay(battleId: string, playerId: string, serverId: string) {
+    const battle = await Battle.findOne({ 
+      _id: battleId, 
+      playerId: playerId,
+      serverId: serverId // NOUVEAU filtre
+    });
     
     if (!battle) {
       throw new Error("Battle not found");
