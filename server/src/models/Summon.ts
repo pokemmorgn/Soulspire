@@ -1,18 +1,28 @@
 import mongoose, { Document, Schema } from "mongoose";
 import { ISummon } from "../types/index";
 
-interface ISummonDocument extends ISummon, Document {}
+interface ISummonDocument extends Document {
+  playerId: string;
+  heroesObtained: {
+    heroId: string;
+    rarity: string;
+  }[];
+  type: "Standard" | "Limited" | "Ticket";
+  createdAt?: Date;
+  addHero(heroId: string, rarity: string): any;
+  getLegendaryCount(): number;
+  getEpicCount(): number;
+  getRarityDistribution(): any;
+}
 
 const summonSchema = new Schema<ISummonDocument>({
   playerId: { 
-    type: Schema.Types.ObjectId, 
-    ref: "Player",
+    type: String,
     required: true
   },
   heroesObtained: [{
     heroId: { 
-      type: Schema.Types.ObjectId, 
-      ref: "Hero",
+      type: String,
       required: true
     },
     rarity: { 
@@ -74,11 +84,11 @@ summonSchema.methods.addHero = function(heroId: string, rarity: string) {
 };
 
 summonSchema.methods.getLegendaryCount = function(): number {
-  return this.heroesObtained.filter(hero => hero.rarity === "Legendary").length;
+  return this.heroesObtained.filter((hero: any) => hero.rarity === "Legendary").length;
 };
 
 summonSchema.methods.getEpicCount = function(): number {
-  return this.heroesObtained.filter(hero => hero.rarity === "Epic").length;
+  return this.heroesObtained.filter((hero: any) => hero.rarity === "Epic").length;
 };
 
 summonSchema.methods.getRarityDistribution = function() {
@@ -89,7 +99,7 @@ summonSchema.methods.getRarityDistribution = function() {
     Legendary: 0
   };
   
-  this.heroesObtained.forEach(hero => {
+  this.heroesObtained.forEach((hero: any) => {
     distribution[hero.rarity as keyof typeof distribution]++;
   });
   
