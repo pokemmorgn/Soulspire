@@ -126,10 +126,17 @@ async function displayPlayerTeam(player: any) {
   
   for (let i = 0; i < equippedHeroes.length; i++) {
     const playerHero = equippedHeroes[i];
-    const heroData = playerHero.heroId as any; // Cast pour éviter les erreurs TypeScript
+    
+    // Récupérer les données du héros manuellement si populate ne fonctionne pas
+    let heroData;
+    if (typeof playerHero.heroId === 'string') {
+      heroData = await Hero.findById(playerHero.heroId);
+    } else {
+      heroData = playerHero.heroId;
+    }
     
     if (heroData && heroData.name) {
-      // Calculer les stats manuellement car getStatsAtLevel peut ne pas être disponible
+      // Calculer les stats manuellement
       const levelMultiplier = 1 + (playerHero.level - 1) * 0.1;
       const starMultiplier = 1 + (playerHero.stars - 1) * 0.2;
       const totalMultiplier = levelMultiplier * starMultiplier;
@@ -145,7 +152,7 @@ async function displayPlayerTeam(player: any) {
       console.log(`   Level: ${playerHero.level} | Stars: ${playerHero.stars}`);
       console.log(`   Stats: HP=${stats.hp}, ATK=${stats.atk}, DEF=${stats.def}`);
     } else {
-      console.log(`${i + 1}. ${colors.red}Héros non trouvé${colors.reset}`);
+      console.log(`${i + 1}. ${colors.red}Héros non trouvé (ID: ${playerHero.heroId})${colors.reset}`);
     }
   }
   console.log("");
