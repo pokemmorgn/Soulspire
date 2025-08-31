@@ -127,7 +127,7 @@ const crossServerMiddleware = async (req: Request, res: Response, next: NextFunc
       }
       
       // Vérifier que le serveur cible existe
-      const targetServer = await GameServer.getServerById(targetServerId);
+      const targetServer = await GameServer.findOne({ serverId: targetServerId, status: { $ne: "offline" } });
       if (!targetServer || targetServer.status === "offline") {
         res.status(400).json({
           error: `Target server ${targetServerId} not available`,
@@ -198,12 +198,21 @@ const serverCapacityMiddleware = async (req: Request, res: Response, next: NextF
     const server = req.serverData;
     
     if (!server.canAcceptNewPlayers()) {
+      const alternativeServers = await GameServer.find({ 
+        status: "online", 
+        isNewPlayerAllowed: true,
+        $expr: { $lt: ["$currentPlayers", "$maxPlayers"] },
+        region: server.region
+      }).select("serverId name");
+      
       res.status(503).json({
         error: `Server ${req.serverId} is at capacity or not accepting new players`,
         code: "SERVER_AT_CAPACITY",
         suggestion: "Try a different server",
-        alternativeServers: await GameServer.getAvailableServers(server.region)
-          .then(servers => servers.map(s => ({ serverId: s.serverId, name: s.name })))
+        alternativeServers: alternativeServers.map((s: any) => ({ 
+          serverId: s.serverId, 
+          name: s.name 
+        }))
       });
       return;
     }
@@ -219,7 +228,7 @@ const serverCapacityMiddleware = async (req: Request, res: Response, next: NextF
 // Fonction utilitaire pour obtenir la configuration du serveur actuel
 export const getCurrentServerConfig = async (serverId: string) => {
   try {
-    return await GameServer.getServerById(serverId);
+    return await GameServer.findOne({ serverId, status: { $ne: "offline" } });
   } catch (error) {
     console.error(`Error getting server config for ${serverId}:`, error);
     return null;
@@ -233,7 +242,7 @@ export const validateCrossServerPermission = async (
   action: "arena" | "guild" | "event" | "trade"
 ): Promise<boolean> => {
   try {
-    const sourceServer = await GameServer.getServerById(sourceServerId);
+    const sourceServer = await GameServer.findOne({ serverId: sourceServerId, status: { $ne: "offline" } });
     if (!sourceServer) return false;
     
     // Vérifier la configuration spécifique selon l'action
