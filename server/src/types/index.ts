@@ -157,6 +157,7 @@ export interface GachaPullResponse {
     epicPityIn: number;
   };
 }
+
 export interface IShopItem {
   itemId: string;
   type: "Currency" | "Hero" | "Equipment" | "Material" | "Fragment" | "Ticket";
