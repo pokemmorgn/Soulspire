@@ -251,20 +251,23 @@ const startServer = async (): Promise<void> => {
     await connectDB();
     
     // Démarrage du serveur
-    const server = app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`🌐 Environment: ${NODE_ENV}`);
-      console.log(`📊 API Health: http://localhost:${PORT}/health`);
-      
-      if (NODE_ENV === "development") {
-        console.log(`📖 API Documentation:`);
-        console.log(`   Auth: http://localhost:${PORT}/api/auth`);
-        console.log(`   Player: http://localhost:${PORT}/api/player`);
-        console.log(`   Heroes: http://localhost:${PORT}/api/heroes`);
-        console.log(`   Gacha: http://localhost:${PORT}/api/gacha`);
-        console.log(`   Inventory: http://localhost:${PORT}/api/inventory`);
-      }
-    });
+const server = app.listen(PORT, "0.0.0.0", () => {
+  const publicIP = process.env.SERVER_IP || "88.99.61.188";
+
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🌐 Environment: ${NODE_ENV}`);
+  console.log(`📊 API Health: http://${publicIP}:${PORT}/health`);
+
+  if (NODE_ENV === "development") {
+    console.log(`📖 API Documentation:`);
+    console.log(`   Auth: http://${publicIP}:${PORT}/api/auth`);
+    console.log(`   Player: http://${publicIP}:${PORT}/api/player`);
+    console.log(`   Heroes: http://${publicIP}:${PORT}/api/heroes`);
+    console.log(`   Gacha: http://${publicIP}:${PORT}/api/gacha`);
+    console.log(`   Inventory: http://${publicIP}:${PORT}/api/inventory`);
+  }
+});
+
 
     // Gestion gracieuse de l'arrêt
     const gracefulShutdown = (signal: string) => {
