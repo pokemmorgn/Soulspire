@@ -160,13 +160,13 @@ router.post("/pull", authMiddleware, async (req: Request, res: Response): Promis
       const selectedHero = availableHeroes[Math.floor(Math.random() * availableHeroes.length)];
       
       // Vérifier si le joueur possède déjà ce héros
-      const existingHero = player.heroes.find(h => h.heroId.toString() === selectedHero._id.toString());
+      const existingHero = player.heroes.find(h => h.heroId.toString() === (selectedHero._id as any).toString());
       
       if (existingHero) {
         // Conversion en fragments si héros déjà possédé
         const fragmentsGained = rarity === "Legendary" ? 25 : rarity === "Epic" ? 15 : rarity === "Rare" ? 10 : 5;
-        const currentFragments = player.fragments.get(selectedHero._id.toString()) || 0;
-        player.fragments.set(selectedHero._id.toString(), currentFragments + fragmentsGained);
+        const currentFragments = player.fragments.get((selectedHero._id as any).toString()) || 0;
+        player.fragments.set((selectedHero._id as any).toString(), currentFragments + fragmentsGained);
         
         obtainedHeroes.push({
           hero: selectedHero,
@@ -177,7 +177,7 @@ router.post("/pull", authMiddleware, async (req: Request, res: Response): Promis
       } else {
         // Nouveau héros
         player.heroes.push({
-          heroId: selectedHero._id.toString(),
+          heroId: (selectedHero._id as any).toString(),
           level: 1,
           stars: 1,
           equipped: false
