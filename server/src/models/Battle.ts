@@ -195,6 +195,12 @@ const actionSchema = new Schema<IBattleAction>({
 
 // Schéma principal Battle
 const battleSchema = new Schema<IBattleDocument>({
+    serverId: { 
+    type: String,
+    required: true,
+    match: /^S\d+$/,
+    default: "S1"
+    },
   playerId: { type: String, required: true },
   battleType: { 
     type: String, 
