@@ -8,7 +8,7 @@ interface IShopDocument extends Document {
   nextResetTime: Date;
   isActive: boolean;
   refreshShop(): Promise<IShopDocument>;
-  addItem(item: Partial<IShopItem>): IShopDocument;
+  addItem(item: Partial<IShopItem>): this;
   removeItem(itemId: string): boolean;
   canPurchase(itemId: string, playerId: string): Promise<boolean>;
 }
@@ -393,7 +393,7 @@ shopSchema.methods.refreshShop = async function(): Promise<IShopDocument> {
   return await this.save();
 };
 
-shopSchema.methods.addItem = function(item: Partial<IShopItem>): IShopDocument {
+shopSchema.methods.addItem = function(item: Partial<IShopItem>) {
   const newItem: IShopItem = {
     itemId: item.itemId || `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     type: item.type || "Currency",
@@ -437,8 +437,8 @@ shopSchema.methods.canPurchase = async function(itemId: string, playerId: string
   // Vérifier les achats par joueur
   if (item.maxPurchasePerPlayer !== -1) {
     const playerPurchases = item.purchasedBy
-      .filter(p => p.playerId === playerId)
-      .reduce((sum, p) => sum + p.quantity, 0);
+      .filter((p: any) => p.playerId === playerId)
+      .reduce((sum: number, p: any) => sum + p.quantity, 0);
     
     if (playerPurchases >= item.maxPurchasePerPlayer) return false;
   }
