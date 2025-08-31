@@ -1,6 +1,17 @@
 import mongoose, { Document, Schema } from "mongoose";
 import { IPlayer, IPlayerHero } from "../types/index";
 
+interface IFormationSlot {
+  slot: number;
+  heroId: string;
+}
+
+interface IFormation {
+  _id?: string;
+  name: string;
+  slots: IFormationSlot[];
+}
+
 interface IPlayerDocument extends Document {
   serverId: string;
   username: string;
@@ -13,6 +24,7 @@ interface IPlayerDocument extends Document {
   backgroundId?: string; 
   difficulty: "Normal" | "Hard" | "Nightmare";
   formationId?: string; // <-- formation active
+  formations: IFormation[]; // <-- toutes les formations sauvegardées
   heroes: IPlayerHero[];
   tickets: number;
   fragments: Map<string, number>;
@@ -53,6 +65,14 @@ const playerHeroSchema = new Schema<IPlayerHero>({
     default: null
   }
 });
+
+const formationSchema = new Schema<IFormation>({
+  name: { type: String, required: true },
+  slots: [{
+    slot: { type: Number, required: true, min: 1, max: 9 },
+    heroId: { type: String, required: true }
+  }]
+}, { _id: true });
 
 const playerSchema = new Schema<IPlayerDocument>({
   serverId: { 
@@ -116,6 +136,12 @@ const playerSchema = new Schema<IPlayerDocument>({
   formationId: { 
     type: String,
     default: null
+  },
+
+  // Toutes les formations sauvegardées
+  formations: { 
+    type: [formationSchema],
+    default: []
   },
 
   // Héros possédés
