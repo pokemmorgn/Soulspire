@@ -23,7 +23,7 @@ const NODE_ENV = process.env.NODE_ENV || "development";
 const corsOptions = {
   origin: NODE_ENV === "production" 
     ? ["https://your-unity-game-domain.com"] // Remplacez par votre domaine
-    : ["http://localhost:3000", "http://127.0.0.1:3000, 88.99.61.188"], // Dev et Unity local
+: ["http://localhost:3000", "http://127.0.0.1:3000", "http://88.99.61.188:3000"],
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
