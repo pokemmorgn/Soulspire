@@ -16,14 +16,14 @@ dotenv.config();
 
 const app: Application = express();
 const PORT = process.env.PORT || 3000;
-const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/unity-gacha-game";
+const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/soulspire";
 const NODE_ENV = process.env.NODE_ENV || "development";
 
 // Configuration CORS
 const corsOptions = {
   origin: NODE_ENV === "production" 
     ? ["https://your-unity-game-domain.com"] // Remplacez par votre domaine
-    : ["http://localhost:3000", "http://127.0.0.1:3000"], // Dev et Unity local
+    : ["http://localhost:3000", "http://127.0.0.1:3000, 88.99.61.188"], // Dev et Unity local
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
