@@ -46,10 +46,16 @@ const playerHeroSchema = new Schema<IPlayerHero>({
 });
 
 const playerSchema = new Schema<IPlayerDocument>({
+  serverId: { 
+    type: String,
+    required: true,
+    match: /^S\d+$/,
+    default: "S1"
+  },
   username: { 
     type: String, 
     required: true,
-    unique: true,
+   // unique: true,
     trim: true,
     minlength: 3,
     maxlength: 20
@@ -123,7 +129,7 @@ const playerSchema = new Schema<IPlayerDocument>({
 });
 
 // Index pour optimiser les requêtes
-playerSchema.index({ username: 1 });
+playerSchema.index({ username: 1, serverId: 1 }, { unique: true });
 playerSchema.index({ level: -1 });
 playerSchema.index({ createdAt: -1 });
 
@@ -162,4 +168,5 @@ playerSchema.methods.spendCurrency = function(cost: { gold?: number, gems?: numb
 };
 
 export default mongoose.model<IPlayerDocument>("Player", playerSchema);
+
 
