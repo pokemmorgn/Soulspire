@@ -283,9 +283,9 @@ function generateAllHeroes(): GeneratedHero[] {
 
     allHeroes.push({
       name: csvHero.name,
-      role: normalizedRole,
-      element: normalizedElement,
-      rarity: csvHero.rarity,
+      role: normalizedRole as GeneratedHero["role"],
+      element: normalizedElement as GeneratedHero["element"],
+      rarity: csvHero.rarity as GeneratedHero["rarity"],
       baseStats: stats,
       skill: skill,
       appearance: csvHero.appearance,
