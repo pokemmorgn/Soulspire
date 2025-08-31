@@ -395,23 +395,50 @@ const seedHeroes = async (): Promise<void> => {
     const allHeroes = generateAllHeroes();
     console.log(`🎭 Generated ${allHeroes.length} heroes`);
 
-    // Insérer en base
+    // Insérer en base avec gestion des doublons
+    const insertedHeroes = [];
+    const usedNames = new Set<string>();
+    
     for (const heroData of allHeroes) {
-      const hero = new Hero(heroData);
-      await hero.save();
+      // Vérifier les noms en double et les modifier si nécessaire
+      let uniqueName = heroData.name;
+      let counter = 1;
+      
+      while (usedNames.has(uniqueName)) {
+        uniqueName = `${heroData.name} ${counter}`;
+        counter++;
+      }
+      
+      usedNames.add(uniqueName);
+      
+      const hero = new Hero({
+        ...heroData,
+        name: uniqueName
+      });
+      
+      try {
+        await hero.save();
+        insertedHeroes.push(hero);
+      } catch (error: any) {
+        if (error.code === 11000) {
+          console.warn(`⚠️ Duplicate name detected: ${uniqueName}, skipping...`);
+        } else {
+          throw error;
+        }
+      }
     }
 
-    console.log("✅ All heroes saved to database");
+    console.log(`✅ ${insertedHeroes.length} heroes saved to database`);
 
     // Afficher les statistiques finales
     const stats = {
-      total: allHeroes.length,
+      total: insertedHeroes.length,
       byRarity: {} as Record<string, number>,
       byRole: {} as Record<string, number>, 
       byElement: {} as Record<string, number>
     };
 
-    allHeroes.forEach(hero => {
+    insertedHeroes.forEach((hero: any) => {
       stats.byRarity[hero.rarity] = (stats.byRarity[hero.rarity] || 0) + 1;
       stats.byRole[hero.role] = (stats.byRole[hero.role] || 0) + 1;
       stats.byElement[hero.element] = (stats.byElement[hero.element] || 0) + 1;
