@@ -138,7 +138,7 @@ export class EventService {
     additionalData?: any
   ) {
     try {
-      console.log(`📈 Mise à jour progression ${playerId}: ${progressType} +${value}`);
+      console.log(`📈 Mise à jour progression événements ${playerId}: ${progressType} +${value}`);
 
       // Trouver tous les événements actifs où le joueur participe
       const activeEvents = await Event.find({
@@ -160,33 +160,52 @@ export class EventService {
         const relevantObjectives = event.objectives.filter((obj: any) => obj.type === progressType);
         
         if (relevantObjectives.length > 0) {
-          // Vérifier les conditions supplémentaires si nécessaire
-          if (this.meetsAdditionalConditions(progressType, relevantObjectives, additionalData)) {
-            const participant = event.participants.find((p: any) => p.playerId === playerId);
+          const participant = event.participants.find((p: any) => p.playerId === playerId);
+          
+          if (participant) {
+            // Récupérer les objectifs complétés avant la mise à jour
+            const previousCompletedCount = participant.objectives.filter((obj: any) => obj.completedAt).length;
             
-            if (participant) {
-              const previousObjectives = participant.objectives.filter((obj: any) => !obj.completedAt);
-              
-              await event.updatePlayerProgress(playerId, progressType, value);
-              updatedEvents++;
-              
-              // Vérifier les nouveaux objectifs complétés
-              const updatedParticipant = event.participants.find((p: any) => p.playerId === playerId);
-              if (updatedParticipant) {
-                const newlyCompleted = updatedParticipant.objectives.filter((obj: any) => 
-                  obj.completedAt && !previousObjectives.some((prev: any) => 
-                    prev.objectiveId === obj.objectiveId && prev.completedAt
-                  )
+            // Mettre à jour chaque objectif correspondant
+            for (const eventObjective of relevantObjectives) {
+              // Vérifier les conditions spécifiques de l'objectif
+              if (this.objectiveMatchesCondition(eventObjective, progressType, additionalData)) {
+                const participantObjective = participant.objectives.find((obj: any) => 
+                  obj.objectiveId === eventObjective.objectiveId
                 );
                 
-                completedObjectives.push(...newlyCompleted.map((obj: any) => ({
-                  eventId: event.eventId,
-                  eventName: event.name,
-                  objectiveId: obj.objectiveId,
-                  objectiveName: event.objectives.find((o: any) => o.objectiveId === obj.objectiveId)?.name
-                })));
+                if (participantObjective && !participantObjective.completedAt) {
+                  participantObjective.currentValue = Math.min(
+                    participantObjective.currentValue + value,
+                    eventObjective.targetValue
+                  );
+                  
+                  // Vérifier si l'objectif est maintenant complété
+                  if (participantObjective.currentValue >= eventObjective.targetValue) {
+                    participantObjective.completedAt = new Date();
+                    
+                    // Calculer les points pour le classement
+                    const points = Math.floor(eventObjective.targetValue * 0.1);
+                    participant.totalPoints += points;
+                    
+                    completedObjectives.push({
+                      eventId: event.eventId,
+                      eventName: event.name,
+                      objectiveId: eventObjective.objectiveId,
+                      objectiveName: eventObjective.name,
+                      pointsEarned: points
+                    });
+                    
+                    console.log(`🎯 Objectif complété: ${eventObjective.name} dans ${event.name} (+${points} points)`);
+                  }
+                }
               }
             }
+            
+            // Mettre à jour la dernière activité
+            participant.lastActivityAt = new Date();
+            await event.save();
+            updatedEvents++;
           }
         }
       }
@@ -461,39 +480,67 @@ export class EventService {
 
   // === MÉTHODES UTILITAIRES PRIVÉES ===
 
-  // Vérifier les conditions supplémentaires selon le type de progression
-  private static meetsAdditionalConditions(
+  // Vérifier si un objectif d'événement correspond aux conditions
+  private static objectiveMatchesCondition(
+    objective: any,
     progressType: string,
-    objectives: any[],
     additionalData?: any
   ): boolean {
     
-    for (const objective of objectives) {
-      switch (progressType) {
-        case "battle_wins":
-          if (objective.battleConditions) {
-            const { battleType, difficulty, winRequired } = objective.battleConditions;
-            
-            if (battleType && additionalData?.battleType !== battleType) return false;
-            if (difficulty && additionalData?.difficulty !== difficulty) return false;
-            if (winRequired && !additionalData?.victory) return false;
-          }
-          break;
+    // Vérifications spécifiques selon le type de progression
+    switch (progressType) {
+      case "battle_wins":
+        if (objective.battleConditions) {
+          const { battleType, difficulty, winRequired } = objective.battleConditions;
           
-        case "collect_items":
-          if (objective.collectConditions) {
-            const { itemType, rarity, specificIds } = objective.collectConditions;
-            
-            if (itemType && additionalData?.itemType !== itemType) return false;
-            if (rarity && additionalData?.rarity !== rarity) return false;
-            if (specificIds && !specificIds.includes(additionalData?.itemId)) return false;
+          // Vérifier le type de combat
+          if (battleType && additionalData?.battleType !== battleType) {
+            return false;
           }
-          break;
           
-        // Autres types n'ont pas de conditions supplémentaires pour l'instant
-        default:
-          break;
-      }
+          // Vérifier la difficulté
+          if (difficulty && additionalData?.difficulty !== difficulty) {
+            return false;
+          }
+          
+          // Vérifier si une victoire est requise
+          if (winRequired && !additionalData?.victory) {
+            return false;
+          }
+        }
+        break;
+        
+      case "collect_items":
+        if (objective.collectConditions) {
+          const { itemType, rarity, specificIds } = objective.collectConditions;
+          
+          // Vérifier le type d'item
+          if (itemType && additionalData?.itemType !== itemType) {
+            return false;
+          }
+          
+          // Vérifier la rareté
+          if (rarity && additionalData?.rarity !== rarity) {
+            return false;
+          }
+          
+          // Vérifier les IDs spécifiques
+          if (specificIds && specificIds.length > 0) {
+            if (!additionalData?.itemId || !specificIds.includes(additionalData.itemId)) {
+              return false;
+            }
+          }
+        }
+        break;
+        
+      // Pour les autres types, pas de conditions supplémentaires pour l'instant
+      case "tower_floors":
+      case "gacha_pulls":
+      case "login_days":
+      case "gold_spent":
+      default:
+        // Pas de conditions supplémentaires, accepter directement
+        break;
     }
     
     return true;
