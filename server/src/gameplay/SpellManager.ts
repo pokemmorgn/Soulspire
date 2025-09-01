@@ -2,8 +2,8 @@ import { BaseSpell } from "./base/BaseSpell";
 import { IBattleParticipant, IBattleAction } from "../models/Battle";
 import { EffectManager } from "./effects/burn";
 
-// Imports des sorts
-import { fireballSpell } from "./actives/fireball";
+// Imports des sorts - Déclaration temporaire pour éviter les erreurs de compilation
+// import { fireballSpell } from "./actives/fireball";
 
 // Interface pour les cooldowns actifs
 interface SpellCooldown {
@@ -33,7 +33,7 @@ export class SpellManager {
     console.log("🧙‍♂️ Initialisation du SpellManager...");
 
     // Enregistrer tous les sorts actifs
-    this.registerSpell(fireballSpell);
+    // this.registerSpell(fireballSpell); // Temporairement commenté
     
     // TODO: Ajouter d'autres sorts
     // this.registerSpell(healSpell);
