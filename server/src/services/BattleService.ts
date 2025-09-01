@@ -385,7 +385,7 @@ export class BattleService {
         stars: enemyStars,
         stats: enhancedStats,
         currentHp: enhancedStats.hp,
-        energy: enemyType === "boss" ? Math.floor(baseStats.moral / 2) : 0, // Boss commence avec énergie
+        energy: enemyType === "boss" ? Math.min(100, Math.floor(baseStats.moral / 2)) : 0, // CORRIGÉ: Clamp à 100 max
         status: {
           alive: true,
           buffs: enemyType === "boss" ? ["boss_aura"] : [],
