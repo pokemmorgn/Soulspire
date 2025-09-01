@@ -14,6 +14,7 @@ import shopRoutes from "./routes/shop";
 import battleRoutes from "./routes/battle";
 import serverMiddleware, { injectServerIdMiddleware } from "./middleware/serverMiddleware";
 import serverRoutes from "./routes/servers";
+import towerRoutes from "./routes/tower";
 // Configuration de l'environnement
 dotenv.config();
 
@@ -168,6 +169,7 @@ app.use("/api/gacha", gachaLimiter, gachaRoutes);
 app.use("/api/shop", shopRoutes);
 app.use("/api/battle", battleRoutes);
 app.use("/api/servers", serverRoutes);
+app.use("/api/tower", towerRoutes);
 
 // Route de santé de l'API
 app.get("/", (req: Request, res: Response) => {
