@@ -13,6 +13,7 @@ import gachaRoutes from "./routes/gacha";
 import shopRoutes from "./routes/shop";
 import battleRoutes from "./routes/battle";
 import serverMiddleware, { injectServerIdMiddleware } from "./middleware/serverMiddleware";
+import authMiddleware from "./middleware/authMiddleware";
 import serverRoutes from "./routes/servers";
 import towerRoutes from "./routes/tower";
 import eventsRoutes from "./routes/events";
