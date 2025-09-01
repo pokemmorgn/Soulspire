@@ -10,7 +10,7 @@ export class BattleService {
   // Démarre un combat de campagne
   public static async startCampaignBattle(
     playerId: string, 
-    serverId: string, // NOUVEAU paramètre
+    serverId: string,
     worldId: number, 
     levelId: number, 
     difficulty: "Normal" | "Hard" | "Nightmare" = "Normal"
@@ -40,7 +40,7 @@ export class BattleService {
       // Créer le document de combat avec serverId
       const battle = new Battle({
         playerId,
-        serverId: serverId, // NOUVEAU champ
+        serverId: serverId,
         battleType: "campaign",
         playerTeam,
         enemyTeam,
@@ -91,7 +91,7 @@ export class BattleService {
         await this.updatePlayerProgress(player, worldId, levelId, difficulty);
       }
 
-            await Promise.all([
+      await Promise.all([
         MissionService.updateProgress(
           playerId, 
           serverId, 
@@ -142,7 +142,7 @@ export class BattleService {
   // Démarre un combat d'arène PvP
   public static async startArenaBattle(
     playerId: string, 
-    serverId: string, // NOUVEAU paramètre
+    serverId: string,
     opponentId: string
   ) {
     try {
@@ -169,7 +169,7 @@ export class BattleService {
       // Créer le combat avec serverId
       const battle = new Battle({
         playerId,
-        serverId: serverId, // NOUVEAU champ
+        serverId: serverId,
         battleType: "arena",
         playerTeam,
         enemyTeam,
@@ -214,28 +214,28 @@ export class BattleService {
         await this.applyBattleRewards(player, { ...result, rewards: pvpRewards });
       }
 
-     await Promise.all([
-      MissionService.updateProgress(
-        playerId, 
-        serverId, 
-        "battle_wins", 
-        1, 
-        { 
-          battleType: "arena", 
-          victory: result.victory
-        }
-      ),
-      EventService.updatePlayerProgress(
-        playerId, 
-        serverId, 
-        "battle_wins", 
-        1, 
-        { 
-          battleType: "arena", 
-          victory: result.victory
-        }
-      )
-    ]);
+      await Promise.all([
+        MissionService.updateProgress(
+          playerId, 
+          serverId, 
+          "battle_wins", 
+          1, 
+          { 
+            battleType: "arena", 
+            victory: result.victory
+          }
+        ),
+        EventService.updatePlayerProgress(
+          playerId, 
+          serverId, 
+          "battle_wins", 
+          1, 
+          { 
+            battleType: "arena", 
+            victory: result.victory
+          }
+        )
+      ]);
       
       return {
         battleId: battle._id,
@@ -284,7 +284,7 @@ export class BattleService {
         continue;
       }
 
-      // Calculer les stats de combat
+      // Calculer les stats de combat avec les nouvelles stats étendues
       const combatStats = this.calculateCombatStats(heroData, playerHero.level, playerHero.stars);
       
       const participant: IBattleParticipant = {
@@ -320,7 +320,7 @@ export class BattleService {
     
     // Calculer la puissance des ennemis selon le monde/niveau
     const basePowerMultiplier = 1 + (worldId - 1) * 0.1 + (levelId - 1) * 0.02;
-    const difficultyMultiplier = difficulty === "Hard" ? 2 : difficulty === "Nightmare" ? 4 : 1;
+    const difficultyMultiplier = difficulty === "Hard" ? 1.5 : difficulty === "Nightmare" ? 2.5 : 1;
     const finalMultiplier = basePowerMultiplier * difficultyMultiplier;
 
     // Déterminer le type d'ennemi (normal/elite/boss)
@@ -339,14 +339,24 @@ export class BattleService {
       const enemyLevel = Math.min(100, Math.max(1, worldId * 5 + levelId));
       const enemyStars = enemyType === "boss" ? 6 : enemyType === "elite" ? 4 : 2;
       
-      // Stats de base multipliées par la difficulté
+      // Stats de base multipliées par la difficulté avec les nouvelles stats
       const baseStats = this.calculateCombatStats(heroData, enemyLevel, enemyStars);
       const enhancedStats = {
         hp: Math.floor(baseStats.hp * finalMultiplier),
         maxHp: Math.floor(baseStats.hp * finalMultiplier),
         atk: Math.floor(baseStats.atk * finalMultiplier),
         def: Math.floor(baseStats.def * finalMultiplier),
-        speed: baseStats.speed
+        defMagique: Math.floor(baseStats.defMagique * finalMultiplier),
+        vitesse: Math.floor(baseStats.vitesse * Math.min(2.0, finalMultiplier)), // Vitesse limitée
+        intelligence: Math.floor(baseStats.intelligence * finalMultiplier),
+        force: Math.floor(baseStats.force * finalMultiplier),
+        moral: Math.floor(baseStats.moral * finalMultiplier),
+        reductionCooldown: Math.min(50, baseStats.reductionCooldown + (enemyType === "boss" ? 15 : 0)),
+        // Nouvelles stats calculées
+        magicResistance: Math.floor((baseStats.defMagique + baseStats.intelligence * 0.3) / 10),
+        energyGeneration: Math.floor(10 + (baseStats.moral / 8)),
+        criticalChance: Math.min(50, Math.floor(5 + baseStats.vitesse / 10)),
+        speed: baseStats.vitesse // Pour compatibilité avec BattleEngine
       };
       
       const enemy: IBattleParticipant = {
@@ -359,10 +369,10 @@ export class BattleService {
         stars: enemyStars,
         stats: enhancedStats,
         currentHp: enhancedStats.hp,
-        energy: 0,
+        energy: enemyType === "boss" ? Math.floor(baseStats.moral / 2) : 0, // Boss commence avec énergie
         status: {
           alive: true,
-          buffs: [],
+          buffs: enemyType === "boss" ? ["boss_aura"] : [],
           debuffs: []
         }
       };
@@ -373,7 +383,7 @@ export class BattleService {
     return enemyTeam;
   }
 
-  // Calcule les stats de combat d'un héros
+  // Calcule les stats de combat étendues d'un héros
   private static calculateCombatStats(heroData: any, level: number, stars: number) {
     // Vérifier que les stats de base existent
     if (!heroData.baseStats) {
@@ -381,38 +391,60 @@ export class BattleService {
       throw new Error(`Hero ${heroData.name} missing baseStats`);
     }
 
-    const { hp, atk, def } = heroData.baseStats;
+    const { 
+      hp, atk, def, defMagique, vitesse, intelligence, force, moral, reductionCooldown 
+    } = heroData.baseStats;
     
     if (hp === undefined || atk === undefined || def === undefined) {
-      console.error(`❌ Stats incomplètes pour ${heroData.name}:`, heroData.baseStats);
-      throw new Error(`Hero ${heroData.name} has incomplete stats`);
+      console.error(`❌ Stats de base incomplètes pour ${heroData.name}:`, heroData.baseStats);
+      throw new Error(`Hero ${heroData.name} has incomplete base stats`);
     }
 
-    const levelMultiplier = 1 + (level - 1) * 0.1;
-    const starMultiplier = 1 + (stars - 1) * 0.2;
-    const totalMultiplier = levelMultiplier * starMultiplier;
+    // Multiplicateurs d'évolution
+    const levelMultiplier = 1 + (level - 1) * 0.08; // Stats principales
+    const starMultiplier = 1 + (stars - 1) * 0.15;
+    const primaryMultiplier = levelMultiplier * starMultiplier;
     
-    const finalHp = Math.floor(hp * totalMultiplier);
-    const finalAtk = Math.floor(atk * totalMultiplier);
-    const finalDef = Math.floor(def * totalMultiplier);
+    // Multiplicateurs réduits pour certaines stats
+    const speedMultiplier = 1 + (primaryMultiplier - 1) * 0.4; // Vitesse évolue moins
+    const mentalMultiplier = 1 + (primaryMultiplier - 1) * 0.6; // Stats mentales évoluent modérément
     
-    // Vitesse basée sur le rôle
-    const speedByRole = {
-      "Tank": 80,
-      "DPS Melee": 100,
-      "DPS Ranged": 90,
-      "Support": 85
-    };
+    // Stats finales calculées
+    const finalHp = Math.floor(hp * primaryMultiplier);
+    const finalAtk = Math.floor(atk * primaryMultiplier);
+    const finalDef = Math.floor(def * primaryMultiplier);
+    const finalDefMagique = Math.floor((defMagique || Math.floor(def * 0.8)) * primaryMultiplier);
+    const finalVitesse = Math.floor((vitesse || 80) * speedMultiplier);
+    const finalIntelligence = Math.floor((intelligence || 70) * primaryMultiplier);
+    const finalForce = Math.floor((force || 80) * primaryMultiplier);
+    const finalMoral = Math.floor((moral || 60) * mentalMultiplier);
+    const finalReductionCooldown = Math.min(50, Math.floor((reductionCooldown || 0) * (1 + (level - 1) * 0.01)));
     
-    const baseSpeed = speedByRole[heroData.role as keyof typeof speedByRole] || 90;
-    const speed = Math.floor(baseSpeed * (1 + (level - 1) * 0.01));
+    // Stats dérivées calculées
+    const magicResistance = Math.floor((finalDefMagique + finalIntelligence * 0.3) / 10);
+    const energyGeneration = Math.floor(10 + (finalMoral / 8)); // Base 10-35 par tour
+    const criticalChance = Math.min(50, Math.floor(5 + finalVitesse / 10)); // 5-25% crit
     
     return {
+      // Stats principales
       hp: finalHp,
       maxHp: finalHp,
       atk: finalAtk,
       def: finalDef,
-      speed
+      defMagique: finalDefMagique,
+      vitesse: finalVitesse,
+      intelligence: finalIntelligence,
+      force: finalForce,
+      moral: finalMoral,
+      reductionCooldown: finalReductionCooldown,
+      
+      // Stats dérivées pour le combat
+      magicResistance,
+      energyGeneration,
+      criticalChance,
+      
+      // Compatibilité avec l'ancien système
+      speed: finalVitesse
     };
   }
 
@@ -469,7 +501,7 @@ export class BattleService {
   public static async getBattleHistory(playerId: string, serverId: string, limit: number = 20) {
     return await Battle.find({ 
       playerId, 
-      serverId: serverId, // NOUVEAU filtre
+      serverId: serverId,
       status: "completed" 
     })
       .sort({ createdAt: -1 })
@@ -482,7 +514,7 @@ export class BattleService {
     const stats = await Battle.aggregate([
       { $match: { 
         playerId: playerId, 
-        serverId: serverId, // NOUVEAU filtre
+        serverId: serverId,
         status: "completed" 
       }},
       { $group: {
@@ -511,7 +543,7 @@ export class BattleService {
     const battle = await Battle.findOne({ 
       _id: battleId, 
       playerId: playerId,
-      serverId: serverId // NOUVEAU filtre
+      serverId: serverId
     });
     
     if (!battle) {
