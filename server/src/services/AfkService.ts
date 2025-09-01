@@ -57,24 +57,28 @@ export class AfkService {
   /**
    * Résumé pour l’UI (peut faire un tick léger).
    */
-  static async getSummary(
-    playerId: string,
-    tickBefore = true
-  ): Promise<AfkSummary> {
-    const state = tickBefore
-      ? await this.tick(playerId)
-      : await this.ensureState(playerId);
+static async getSummary(
+  playerId: string,
+  tickBefore = true
+): Promise<AfkSummary> {
+  // NEW: initialise lastTickAt depuis lastSeenAt si nécessaire (offline)
+  await this.settleOfflineIfNeeded(playerId);
 
-    return {
-      pendingGold: state.pendingGold,
-      baseGoldPerMinute: state.baseGoldPerMinute,
-      maxAccrualSeconds: state.maxAccrualSeconds,
-      accumulatedSinceClaimSec: state.accumulatedSinceClaimSec,
-      lastTickAt: state.lastTickAt,
-      lastClaimAt: state.lastClaimAt,
-      todayAccruedGold: state.todayAccruedGold,
-    };
-  }
+  const state = tickBefore
+    ? await this.tick(playerId)
+    : await this.ensureState(playerId);
+
+  return {
+    pendingGold: state.pendingGold,
+    baseGoldPerMinute: state.baseGoldPerMinute,
+    maxAccrualSeconds: state.maxAccrualSeconds,
+    accumulatedSinceClaimSec: state.accumulatedSinceClaimSec,
+    lastTickAt: state.lastTickAt,
+    lastClaimAt: state.lastClaimAt,
+    todayAccruedGold: state.todayAccruedGold,
+  };
+}
+
 
   /**
    * claim(): crédite l’or au joueur et remet l’état AFK à zéro.
@@ -148,6 +152,32 @@ export class AfkService {
 
     return { claimed, totalGold, state: updatedState! };
   }
+
+  private static async settleOfflineIfNeeded(playerId: string): Promise<void> {
+  // On a besoin des deux documents
+  const [player, state] = await Promise.all([
+    // on ne lit que ce qu'il faut
+    Player.findById(playerId).select("lastSeenAt createdAt"),
+    AfkState.findOne({ playerId }),
+  ]);
+
+  if (!state) {
+    // crée l'état si besoin (premier passage)
+    await this.ensureState(playerId);
+    return;
+  }
+
+  // Si jamais aucun tick n'a été fait encore, on initialise à lastSeenAt
+  if (!state.lastTickAt) {
+    const anchor =
+      (player?.lastSeenAt as Date | undefined) ??
+      (player?.createdAt as Date | undefined) ??
+      new Date();
+
+    state.lastTickAt = anchor;
+    await state.save();
+  }
+}
 
   /**
    * Démarre une session AFK (trace analytics / anti-cheat léger).
