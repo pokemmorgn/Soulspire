@@ -165,3 +165,5 @@ export class FireballSpell extends BaseSpell {
 
 // Export pour l'enregistrement dans le SpellManager
 export const fireballSpell = new FireballSpell();
+
+export { FireballSpell };
