@@ -300,7 +300,7 @@ campaignProgressSchema.statics.getPlayerStats = function(playerId: string, serve
 // Middleware pour maintenir la compatibilité
 campaignProgressSchema.pre('save', function() {
   // S'assurer que la progression Normal existe toujours
-  const normalProgress = this.getProgressForDifficulty("Normal");
+  const normalProgress = this.progressByDifficulty.find((p: IDifficultyProgress) => p.difficulty === "Normal");
   if (!normalProgress) {
     this.progressByDifficulty.push({
       difficulty: "Normal",
@@ -311,7 +311,9 @@ campaignProgressSchema.pre('save', function() {
   }
   
   // Recalculer les stats globales
-  this.recalculateGlobalStats();
+  this.totalStarsEarned = this.progressByDifficulty.reduce((total: number, difficulty: IDifficultyProgress) => {
+    return total + difficulty.starsByLevel.reduce((sum: number, level: ILevelStar) => sum + level.stars, 0);
+  }, 0);
 });
 
 export default mongoose.model<ICampaignProgress>("CampaignProgress", campaignProgressSchema);
