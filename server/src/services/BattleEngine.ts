@@ -147,24 +147,54 @@ export class BattleEngine {
   }
 
   // Détermine quelle action un participant va effectuer
-  private determineAction(participant: IBattleParticipant): IBattleAction {
+  private determineAction(participant: IBattleParticipant): IBattleAction | null {
     const isPlayerTeam = this.playerTeam.includes(participant);
     const targets = isPlayerTeam ? this.getAliveEnemies() : this.getAlivePlayers();
+    const allies = isPlayerTeam ? this.getAlivePlayers() : this.getAliveEnemies();
     
-    // Priorité 1: Ultimate si énergie = 100
-    if (participant.energy >= 100) {
-      return this.createUltimateAction(participant, targets);
+    // Récupérer les sorts du héros
+    const heroSpells = isPlayerTeam ? 
+      this.playerSpells.get(participant.heroId) : 
+      this.enemySpells.get(participant.heroId);
+    
+    if (!heroSpells) {
+      // Pas de sorts configurés, attaque basique
+      return this.createAttackAction(participant, targets);
     }
     
-    // Priorité 2: Compétence si cooldown terminé et énergie suffisante
-    const skillCooldown = this.skillCooldowns.get(participant.heroId) || 0;
-    const skillCost = this.getSkillCost(participant);
+    // Utiliser le SpellManager pour déterminer le meilleur sort
+    const battleContext = {
+      currentTurn: this.currentTurn,
+      allPlayers: this.getAlivePlayers(),
+      allEnemies: this.getAliveEnemies()
+    };
     
-    if (skillCooldown === 0 && participant.energy >= skillCost) {
-      return this.createSkillAction(participant, targets);
+    const bestSpell = SpellManager.determineBestSpell(
+      participant,
+      heroSpells,
+      allies,
+      targets,
+      battleContext
+    );
+    
+    if (bestSpell) {
+      try {
+        // Lancer le sort via SpellManager
+        return SpellManager.castSpell(
+          bestSpell.spellId,
+          participant,
+          targets,
+          bestSpell.spellLevel,
+          battleContext
+        );
+      } catch (error) {
+        console.warn(`⚠️ Erreur lors du cast de ${bestSpell.spellId}: ${error}`);
+        // Fallback sur attaque basique
+        return this.createAttackAction(participant, targets);
+      }
     }
     
-    // Priorité 3: Attaque normale
+    // Aucun sort disponible, attaque basique
     return this.createAttackAction(participant, targets);
   }
 
@@ -192,156 +222,8 @@ export class BattleEngine {
     };
   }
 
-  // Crée une action de compétence
-  private createSkillAction(actor: IBattleParticipant, possibleTargets: IBattleParticipant[]): IBattleAction {
-    const skillType = this.getSkillType(actor);
-    const energyCost = this.getSkillCost(actor);
-    
-    let action: IBattleAction;
-    
-    switch (skillType) {
-      case "Heal":
-        action = this.createHealAction(actor, possibleTargets);
-        break;
-      case "Buff":
-        action = this.createBuffAction(actor, possibleTargets);
-        break;
-      case "AoE":
-        action = this.createAoEAction(actor, possibleTargets);
-        break;
-      case "Control":
-        action = this.createControlAction(actor, possibleTargets);
-        break;
-      case "Damage":
-      default:
-        action = this.createDamageSkillAction(actor, possibleTargets);
-        break;
-    }
-    
-    action.energyCost = energyCost;
-    
-    // Définir le cooldown de la compétence (3-7 tours selon le type)
-    const baseCooldown = this.getBaseCooldown(skillType);
-    this.skillCooldowns.set(actor.heroId, baseCooldown);
-    
-    return action;
-  }
-
-  // Crée une action de soin
-  private createHealAction(actor: IBattleParticipant, possibleTargets: IBattleParticipant[]): IBattleAction {
-    const isPlayerTeam = this.playerTeam.includes(actor);
-    const allies = isPlayerTeam ? this.getAlivePlayers() : this.getAliveEnemies();
-    
-    // Cibler l'allié avec le moins de HP
-    const injuredAlly = allies.reduce((lowest, ally) => 
-      (ally.currentHp / ally.stats.maxHp) < (lowest.currentHp / lowest.stats.maxHp) ? ally : lowest
-    );
-    
-    const healAmount = Math.floor(
-      (actor.stats.atk * 0.8 + ((actor.stats as any).intelligence || 70) * 0.6) * 
-      (1 + actor.level * 0.02)
-    );
-    
-    return {
-      turn: this.currentTurn,
-      actionType: "skill",
-      actorId: actor.heroId,
-      actorName: actor.name,
-      targetIds: [injuredAlly.heroId],
-      healing: healAmount,
-      energyGain: 5,
-      critical: false,
-      elementalAdvantage: 1,
-      buffsApplied: ["regeneration"],
-      debuffsApplied: [],
-      participantsAfter: {}
-    };
-  }
-
-  // Crée une action de buff
-  private createBuffAction(actor: IBattleParticipant, possibleTargets: IBattleParticipant[]): IBattleAction {
-    const isPlayerTeam = this.playerTeam.includes(actor);
-    const allies = isPlayerTeam ? this.getAlivePlayers() : this.getAliveEnemies();
-    
-    const buffType = Math.random() < 0.5 ? "attack_boost" : "defense_up";
-    
-    return {
-      turn: this.currentTurn,
-      actionType: "skill",
-      actorId: actor.heroId,
-      actorName: actor.name,
-      targetIds: allies.map(ally => ally.heroId),
-      energyGain: 8,
-      critical: false,
-      elementalAdvantage: 1,
-      buffsApplied: [buffType],
-      debuffsApplied: [],
-      participantsAfter: {}
-    };
-  }
-
-  // Crée une action AoE
-  private createAoEAction(actor: IBattleParticipant, possibleTargets: IBattleParticipant[]): IBattleAction {
-    const damage = this.calculateDamage(actor, possibleTargets[0], "skill") * 0.7; // AoE fait moins de dégâts individuels
-    
-    return {
-      turn: this.currentTurn,
-      actionType: "skill",
-      actorId: actor.heroId,
-      actorName: actor.name,
-      targetIds: possibleTargets.map(target => target.heroId),
-      damage: Math.floor(damage),
-      energyGain: 10,
-      critical: this.rollCritical(actor),
-      elementalAdvantage: 1.2,
-      buffsApplied: [],
-      debuffsApplied: ["weakness"],
-      participantsAfter: {}
-    };
-  }
-
-  // Crée une action de contrôle
-  private createControlAction(actor: IBattleParticipant, possibleTargets: IBattleParticipant[]): IBattleAction {
-    const target = this.selectTarget(actor, possibleTargets);
-    const damage = this.calculateDamage(actor, target, "skill") * 0.5;
-    
-    return {
-      turn: this.currentTurn,
-      actionType: "skill",
-      actorId: actor.heroId,
-      actorName: actor.name,
-      targetIds: [target.heroId],
-      damage: Math.floor(damage),
-      energyGain: 6,
-      critical: false,
-      elementalAdvantage: this.getElementalAdvantage(actor.element, target.element),
-      buffsApplied: [],
-      debuffsApplied: ["stun", "slow"],
-      participantsAfter: {}
-    };
-  }
-
-  // Crée une action de compétence de dégâts
-  private createDamageSkillAction(actor: IBattleParticipant, possibleTargets: IBattleParticipant[]): IBattleAction {
-    const target = this.selectTarget(actor, possibleTargets);
-    const damage = this.calculateDamage(actor, target, "skill");
-    const isCritical = this.rollCritical(actor);
-    
-    return {
-      turn: this.currentTurn,
-      actionType: "skill",
-      actorId: actor.heroId,
-      actorName: actor.name,
-      targetIds: [target.heroId],
-      damage: isCritical ? Math.floor(damage * 1.75) : Math.floor(damage),
-      energyGain: 8,
-      critical: isCritical,
-      elementalAdvantage: this.getElementalAdvantage(actor.element, target.element),
-      buffsApplied: [],
-      debuffsApplied: this.getSkillDebuffs(actor),
-      participantsAfter: {}
-    };
-  }
+  // Supprime toutes les anciennes méthodes de création de sorts
+  // Elles sont maintenant gérées par SpellManager
 
   // Crée une action d'ultimate
   private createUltimateAction(actor: IBattleParticipant, possibleTargets: IBattleParticipant[]): IBattleAction {
@@ -692,49 +574,8 @@ export class BattleEngine {
     return multipliers[rarity] || 1.0;
   }
 
-  private getSkillType(participant: IBattleParticipant): string {
-    // Simuler le type de compétence selon le rôle
-    switch (participant.role) {
-      case "Support": return Math.random() < 0.6 ? "Heal" : "Buff";
-      case "Tank": return Math.random() < 0.4 ? "Control" : "Damage";
-      case "DPS Ranged": return Math.random() < 0.3 ? "AoE" : "Damage";
-      case "DPS Melee": return "Damage";
-      default: return "Damage";
-    }
-  }
-
-  private getSkillCost(participant: IBattleParticipant): number {
-    const costByRole: { [key: string]: number } = {
-      "Tank": 45,
-      "DPS Melee": 35,
-      "DPS Ranged": 40,
-      "Support": 50
-    };
-    return costByRole[participant.role] || 40;
-  }
-
-  private getBaseCooldown(skillType: string): number {
-    const cooldowns: { [key: string]: number } = {
-      "Heal": 4,
-      "Buff": 5,
-      "AoE": 6,
-      "Control": 7,
-      "Damage": 3
-    };
-    return cooldowns[skillType] || 5;
-  }
-
-  private getSkillDebuffs(participant: IBattleParticipant): string[] {
-    const debuffsByElement: { [key: string]: string[] } = {
-      "Fire": ["burn"],
-      "Water": ["slow"],
-      "Wind": ["confusion"],
-      "Electric": ["stun"],
-      "Light": ["blind"],
-      "Dark": ["weakness"]
-    };
-    return debuffsByElement[participant.element] || [];
-  }
+  // Supprime les anciennes méthodes utilitaires de sorts
+  // Maintenant gérées par SpellManager et BaseSpell
 
   private findParticipant(heroId: string): IBattleParticipant | undefined {
     return [...this.playerTeam, ...this.enemyTeam].find(p => p.heroId === heroId);
