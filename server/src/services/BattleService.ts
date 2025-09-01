@@ -2,6 +2,8 @@ import Battle, { IBattleParticipant, IBattleResult } from "../models/Battle";
 import Player from "../models/Player";
 import Hero from "../models/Hero";
 import { BattleEngine } from "./BattleEngine";
+import { EventService } from "./EventService";
+import { MissionService } from "./MissionService";
 
 export class BattleService {
 
@@ -89,6 +91,33 @@ export class BattleService {
         await this.updatePlayerProgress(player, worldId, levelId, difficulty);
       }
 
+            await Promise.all([
+        MissionService.updateProgress(
+          playerId, 
+          serverId, 
+          "battle_wins", 
+          1, 
+          { 
+            battleType: "campaign", 
+            victory: result.victory, 
+            difficulty: difficulty,
+            world: worldId 
+          }
+        ),
+        EventService.updatePlayerProgress(
+          playerId, 
+          serverId, 
+          "battle_wins", 
+          1, 
+          { 
+            battleType: "campaign", 
+            victory: result.victory, 
+            difficulty: difficulty,
+            world: worldId 
+          }
+        )
+      ]);
+      
       console.log(`✅ Combat terminé: ${result.victory ? "Victoire" : "Défaite"}`);
 
       return {
