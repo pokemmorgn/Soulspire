@@ -172,7 +172,7 @@ async function testAfk(): Promise<void> {
     // 5) AFK long: 15 heures (au-delà du cap 12h par défaut)
     log(colors.magenta, "\n🕒 Simulation AFK long (15h, cap attendu à 12h)");
     // On avance le temps ET on augmente accumulatedSinceClaimSec pour tester le cap
-    await fastForward(playerId, 15 * 3600, true);
+    await fastForward(playerId, 15 * 3600, false);
     await AfkService.tick(playerId, new Date());
     const afterLong = await showSummary(playerId, "SUMMARY APRÈS AFK LONG");
     console.log(`➡️ accumulatedSinceClaimSec=${afterLong.accumulatedSinceClaimSec} | maxAccrualSeconds=${afterLong.maxAccrualSeconds}`);
