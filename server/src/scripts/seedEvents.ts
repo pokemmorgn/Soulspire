@@ -351,22 +351,26 @@ const serverSpecificEvents = [
         ]
       },
       {
-        objectiveId: "newbie_level_20",
-        type: "level_reached",
+        objectiveId: "newbie_battles_10",
+        type: "battle_wins",
         name: "Growing Strong",
-        description: "Reach level 20",
-        targetValue: 20,
+        description: "Win 10 campaign battles",
+        targetValue: 10,
         currentValue: 0,
         isCompleted: false,
         rewards: [
           {
-            rewardId: "newbie_level_reward",
+            rewardId: "newbie_battle_reward",
             type: "currency",
             name: "Growth Bonus",
             description: "Resources to help you grow",
             currencyData: { gold: 10000, gems: 500, tickets: 10 }
           }
-        ]
+        ],
+        battleConditions: {
+          battleType: "campaign",
+          winRequired: true
+        }
       }
     ],
     
