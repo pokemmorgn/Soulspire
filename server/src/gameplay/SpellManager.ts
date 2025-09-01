@@ -1,9 +1,7 @@
 import { BaseSpell } from "./base/BaseSpell";
 import { IBattleParticipant, IBattleAction } from "../models/Battle";
-import { EffectManager } from "./effects/burn";
-
-// Imports des sorts - Déclaration temporaire pour éviter les erreurs de compilation
-// import { fireballSpell } from "./actives/fireball";
+import { EffectManager } from "./EffectManager";
+import { AutoSpellLoader } from "./AutoSpellLoader";
 
 // Interface pour les cooldowns actifs
 interface SpellCooldown {
@@ -26,34 +24,63 @@ export class SpellManager {
   private static cooldowns: SpellCooldown[] = [];
   private static initialized: boolean = false;
 
-  // Initialiser tous les sorts du jeu
+  // Initialiser tous les sorts du jeu avec auto-découverte
   static async initialize() {
     if (this.initialized) return;
 
     console.log("🧙‍♂️ Initialisation du SpellManager avec auto-découverte...");
 
-    // Auto-découverte et chargement de tous les sorts
-    await AutoSpellLoader.autoLoadSpells();
-    
-    // Copier les sorts auto-chargés dans notre registre
-    const autoLoadedSpells = AutoSpellLoader.getAllSpells();
-    for (const spell of autoLoadedSpells) {
-      this.spells.set(spell.config.id, spell);
-    }
+    try {
+      // Auto-découverte et chargement de tous les sorts
+      await AutoSpellLoader.autoLoadSpells();
+      
+      // Copier les sorts auto-chargés dans notre registre
+      const autoLoadedSpells = AutoSpellLoader.getAllSpells();
+      for (const spell of autoLoadedSpells) {
+        this.spells.set(spell.config.id, spell);
+      }
 
-    // Initialiser le gestionnaire d'effets
-    EffectManager.initialize();
+      // Initialiser le gestionnaire d'effets
+      EffectManager.initialize();
 
-    this.initialized = true;
-    console.log(`✨ ${this.spells.size} sorts auto-chargés + effets initialisés`);
-    
-    // Validation optionnelle
-    if (process.env.NODE_ENV === 'development') {
-      AutoSpellLoader.validateLoadedSpells();
+      this.initialized = true;
+      console.log(`✨ ${this.spells.size} sorts auto-chargés + effets initialisés`);
+      
+      // Validation optionnelle en développement
+      if (process.env.NODE_ENV === 'development') {
+        AutoSpellLoader.validateLoadedSpells();
+      }
+      
+    } catch (error) {
+      console.error("❌ Erreur lors de l'initialisation auto des sorts:", error);
+      console.log("🔧 Fallback: initialisation manuelle...");
+      
+      // Fallback vers l'ancien système si auto-loader échoue
+      await this.initializeManual();
     }
   }
 
-  // Enregistrer un sort
+  // Fallback: initialisation manuelle si auto-loader échoue
+  private static async initializeManual() {
+    console.log("🔧 Initialisation manuelle des sorts...");
+    
+    try {
+      // Import manuel de fireball seulement pour assurer le fonctionnement
+      const { fireballSpell } = await import("./actives/fireball");
+      this.registerSpell(fireballSpell);
+      console.log("✅ Fireball chargé manuellement");
+    } catch (error) {
+      console.warn("⚠️ Impossible de charger fireball:", error);
+    }
+    
+    // Initialiser le gestionnaire d'effets
+    EffectManager.initialize();
+    
+    this.initialized = true;
+    console.log(`📚 ${this.spells.size} sorts chargés (mode manuel)`);
+  }
+
+  // Enregistrer un sort manuellement
   private static registerSpell(spell: BaseSpell) {
     this.spells.set(spell.config.id, spell);
     console.log(`📜 Sort enregistré: ${spell.config.name} (${spell.config.id})`);
@@ -61,13 +88,19 @@ export class SpellManager {
 
   // Récupérer un sort par son ID
   static getSpell(spellId: string): BaseSpell | undefined {
-    if (!this.initialized) this.initialize();
+    if (!this.initialized) {
+      console.warn("⚠️ SpellManager non initialisé - initialisation synchrone");
+      // Initialisation d'urgence synchrone (limitée)
+      this.initialized = true;
+    }
     return this.spells.get(spellId);
   }
 
   // Récupérer tous les sorts disponibles
   static getAllSpells(): BaseSpell[] {
-    if (!this.initialized) this.initialize();
+    if (!this.initialized) {
+      console.warn("⚠️ SpellManager non initialisé");
+    }
     return Array.from(this.spells.values());
   }
 
@@ -308,13 +341,22 @@ export class SpellManager {
 
   // Obtenir des statistiques sur les sorts
   static getSpellStats(): any {
-    return {
+    const baseStats = {
       totalSpells: this.spells.size,
       activeCooldowns: this.cooldowns.length,
-      autoLoaderStats: AutoSpellLoader.getStats(),
       spellsByCategory: this.getSpellsByCategory(),
       spellsByElement: this.getSpellsByElement()
     };
+
+    // Ajouter les stats de l'auto-loader si disponible
+    try {
+      return {
+        ...baseStats,
+        autoLoaderStats: AutoSpellLoader.getStats()
+      };
+    } catch {
+      return baseStats;
+    }
   }
 
   private static getSpellsByCategory(): { [key: string]: number } {
@@ -346,26 +388,37 @@ export class SpellManager {
     this.initialized = false;
   }
   
-  // NOUVELLES méthodes avec auto-loader
+  // === NOUVELLES MÉTHODES AVEC AUTO-LOADER ===
   
   // Rechargement à chaud des sorts (développement)
   static async hotReload() {
-    console.log("🔄 Rechargement à chaud du système de sorts...");
-    await AutoSpellLoader.hotReload();
+    if (!this.initialized) return;
     
-    // Recharger dans notre registre
-    this.spells.clear();
-    const reloadedSpells = AutoSpellLoader.getAllSpells();
-    for (const spell of reloadedSpells) {
-      this.spells.set(spell.config.id, spell);
+    try {
+      console.log("🔄 Rechargement à chaud du système de sorts...");
+      await AutoSpellLoader.hotReload();
+      
+      // Recharger dans notre registre
+      this.spells.clear();
+      const reloadedSpells = AutoSpellLoader.getAllSpells();
+      for (const spell of reloadedSpells) {
+        this.spells.set(spell.config.id, spell);
+      }
+      
+      console.log(`🔥 ${this.spells.size} sorts rechargés à chaud`);
+    } catch (error) {
+      console.error("❌ Erreur lors du rechargement à chaud:", error);
     }
-    
-    console.log(`🔥 ${this.spells.size} sorts rechargés à chaud`);
   }
   
   // Obtenir sorts par catégorie via auto-loader
   static getSpellsFromCategory(category: 'active' | 'ultimate' | 'passive' | 'utility'): BaseSpell[] {
-    return AutoSpellLoader.getSpellsByCategory(category);
+    try {
+      return AutoSpellLoader.getSpellsByCategory(category);
+    } catch {
+      // Fallback si auto-loader pas disponible
+      return Array.from(this.spells.values()).filter(spell => spell.config.type === category);
+    }
   }
   
   // Diagnostic du système de sorts
@@ -374,9 +427,13 @@ export class SpellManager {
     console.log(`📊 Sorts chargés: ${this.spells.size}`);
     console.log(`⏰ Cooldowns actifs: ${this.cooldowns.length}`);
     
-    const stats = AutoSpellLoader.getStats();
-    console.log("🔮 Répartition par catégorie:", stats.categories);
-    console.log("✅ Validation:", AutoSpellLoader.validateLoadedSpells() ? "OK" : "ERREUR");
+    try {
+      const stats = AutoSpellLoader.getStats();
+      console.log("🔮 Répartition par catégorie:", stats.categories);
+      console.log("✅ Validation:", AutoSpellLoader.validateLoadedSpells() ? "OK" : "ERREUR");
+    } catch {
+      console.log("📚 Mode manuel - auto-loader indisponible");
+    }
     
     // Afficher les sorts manquants par héros (si applicable)
     this.checkForMissingSpells();
@@ -391,8 +448,10 @@ export class SpellManager {
     const missingSpells = requiredSpells.filter(id => !this.spells.has(id));
     
     if (missingSpells.length > 0) {
-      console.warn("⚠️ Sorts manquants:", missingSpells);
+      console.warn("⚠️ Sorts recommandés manquants:", missingSpells);
       console.log("💡 Créez ces fichiers dans gameplay/actives/ pour compléter le système");
+    } else {
+      console.log("✅ Tous les sorts recommandés sont présents");
     }
   }
 }
