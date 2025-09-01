@@ -14,6 +14,7 @@ import shopRoutes from "./routes/shop";
 import battleRoutes from "./routes/battle";
 import serverMiddleware, { injectServerIdMiddleware } from "./middleware/serverMiddleware";
 import authMiddleware from "./middleware/authMiddleware";
+import touchLastSeen from "./middleware/touchLastSeen";
 import serverRoutes from "./routes/servers";
 import towerRoutes from "./routes/tower";
 import eventsRoutes from "./routes/events";
@@ -175,7 +176,7 @@ app.use("/api/battle", battleRoutes);
 app.use("/api/servers", serverRoutes);
 app.use("/api/tower", towerRoutes);
 app.use("/api/events", eventsRoutes);
-app.use("/afk", authMiddleware, afkRouter); // authMiddleware doit remplir req.user.id
+app.use("/afk", authMiddleware, touchLastSeen, afkRouter);
 // Route de santé de l'API
 app.get("/", (req: Request, res: Response) => {
   res.json({
