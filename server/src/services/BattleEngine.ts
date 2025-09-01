@@ -1,6 +1,6 @@
 import { IBattleParticipant, IBattleAction, IBattleResult } from "../models/Battle";
 import { SpellManager, HeroSpells } from "../gameplay/SpellManager";
-import { EffectManager } from "../gameplay/effects/burn";
+import { EffectManager } from "../gameplay/EffectManager"; // Import du gestionnaire central
 
 export class BattleEngine {
   private playerTeam: IBattleParticipant[];
