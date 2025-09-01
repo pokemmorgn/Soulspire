@@ -144,7 +144,7 @@ export class SpellManager {
       if (this.isOnCooldown(caster.heroId, spellData.id)) return;
 
       // Calculer la priorité selon le contexte
-      const priority = this.calculateSpellPriority(spell, caster, allPlayers, allEnemies);
+      const priority = this.calculateSpellPriority(spell, caster, allPlayers, allEnemies, battleContext);
       
       availableSpells.push({
         id: spellData.id,
@@ -156,9 +156,15 @@ export class SpellManager {
     // Retourner le sort avec la plus haute priorité
     if (availableSpells.length === 0) return null;
 
-    return availableSpells.reduce((best, current) => 
+    const bestSpell = availableSpells.reduce((best, current) => 
       current.priority > best.priority ? current : best
     );
+
+    return {
+      spellId: bestSpell.id,
+      spellLevel: bestSpell.level,
+      priority: bestSpell.priority
+    };
   }
 
   // Calculer la priorité d'un sort selon la situation
@@ -166,7 +172,8 @@ export class SpellManager {
     spell: BaseSpell,
     caster: IBattleParticipant,
     allPlayers: IBattleParticipant[],
-    allEnemies: IBattleParticipant[]
+    allEnemies: IBattleParticipant[],
+    battleContext?: any
   ): number {
     const isPlayerTeam = allPlayers.includes(caster);
     const allies = isPlayerTeam ? allPlayers : allEnemies;
