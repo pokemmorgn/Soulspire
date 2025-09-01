@@ -374,7 +374,7 @@ export class GachaService {
       }
 
       // Sélection d'un héros de cette rareté
-      const heroesOfRarity = availableHeroes.filter(h => h.rarity === rarity);
+      const heroesOfRarity = availableHeroes.filter((h: any) => h.rarity === rarity);
       if (heroesOfRarity.length === 0) {
         // Fallback vers une rareté disponible
         const fallbackHero = availableHeroes[Math.floor(Math.random() * availableHeroes.length)];
@@ -385,17 +385,17 @@ export class GachaService {
       let selectedHero: any;
       const isFocusRarity = rarity === "Legendary" || rarity === "Epic";
       const focusHeroesOfRarity = banner.focusHeroes.filter((f: any) => {
-        const focusHero = availableHeroes.find(h => h._id.toString() === f.heroId);
+        const focusHero = availableHeroes.find((h: any) => h._id.toString() === f.heroId);
         return focusHero && focusHero.rarity === rarity;
       });
 
       if (isFocusRarity && focusHeroesOfRarity.length > 0 && Math.random() < 0.5) {
         // 50% de chance d'obtenir un héros focus si disponible
         const focusHero = focusHeroesOfRarity[Math.floor(Math.random() * focusHeroesOfRarity.length)];
-        selectedHero = availableHeroes.find(h => h._id.toString() === focusHero.heroId);
+        selectedHero = availableHeroes.find((h: any) => h._id.toString() === focusHero.heroId);
       } else {
         // Sélection normale
-        const heroesOfRarity = availableHeroes.filter(h => h.rarity === rarity);
+        const heroesOfRarity = availableHeroes.filter((h: any) => h.rarity === rarity);
         selectedHero = heroesOfRarity[Math.floor(Math.random() * heroesOfRarity.length)];
       }
 
