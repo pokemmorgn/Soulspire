@@ -11,8 +11,7 @@ export interface IPlayer {
   level: number;
   difficulty: "Normal" | "Hard" | "Nightmare";
   heroes: IPlayerHero[];
-    formationId?: string | null; // <-- ajouté
-
+  formationId?: string | null;
   tickets: number;
   fragments: Map<string, number>;
   materials: Map<string, number>;
@@ -25,8 +24,7 @@ export interface IPlayerHero {
   level: number;
   stars: number;
   equipped: boolean;
-    slot?: number | null; // <-- ajouté
-
+  slot?: number | null;
 }
 
 export interface IHero {
@@ -39,11 +37,19 @@ export interface IHero {
     hp: number;
     atk: number;
     def: number;
+    defMagique: number;
+    vitesse: number;
+    intelligence: number;
+    force: number;
+    moral: number;
+    reductionCooldown: number;
   };
   skill: {
     name: string;
     description: string;
     type: "Heal" | "Buff" | "AoE" | "Control" | "Damage";
+    cooldown: number;
+    energyCost: number;
   };
 }
 
@@ -127,11 +133,19 @@ export interface GachaPullResponse {
         hp: number;
         atk: number;
         def: number;
+        defMagique: number;
+        vitesse: number;
+        intelligence: number;
+        force: number;
+        moral: number;
+        reductionCooldown: number;
       };
       skill: {
         name: string;
         description: string;
         type: string;
+        cooldown: number;
+        energyCost: number;
       };
     };
     rarity: string;
