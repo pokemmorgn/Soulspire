@@ -33,7 +33,7 @@ export class SpellManager {
     console.log("🧙‍♂️ Initialisation du SpellManager...");
 
     // Enregistrer tous les sorts actifs
-    // this.registerSpell(fireballSpell); // Temporairement commenté
+    this.registerSpell(fireballSpell);
     
     // TODO: Ajouter d'autres sorts
     // this.registerSpell(healSpell);
