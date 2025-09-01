@@ -16,6 +16,7 @@ import serverMiddleware, { injectServerIdMiddleware } from "./middleware/serverM
 import serverRoutes from "./routes/servers";
 import towerRoutes from "./routes/tower";
 import eventsRoutes from "./routes/events";
+import afkRouter from "./routes/afk";
 
 // Configuration de l'environnement
 dotenv.config();
@@ -173,7 +174,7 @@ app.use("/api/battle", battleRoutes);
 app.use("/api/servers", serverRoutes);
 app.use("/api/tower", towerRoutes);
 app.use("/api/events", eventsRoutes);
-
+app.use("/afk", authMiddleware, afkRouter); // authMiddleware doit remplir req.user.id
 // Route de santé de l'API
 app.get("/", (req: Request, res: Response) => {
   res.json({
