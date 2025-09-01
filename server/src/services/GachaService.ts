@@ -137,7 +137,7 @@ export class GachaService {
         success: true,
         results: pullResults,
         stats: finalStats,
-        cost: costCheck.cost,
+        cost: costCheck.cost || { gems: 0, tickets: 0 }, // Fallback au cas où
         remaining: {
           gems: player.gems,
           tickets: player.tickets
@@ -271,7 +271,7 @@ export class GachaService {
     player: any,
     pullType: "Standard" | "Limited" | "Ticket",
     count: number
-  ) {
+  ): Promise<{ success: boolean; cost?: { gems?: number; tickets?: number }; error?: string }> {
     let totalCost: { gems?: number; tickets?: number } = {};
     
     if (pullType === "Ticket") {
