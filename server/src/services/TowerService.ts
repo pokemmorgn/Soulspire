@@ -263,7 +263,7 @@ export class TowerService {
         playerName: (progress.playerId as any).username,
         highestFloor: progress.highestFloor,
         totalClears: progress.totalClears,
-        lastActive: progress.updatedAt || progress.createdAt
+        lastActive: (progress as any).updatedAt || new Date()
       }));
 
       return {
