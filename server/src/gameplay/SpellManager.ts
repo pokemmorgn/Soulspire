@@ -38,7 +38,6 @@ export class SpellManager {
     // TODO: Ajouter d'autres sorts
     // this.registerSpell(healSpell);
     // this.registerSpell(shieldSpell);
-    // etc...
 
     // Initialiser le gestionnaire d'effets
     EffectManager.initialize();
