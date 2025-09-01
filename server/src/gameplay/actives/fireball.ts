@@ -64,7 +64,7 @@ export class FireballSpell extends BaseSpell {
     action.critical = isCritical;
     action.energyCost = this.getEnergyCost(spellLevel);
     action.energyGain = 5; // Petit gain d'énergie pour les sorts actifs
-    action.elementalAdvantage = this.getElementalAdvantage("Fire", target.element);
+    action.elementalAdvantage = this.getFireballElementalAdvantage("Fire", target.element);
     
     // Appliquer l'effet Brûlure si déclenché
     if (willBurn) {
@@ -137,7 +137,7 @@ export class FireballSpell extends BaseSpell {
   }
   
   // Override pour calculer l'avantage élémentaire avec bonus Fireball
-  private getElementalAdvantage(spellElement: string, targetElement: string): number {
+  private getFireballElementalAdvantage(spellElement: string, targetElement: string): number {
     const advantages: { [key: string]: string[] } = {
       Fire: ["Wind"],
       Water: ["Fire"],
