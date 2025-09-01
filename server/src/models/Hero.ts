@@ -77,8 +77,8 @@ const heroSchema = new Schema<IHeroDocument>({
       required: true,
       min: 10,
       max: 1500,
-      default: function(this: any) { 
-        return Math.floor(this.def * 0.8); // 80% de la def physique par défaut
+      default: function(this: IHeroDocument) { 
+        return Math.floor(this.baseStats.def * 0.8); // 80% de la def physique par défaut
       }
     },
     vitesse: {
@@ -86,9 +86,9 @@ const heroSchema = new Schema<IHeroDocument>({
       required: true,
       min: 50,
       max: 200,
-      default: function(this: any) {
+      default: function(this: IHeroDocument) {
         // Vitesse par rôle
-        const speedByRole = {
+        const speedByRole: Record<string, number> = {
           "Tank": 70,
           "DPS Melee": 90,
           "DPS Ranged": 85,
@@ -102,9 +102,9 @@ const heroSchema = new Schema<IHeroDocument>({
       required: true,
       min: 20,
       max: 300,
-      default: function(this: any) {
+      default: function(this: IHeroDocument) {
         // Intelligence par rôle et élément
-        const intByRole = {
+        const intByRole: Record<string, number> = {
           "Tank": 50,
           "DPS Melee": 60,
           "DPS Ranged": 100,
@@ -118,9 +118,9 @@ const heroSchema = new Schema<IHeroDocument>({
       required: true,
       min: 20,
       max: 300,
-      default: function(this: any) {
+      default: function(this: IHeroDocument) {
         // Force par rôle
-        const strByRole = {
+        const strByRole: Record<string, number> = {
           "Tank": 120,
           "DPS Melee": 110,
           "DPS Ranged": 70,
@@ -134,9 +134,9 @@ const heroSchema = new Schema<IHeroDocument>({
       required: true,
       min: 30,
       max: 200,
-      default: function(this: any) {
+      default: function(this: IHeroDocument) {
         // Moral par rareté (influence la génération d'énergie)
-        const moralByRarity = {
+        const moralByRarity: Record<string, number> = {
           "Common": 50,
           "Rare": 65,
           "Epic": 80,
@@ -150,9 +150,9 @@ const heroSchema = new Schema<IHeroDocument>({
       required: true,
       min: 0,
       max: 50,
-      default: function(this: any) {
+      default: function(this: IHeroDocument) {
         // Réduction de cooldown par rareté (en %)
-        const cooldownByRarity = {
+        const cooldownByRarity: Record<string, number> = {
           "Common": 0,
           "Rare": 5,
           "Epic": 10,
@@ -187,7 +187,7 @@ const heroSchema = new Schema<IHeroDocument>({
       max: 10,
       default: function(this: any) {
         // Cooldown par type de compétence
-        const cooldownByType = {
+        const cooldownByType: Record<string, number> = {
           "Heal": 4,
           "Buff": 5,
           "AoE": 6,
@@ -204,7 +204,7 @@ const heroSchema = new Schema<IHeroDocument>({
       max: 100,
       default: function(this: any) {
         // Coût en énergie par type
-        const energyByType = {
+        const energyByType: Record<string, number> = {
           "Heal": 60,
           "Buff": 50,
           "AoE": 80,
