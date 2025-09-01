@@ -173,7 +173,7 @@ export class MissionService {
           if (!template) continue;
 
           // Vérifier si cette mission correspond à ce type de progression
-          if (this.missionMatchesCondition(template, conditionType, additionalData)) {
+          if (MissionService.missionMatchesCondition(template, conditionType, additionalData)) {
             mission.currentValue += value;
             updated = true;
 
