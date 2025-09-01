@@ -1,433 +1,469 @@
-import { Types } from 'mongoose';
-import Tower, { ITower, ITowerRun } from '../models/Tower';
-import Player from '../models/Player';
-import { BattleEngine } from './BattleEngine';
-import { IPlayer, IHero, BattleResult, BattleReplay } from '../types';
+import { TowerProgress, TowerRanking, TowerFloorConfig } from "../models/Tower";
+import Player from "../models/Player";
+import Hero from "../models/Hero";
+import { BattleService } from "./BattleService";
+import { BattleEngine } from "./BattleEngine";
+import { IBattleParticipant } from "../models/Battle";
 
 export class TowerService {
-  // Configuration des étages de la tour
-  private static readonly FLOOR_SCALING = {
-    BASE_HP: 1000,
-    BASE_ATTACK: 100,
-    BASE_DEFENSE: 50,
-    HP_SCALING: 1.15,      // +15% HP par étage
-    ATTACK_SCALING: 1.12,  // +12% Attack par étage
-    DEFENSE_SCALING: 1.10  // +10% Defense par étage
-  };
-
-  // Récompenses par étage (tous les 5 étages)
-  private static readonly REWARDS_PER_MILESTONE = {
-    5: { gold: 1000, gems: 10 },
-    10: { gold: 2000, gems: 25 },
-    15: { gold: 3000, gems: 40 },
-    20: { gold: 5000, gems: 60 },
-    25: { gold: 7000, gems: 80 },
-    30: { gold: 10000, gems: 100 }
-  };
-
-  /**
-   * Démarre un nouveau run de tour pour un joueur
-   */
-  public static async startTowerRun(playerId: Types.ObjectId, serverId: string, teamHeroes: Types.ObjectId[]): Promise<{
-    success: boolean;
-    message: string;
-    towerRun?: ITowerRun;
-    error?: string;
-  }> {
+  
+  // === DÉMARRER UN RUN DANS LA TOUR ===
+  public static async startTowerRun(
+    playerId: string, 
+    serverId: string, 
+    heroTeam: string[]
+  ) {
     try {
-      console.log(`🗼 [TowerService] Démarrage run tour - Player: ${playerId}, Server: ${serverId}`);
+      console.log(`🗼 Démarrage run tour - Joueur: ${playerId}, Serveur: ${serverId}`);
 
-      // Vérifier le joueur et ses héros
-      const player = await Player.findOne({ _id: playerId, serverId }).populate('heroes');
+      // Vérifier le joueur
+      const player = await Player.findOne({ _id: playerId, serverId });
       if (!player) {
-        return { success: false, message: 'Joueur introuvable' };
+        throw new Error("Player not found on this server");
       }
 
-      // Valider l'équipe (exactement 3 héros)
-      if (teamHeroes.length !== 3) {
-        return { success: false, message: 'Une équipe de 3 héros est requise' };
+      // Vérifier l'équipe (3-4 héros max)
+      if (!heroTeam || heroTeam.length < 1 || heroTeam.length > 4) {
+        throw new Error("Invalid team size (1-4 heroes required)");
       }
 
       // Vérifier que le joueur possède tous les héros
-      const playerHeroIds = player.heroes.map(h => h._id.toString());
-      const invalidHeroes = teamHeroes.filter(heroId => !playerHeroIds.includes(heroId.toString()));
+      const validHeroes = heroTeam.every(heroId => 
+        player.heroes.some(h => h.heroId.toString() === heroId)
+      );
       
-      if (invalidHeroes.length > 0) {
-        return { success: false, message: 'Héros non possédés détectés' };
+      if (!validHeroes) {
+        throw new Error("Some heroes are not owned by the player");
       }
 
-      // Trouver ou créer l'entrée Tower du joueur
-      let tower = await Tower.findOne({ playerId, serverId });
-      if (!tower) {
-        tower = new Tower({
+      // Récupérer ou créer la progression du joueur
+      let towerProgress = await TowerProgress.findOne({ playerId, serverId });
+      
+      if (!towerProgress) {
+        towerProgress = new TowerProgress({
           playerId,
           serverId,
-          highestFloor: 0,
-          totalRuns: 0,
-          bestRunFloors: 0,
-          lastRunDate: new Date(),
-          weeklyRuns: 0,
-          weeklyReset: this.getWeeklyResetDate(),
-          runs: []
+          currentFloor: 1,
+          highestFloor: 1,
+          totalClears: 0,
+          stats: {
+            totalDamageDealt: 0,
+            totalBattlesWon: 0,
+            totalTimeSpent: 0,
+            averageFloorTime: 0,
+            longestStreak: 0
+          },
+          rewards: {
+            totalGoldEarned: 0,
+            totalExpGained: 0,
+            itemsObtained: []
+          },
+          currentRun: {
+            startFloor: 1,
+            currentFloor: 1,
+            isActive: false,
+            heroTeam: [],
+            consumablesUsed: 0
+          },
+          runHistory: []
         });
       }
 
-      // Vérifier limite quotidienne (3 runs par jour)
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayRuns = tower.runs.filter(run => {
-        const runDate = new Date(run.startTime);
-        runDate.setHours(0, 0, 0, 0);
-        return runDate.getTime() === today.getTime();
-      });
-
-      if (todayRuns.length >= 3) {
-        return { success: false, message: 'Limite quotidienne atteinte (3 runs/jour)' };
+      // Vérifier si un run est déjà en cours
+      if (towerProgress.currentRun.isActive) {
+        return {
+          success: false,
+          message: "A tower run is already in progress",
+          currentRun: towerProgress.currentRun
+        };
       }
 
-      // Créer le nouveau run
-      const newRun: ITowerRun = {
-        runId: new Types.ObjectId(),
-        startTime: new Date(),
-        endTime: null,
-        team: teamHeroes,
-        startFloor: 1,
-        currentFloor: 1,
-        finalFloor: 0,
-        isCompleted: false,
-        rewards: {
-          gold: 0,
-          gems: 0,
-          items: []
-        },
-        battles: []
-      };
-
-      // Ajouter le run et sauvegarder
-      tower.runs.push(newRun);
-      tower.totalRuns += 1;
-      tower.lastRunDate = new Date();
-
-      await tower.save();
-
-      console.log(`✅ [TowerService] Run créé - RunId: ${newRun.runId}, Floor: ${newRun.currentFloor}`);
+      // Démarrer le nouveau run
+      const startFloor = Math.max(1, towerProgress.highestFloor - 5); // Peut commencer 5 étages avant son record
       
+      towerProgress.startNewRun(startFloor, heroTeam);
+      await towerProgress.save();
+
+      console.log(`✅ Run tour démarré - Étage de départ: ${startFloor}`);
+
       return {
         success: true,
-        message: 'Run de tour démarré avec succès',
-        towerRun: newRun
+        message: "Tower run started successfully",
+        currentRun: towerProgress.currentRun,
+        startFloor,
+        highestFloor: towerProgress.highestFloor
       };
 
-    } catch (error) {
-      console.error('❌ [TowerService] Erreur startTowerRun:', error);
-      return {
-        success: false,
-        message: 'Erreur serveur',
-        error: error instanceof Error ? error.message : 'Erreur inconnue'
-      };
+    } catch (error: any) {
+      console.error("❌ Erreur startTowerRun:", error);
+      throw error;
     }
   }
 
-  /**
-   * Combat d'un étage de la tour
-   */
-  public static async fightTowerFloor(playerId: Types.ObjectId, serverId: string, runId: Types.ObjectId): Promise<{
-    success: boolean;
-    message: string;
-    battleResult?: BattleResult;
-    floorRewards?: any;
-    runCompleted?: boolean;
-    error?: string;
-  }> {
+  // === COMBATTRE UN ÉTAGE ===
+  public static async fightFloor(
+    playerId: string, 
+    serverId: string
+  ) {
     try {
-      console.log(`⚔️ [TowerService] Combat étage - Player: ${playerId}, RunId: ${runId}`);
+      console.log(`⚔️ Combat d'étage - Joueur: ${playerId}`);
 
-      // Trouver la tour et le run
-      const tower = await Tower.findOne({ playerId, serverId });
-      if (!tower) {
-        return { success: false, message: 'Aucune progression de tour trouvée' };
+      // Récupérer la progression
+      const towerProgress = await TowerProgress.findOne({ playerId, serverId });
+      if (!towerProgress || !towerProgress.currentRun.isActive) {
+        throw new Error("No active tower run found");
       }
 
-      const currentRun = tower.runs.find(run => run.runId.equals(runId));
-      if (!currentRun || currentRun.isCompleted) {
-        return { success: false, message: 'Run invalide ou déjà terminé' };
-      }
+      const currentFloor = towerProgress.currentRun.currentFloor;
+      const floorConfig = TowerFloorConfig.getFloorConfig(currentFloor);
 
-      // Récupérer le joueur et ses héros
-      const player = await Player.findOne({ _id: playerId, serverId }).populate('heroes');
+      // Récupérer le joueur et construire son équipe
+      const player = await Player.findOne({ _id: playerId, serverId });
       if (!player) {
-        return { success: false, message: 'Joueur introuvable' };
+        throw new Error("Player not found");
       }
 
-      // Construire l'équipe du joueur
-      const playerTeam = currentRun.team.map(heroId => {
-        const hero = player.heroes.find(h => h._id.equals(heroId));
-        if (!hero) throw new Error(`Héros ${heroId} non trouvé`);
-        return hero;
-      }) as IHero[];
+      const playerTeam = await this.buildTowerPlayerTeam(player, towerProgress.currentRun.heroTeam);
+      const enemyTeam = await this.generateTowerEnemies(floorConfig);
 
-      // Générer l'équipe ennemie pour l'étage actuel
-      const enemyTeam = this.generateFloorEnemies(currentRun.currentFloor);
+      console.log(`🎯 Étage ${currentFloor}: ${playerTeam.length} héros vs ${enemyTeam.length} ennemis`);
 
-      // Simuler le combat
-      const battleResult = await BattleEngine.simulateBattle(
-        playerTeam,
-        enemyTeam,
-        'tower'
-      );
+      // Simulation du combat
+      const battleEngine = new BattleEngine(playerTeam, enemyTeam);
+      const battleResult = battleEngine.simulateBattle();
 
-      console.log(`🎲 [TowerService] Résultat combat étage ${currentRun.currentFloor}: ${battleResult.winner}`);
-
-      // Enregistrer le combat dans le run
-      currentRun.battles.push({
-        floor: currentRun.currentFloor,
-        enemyTeam: enemyTeam.map(e => e._id),
-        result: battleResult.winner,
-        replay: battleResult.replay
-      });
-
-      let floorRewards = null;
-      let runCompleted = false;
-
-      if (battleResult.winner === 'team1') {
+      // Traitement du résultat
+      if (battleResult.victory) {
         // Victoire - progression
-        currentRun.currentFloor += 1;
+        const floorRewards = this.calculateFloorRewards(floorConfig);
         
-        // Vérifier récompenses d'étape
-        const milestone = currentRun.currentFloor - 1; // Étage terminé
-        if (this.REWARDS_PER_MILESTONE[milestone]) {
-          floorRewards = this.REWARDS_PER_MILESTONE[milestone];
-          currentRun.rewards.gold += floorRewards.gold;
-          currentRun.rewards.gems += floorRewards.gems;
-          
-          console.log(`🎁 [TowerService] Récompenses étage ${milestone}:`, floorRewards);
+        await towerProgress.completeFloor(floorRewards);
+        
+        // Appliquer les récompenses au joueur
+        if (floorRewards.gold > 0) player.gold += floorRewards.gold;
+        if (floorRewards.exp > 0) {
+          // TODO: Distribuer l'XP aux héros
+        }
+        await player.save();
+
+        // Vérifier si c'est un étage boss (récompense spéciale)
+        let specialReward = null;
+        if (floorConfig.rewards.firstClearBonus && currentFloor > towerProgress.highestFloor) {
+          specialReward = floorConfig.rewards.firstClearBonus;
+          player.gold += specialReward.gold;
+          if (specialReward.gems) player.gems += specialReward.gems;
+          await player.save();
         }
 
-        // Mettre à jour le record personnel
-        if (milestone > tower.highestFloor) {
-          tower.highestFloor = milestone;
-          console.log(`🏆 [TowerService] Nouveau record - Étage ${milestone}`);
-        }
+        console.log(`🏆 Victoire étage ${currentFloor}! Récompenses: ${floorRewards.gold} or`);
+
+        return {
+          success: true,
+          victory: true,
+          currentFloor: towerProgress.currentRun.currentFloor,
+          rewards: floorRewards,
+          specialReward,
+          battleResult: battleResult,
+          nextFloorAvailable: true
+        };
 
       } else {
         // Défaite - fin du run
-        currentRun.isCompleted = true;
-        currentRun.endTime = new Date();
-        currentRun.finalFloor = currentRun.currentFloor - 1; // Dernier étage réussi
-        runCompleted = true;
+        await towerProgress.endRun("defeated");
 
-        // Mettre à jour les statistiques
-        if (currentRun.finalFloor > tower.bestRunFloors) {
-          tower.bestRunFloors = currentRun.finalFloor;
-        }
+        // Mettre à jour le classement si nécessaire
+        await this.updatePlayerRanking(playerId, serverId, player.username, towerProgress);
 
-        // Distribuer les récompenses finales au joueur
-        if (currentRun.rewards.gold > 0 || currentRun.rewards.gems > 0) {
-          await Player.updateOne(
-            { _id: playerId, serverId },
-            {
-              $inc: {
-                'currencies.gold': currentRun.rewards.gold,
-                'currencies.gems': currentRun.rewards.gems
-              }
-            }
-          );
-          
-          console.log(`💰 [TowerService] Récompenses distribuées - Or: ${currentRun.rewards.gold}, Gemmes: ${currentRun.rewards.gems}`);
-        }
+        console.log(`💀 Défaite étage ${currentFloor}. Run terminé.`);
+
+        return {
+          success: true,
+          victory: false,
+          finalFloor: currentFloor - 1,
+          totalRewards: towerProgress.rewards,
+          battleResult: battleResult,
+          runCompleted: true
+        };
       }
 
-      await tower.save();
-
-      return {
-        success: true,
-        message: battleResult.winner === 'team1' ? 
-          `Victoire étage ${currentRun.currentFloor - 1}` : 
-          `Défaite étage ${currentRun.currentFloor}`,
-        battleResult,
-        floorRewards,
-        runCompleted
-      };
-
-    } catch (error) {
-      console.error('❌ [TowerService] Erreur fightTowerFloor:', error);
-      return {
-        success: false,
-        message: 'Erreur serveur',
-        error: error instanceof Error ? error.message : 'Erreur inconnue'
-      };
+    } catch (error: any) {
+      console.error("❌ Erreur fightFloor:", error);
+      throw error;
     }
   }
 
-  /**
-   * Récupère les classements de la tour pour un serveur
-   */
-  public static async getTowerLeaderboard(serverId: string, limit: number = 50): Promise<{
-    success: boolean;
-    leaderboard?: Array<{
-      rank: number;
-      playerId: Types.ObjectId;
-      playerName: string;
-      highestFloor: number;
-      totalRuns: number;
-    }>;
-    error?: string;
-  }> {
+  // === ABANDONNER LE RUN ACTUEL ===
+  public static async abandonRun(playerId: string, serverId: string) {
     try {
-      console.log(`🏅 [TowerService] Récupération classement serveur ${serverId}`);
+      const towerProgress = await TowerProgress.findOne({ playerId, serverId });
+      if (!towerProgress || !towerProgress.currentRun.isActive) {
+        throw new Error("No active tower run found");
+      }
 
-      const towers = await Tower.find({ serverId })
-        .populate({
-          path: 'playerId',
-          select: 'username',
-          model: 'Player'
-        })
-        .sort({ highestFloor: -1, totalRuns: 1 })
-        .limit(limit);
+      await towerProgress.endRun("abandoned");
+      console.log(`🚪 Run abandonné par ${playerId} à l'étage ${towerProgress.currentRun.currentFloor}`);
 
-      const leaderboard = towers.map((tower, index) => ({
+      return {
+        success: true,
+        message: "Tower run abandoned",
+        finalFloor: towerProgress.currentRun.currentFloor - 1,
+        rewards: towerProgress.rewards
+      };
+
+    } catch (error: any) {
+      console.error("❌ Erreur abandonRun:", error);
+      throw error;
+    }
+  }
+
+  // === RÉCUPÉRER LA PROGRESSION DU JOUEUR ===
+  public static async getPlayerProgress(playerId: string, serverId: string) {
+    try {
+      const towerProgress = await TowerProgress.findOne({ playerId, serverId });
+      
+      if (!towerProgress) {
+        return {
+          hasProgress: false,
+          message: "No tower progress found"
+        };
+      }
+
+      // Calculer le rang du joueur
+      const playerRank = await towerProgress.getPlayerRank(serverId);
+
+      return {
+        hasProgress: true,
+        currentFloor: towerProgress.currentFloor,
+        highestFloor: towerProgress.highestFloor,
+        totalClears: towerProgress.totalClears,
+        currentRun: towerProgress.currentRun,
+        stats: towerProgress.stats,
+        rewards: towerProgress.rewards,
+        runHistory: towerProgress.runHistory.slice(-5), // 5 derniers runs
+        playerRank
+      };
+
+    } catch (error: any) {
+      console.error("❌ Erreur getPlayerProgress:", error);
+      throw error;
+    }
+  }
+
+  // === RÉCUPÉRER LE CLASSEMENT DU SERVEUR ===
+  public static async getServerLeaderboard(serverId: string, limit: number = 50) {
+    try {
+      const topPlayers = await TowerProgress.find({ serverId })
+        .sort({ highestFloor: -1, totalClears: -1 })
+        .limit(limit)
+        .populate("playerId", "username");
+
+      const leaderboard = topPlayers.map((progress, index) => ({
         rank: index + 1,
-        playerId: tower.playerId._id,
-        playerName: (tower.playerId as any).username,
-        highestFloor: tower.highestFloor,
-        totalRuns: tower.totalRuns
+        playerId: progress.playerId,
+        playerName: (progress.playerId as any).username,
+        highestFloor: progress.highestFloor,
+        totalClears: progress.totalClears,
+        lastActive: progress.updatedAt
       }));
 
       return {
         success: true,
-        leaderboard
+        leaderboard,
+        serverInfo: {
+          serverId,
+          totalPlayers: leaderboard.length,
+          topFloor: leaderboard[0]?.highestFloor || 0
+        }
       };
 
-    } catch (error) {
-      console.error('❌ [TowerService] Erreur getTowerLeaderboard:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Erreur inconnue'
-      };
+    } catch (error: any) {
+      console.error("❌ Erreur getServerLeaderboard:", error);
+      throw error;
     }
   }
 
-  /**
-   * Récupère la progression d'un joueur dans la tour
-   */
-  public static async getPlayerTowerProgress(playerId: Types.ObjectId, serverId: string): Promise<{
-    success: boolean;
-    tower?: ITower;
-    currentRun?: ITowerRun;
-    error?: string;
-  }> {
-    try {
-      const tower = await Tower.findOne({ playerId, serverId });
-      if (!tower) {
-        return { success: true, tower: null };
-      }
-
-      // Trouver le run actuel (non terminé)
-      const currentRun = tower.runs.find(run => !run.isCompleted);
-
-      return {
-        success: true,
-        tower,
-        currentRun
-      };
-
-    } catch (error) {
-      console.error('❌ [TowerService] Erreur getPlayerTowerProgress:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Erreur inconnue'
-      };
-    }
-  }
-
-  /**
-   * Génère les ennemis pour un étage donné
-   */
-  private static generateFloorEnemies(floor: number): IHero[] {
-    const scaling = this.FLOOR_SCALING;
+  // === CONSTRUIRE L'ÉQUIPE DU JOUEUR POUR LA TOUR ===
+  private static async buildTowerPlayerTeam(
+    player: any, 
+    heroTeamIds: string[]
+  ): Promise<IBattleParticipant[]> {
     
-    // Calculer les stats selon l'étage
-    const enemyHP = Math.floor(scaling.BASE_HP * Math.pow(scaling.HP_SCALING, floor - 1));
-    const enemyAttack = Math.floor(scaling.BASE_ATTACK * Math.pow(scaling.ATTACK_SCALING, floor - 1));
-    const enemyDefense = Math.floor(scaling.BASE_DEFENSE * Math.pow(scaling.DEFENSE_SCALING, floor - 1));
+    const team: IBattleParticipant[] = [];
 
-    // Éléments possibles selon l'étage
-    const elements = ['Fire', 'Water', 'Electric', 'Wind'];
-    if (floor >= 10) elements.push('Light', 'Dark');
+    for (const heroId of heroTeamIds) {
+      const playerHero = player.heroes.find((h: any) => h.heroId.toString() === heroId);
+      if (!playerHero) continue;
 
-    // Générer 3 ennemis avec des éléments différents
-    const enemies: IHero[] = [];
-    const usedElements = new Set<string>();
+      // Récupérer les données du héros
+      const heroData = await Hero.findById(playerHero.heroId);
+      if (!heroData) continue;
 
-    for (let i = 0; i < 3; i++) {
-      let element;
-      do {
-        element = elements[Math.floor(Math.random() * elements.length)];
-      } while (usedElements.has(element) && usedElements.size < elements.length);
-      
-      usedElements.add(element);
+      // Calculer les stats de combat (même méthode que BattleService)
+      const levelMultiplier = 1 + (playerHero.level - 1) * 0.1;
+      const starMultiplier = 1 + (playerHero.stars - 1) * 0.2;
+      const totalMultiplier = levelMultiplier * starMultiplier;
 
-      enemies.push({
-        _id: new Types.ObjectId(),
-        heroId: `tower_enemy_${floor}_${i + 1}`,
-        name: `Tour Guardian ${floor}-${i + 1}`,
-        element,
-        rarity: floor >= 20 ? 'Legendary' : floor >= 10 ? 'Epic' : 'Rare',
-        level: Math.min(Math.floor(floor / 2) + 1, 50),
-        stars: Math.min(Math.floor(floor / 10) + 1, 6),
-        stats: {
-          hp: enemyHP,
-          attack: enemyAttack,
-          defense: enemyDefense,
-          speed: 80 + Math.floor(floor * 0.5),
-          critRate: Math.min(5 + Math.floor(floor * 0.2), 25),
-          critDamage: 150 + Math.floor(floor * 0.3)
-        },
-        skills: {
-          basic: {
-            name: 'Tower Strike',
-            description: 'Attaque basique',
-            damage: 100,
-            energyCost: 0,
-            effects: []
-          },
-          ultimate: {
-            name: 'Guardian Wrath',
-            description: 'Attaque ultime puissante',
-            damage: 200 + Math.floor(floor * 2),
-            energyCost: 100,
-            effects: []
-          }
-        },
-        equipment: null,
-        appearance: {
-          sprite: 'tower_guardian',
-          color: element.toLowerCase()
-        },
-        personality: {
-          description: 'Gardien mystique de la tour',
-          voiceLines: [`Étage ${floor}... Prouve ta valeur !`]
-        },
-        obtainMethods: ['tower']
-      } as IHero);
+      const combatStats = {
+        hp: Math.floor(heroData.baseStats.hp * totalMultiplier),
+        maxHp: Math.floor(heroData.baseStats.hp * totalMultiplier),
+        atk: Math.floor(heroData.baseStats.atk * totalMultiplier),
+        def: Math.floor(heroData.baseStats.def * totalMultiplier),
+        speed: 80 + playerHero.level // Vitesse basée sur le niveau
+      };
+
+      const participant: IBattleParticipant = {
+        heroId: heroData._id.toString(),
+        name: heroData.name,
+        role: heroData.role,
+        element: heroData.element,
+        rarity: heroData.rarity,
+        level: playerHero.level,
+        stars: playerHero.stars,
+        stats: combatStats,
+        currentHp: combatStats.hp,
+        energy: 0,
+        status: {
+          alive: true,
+          buffs: [],
+          debuffs: []
+        }
+      };
+
+      team.push(participant);
     }
 
-    console.log(`👹 [TowerService] Ennemis générés étage ${floor} - HP: ${enemyHP}, ATK: ${enemyAttack}, DEF: ${enemyDefense}`);
+    return team;
+  }
+
+  // === GÉNÉRER LES ENNEMIS D'UN ÉTAGE ===
+  private static async generateTowerEnemies(floorConfig: any): Promise<IBattleParticipant[]> {
+    
+    const { floor, enemyConfig, difficultyMultiplier } = floorConfig;
+    const enemies: IBattleParticipant[] = [];
+
+    // Récupérer des héros aléatoires comme base
+    const baseHeroes = await Hero.aggregate([{ $sample: { size: enemyConfig.enemyCount } }]);
+
+    for (let i = 0; i < baseHeroes.length; i++) {
+      const heroData = baseHeroes[i];
+      
+      // Stats adaptées à l'étage
+      const baseMultiplier = difficultyMultiplier * (1 + (floor - 1) * 0.15);
+      
+      const enemyStats = {
+        hp: Math.floor(heroData.baseStats.hp * baseMultiplier),
+        maxHp: Math.floor(heroData.baseStats.hp * baseMultiplier),
+        atk: Math.floor(heroData.baseStats.atk * baseMultiplier),
+        def: Math.floor(heroData.baseStats.def * baseMultiplier),
+        speed: 90 + Math.floor(floor * 0.5)
+      };
+
+      const enemy: IBattleParticipant = {
+        heroId: `tower_enemy_${floor}_${i}`,
+        name: enemyConfig.bossFloor ? `Tower Boss ${heroData.name}` : `Tower Guardian ${heroData.name}`,
+        role: heroData.role,
+        element: heroData.element,
+        rarity: enemyConfig.bossFloor ? "Legendary" : "Epic",
+        level: enemyConfig.baseLevel,
+        stars: enemyConfig.bossFloor ? 6 : 4,
+        stats: enemyStats,
+        currentHp: enemyStats.hp,
+        energy: enemyConfig.bossFloor ? 50 : 0, // Boss commence avec de l'énergie
+        status: {
+          alive: true,
+          buffs: enemyConfig.bossFloor ? ["boss_aura"] : [],
+          debuffs: []
+        }
+      };
+
+      enemies.push(enemy);
+    }
+
+    console.log(`👹 Générés ${enemies.length} ennemis étage ${floor} (${enemyConfig.bossFloor ? 'BOSS' : 'Normal'})`);
     return enemies;
   }
 
-  /**
-   * Calcule la date de reset hebdomadaire (lundi 00h00 UTC)
-   */
-  private static getWeeklyResetDate(): Date {
-    const now = new Date();
-    const dayOfWeek = now.getUTCDay(); // 0 = dimanche, 1 = lundi
-    const daysUntilMonday = dayOfWeek === 0 ? 1 : 8 - dayOfWeek;
-    
-    const nextMonday = new Date(now);
-    nextMonday.setUTCDate(now.getUTCDate() + daysUntilMonday);
-    nextMonday.setUTCHours(0, 0, 0, 0);
-    
-    return nextMonday;
+  // === CALCULER LES RÉCOMPENSES D'UN ÉTAGE ===
+  private static calculateFloorRewards(floorConfig: any) {
+    return {
+      gold: floorConfig.rewards.baseGold,
+      exp: floorConfig.rewards.baseExp,
+      items: floorConfig.rewards.dropItems || []
+    };
+  }
+
+  // === METTRE À JOUR LE CLASSEMENT ===
+  private static async updatePlayerRanking(
+    playerId: string, 
+    serverId: string, 
+    playerName: string, 
+    towerProgress: any
+  ) {
+    try {
+      const currentSeason = new Date().toISOString().slice(0, 7); // YYYY-MM
+
+      let ranking = await TowerRanking.findOne({ serverId, season: currentSeason });
+      
+      if (!ranking) {
+        // Créer le classement de la saison
+        ranking = new TowerRanking({
+          serverId,
+          season: currentSeason,
+          rankings: [],
+          seasonStart: new Date(),
+          seasonEnd: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0), // Fin du mois
+          isActive: true
+        });
+      }
+
+      await ranking.updatePlayerRank(
+        playerId, 
+        playerName, 
+        towerProgress.highestFloor, 
+        towerProgress.totalClears
+      );
+
+      console.log(`🏅 Classement mis à jour pour ${playerName} - Étage ${towerProgress.highestFloor}`);
+
+    } catch (error) {
+      console.error("❌ Erreur updatePlayerRanking:", error);
+      // Ne pas faire échouer le processus principal
+    }
+  }
+
+  // === RÉCUPÉRER LES STATISTIQUES GLOBALES ===
+  public static async getTowerStats(serverId: string) {
+    try {
+      const stats = await TowerProgress.aggregate([
+        { $match: { serverId } },
+        { $group: {
+          _id: null,
+          totalPlayers: { $sum: 1 },
+          averageFloor: { $avg: "$highestFloor" },
+          maxFloor: { $max: "$highestFloor" },
+          totalClears: { $sum: "$totalClears" }
+        }}
+      ]);
+
+      const serverStats = stats[0] || {
+        totalPlayers: 0,
+        averageFloor: 0,
+        maxFloor: 0,
+        totalClears: 0
+      };
+
+      return {
+        success: true,
+        serverId,
+        stats: {
+          ...serverStats,
+          averageFloor: Math.round(serverStats.averageFloor)
+        }
+      };
+
+    } catch (error: any) {
+      console.error("❌ Erreur getTowerStats:", error);
+      throw error;
+    }
   }
 }
