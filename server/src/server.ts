@@ -176,7 +176,7 @@ app.use("/api/battle", battleRoutes);
 app.use("/api/servers", serverRoutes);
 app.use("/api/tower", towerRoutes);
 app.use("/api/events", eventsRoutes);
-app.use("/afk", authMiddleware, touchLastSeen, afkRouter);
+app.use("/api/afk", authMiddleware, touchLastSeen, afkRouter);
 // Route de santé de l'API
 app.get("/", (req: Request, res: Response) => {
   res.json({
