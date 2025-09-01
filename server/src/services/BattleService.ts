@@ -214,6 +214,29 @@ export class BattleService {
         await this.applyBattleRewards(player, { ...result, rewards: pvpRewards });
       }
 
+     await Promise.all([
+      MissionService.updateProgress(
+        playerId, 
+        serverId, 
+        "battle_wins", 
+        1, 
+        { 
+          battleType: "arena", 
+          victory: result.victory
+        }
+      ),
+      EventService.updatePlayerProgress(
+        playerId, 
+        serverId, 
+        "battle_wins", 
+        1, 
+        { 
+          battleType: "arena", 
+          victory: result.victory
+        }
+      )
+    ]);
+      
       return {
         battleId: battle._id,
         result,
