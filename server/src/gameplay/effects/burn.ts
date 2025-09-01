@@ -171,7 +171,7 @@ export class EffectManager {
       };
       
       // Ajouter aux effets actifs du target
-      if (!target.activeEffects) {
+      if (!(target as any).activeEffects) {
         (target as any).activeEffects = [];
       }
       (target as any).activeEffects.push(newEffect);
