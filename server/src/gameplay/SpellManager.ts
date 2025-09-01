@@ -3,7 +3,7 @@ import { IBattleParticipant, IBattleAction } from "../models/Battle";
 import { EffectManager } from "./effects/burn";
 
 // Imports des sorts - Déclaration temporaire pour éviter les erreurs de compilation
-// import { fireballSpell } from "./actives/fireball";
+import { fireballSpell } from "./actives/fireball";
 
 // Interface pour les cooldowns actifs
 interface SpellCooldown {
