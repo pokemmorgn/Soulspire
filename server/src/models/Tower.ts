@@ -364,7 +364,8 @@ towerProgressSchema.methods.endRun = function(result: "completed" | "defeated" |
 };
 
 towerProgressSchema.methods.getPlayerRank = async function(serverId: string): Promise<number> {
-  const playersAbove = await this.constructor.countDocuments({
+  const Model = this.constructor as any;
+  const playersAbove = await Model.countDocuments({
     serverId: serverId,
     $or: [
       { highestFloor: { $gt: this.highestFloor } },
