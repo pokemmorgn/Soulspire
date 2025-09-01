@@ -580,7 +580,7 @@ eventSchema.methods.updatePlayerProgress = function(playerId: string, objectiveT
   for (const objective of this.objectives) {
     if (objective.type === objectiveType) {
       const participantObjective = participant.objectives.find(
-        obj => obj.objectiveId === objective.objectiveId
+        (obj: any) => obj.objectiveId === objective.objectiveId
       );
       
       if (participantObjective && !participantObjective.completedAt) {
