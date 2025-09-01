@@ -173,7 +173,7 @@ export class MissionService {
           if (!template) continue;
 
           // Vérifier si cette mission correspond à ce type de progression
-          if (MissionService.missionMatchesCondition(template, conditionType, additionalData)) {
+          if (this.missionMatchesCondition(template, conditionType, additionalData)) {
             mission.currentValue += value;
             updated = true;
 
@@ -386,6 +386,82 @@ export class MissionService {
   }
 
   // === MÉTHODES PRIVÉES ===
+
+  // Vérifier si une mission correspond aux conditions (utilise le vrai template)
+  private static missionMatchesCondition(
+    template: any,
+    conditionType: string,
+    additionalData?: any
+  ): boolean {
+    
+    // Vérifier d'abord si le type de condition correspond
+    if (template.condition.type !== conditionType) {
+      return false;
+    }
+
+    // Vérifications spécifiques selon le type
+    switch (conditionType) {
+      case "battle_wins":
+        if (template.condition.battleConditions) {
+          const { battleType, difficulty, winRequired, minWorld } = template.condition.battleConditions;
+          
+          // Vérifier le type de combat
+          if (battleType && additionalData?.battleType !== battleType) {
+            return false;
+          }
+          
+          // Vérifier la difficulté
+          if (difficulty && additionalData?.difficulty !== difficulty) {
+            return false;
+          }
+          
+          // Vérifier si une victoire est requise
+          if (winRequired && !additionalData?.victory) {
+            return false;
+          }
+          
+          // Vérifier le monde minimum
+          if (minWorld && (!additionalData?.world || additionalData.world < minWorld)) {
+            return false;
+          }
+        }
+        break;
+        
+      case "heroes_owned":
+        if (template.condition.heroConditions) {
+          const { rarity, minLevel, minStars } = template.condition.heroConditions;
+          
+          // Vérifier la rareté du héros
+          if (rarity && additionalData?.rarity !== rarity) {
+            return false;
+          }
+          
+          // Vérifier le niveau minimum
+          if (minLevel && (!additionalData?.level || additionalData.level < minLevel)) {
+            return false;
+          }
+          
+          // Vérifier les étoiles minimum
+          if (minStars && (!additionalData?.stars || additionalData.stars < minStars)) {
+            return false;
+          }
+        }
+        break;
+        
+      // Pour les autres types, pas de conditions supplémentaires pour l'instant
+      case "tower_floors":
+      case "gacha_pulls":
+      case "login":
+      case "gold_spent":
+      case "level_reached":
+      case "daily_missions_completed":
+      default:
+        // Pas de conditions supplémentaires, juste vérifier le type
+        break;
+    }
+    
+    return true;
+  }
 
   // Générer les missions initiales
   private static async generateInitialMissions(playerMissions: any, playerLevel: number) {
