@@ -4,6 +4,8 @@ import Hero from "../models/Hero";
 import { BattleService } from "./BattleService";
 import { BattleEngine } from "./BattleEngine";
 import { IBattleParticipant } from "../models/Battle";
+import { EventService } from "./EventService";
+import { MissionService } from "./MissionService";
 
 export class TowerService {
   
@@ -146,6 +148,27 @@ export class TowerService {
         }
         await player.save();
 
+        await Promise.all([
+          MissionService.updateProgress(
+            playerId, 
+            serverId, 
+            "tower_floors", 
+            1
+          ),
+          EventService.updatePlayerProgress(
+            playerId, 
+            serverId, 
+            "tower_floors", 
+            1, 
+            { 
+              floor: currentFloor,
+              isBossFloor: floorConfig.enemyConfig.bossFloor 
+            }
+          )
+        ]);
+
+        console.log(`🏆 Victoire étage ${currentFloor}! Missions et événements mis à jour.`);
+        
         // Vérifier si c'est un étage boss (récompense spéciale)
         let specialReward = null;
         if (floorConfig.rewards.firstClearBonus && currentFloor > towerProgress.highestFloor) {
