@@ -2,7 +2,7 @@ import { BaseSpell, ISpellConfig } from "../base/BaseSpell";
 import { IBattleParticipant, IBattleAction } from "../../models/Battle";
 import { EffectManager } from "../effects/burn";
 
-export class FireballSpell extends BaseSpell {
+class FireballSpell extends BaseSpell {
   constructor() {
     const config: ISpellConfig = {
       id: "fireball",
@@ -163,7 +163,6 @@ export class FireballSpell extends BaseSpell {
   }
 }
 
-// Export pour l'enregistrement dans le SpellManager
+// Exports pour l'enregistrement dans le SpellManager
 export const fireballSpell = new FireballSpell();
-
 export { FireballSpell };
