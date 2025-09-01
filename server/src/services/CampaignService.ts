@@ -159,6 +159,9 @@ export class CampaignService {
         };
       }
 
+      // Récupérer les difficultés disponibles pour ce joueur
+      const availableDifficulties = await this.getAvailableDifficulties(1, worldProgress, playerId, serverId);
+
       // Enrichir les niveaux avec la progression
       const enrichedLevels = world.levels.map(level => {
         const levelStar = worldProgress?.starsByLevel.find(s => s.levelIndex === level.levelIndex);
@@ -182,8 +185,8 @@ export class CampaignService {
           stars: levelStar?.stars || 0,
           bestTime: levelStar?.bestTimeMs || null,
           
-          // Prochaine difficulté disponible
-          availableDifficulties: await this.getAvailableDifficulties(level.levelIndex, worldProgress, playerId, serverId)
+          // Difficultés disponibles (identiques pour tous les niveaux)
+          availableDifficulties
         };
       });
 
