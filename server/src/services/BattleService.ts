@@ -4,6 +4,7 @@ import Hero from "../models/Hero";
 import { BattleEngine } from "./BattleEngine";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
+import { HeroSpells } from "../gameplay/SpellManager";
 
 export class BattleService {
 
@@ -28,14 +29,14 @@ export class BattleService {
         throw new Error("Player not found or not on this server");
       }
 
-      // Construire l'équipe du joueur (héros équipés)
-      const playerTeam = await this.buildPlayerTeam(player);
+      // Construire l'équipe du joueur (héros équipés) avec leurs sorts
+      const { playerTeam, playerSpells } = await this.buildPlayerTeamWithSpells(player);
       if (playerTeam.length === 0) {
         throw new Error("No equipped heroes found");
       }
 
-      // Générer l'équipe ennemie
-      const enemyTeam = await this.generateEnemyTeam(worldId, levelId, difficulty);
+      // Générer l'équipe ennemie avec leurs sorts
+      const { enemyTeam, enemySpells } = await this.generateEnemyTeamWithSpells(worldId, levelId, difficulty);
 
       // Créer le document de combat avec serverId
       const battle = new Battle({
@@ -74,8 +75,8 @@ export class BattleService {
 
       await battle.save();
 
-      // Lancer la simulation de combat
-      const battleEngine = new BattleEngine(playerTeam, enemyTeam);
+      // Lancer la simulation de combat AVEC les sorts
+      const battleEngine = new BattleEngine(playerTeam, enemyTeam, playerSpells, enemySpells);
       const result = battleEngine.simulateBattle();
 
       // Mettre à jour le combat avec les résultats
@@ -158,9 +159,9 @@ export class BattleService {
         throw new Error("Player or opponent not found on this server");
       }
 
-      // Construire les équipes
-      const playerTeam = await this.buildPlayerTeam(player);
-      const enemyTeam = await this.buildPlayerTeam(opponent);
+      // Construire les équipes avec leurs sorts
+      const { playerTeam, playerSpells } = await this.buildPlayerTeamWithSpells(player);
+      const { playerTeam: enemyTeam, playerSpells: enemySpells } = await this.buildPlayerTeamWithSpells(opponent);
 
       if (playerTeam.length === 0 || enemyTeam.length === 0) {
         throw new Error("Both players must have equipped heroes");
@@ -197,8 +198,8 @@ export class BattleService {
 
       await battle.save();
 
-      // Simuler le combat
-      const battleEngine = new BattleEngine(playerTeam, enemyTeam);
+      // Simuler le combat AVEC les sorts
+      const battleEngine = new BattleEngine(playerTeam, enemyTeam, playerSpells, enemySpells);
       const result = battleEngine.simulateBattle();
 
       // Finaliser le combat
@@ -256,9 +257,13 @@ export class BattleService {
     }
   }
 
-  // Construit l'équipe du joueur à partir de ses héros équipés
-  private static async buildPlayerTeam(player: any): Promise<IBattleParticipant[]> {
+  // NOUVEAU: Construit l'équipe du joueur avec leurs sorts
+  private static async buildPlayerTeamWithSpells(player: any): Promise<{
+    playerTeam: IBattleParticipant[];
+    playerSpells: Map<string, HeroSpells>;
+  }> {
     const team: IBattleParticipant[] = [];
+    const spells = new Map<string, HeroSpells>();
     
     // Récupérer les héros équipés
     const equippedHeroes = player.heroes.filter((hero: any) => hero.equipped);
@@ -306,17 +311,26 @@ export class BattleService {
       };
       
       team.push(participant);
+
+      // NOUVEAU: Extraire les sorts du héros
+      const heroSpells = this.extractHeroSpells(heroData);
+      spells.set(participant.heroId, heroSpells);
+      
+      console.log(`⚡ ${heroData.name} équipé avec sorts:`, heroSpells);
     }
     
-    return team;
+    return { playerTeam: team, playerSpells: spells };
   }
 
-  // Génère une équipe ennemie pour la campagne
-  private static async generateEnemyTeam(
+  // NOUVEAU: Génère une équipe ennemie avec des sorts
+  private static async generateEnemyTeamWithSpells(
     worldId: number, 
     levelId: number, 
     difficulty: "Normal" | "Hard" | "Nightmare"
-  ): Promise<IBattleParticipant[]> {
+  ): Promise<{
+    enemyTeam: IBattleParticipant[];
+    enemySpells: Map<string, HeroSpells>;
+  }> {
     
     // Calculer la puissance des ennemis selon le monde/niveau
     const basePowerMultiplier = 1 + (worldId - 1) * 0.1 + (levelId - 1) * 0.02;
@@ -331,6 +345,7 @@ export class BattleService {
     const availableHeroes = await Hero.aggregate([{ $sample: { size: enemyCount } }]);
     
     const enemyTeam: IBattleParticipant[] = [];
+    const enemySpells = new Map<string, HeroSpells>();
     
     for (let i = 0; i < availableHeroes.length; i++) {
       const heroData = availableHeroes[i];
@@ -359,8 +374,9 @@ export class BattleService {
         speed: baseStats.vitesse // Pour compatibilité avec BattleEngine
       };
       
+      const enemyId = `enemy_${heroData._id}_${i}`;
       const enemy: IBattleParticipant = {
-        heroId: `enemy_${heroData._id}_${i}`,
+        heroId: enemyId,
         name: `${enemyType === "boss" ? "Boss " : enemyType === "elite" ? "Elite " : ""}${heroData.name}`,
         role: heroData.role,
         element: heroData.element,
@@ -378,12 +394,91 @@ export class BattleService {
       };
       
       enemyTeam.push(enemy);
+
+      // NOUVEAU: Générer des sorts pour l'ennemi basés sur le héros original
+      const heroSpells = this.extractHeroSpells(heroData);
+      enemySpells.set(enemyId, heroSpells);
     }
     
-    return enemyTeam;
+    return { enemyTeam, enemySpells };
   }
 
-  // Calcule les stats de combat étendues d'un héros
+  // NOUVEAU: Extrait les sorts d'un héros depuis sa config
+  private static extractHeroSpells(heroData: any): HeroSpells {
+    const heroSpells: HeroSpells = {};
+
+    // Récupérer les sorts depuis le modèle Hero
+    if (heroData.spells) {
+      if (heroData.spells.spell1?.id) {
+        heroSpells.spell1 = {
+          id: heroData.spells.spell1.id,
+          level: heroData.spells.spell1.level || 1
+        };
+      }
+      
+      if (heroData.spells.spell2?.id) {
+        heroSpells.spell2 = {
+          id: heroData.spells.spell2.id,
+          level: heroData.spells.spell2.level || 1
+        };
+      }
+      
+      if (heroData.spells.spell3?.id) {
+        heroSpells.spell3 = {
+          id: heroData.spells.spell3.id,
+          level: heroData.spells.spell3.level || 1
+        };
+      }
+      
+      if (heroData.spells.ultimate?.id) {
+        heroSpells.ultimate = {
+          id: heroData.spells.ultimate.id,
+          level: heroData.spells.ultimate.level || 1
+        };
+      }
+      
+      if (heroData.spells.passive?.id) {
+        heroSpells.passive = {
+          id: heroData.spells.passive.id,
+          level: heroData.spells.passive.level || 1
+        };
+      }
+    }
+
+    // Si aucun sort n'est défini, créer des sorts par défaut
+    if (!heroSpells.ultimate) {
+      heroSpells.ultimate = {
+        id: this.getDefaultUltimate(heroData.element, heroData.role),
+        level: 1
+      };
+    }
+
+    return heroSpells;
+  }
+
+  // NOUVEAU: Génère un ultimate par défaut selon élément/rôle
+  private static getDefaultUltimate(element: string, role: string): string {
+    const ultimatesByElement: Record<string, string> = {
+      "Fire": "fire_storm",
+      "Water": "tidal_wave",
+      "Wind": "tornado", 
+      "Electric": "lightning_strike",
+      "Light": "divine_light",
+      "Dark": "shadow_realm"
+    };
+
+    const ultimatesByRole: Record<string, string> = {
+      "Tank": "fortress_shield",
+      "DPS Melee": "berserker_rage",
+      "DPS Ranged": "arrow_storm", 
+      "Support": "mass_healing"
+    };
+
+    // Priorité à l'élément, fallback sur le rôle
+    return ultimatesByElement[element] || ultimatesByRole[role] || "basic_ultimate";
+  }
+
+  // Calcule les stats de combat étendues d'un héros (inchangé)
   private static calculateCombatStats(heroData: any, level: number, stars: number) {
     // Vérifier que les stats de base existent
     if (!heroData.baseStats) {
