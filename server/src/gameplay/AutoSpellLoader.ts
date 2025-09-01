@@ -78,11 +78,16 @@ export class AutoSpellLoader {
   // Charge un sort depuis un fichier
   private static async loadSpellFromFile(filePath: string, category: string): Promise<boolean> {
     try {
+      // Convertir le chemin absolu en chemin relatif correct depuis AutoSpellLoader.ts
       const relativePath = path.relative(__dirname, filePath).replace(/\\/g, '/');
-      const modulePath = relativePath.replace(/\.(ts|js)$/, '');
+      
+      // Supprimer l'extension pour l'import
+      const moduleImportPath = './' + relativePath.replace(/\.(ts|js)$/, '');
+      
+      console.log(`🔍 Tentative de chargement: ${moduleImportPath}`);
       
       // Import dynamique du module
-      const module: SpellModule = await import(modulePath);
+      const module: SpellModule = await import(moduleImportPath);
       
       // Chercher les exports qui sont des instances de BaseSpell
       const spellInstances = this.extractSpellsFromModule(module);
