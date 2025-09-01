@@ -30,6 +30,7 @@ interface IPlayerDocument extends Document {
   fragments: Map<string, number>;
   materials: Map<string, number>;
   createdAt?: Date;
+  lastSeenAt?: Date;
   addHero(heroId: string, level?: number, stars?: number): any;
   getEquippedHeroes(): IPlayerHero[];
   setFormation(formationId: string, slots: { slot: number, heroId: string }[]): any;
@@ -163,6 +164,11 @@ const playerSchema = new Schema<IPlayerDocument>({
     of: Number, 
     default: new Map()
   }
+    /** NEW: trace de la dernière activité serveur (par Player donc par serveur) */
+  lastSeenAt: {
+    type: Date,
+    default: () => new Date()
+  }
 }, {
   timestamps: true,
   collection: 'players'
@@ -172,7 +178,7 @@ const playerSchema = new Schema<IPlayerDocument>({
 playerSchema.index({ username: 1, serverId: 1 }, { unique: true });
 playerSchema.index({ level: -1 });
 playerSchema.index({ createdAt: -1 });
-
+playerSchema.index({ lastSeenAt: -1 });
 // Méthodes
 playerSchema.methods.addHero = function(heroId: string, level: number = 1, stars: number = 1) {
   this.heroes.push({
@@ -230,3 +236,4 @@ playerSchema.methods.spendCurrency = function(cost: { gold?: number, gems?: numb
 };
 
 export default mongoose.model<IPlayerDocument>("Player", playerSchema);
+
