@@ -148,26 +148,63 @@ export class MissionService {
 
       const completedMissions: string[] = [];
 
-      // Mettre à jour les missions quotidiennes
-      const dailyResult = await playerMissions.updateProgress('dailyMissions', conditionType, value, additionalData);
-      if (dailyResult.updated) {
-        completedMissions.push(...dailyResult.completed);
+      // Récupérer TOUS les templates pour vérifier les conditions
+      const allTemplates = await MissionTemplate.find({ isActive: true });
+      const templateMap = new Map();
+      allTemplates.forEach(template => {
+        templateMap.set(template.missionId, template);
+      });
+
+      // Mettre à jour chaque type de mission avec les vrais templates
+      const missionTypes = [
+        { key: 'dailyMissions', missions: playerMissions.dailyMissions },
+        { key: 'weeklyMissions', missions: playerMissions.weeklyMissions },
+        { key: 'achievements', missions: playerMissions.achievements }
+      ];
+
+      let updated = false;
+
+      for (const missionType of missionTypes) {
+        for (const mission of missionType.missions) {
+          if (mission.isCompleted) continue;
+
+          // Récupérer le template pour cette mission
+          const template = templateMap.get(mission.templateId);
+          if (!template) continue;
+
+          // Vérifier si cette mission correspond à ce type de progression
+          if (this.missionMatchesCondition(template, conditionType, additionalData)) {
+            mission.currentValue += value;
+            updated = true;
+
+            // Vérifier si la mission est complétée
+            if (mission.currentValue >= mission.targetValue) {
+              mission.isCompleted = true;
+              mission.completedAt = new Date();
+              completedMissions.push(mission.missionId);
+
+              // Mettre à jour les statistiques
+              if (missionType.key === 'dailyMissions') {
+                playerMissions.stats.totalDailyCompleted += 1;
+              } else if (missionType.key === 'weeklyMissions') {
+                playerMissions.stats.totalWeeklyCompleted += 1;
+              } else if (missionType.key === 'achievements') {
+                playerMissions.stats.totalAchievementsCompleted += 1;
+              }
+
+              console.log(`🎯 Mission complétée: ${mission.name}`);
+            }
+          }
+        }
       }
 
-      // Mettre à jour les missions hebdomadaires
-      const weeklyResult = await playerMissions.updateProgress('weeklyMissions', conditionType, value, additionalData);
-      if (weeklyResult.updated) {
-        completedMissions.push(...weeklyResult.completed);
-      }
-
-      // Mettre à jour les accomplissements
-      const achievementResult = await playerMissions.updateProgress('achievements', conditionType, value, additionalData);
-      if (achievementResult.updated) {
-        completedMissions.push(...achievementResult.completed);
+      // Sauvegarder si des changements
+      if (updated) {
+        await playerMissions.save();
       }
 
       // Vérifier si toutes les missions quotidiennes sont terminées (bonus streak)
-      if (dailyResult.completed.length > 0) {
+      if (completedMissions.some(id => playerMissions.dailyMissions.some(m => m.missionId === id))) {
         const allDailyCompleted = playerMissions.dailyMissions.every(m => m.isCompleted);
         if (allDailyCompleted) {
           playerMissions.stats.currentDailyStreak += 1;
@@ -175,6 +212,7 @@ export class MissionService {
             playerMissions.stats.longestDailyStreak = playerMissions.stats.currentDailyStreak;
           }
           await playerMissions.save();
+          console.log(`🔥 Streak quotidien: ${playerMissions.stats.currentDailyStreak} jours !`);
         }
       }
 
@@ -468,12 +506,17 @@ export class MissionService {
     const achievementTemplates = await MissionTemplate.find({
       type: "achievement",
       isActive: true,
-      minPlayerLevel: { $lte: playerLevel + 10 } // Ajouter quelques achievements futurs
+      minPlayerLevel: { $lte: playerLevel + 10 }, // Ajouter quelques achievements futurs
+      $or: [
+        { maxPlayerLevel: { $exists: false } },
+        { maxPlayerLevel: null },
+        { maxPlayerLevel: { $gte: playerLevel } }
+      ]
     }).limit(20);
 
     for (const template of achievementTemplates) {
       playerMissions.achievements.push({
-        missionId: `achievement_${playerMissions.playerId}_${template.missionId}`,
+        missionId: `achievement_${playerMissions.playerId}_${template.missionId}_${Date.now()}`,
         templateId: template.missionId,
         name: template.name,
         description: template.description,
