@@ -1,4 +1,6 @@
 import { IBattleParticipant, IBattleAction, IBattleResult } from "../models/Battle";
+import { SpellManager, HeroSpells } from "../gameplay/SpellManager";
+import { EffectManager } from "../gameplay/effects/burn";
 
 export class BattleEngine {
   private playerTeam: IBattleParticipant[];
@@ -6,21 +8,31 @@ export class BattleEngine {
   private actions: IBattleAction[];
   private currentTurn: number;
   private battleStartTime: number;
-  private skillCooldowns: Map<string, number>; // heroId -> cooldown remaining
+  private playerSpells: Map<string, HeroSpells>; // heroId -> sorts du héros
+  private enemySpells: Map<string, HeroSpells>;
 
-  constructor(playerTeam: IBattleParticipant[], enemyTeam: IBattleParticipant[]) {
+  constructor(
+    playerTeam: IBattleParticipant[], 
+    enemyTeam: IBattleParticipant[],
+    playerSpells?: Map<string, HeroSpells>,
+    enemySpells?: Map<string, HeroSpells>
+  ) {
     this.playerTeam = [...playerTeam];
     this.enemyTeam = [...enemyTeam];
     this.actions = [];
     this.currentTurn = 1;
     this.battleStartTime = Date.now();
-    this.skillCooldowns = new Map();
+    this.playerSpells = playerSpells || new Map();
+    this.enemySpells = enemySpells || new Map();
     
     // Initialiser l'état de combat pour tous les participants
     this.initializeBattleState();
+    
+    // Initialiser le SpellManager
+    SpellManager.initialize();
   }
 
-  // Initialise l'état de combat (HP, énergie, cooldowns, etc.)
+  // Initialise l'état de combat (HP, énergie, effets, etc.)
   private initializeBattleState(): void {
     const allParticipants = [...this.playerTeam, ...this.enemyTeam];
     
@@ -33,8 +45,8 @@ export class BattleEngine {
         debuffs: []
       };
       
-      // Initialiser le cooldown des compétences
-      this.skillCooldowns.set(participant.heroId, 0);
+      // Initialiser les effets actifs
+      (participant as any).activeEffects = [];
     }
   }
 
@@ -61,6 +73,9 @@ export class BattleEngine {
 
   // Traite un tour de combat
   private processTurn(): void {
+    // Réduire les cooldowns des sorts
+    SpellManager.reduceCooldowns();
+    
     // Récupérer tous les participants vivants et les trier par vitesse
     const aliveParticipants = this.getAllAliveParticipants()
       .sort((a, b) => {
@@ -77,19 +92,23 @@ export class BattleEngine {
       // Générer de l'énergie en début de tour
       this.generateEnergy(participant);
       
-      // Réduire les cooldowns
-      this.reduceSkillCooldowns(participant);
+      // Traiter les effets actifs (DOT, etc.)
+      this.processParticipantEffects(participant);
+      
+      // Si le participant meurt des effets, passer au suivant
+      if (!participant.status.alive) continue;
       
       // Déterminer et exécuter l'action
       const action = this.determineAction(participant);
-      this.executeAction(action);
+      if (action) {
+        this.executeAction(action);
+      }
       
       // Vérifier si le combat est terminé après chaque action
       if (this.isBattleOver()) break;
     }
     
-    // Appliquer les effets de fin de tour (DOT, buffs/debuffs)
-    this.applyEndOfTurnEffects();
+    console.log(`🔄 Tour ${this.currentTurn} terminé`);
   }
 
   // Génère de l'énergie pour un participant selon son moral
@@ -103,15 +122,27 @@ export class BattleEngine {
     participant.energy = Math.min(100, participant.energy + energyGain);
   }
 
-  // Réduit les cooldowns des compétences
-  private reduceSkillCooldowns(participant: IBattleParticipant): void {
-    const currentCooldown = this.skillCooldowns.get(participant.heroId) || 0;
-    if (currentCooldown > 0) {
-      // Appliquer la réduction de cooldown du héros
-      const reductionPercent = ((participant.stats as any).reductionCooldown || 0) / 100;
-      const reduction = Math.max(1, Math.ceil(1 * (1 + reductionPercent)));
+  // Traite les effets actifs d'un participant
+  private processParticipantEffects(participant: IBattleParticipant): void {
+    const effectResults = EffectManager.processEffects(participant);
+    
+    for (const result of effectResults) {
+      if (result.damage && result.damage > 0) {
+        participant.currentHp = Math.max(0, participant.currentHp - result.damage);
+        
+        if (participant.currentHp === 0) {
+          participant.status.alive = false;
+          console.log(`💀 ${participant.name} succombe aux effets !`);
+        }
+      }
       
-      this.skillCooldowns.set(participant.heroId, Math.max(0, currentCooldown - reduction));
+      if (result.healing && result.healing > 0) {
+        participant.currentHp = Math.min(participant.stats.maxHp, participant.currentHp + result.healing);
+      }
+      
+      if (result.message) {
+        console.log(result.message);
+      }
     }
   }
 
