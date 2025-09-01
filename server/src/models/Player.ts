@@ -163,7 +163,7 @@ const playerSchema = new Schema<IPlayerDocument>({
     type: Map, 
     of: Number, 
     default: new Map()
-  }
+  },
     /** NEW: trace de la dernière activité serveur (par Player donc par serveur) */
   lastSeenAt: {
     type: Date,
@@ -236,4 +236,5 @@ playerSchema.methods.spendCurrency = function(cost: { gold?: number, gems?: numb
 };
 
 export default mongoose.model<IPlayerDocument>("Player", playerSchema);
+
 
