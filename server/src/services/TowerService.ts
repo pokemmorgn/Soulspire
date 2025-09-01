@@ -263,7 +263,7 @@ export class TowerService {
         playerName: (progress.playerId as any).username,
         highestFloor: progress.highestFloor,
         totalClears: progress.totalClears,
-        lastActive: progress.updatedAt
+        lastActive: progress.updatedAt || progress.createdAt
       }));
 
       return {
@@ -312,7 +312,7 @@ export class TowerService {
       };
 
       const participant: IBattleParticipant = {
-        heroId: heroData._id.toString(),
+        heroId: (heroData._id as any).toString(),
         name: heroData.name,
         role: heroData.role,
         element: heroData.element,
