@@ -11,11 +11,6 @@ const bannerPullSchema = Joi.object({
   count: Joi.number().valid(1, 10).default(1)
 });
 
-const legacyPullSchema = Joi.object({
-  type: Joi.string().valid("Standard", "Limited", "Ticket").required(),
-  count: Joi.number().valid(1, 10).default(1)
-});
-
 const historySchema = Joi.object({
   page: Joi.number().min(1).default(1),
   limit: Joi.number().min(1).max(50).default(20)
@@ -87,7 +82,7 @@ router.get("/banner/rates", authMiddleware, async (req: Request, res: Response):
 });
 
 // === PULL ON SPECIFIC BANNER ===
-router.post("/banner/pull", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/pull", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = bannerPullSchema.validate(req.body);
     if (error) {
@@ -102,7 +97,7 @@ router.post("/banner/pull", authMiddleware, async (req: Request, res: Response):
 
     console.log(`🎰 ${req.userId} effectue ${count} pulls sur bannière ${bannerId} (serveur ${req.serverId})`);
 
-    // Utiliser le nouveau service avec bannière spécifique
+    // Utiliser le service avec bannière spécifique
     const result = await GachaService.performPullOnBanner(
       req.userId!,
       req.serverId!,
@@ -177,93 +172,6 @@ router.post("/banner/pull", authMiddleware, async (req: Request, res: Response):
       code: "BANNER_GACHA_PULL_FAILED"
     });
   }
-});
-
-// === LEGACY PULL (pour compatibilité) ===
-router.post("/pull", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { error } = legacyPullSchema.validate(req.body);
-    if (error) {
-      res.status(400).json({ 
-        error: error.details[0].message,
-        code: "VALIDATION_ERROR"
-      });
-      return;
-    }
-
-    const { type, count } = req.body;
-
-    console.log(`🎰 ${req.userId} effectue ${count} pulls ${type} (legacy) sur serveur ${req.serverId}`);
-
-    // Utiliser la méthode legacy qui redirige vers les bannières
-    const result = await GachaService.performPull(
-      req.userId!,
-      req.serverId!,
-      type,
-      count
-    );
-
-    // Formater la réponse pour l'API
-    const response = {
-      message: "Gacha pull successful (legacy mode)",
-      results: result.results.map(r => ({
-        hero: {
-          id: r.hero._id,
-          name: r.hero.name,
-          role: r.hero.role,
-          element: r.hero.element,
-          rarity: r.hero.rarity,
-          baseStats: r.hero.baseStats,
-          skill: r.hero.skill
-        },
-        rarity: r.rarity,
-        isNew: r.isNew,
-        fragmentsGained: r.fragmentsGained,
-        isFocus: r.isFocus || false
-      })),
-      stats: result.stats,
-      cost: result.cost,
-      remaining: result.remaining,
-      pityStatus: result.pityStatus,
-      bannerInfo: result.bannerInfo,
-      note: "This endpoint is deprecated. Use /banner/pull instead."
-    };
-
-    res.json(response);
-
-  } catch (err: any) {
-    console.error("Legacy gacha pull error:", err);
-    
-    if (err.message.includes("not found")) {
-      res.status(404).json({ 
-        error: err.message.includes("Player") ? "Player not found on this server" : "No active banner found for this type",
-        code: err.message.includes("Player") ? "PLAYER_NOT_FOUND" : "NO_BANNER_FOUND"
-      });
-      return;
-    }
-    
-    if (err.message.includes("Insufficient")) {
-      res.status(400).json({ 
-        error: err.message,
-        code: "INSUFFICIENT_RESOURCES"
-      });
-      return;
-    }
-    
-    res.status(500).json({ 
-      error: "Internal server error",
-      code: "LEGACY_GACHA_PULL_FAILED"
-    });
-  }
-});
-
-// === GET LEGACY RATES (pour compatibilité) ===
-router.get("/rates", (req: Request, res: Response): void => {
-  const rates = GachaService.getDropRates();
-  res.json({
-    ...rates,
-    note: "These are fallback rates. Use /banners to see current banner rates."
-  });
 });
 
 // === GET SUMMON HISTORY ===
@@ -408,9 +316,32 @@ router.get("/info", async (req: Request, res: Response): Promise<void> => {
         bonusRewards: "Milestone rewards for pulling",
         serverFiltering: "Region and server-specific banners"
       },
-      defaultRates: {
-        Standard: "50% Common, 30% Rare, 15% Epic, 5% Legendary",
-        Limited: "40% Common, 35% Rare, 20% Epic, 5% Legendary"
+      bannerTypes: {
+        Standard: {
+          description: "Regular banner with all heroes",
+          availability: "Always available",
+          focusHeroes: "No rate-up"
+        },
+        Limited: {
+          description: "Special banner with rate-up heroes",
+          availability: "Time-limited",
+          focusHeroes: "50% chance for focus heroes on Epic/Legendary"
+        },
+        Event: {
+          description: "Special event banner",
+          availability: "During events only",
+          focusHeroes: "Event-specific heroes"
+        },
+        Beginner: {
+          description: "New player banner with guaranteed rewards",
+          availability: "Limited pulls per player",
+          focusHeroes: "Beginner-friendly heroes"
+        },
+        Weapon: {
+          description: "Equipment-focused banner",
+          availability: "Varies",
+          focusHeroes: "Weapon-specific"
+        }
       },
       pitySystem: {
         epic: {
@@ -431,15 +362,10 @@ router.get("/info", async (req: Request, res: Response): Promise<void> => {
       endpoints: {
         banners: "GET /api/gacha/banners - List active banners",
         bannerRates: "GET /api/gacha/banner/rates?bannerId=X - Get banner rates",
-        bannerPull: "POST /api/gacha/banner/pull - Pull on specific banner",
-        legacyPull: "POST /api/gacha/pull - Legacy pull (deprecated)",
-        rates: "GET /api/gacha/rates - Legacy rates (deprecated)",
+        pull: "POST /api/gacha/pull - Pull on specific banner",
         history: "GET /api/gacha/history - Summon history",
-        stats: "GET /api/gacha/stats - Personal statistics"
-      },
-      migration: {
-        note: "Legacy endpoints still work but are deprecated",
-        recommended: "Use /banners and /banner/pull for new implementations"
+        stats: "GET /api/gacha/stats - Personal statistics",
+        test: "POST /api/gacha/test - Test pulls (dev only)"
       }
     });
 
