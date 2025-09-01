@@ -30,54 +30,30 @@ export class SpellManager {
 
     console.log("🧙‍♂️ Initialisation du SpellManager avec auto-découverte...");
 
-    try {
-      // Auto-découverte et chargement de tous les sorts
-      await AutoSpellLoader.autoLoadSpells();
-      
-      // Copier les sorts auto-chargés dans notre registre
-      const autoLoadedSpells = AutoSpellLoader.getAllSpells();
-      for (const spell of autoLoadedSpells) {
-        this.spells.set(spell.config.id, spell);
-      }
-
-      // Initialiser le gestionnaire d'effets
-      EffectManager.initialize();
-
-      this.initialized = true;
-      console.log(`✨ ${this.spells.size} sorts auto-chargés + effets initialisés`);
-      
-      // Validation optionnelle en développement
-      if (process.env.NODE_ENV === 'development') {
-        AutoSpellLoader.validateLoadedSpells();
-      }
-      
-    } catch (error) {
-      console.error("❌ Erreur lors de l'initialisation auto des sorts:", error);
-      console.log("🔧 Fallback: initialisation manuelle...");
-      
-      // Fallback vers l'ancien système si auto-loader échoue
-      await this.initializeManual();
-    }
-  }
-
-  // Fallback: initialisation manuelle si auto-loader échoue
-  private static async initializeManual() {
-    console.log("🔧 Initialisation manuelle des sorts...");
+    // Auto-découverte et chargement de tous les sorts
+    await AutoSpellLoader.autoLoadSpells();
     
-    try {
-      // Import manuel de fireball seulement pour assurer le fonctionnement
-      const { fireballSpell } = await import("./actives/fireball");
-      this.registerSpell(fireballSpell);
-      console.log("✅ Fireball chargé manuellement");
-    } catch (error) {
-      console.warn("⚠️ Impossible de charger fireball:", error);
+    // Copier les sorts auto-chargés dans notre registre
+    const autoLoadedSpells = AutoSpellLoader.getAllSpells();
+    for (const spell of autoLoadedSpells) {
+      this.spells.set(spell.config.id, spell);
     }
-    
+
     // Initialiser le gestionnaire d'effets
     EffectManager.initialize();
-    
+
     this.initialized = true;
-    console.log(`📚 ${this.spells.size} sorts chargés (mode manuel)`);
+    console.log(`✨ ${this.spells.size} sorts auto-chargés + effets initialisés`);
+    
+    // Validation en développement
+    if (process.env.NODE_ENV === 'development') {
+      AutoSpellLoader.validateLoadedSpells();
+    }
+    
+    // Vérifier qu'au moins un sort a été chargé
+    if (this.spells.size === 0) {
+      throw new Error("❌ ERREUR CRITIQUE: Aucun sort n'a pu être chargé par l'AutoSpellLoader !");
+    }
   }
 
   // Enregistrer un sort manuellement
