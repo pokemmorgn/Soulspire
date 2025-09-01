@@ -180,8 +180,8 @@ router.post("/claim", authMiddleware, async (req: Request, res: Response): Promi
       rewards: result.rewards,
       missionId: result.missionId,
       summary: {
-        rewardsCount: result.rewards.length,
-        totalValue: result.rewards.reduce((sum: number, r: any) => sum + r.quantity, 0)
+        rewardsCount: result.rewards?.length || 0,
+        totalValue: result.rewards?.reduce((sum: number, r: any) => sum + r.quantity, 0) || 0
       }
     });
 
