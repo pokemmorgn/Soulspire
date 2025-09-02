@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import Player from "../models/Player";
 import Hero from "../models/Hero";
+import LevelProgress from "../models/LevelProgress";
 import { BattleService } from "../services/BattleService";
 import { IBattleOptions } from "../services/BattleEngine";
 
@@ -26,7 +27,7 @@ function colorLog(color: string, message: string) {
 
 const testBattle = async (): Promise<void> => {
   try {
-    colorLog(colors.cyan, "\n🧪 === TEST COMBAT AUTO/MANUEL + VITESSES ===\n");
+    colorLog(colors.cyan, "\n🧪 === TEST COMPLET : AUTO/MANUEL + SKIP/QUIT/RETRY ===\n");
     
     await mongoose.connect(MONGO_URI);
     colorLog(colors.green, "✅ Connecté à MongoDB");
@@ -40,8 +41,10 @@ const testBattle = async (): Promise<void> => {
     await displayPlayerTeamWithSpells(testPlayer);
 
     await runBattleTestsWithModes((testPlayer._id as any).toString());
+    
+    await testSkipQuitRetry((testPlayer._id as any).toString());
 
-    colorLog(colors.cyan, "\n🎉 === TESTS AUTO/MANUEL TERMINÉS ===\n");
+    colorLog(colors.cyan, "\n🎉 === TOUS LES TESTS TERMINÉS ===\n");
     
   } catch (error) {
     colorLog(colors.red, `❌ Erreur lors des tests: ${error}`);
@@ -407,6 +410,90 @@ async function testVipLimitations(playerId: string) {
   }
 }
 
+async function testSkipQuitRetry(playerId: string) {
+  colorLog(colors.cyan, "\n🎮 === TEST SKIP/QUIT/RETRY ===");
+  
+  try {
+    colorLog(colors.yellow, "\n1️⃣ Préparation - Combat 3x le même niveau:");
+    
+    for (let i = 1; i <= 3; i++) {
+      console.log(`   Combat ${i}/3...`);
+      await BattleService.startCampaignBattle(
+        playerId, 
+        "S1",
+        1, 6, "Normal",
+        { mode: "auto", speed: 3 }
+      );
+    }
+    
+    const progress = await LevelProgress.getOrCreate(playerId, "S1", 1, 6, "Normal");
+    colorLog(colors.green, `✅ Niveau 1-6 débloqué pour skip (${progress.victories} victoires)`);
+    
+    colorLog(colors.yellow, "\n2️⃣ Test Skip:");
+    try {
+      const skipResult = await BattleService.skipBattle(playerId, "S1", 1, 6, "Normal", progress.bestTime);
+      colorLog(colors.green, `✅ Skip réussi: ${skipResult.rewards.gold} or, ${skipResult.rewards.experience} XP (+10% bonus)`);
+    } catch (error: any) {
+      colorLog(colors.red, `❌ Erreur skip: ${error.message}`);
+    }
+    
+    colorLog(colors.yellow, "\n3️⃣ Test Skip impossible (niveau jamais battu):");
+    try {
+      await BattleService.skipBattle(playerId, "S1", 5, 10, "Normal", 0);
+      colorLog(colors.red, "❌ Skip aurait dû échouer");
+    } catch (error: any) {
+      if (error.message.includes("Skip requires")) {
+        colorLog(colors.green, `✅ Skip correctement refusé: ${error.message}`);
+      } else {
+        colorLog(colors.red, `❌ Erreur inattendue: ${error.message}`);
+      }
+    }
+    
+    colorLog(colors.yellow, "\n4️⃣ Test Retry:");
+    try {
+      const retryResult = await BattleService.startCampaignBattle(
+        playerId, 
+        "S1",
+        1, 6, "Normal",
+        { mode: "manual", speed: 2 }
+      );
+      colorLog(colors.green, `✅ Retry réussi: ${retryResult.result.victory ? "Victoire" : "Défaite"}`);
+    } catch (error: any) {
+      colorLog(colors.red, `❌ Erreur retry: ${error.message}`);
+    }
+    
+    colorLog(colors.yellow, "\n5️⃣ Test VIP strict (doit échouer):");
+    const player = await Player.findById(playerId);
+    if (player) {
+      const originalVip = player.vipLevel;
+      player.vipLevel = 1;
+      await player.save();
+      
+      try {
+        await BattleService.startCampaignBattle(
+          playerId, 
+          "S1",
+          1, 1, "Normal",
+          { mode: "auto", speed: 3 }
+        );
+        colorLog(colors.red, "❌ Combat aurait dû être rejeté");
+      } catch (error: any) {
+        if (error.message.includes("Vitesse x3 nécessite VIP")) {
+          colorLog(colors.green, `✅ Validation VIP stricte OK: ${error.message}`);
+        } else {
+          colorLog(colors.red, `❌ Erreur inattendue: ${error.message}`);
+        }
+      }
+      
+      player.vipLevel = originalVip;
+      await player.save();
+    }
+    
+  } catch (error: any) {
+    colorLog(colors.red, `❌ Erreur test Skip/Quit/Retry: ${error.message}`);
+  }
+}
+
 async function displayPlayerStats(playerId: string) {
   try {
     const stats = await BattleService.getPlayerBattleStats(playerId, "S1");
@@ -419,11 +506,14 @@ async function displayPlayerStats(playerId: string) {
     console.log(`💥 Dégâts total: ${stats.totalDamage}`);
     console.log(`⏱️  Durée moyenne: ${Math.round(stats.avgBattleDuration || 0)}ms`);
     
-    colorLog(colors.yellow, "\n🎮 Performance du système Auto/Manuel + Vitesses:");
+    colorLog(colors.yellow, "\n🎮 Performance du système complet:");
     console.log("✅ Mode auto: Sorts et ultimates automatiques");
     console.log("✅ Mode manuel: Ultimates en attente d'action joueur");
     console.log("✅ Vitesses x1/x2/x3: Calculs ajustés selon VIP");
-    console.log("✅ Limitations VIP: Correctement appliquées");
+    console.log("✅ Limitations VIP: Validation stricte avec rejet");
+    console.log("✅ Skip: Disponible après 3+ victoires (+10% bonus)");
+    console.log("✅ Quit: Abandon possible sans récompenses");
+    console.log("✅ Retry: Relancer les niveaux déjà tentés");
     console.log("✅ Replays: Support des vitesses personnalisées");
     
   } catch (error) {
@@ -432,13 +522,15 @@ async function displayPlayerStats(playerId: string) {
 }
 
 function showUsage() {
-  colorLog(colors.cyan, "\n🎮 === SCRIPT DE TEST COMBAT AUTO/MANUEL + VITESSES ===");
-  console.log("Ce script teste le nouveau système de combat avec:");
+  colorLog(colors.cyan, "\n🎮 === SCRIPT DE TEST COMPLET SYSTÈME DE COMBAT ===");
+  console.log("Ce script teste le système de combat complet avec:");
   console.log("• Mode Auto: Tous les sorts et ultimates automatiques");
   console.log("• Mode Manuel: Sorts auto, ultimates manuels");
-  console.log("• Vitesses x1/x2/x3 selon niveau VIP");
-  console.log("• Limitations VIP correctement appliquées");
-  console.log("• Support des vitesses de replay");
+  console.log("• Vitesses x1/x2/x3 selon niveau VIP (validation stricte)");
+  console.log("• Skip: Disponible après 3+ victoires (récompenses normales +10%)");
+  console.log("• Quit: Abandonner un combat sans récompenses");
+  console.log("• Retry: Recommencer un niveau déjà tenté");
+  console.log("• Limitations VIP: Rejet strict des vitesses non autorisées");
   console.log("\nPrérequis:");
   console.log("• Héros créés avec: npx ts-node src/scripts/seedHeroes.ts");
   console.log("\nLancement:");
