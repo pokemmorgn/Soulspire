@@ -585,10 +585,10 @@ export class CampaignService {
     return difficulties;
   }
 
-  // === NOUVELLES MÉTHODES POUR VÉRIFIER LA COMPLÉTION ===
+  // === MÉTHODES PUBLIQUES POUR LES ROUTES ===
   
-  // Vérifier si un joueur a terminé toute la campagne sur une difficulté (utilise le nouveau modèle)
-  private static async hasPlayerCompletedCampaign(
+  // Vérifier si un joueur a terminé toute la campagne sur une difficulté (PUBLIC)
+  public static async hasPlayerCompletedCampaign(
     playerId: string,
     serverId: string,
     difficulty: "Normal" | "Hard" | "Nightmare"
@@ -610,6 +610,70 @@ export class CampaignService {
       console.error("Erreur hasPlayerCompletedCampaign:", error);
       return false;
     }
+  }
+
+  // === MÉTHODES PRIVÉES POUR LA LOGIQUE INTERNE ===
+
+  // Obtenir le plus haut niveau terminé sur une difficulté spécifique
+  private static async getHighestClearedLevel(
+    playerId: string,
+    serverId: string,
+    worldId: number,
+    difficulty: "Normal" | "Hard" | "Nightmare"
+  ): Promise<number> {
+    try {
+      const worldProgress = await CampaignProgress.findOne({ playerId, serverId, worldId });
+      
+      if (!worldProgress) return 0;
+      
+      if (difficulty === "Normal") {
+        return worldProgress.highestLevelCleared;
+      }
+      
+      // Pour Hard/Nightmare, on peut stocker ces infos dans starsByLevel avec metadata
+      // ou créer un champ séparé. Pour l'instant, utilisons une approche simple
+      return await this.getHighestClearedForDifficulty(worldProgress, difficulty);
+      
+    } catch (error) {
+      console.error("Erreur getHighestClearedLevel:", error);
+      return 0;
+    }
+  }
+
+  // Vérifier si un monde est complété sur une difficulté (méthode helper)
+  private static async isWorldCompletedOnDifficulty(
+    playerId: string,
+    serverId: string,
+    worldId: number,
+    difficulty: "Normal" | "Hard" | "Nightmare"
+  ): Promise<boolean> {
+    try {
+      const world = await CampaignWorld.findOne({ worldId });
+      if (!world) return false;
+
+      const highestCleared = await this.getHighestClearedLevel(playerId, serverId, worldId, difficulty);
+      return highestCleared >= world.levelCount;
+      
+    } catch (error) {
+      console.error("Erreur isWorldCompletedOnDifficulty:", error);
+      return false;
+    }
+  }
+
+  // Extraire le progrès pour une difficulté (utilise le nouveau modèle)
+  private static async getHighestClearedForDifficulty(
+    worldProgress: ICampaignProgress,
+    difficulty: "Normal" | "Hard" | "Nightmare"
+  ): Promise<number> {
+    
+    if (difficulty === "Normal") {
+      // Pour Normal, utiliser l'ancien champ pour compatibilité
+      return worldProgress.highestLevelCleared;
+    }
+    
+    // Utiliser le nouveau système pour Hard/Nightmare
+    const difficultyProgress = (worldProgress as any).getProgressForDifficulty(difficulty);
+    return difficultyProgress ? difficultyProgress.highestLevelCleared : 0;
   }
 
   // Vérifier si un monde est complété sur une difficulté (utilise le nouveau modèle)
