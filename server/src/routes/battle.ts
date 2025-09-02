@@ -1,26 +1,36 @@
 import express, { Request, Response } from "express";
 import Joi from "joi";
 import { BattleService } from "../services/BattleService";
+import { IBattleOptions } from "../services/BattleEngine";
 import authMiddleware from "../middleware/authMiddleware";
 
 const router = express.Router();
 
-// Schémas de validation
+const battleOptionsSchema = Joi.object({
+  mode: Joi.string().valid("auto", "manual").default("auto"),
+  speed: Joi.number().valid(1, 2, 3).default(1)
+});
+
 const campaignBattleSchema = Joi.object({
   worldId: Joi.number().min(1).max(100).required(),
   levelId: Joi.number().min(1).max(50).required(),
-  difficulty: Joi.string().valid("Normal", "Hard", "Nightmare").default("Normal")
+  difficulty: Joi.string().valid("Normal", "Hard", "Nightmare").default("Normal"),
+  battleOptions: battleOptionsSchema.default({ mode: "auto", speed: 1 })
 });
 
 const arenaBattleSchema = Joi.object({
-  opponentId: Joi.string().required()
+  opponentId: Joi.string().required(),
+  battleOptions: battleOptionsSchema.default({ mode: "auto", speed: 1 })
 });
 
 const battleHistorySchema = Joi.object({
   limit: Joi.number().min(1).max(50).default(20)
 });
 
-// === START CAMPAIGN BATTLE ===
+const replaySchema = Joi.object({
+  speed: Joi.number().valid(1, 2, 3).optional()
+});
+
 router.post("/campaign", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = campaignBattleSchema.validate(req.body);
@@ -32,17 +42,17 @@ router.post("/campaign", authMiddleware, async (req: Request, res: Response): Pr
       return;
     }
 
-    const { worldId, levelId, difficulty } = req.body;
+    const { worldId, levelId, difficulty, battleOptions } = req.body;
     
-    console.log(`🎯 ${req.userId} démarre un combat: Monde ${worldId}, Niveau ${levelId}, ${difficulty}`);
+    console.log(`🎯 ${req.userId} démarre combat: Monde ${worldId}, Niveau ${levelId}, ${difficulty} (${battleOptions.mode}, x${battleOptions.speed})`);
 
-    // Lancer le combat
     const battleResult = await BattleService.startCampaignBattle(
       req.userId!,
       req.serverId!,
       worldId,
       levelId,
-      difficulty
+      difficulty,
+      battleOptions as IBattleOptions
     );
 
     res.json({
@@ -50,6 +60,7 @@ router.post("/campaign", authMiddleware, async (req: Request, res: Response): Pr
       battleId: battleResult.battleId,
       victory: battleResult.result.victory,
       result: battleResult.result,
+      battleOptions: battleOptions,
       replay: battleResult.replay
     });
 
@@ -72,6 +83,14 @@ router.post("/campaign", authMiddleware, async (req: Request, res: Response): Pr
       return;
     }
     
+    if (err.message.includes("Vitesse") || err.message.includes("VIP")) {
+      res.status(403).json({ 
+        error: "Speed not allowed for your VIP level",
+        code: "SPEED_NOT_ALLOWED"
+      });
+      return;
+    }
+    
     res.status(500).json({ 
       error: "Internal server error",
       code: "CAMPAIGN_BATTLE_FAILED"
@@ -79,7 +98,6 @@ router.post("/campaign", authMiddleware, async (req: Request, res: Response): Pr
   }
 });
 
-// === START ARENA BATTLE ===
 router.post("/arena", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = arenaBattleSchema.validate(req.body);
@@ -91,9 +109,8 @@ router.post("/arena", authMiddleware, async (req: Request, res: Response): Promi
       return;
     }
 
-    const { opponentId } = req.body;
+    const { opponentId, battleOptions } = req.body;
     
-    // Vérifier qu'on ne combat pas contre soi-même
     if (req.userId === opponentId) {
       res.status(400).json({ 
         error: "Cannot battle against yourself",
@@ -102,16 +119,21 @@ router.post("/arena", authMiddleware, async (req: Request, res: Response): Promi
       return;
     }
 
-    console.log(`⚔️ Combat d'arène: ${req.userId} vs ${opponentId}`);
+    console.log(`⚔️ Combat d'arène: ${req.userId} vs ${opponentId} (${battleOptions.mode}, x${battleOptions.speed})`);
 
-    // Lancer le combat PvP
-    const battleResult = await BattleService.startArenaBattle(req.userId!,req.serverId!, opponentId);
+    const battleResult = await BattleService.startArenaBattle(
+      req.userId!,
+      req.serverId!, 
+      opponentId,
+      battleOptions as IBattleOptions
+    );
 
     res.json({
       message: "Arena battle completed",
       battleId: battleResult.battleId,
       victory: battleResult.result.victory,
       result: battleResult.result,
+      battleOptions: battleOptions,
       replay: battleResult.replay
     });
 
@@ -134,6 +156,14 @@ router.post("/arena", authMiddleware, async (req: Request, res: Response): Promi
       return;
     }
     
+    if (err.message.includes("Vitesse") || err.message.includes("VIP")) {
+      res.status(403).json({ 
+        error: "Speed not allowed for your VIP level",
+        code: "SPEED_NOT_ALLOWED"
+      });
+      return;
+    }
+    
     res.status(500).json({ 
       error: "Internal server error",
       code: "ARENA_BATTLE_FAILED"
@@ -141,7 +171,6 @@ router.post("/arena", authMiddleware, async (req: Request, res: Response): Promi
   }
 });
 
-// === GET BATTLE HISTORY ===
 router.get("/history", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = battleHistorySchema.validate(req.query);
@@ -173,7 +202,6 @@ router.get("/history", authMiddleware, async (req: Request, res: Response): Prom
   }
 });
 
-// === GET BATTLE STATS ===
 router.get("/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const stats = await BattleService.getPlayerBattleStats(req.userId!, req.serverId!);
@@ -184,7 +212,7 @@ router.get("/stats", authMiddleware, async (req: Request, res: Response): Promis
         totalBattles: stats.totalBattles,
         victories: stats.victories,
         defeats: stats.totalBattles - stats.victories,
-        winRate: Math.round((stats.winRate || 0) * 100) / 100, // Arrondi à 2 décimales
+        winRate: Math.round((stats.winRate || 0) * 100) / 100,
         totalDamageDealt: stats.totalDamage,
         averageBattleDuration: Math.round(stats.avgBattleDuration || 0)
       }
@@ -199,10 +227,18 @@ router.get("/stats", authMiddleware, async (req: Request, res: Response): Promis
   }
 });
 
-// === GET BATTLE REPLAY ===
 router.get("/replay/:battleId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { battleId } = req.params;
+    const { error } = replaySchema.validate(req.query);
+    
+    if (error) {
+      res.status(400).json({ 
+        error: error.details[0].message,
+        code: "VALIDATION_ERROR"
+      });
+      return;
+    }
 
     if (!battleId) {
       res.status(400).json({ 
@@ -212,7 +248,10 @@ router.get("/replay/:battleId", authMiddleware, async (req: Request, res: Respon
       return;
     }
 
-    const replay = await BattleService.getBattleReplay(battleId, req.userId!, req.serverId!);
+    const { speed } = req.query;
+    const replaySpeed = speed ? parseInt(speed as string) as 1 | 2 | 3 : undefined;
+
+    const replay = await BattleService.getBattleReplay(battleId, req.userId!, req.serverId!, replaySpeed);
 
     res.json({
       message: "Battle replay retrieved successfully",
@@ -237,13 +276,18 @@ router.get("/replay/:battleId", authMiddleware, async (req: Request, res: Respon
   }
 });
 
-// === QUICK BATTLE (pour tests) ===
 router.post("/quick", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     console.log(`⚡ Combat rapide pour ${req.userId}`);
 
-    // Combat rapide contre le monde 1, niveau 1
-    const battleResult = await BattleService.startCampaignBattle(req.userId!, req.serverId!,  1, 1, "Normal");
+    const battleResult = await BattleService.startCampaignBattle(
+      req.userId!, 
+      req.serverId!,  
+      1, 
+      1, 
+      "Normal",
+      { mode: "auto", speed: 1 }
+    );
 
     res.json({
       message: "Quick battle completed",
@@ -277,12 +321,8 @@ router.post("/quick", authMiddleware, async (req: Request, res: Response): Promi
   }
 });
 
-// === GET AVAILABLE OPPONENTS (pour l'arène) ===
 router.get("/arena/opponents", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // Pour l'instant, récupérer des joueurs aléatoires
-    // TODO: Implémenter un vrai système de matchmaking
-    
     const opponents = [
       { id: "dummy1", username: "TestBot1", level: 10, power: 1500 },
       { id: "dummy2", username: "TestBot2", level: 15, power: 2000 },
@@ -304,7 +344,6 @@ router.get("/arena/opponents", authMiddleware, async (req: Request, res: Respons
   }
 });
 
-// === TEST BATTLE SIMULATION (développement uniquement) ===
 router.post("/test", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     if (process.env.NODE_ENV === "production") {
@@ -314,13 +353,25 @@ router.post("/test", authMiddleware, async (req: Request, res: Response): Promis
 
     console.log(`🧪 Test de combat pour ${req.userId}`);
 
-    const battleResult = await BattleService.startCampaignBattle(req.userId!, req.serverId!, 1, 1, "Normal");
+    const testOptions: IBattleOptions = {
+      mode: req.body.mode || "auto",
+      speed: req.body.speed || 1
+    };
 
-    // Réponse détaillée pour les tests
+    const battleResult = await BattleService.startCampaignBattle(
+      req.userId!, 
+      req.serverId!, 
+      1, 
+      1, 
+      "Normal",
+      testOptions
+    );
+
     res.json({
       message: "Test battle completed",
       battleId: battleResult.battleId,
       result: battleResult.result,
+      battleOptions: testOptions,
       actionsCount: battleResult.replay.actions.length,
       playerTeam: battleResult.replay.playerTeam.map((hero: any) => ({
         name: hero.name,
