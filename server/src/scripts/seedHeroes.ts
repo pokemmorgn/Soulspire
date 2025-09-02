@@ -164,7 +164,6 @@ function generateSpells(heroName: string, role: string, element: string, rarity:
   }
 
   // Sinon, générer selon le système générique
-  // Sorts par rôle
   const spellsByRole: Record<string, string[]> = {
     "Tank": ["taunt", "shield_wall", "armor_up"],
     "DPS Melee": ["slash", "combo_strike", "berserker_rage"],
@@ -172,7 +171,6 @@ function generateSpells(heroName: string, role: string, element: string, rarity:
     "Support": ["heal", "group_heal", "divine_blessing"]
   };
 
-  // Ultimates par élément
   const ultimatesByElement: Record<string, string> = {
     "Fire": "fire_storm",
     "Water": "tidal_wave", 
@@ -182,7 +180,6 @@ function generateSpells(heroName: string, role: string, element: string, rarity:
     "Dark": "shadow_realm"
   };
 
-  // Passifs par rareté
   const passivesByRarity: Record<string, string> = {
     "Common": "basic_passive",
     "Rare": "stat_boost",
@@ -210,7 +207,7 @@ function generateSpells(heroName: string, role: string, element: string, rarity:
   };
 }
 
-// TOUS VOS PERSONNAGES DU CSV - EXACTEMENT LES 32 DU FICHIER
+// VOS 32 PERSONNAGES DU CSV - EXACTEMENT
 const heroesData = [
   // === COMMON (6) ===
   { name: "Tynira", rarity: "Common", role: "Support", element: "Electric" },
@@ -253,30 +250,7 @@ const heroesData = [
   { name: "Shadowmere", rarity: "Legendary", role: "Ranged DPS", element: "Shadow" }
 ];
 
-  // === EPIC (8) ===
-  { name: "Zephyra", rarity: "Epic", role: "Ranged DPS", element: "Wind" },
-  { name: "Thalrik", rarity: "Epic", role: "Tank", element: "Electric" },
-  { name: "Seliora", rarity: "Epic", role: "Ranged DPS", element: "Shadow" },
-  { name: "Glacius", rarity: "Epic", role: "Tank", element: "Water" },
-  { name: "Drogath", rarity: "Epic", role: "Tank", element: "Shadow" },
-  { name: "Solara", rarity: "Epic", role: "Support", element: "Light" },
-  { name: "Emberia", rarity: "Epic", role: "Melee DPS", element: "Fire" },
-  { name: "Nereon", rarity: "Epic", role: "Support", element: "Water" },
-
-  // === LEGENDARY (10) ===
-  { name: "Aureon", rarity: "Legendary", role: "Tank", element: "Light" },
-  { name: "Veyron", rarity: "Legendary", role: "Melee DPS", element: "Wind" },
-  { name: "Pyra", rarity: "Legendary", role: "Support", element: "Fire" },
-  { name: "Voidhar", rarity: "Legendary", role: "Ranged DPS", element: "Shadow" },
-  { name: "Leviathan", rarity: "Legendary", role: "Tank", element: "Water" },
-  { name: "Infernus", rarity: "Legendary", role: "Melee DPS", element: "Fire" },
-  { name: "Celestine", rarity: "Legendary", role: "Support", element: "Light" },
-  { name: "Stormking", rarity: "Legendary", role: "Ranged DPS", element: "Electric" },
-  { name: "Tempest", rarity: "Legendary", role: "Melee DPS", element: "Electric" },
-  { name: "Shadowmere", rarity: "Legendary", role: "Ranged DPS", element: "Shadow" }
-];
-
-// Fonction de seed mise à jour
+// Fonction de seed
 const seedHeroes = async (): Promise<void> => {
   try {
     console.log("🌱 Starting hero seeding with complete roster...");
@@ -294,7 +268,7 @@ const seedHeroes = async (): Promise<void> => {
       const normalizedRole = normalizeRole(heroData.role);
       const normalizedElement = normalizeElement(heroData.element);
       const stats = calculateBaseStats(normalizedRole, heroData.rarity);
-      const spells = generateSpells(normalizedRole, normalizedElement, heroData.rarity);
+      const spells = generateSpells(heroData.name, normalizedRole, normalizedElement, heroData.rarity);
       
       const hero = new Hero({
         name: heroData.name,
@@ -307,7 +281,11 @@ const seedHeroes = async (): Promise<void> => {
       
       await hero.save();
       
-      console.log(`✅ Created: ${heroData.name} (${heroData.rarity} ${normalizedRole} - ${normalizedElement})`);
+      // Indiquer si le héros a des sorts personnalisés ou génériques
+      const isCustom = getCustomSpells(heroData.name) !== null;
+      const spellType = isCustom ? "CUSTOM" : "GENERIC";
+      
+      console.log(`✅ Created: ${heroData.name} (${heroData.rarity} ${normalizedRole} - ${normalizedElement}) [${spellType}]`);
       console.log(`   🔮 Spells: ${Object.entries(spells).map(([slot, spell]) => 
         spell?.id ? `${slot}:${spell.id}(${spell.level})` : `${slot}:none`
       ).join(', ')}`);
@@ -333,28 +311,28 @@ const seedHeroes = async (): Promise<void> => {
     console.log("By Role:", stats.byRole);
     console.log("By Element:", stats.byElement);
 
-    // Vérification des contraintes de votre game design
-    console.log("\n🎯 Game Design Verification:");
-    console.log(`Total heroes: ${stats.total}/40 planned`);
-    console.log(`Commons: ${stats.byRarity.Common || 0}/10 planned`);
-    console.log(`Rares: ${stats.byRarity.Rare || 0}/10 planned`);
-    console.log(`Epics: ${stats.byRarity.Epic || 0}/12 planned`);
-    console.log(`Legendaries: ${stats.byRarity.Legendary || 0}/8 planned`);
+    // Compter les sorts personnalisés vs génériques
+    const customCount = heroesData.filter(hero => getCustomSpells(hero.name) !== null).length;
+    console.log(`\n🔮 Spell Distribution:`);
+    console.log(`Custom spells: ${customCount}/${heroesData.length}`);
+    console.log(`Generic spells: ${heroesData.length - customCount}/${heroesData.length}`);
 
     // Exemple de sorts pour vérification
-    console.log("\n🔮 Spell System Examples:");
+    console.log("\n🎯 Spell System Examples:");
     const sampleHeroes = await Hero.find().limit(3);
     sampleHeroes.forEach(hero => {
-      console.log(`${hero.name} (${hero.rarity} ${hero.role}):`);
+      const isCustom = getCustomSpells(hero.name) !== null;
+      console.log(`${hero.name} (${hero.rarity} ${hero.role}) [${isCustom ? 'CUSTOM' : 'GENERIC'}]:`);
       console.log(`  Ultimate: ${hero.spells.ultimate?.id} (level ${hero.spells.ultimate?.level})`);
-      console.log(`  Passive: ${hero.spells.passive?.id} (level ${hero.spells.passive?.level})`);
+      if (hero.spells.passive?.id) {
+        console.log(`  Passive: ${hero.spells.passive.id} (level ${hero.spells.passive.level})`);
+      }
     });
 
     console.log("\n🎉 Hero seeding completed successfully!");
     
   } catch (error) {
     console.error("❌ Hero seeding failed:", error);
-    console.error("Stack trace:", error);
   } finally {
     await mongoose.disconnect();
     console.log("🔌 Disconnected from MongoDB");
