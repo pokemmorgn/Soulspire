@@ -5,7 +5,7 @@ import authMiddleware, { optionalAuthMiddleware } from "../middleware/authMiddle
 
 const router = express.Router();
 
-// Schémas de validation
+// === Schémas de validation ===
 const itemFilterSchema = Joi.object({
   category: Joi.string().valid("Equipment", "Consumable", "Material", "Currency", "Fragment", "Scroll", "Artifact", "Chest").optional(),
   subCategory: Joi.string().optional(),
@@ -17,10 +17,14 @@ const itemFilterSchema = Joi.object({
   search: Joi.string().optional()
 });
 
+const iconUrlPattern = /^(https?:\/\/.+|icons\/.+)$/;
+
 const createItemSchema = Joi.object({
   itemId: Joi.string().required(),
   name: Joi.string().min(1).max(100).required(),
   description: Joi.string().max(500).default(""),
+  // ⬇️ iconUrl accepté ; sinon le modèle posera la valeur par défaut.
+  iconUrl: Joi.string().pattern(iconUrlPattern).optional(),
   category: Joi.string().valid("Equipment", "Consumable", "Material", "Currency", "Fragment", "Scroll", "Artifact", "Chest").required(),
   subCategory: Joi.string().required(),
   rarity: Joi.string().valid("Common", "Rare", "Epic", "Legendary", "Mythic", "Ascended").required(),
@@ -38,6 +42,11 @@ const createItemSchema = Joi.object({
   chestContents: Joi.array().optional()
 });
 
+// (Optionnel) mini schéma pour PUT quand on passe seulement iconUrl
+const updateIconUrlSchema = Joi.object({
+  iconUrl: Joi.string().pattern(iconUrlPattern).required()
+}).unknown(true);
+
 const chestPreviewSchema = Joi.object({
   itemId: Joi.string().required()
 });
@@ -47,22 +56,22 @@ router.get("/catalog", optionalAuthMiddleware, async (req: Request, res: Respons
   try {
     const { error } = itemFilterSchema.validate(req.query);
     if (error) {
-      res.status(400).json({ 
+      res.status(400).json({
         error: error.details[0].message,
         code: "VALIDATION_ERROR"
       });
       return;
     }
 
-    const { 
-      category, 
-      subCategory, 
-      rarity, 
-      equipmentSlot, 
-      chestType, 
-      page, 
-      limit, 
-      search 
+    const {
+      category,
+      subCategory,
+      rarity,
+      equipmentSlot,
+      chestType,
+      page,
+      limit,
+      search
     } = req.query;
 
     const pageNum = parseInt(page as string) || 1;
@@ -76,18 +85,19 @@ router.get("/catalog", optionalAuthMiddleware, async (req: Request, res: Respons
     if (rarity) filter.rarity = rarity;
     if (equipmentSlot) filter.equipmentSlot = equipmentSlot;
     if (chestType) filter.chestType = chestType;
-    
+
     // Recherche textuelle
     if (search) {
       filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
+        { name: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } }
       ];
     }
 
     const [items, total] = await Promise.all([
       Item.find(filter)
-        .select("itemId name description category subCategory rarity tier baseStats equipmentSlot chestType sellPrice")
+        .select("itemId name description iconUrl category subCategory rarity tier baseStats equipmentSlot chestType sellPrice")
+        //                                   ^ add iconUrl
         .skip(skip)
         .limit(limitNum)
         .sort({ category: 1, rarity: 1, name: 1 }),
@@ -116,7 +126,7 @@ router.get("/catalog", optionalAuthMiddleware, async (req: Request, res: Respons
     });
   } catch (err) {
     console.error("Get items catalog error:", err);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Internal server error",
       code: "GET_CATALOG_FAILED"
     });
@@ -140,67 +150,22 @@ router.get("/category/:category", optionalAuthMiddleware, async (req: Request, r
     });
   } catch (err) {
     console.error("Get items by category error:", err);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Internal server error",
       code: "GET_CATEGORY_FAILED"
     });
   }
 });
 
-// === GET SPECIFIC ITEM DETAILS ===
-router.get("/:itemId", async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { itemId } = req.params;
-
-    const item = await Item.findOne({ itemId });
-    if (!item) {
-      res.status(404).json({ 
-        error: "Item not found",
-        code: "ITEM_NOT_FOUND"
-      });
-      return;
-    }
-
-    // Calculer les stats à différents niveaux pour l'équipement
-    let statsByLevel: Array<{ level: number; stats: any }> = [];
-    if (item.category === "Equipment" && item.maxLevel > 1) {
-      const levels = [1, Math.floor(item.maxLevel / 4), Math.floor(item.maxLevel / 2), Math.floor(item.maxLevel * 3/4), item.maxLevel];
-      statsByLevel = levels.map(level => ({
-        level,
-        stats: item.getStatsAtLevel(level)
-      }));
-    }
-
-    res.json({
-      message: "Item details retrieved successfully",
-      item: {
-        ...item.toObject(),
-        statsByLevel,
-        canBeEquippedBy: item.category === "Equipment" ? {
-          Tank: item.canBeEquippedBy("Tank", 1),
-          "DPS Melee": item.canBeEquippedBy("DPS Melee", 1),
-          "DPS Ranged": item.canBeEquippedBy("DPS Ranged", 1),
-          Support: item.canBeEquippedBy("Support", 1)
-        } : null
-      }
-    });
-  } catch (err) {
-    console.error("Get item details error:", err);
-    res.status(500).json({ 
-      error: "Internal server error",
-      code: "GET_ITEM_DETAILS_FAILED"
-    });
-  }
-});
-
 // === GET CHEST CONTENTS PREVIEW ===
+// ⚠️ Important: placé AVANT "/:itemId" pour ne pas être intercepté par la route paramétrique.
 router.get("/chest/:itemId/preview", async (req: Request, res: Response): Promise<void> => {
   try {
     const { itemId } = req.params;
 
     const chest = await Item.findOne({ itemId, category: "Chest" });
     if (!chest) {
-      res.status(404).json({ 
+      res.status(404).json({
         error: "Chest not found",
         code: "CHEST_NOT_FOUND"
       });
@@ -224,7 +189,7 @@ router.get("/chest/:itemId/preview", async (req: Request, res: Response): Promis
     });
   } catch (err) {
     console.error("Get chest preview error:", err);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Internal server error",
       code: "GET_CHEST_PREVIEW_FAILED"
     });
@@ -234,14 +199,15 @@ router.get("/chest/:itemId/preview", async (req: Request, res: Response): Promis
 // === GET EQUIPMENT SETS ===
 router.get("/sets/list", async (req: Request, res: Response): Promise<void> => {
   try {
-    const equipmentWithSets = await Item.find({ 
+    const equipmentWithSets = await Item.find({
       category: "Equipment",
       "equipmentSet.setId": { $exists: true, $ne: null }
-    }).select("itemId name equipmentSlot equipmentSet rarity");
+    }).select("itemId name iconUrl equipmentSlot equipmentSet rarity");
+      //                         ^ add iconUrl
 
     // Grouper par setId
     const sets: { [setId: string]: any } = {};
-    
+
     equipmentWithSets.forEach(item => {
       const setId = item.equipmentSet?.setId;
       if (setId) {
@@ -254,10 +220,11 @@ router.get("/sets/list", async (req: Request, res: Response): Promise<void> => {
           };
         }
         sets[setId].pieces.push({
-          itemId: item.itemId,
-          name: item.name,
-          slot: item.equipmentSlot,
-          rarity: item.rarity
+          itemId: (item as any).itemId,
+          name: (item as any).name,
+          slot: (item as any).equipmentSlot,
+          rarity: (item as any).rarity,
+          iconUrl: (item as any).iconUrl
         });
         sets[setId].totalPieces++;
       }
@@ -270,9 +237,55 @@ router.get("/sets/list", async (req: Request, res: Response): Promise<void> => {
     });
   } catch (err) {
     console.error("Get equipment sets error:", err);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Internal server error",
       code: "GET_SETS_FAILED"
+    });
+  }
+});
+
+// === GET SPECIFIC ITEM DETAILS ===
+router.get("/:itemId", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { itemId } = req.params;
+
+    const item = await Item.findOne({ itemId });
+    if (!item) {
+      res.status(404).json({
+        error: "Item not found",
+        code: "ITEM_NOT_FOUND"
+      });
+      return;
+    }
+
+    // Calculer les stats à différents niveaux pour l'équipement
+    let statsByLevel: Array<{ level: number; stats: any }> = [];
+    if (item.category === "Equipment" && item.maxLevel > 1) {
+      const levels = [1, Math.floor(item.maxLevel / 4), Math.floor(item.maxLevel / 2), Math.floor(item.maxLevel * 3 / 4), item.maxLevel];
+      statsByLevel = levels.map(level => ({
+        level,
+        stats: (item as any).getStatsAtLevel(level)
+      }));
+    }
+
+    res.json({
+      message: "Item details retrieved successfully",
+      item: {
+        ...item.toObject(),
+        statsByLevel,
+        canBeEquippedBy: item.category === "Equipment" ? {
+          Tank: (item as any).canBeEquippedBy("Tank", 1),
+          "DPS Melee": (item as any).canBeEquippedBy("DPS Melee", 1),
+          "DPS Ranged": (item as any).canBeEquippedBy("DPS Ranged", 1),
+          Support: (item as any).canBeEquippedBy("Support", 1)
+        } : null
+      }
+    });
+  } catch (err) {
+    console.error("Get item details error:", err);
+    res.status(500).json({
+      error: "Internal server error",
+      code: "GET_ITEM_DETAILS_FAILED"
     });
   }
 });
@@ -281,11 +294,9 @@ router.get("/sets/list", async (req: Request, res: Response): Promise<void> => {
 router.post("/create", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     // TODO: Ajouter vérification admin
-    // if (!req.user.isAdmin) { return res.status(403).json({...}); }
-
     const { error } = createItemSchema.validate(req.body);
     if (error) {
-      res.status(400).json({ 
+      res.status(400).json({
         error: error.details[0].message,
         code: "VALIDATION_ERROR"
       });
@@ -295,7 +306,7 @@ router.post("/create", authMiddleware, async (req: Request, res: Response): Prom
     // Vérifier que l'itemId n'existe pas déjà
     const existingItem = await Item.findOne({ itemId: req.body.itemId });
     if (existingItem) {
-      res.status(409).json({ 
+      res.status(409).json({
         error: "Item with this ID already exists",
         code: "ITEM_ID_EXISTS"
       });
@@ -311,7 +322,7 @@ router.post("/create", authMiddleware, async (req: Request, res: Response): Prom
     });
   } catch (err) {
     console.error("Create item error:", err);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Internal server error",
       code: "CREATE_ITEM_FAILED"
     });
@@ -324,9 +335,21 @@ router.put("/:itemId", authMiddleware, async (req: Request, res: Response): Prom
     // TODO: Ajouter vérification admin
     const { itemId } = req.params;
 
+    // Si iconUrl présent, on le valide rapidement
+    if (typeof req.body.iconUrl === "string") {
+      const { error } = updateIconUrlSchema.validate({ iconUrl: req.body.iconUrl });
+      if (error) {
+        res.status(400).json({
+          error: error.details[0].message,
+          code: "VALIDATION_ERROR"
+        });
+        return;
+      }
+    }
+
     const item = await Item.findOne({ itemId });
     if (!item) {
-      res.status(404).json({ 
+      res.status(404).json({
         error: "Item not found",
         code: "ITEM_NOT_FOUND"
       });
@@ -343,7 +366,7 @@ router.put("/:itemId", authMiddleware, async (req: Request, res: Response): Prom
     });
   } catch (err) {
     console.error("Update item error:", err);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Internal server error",
       code: "UPDATE_ITEM_FAILED"
     });
@@ -358,7 +381,7 @@ router.delete("/:itemId", authMiddleware, async (req: Request, res: Response): P
 
     const deletedItem = await Item.findOneAndDelete({ itemId });
     if (!deletedItem) {
-      res.status(404).json({ 
+      res.status(404).json({
         error: "Item not found",
         code: "ITEM_NOT_FOUND"
       });
@@ -371,7 +394,7 @@ router.delete("/:itemId", authMiddleware, async (req: Request, res: Response): P
     });
   } catch (err) {
     console.error("Delete item error:", err);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Internal server error",
       code: "DELETE_ITEM_FAILED"
     });
@@ -382,12 +405,13 @@ router.delete("/:itemId", authMiddleware, async (req: Request, res: Response): P
 router.post("/dev/generate-samples", async (req: Request, res: Response): Promise<void> => {
   try {
     // TODO: Ajouter protection dev/admin
-    
+
     const sampleItems = [
       {
         itemId: "iron_sword_t1",
         name: "Iron Sword",
         description: "A sturdy iron sword for warriors",
+        iconUrl: "icons/weapons/iron_sword_t1.png", // optionnel (le modèle peut générer)
         category: "Equipment",
         subCategory: "One_Hand_Sword",
         rarity: "Common",
@@ -403,6 +427,7 @@ router.post("/dev/generate-samples", async (req: Request, res: Response): Promis
         itemId: "health_potion_small",
         name: "Small Health Potion",
         description: "Restores 100 HP instantly",
+        iconUrl: "icons/consumables/health_potion_small.png",
         category: "Consumable",
         subCategory: "Health_Potion",
         rarity: "Common",
@@ -416,6 +441,7 @@ router.post("/dev/generate-samples", async (req: Request, res: Response): Promis
         itemId: "common_chest",
         name: "Common Treasure Chest",
         description: "Contains various common rewards",
+        iconUrl: "icons/chests/common_chest.png",
         category: "Chest",
         subCategory: "Common_Chest",
         rarity: "Common",
@@ -439,7 +465,7 @@ router.post("/dev/generate-samples", async (req: Request, res: Response): Promis
       }
     ];
 
-    const createdItems = [];
+    const createdItems: any[] = [];
     for (const itemData of sampleItems) {
       const existingItem = await Item.findOne({ itemId: itemData.itemId });
       if (!existingItem) {
@@ -452,11 +478,11 @@ router.post("/dev/generate-samples", async (req: Request, res: Response): Promis
     res.json({
       message: "Sample items generated successfully",
       createdItems: createdItems.length,
-      items: createdItems.map(item => ({ itemId: item.itemId, name: item.name }))
+      items: createdItems.map(item => ({ itemId: (item as any).itemId, name: (item as any).name }))
     });
   } catch (err) {
     console.error("Generate sample items error:", err);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Internal server error",
       code: "GENERATE_SAMPLES_FAILED"
     });
