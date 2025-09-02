@@ -226,17 +226,34 @@ class ShopTester {
       // Sauvegarder l'état avant achat
       const goldBefore = this.testPlayer.gold;
       const gemsBefore = this.testPlayer.gems;
+      
+      // Récupérer l'inventaire à jour
+      await this.inventory.populate('storage');
       const inventoryBefore = this.inventory.getInventoryStats();
       
-      // Simuler l'achat (logique simplifiée)
+      log(`    📊 Before purchase - Inventory: ${inventoryBefore.totalItems} items`, colors.blue);
+      
+      // Simuler l'achat avec la vraie logique
       const goldCost = affordableItem.cost.gold || 0;
       const gemsCost = affordableItem.cost.gems || 0;
       
       this.testPlayer.gold -= goldCost;
       this.testPlayer.gems -= gemsCost;
       
+      // Ajouter l'objet à l'inventaire (avec debug)
       if (affordableItem.content.itemId) {
-        await this.inventory.addItem(affordableItem.content.itemId, affordableItem.content.quantity);
+        log(`    🔍 Adding item to inventory: ${affordableItem.content.itemId} x${affordableItem.content.quantity}`, colors.blue);
+        
+        try {
+          const addedItem = await this.inventory.addItem(
+            affordableItem.content.itemId, 
+            affordableItem.content.quantity,
+            affordableItem.content.level || 1
+          );
+          log(`    ✅ Item added with instanceId: ${addedItem.instanceId}`, colors.green);
+        } catch (addError: any) {
+          log(`    ❌ Error adding item to inventory: ${addError.message}`, colors.red);
+        }
       }
       
       // Mettre à jour le stock
@@ -251,12 +268,20 @@ class ShopTester {
         purchaseDate: new Date()
       });
       
-      await Promise.all([
-        this.testPlayer.save(),
-        this.inventory.save(),
-        generalShop.save()
-      ]);
+      // Sauvegarder tout
+      try {
+        await Promise.all([
+          this.testPlayer.save(),
+          this.inventory.save(),
+          generalShop.save()
+        ]);
+        log(`    💾 All data saved successfully`, colors.green);
+      } catch (saveError: any) {
+        log(`    ❌ Error saving data: ${saveError.message}`, colors.red);
+      }
       
+      // Vérifier le résultat final
+      await this.inventory.populate('storage');
       const inventoryAfter = this.inventory.getInventoryStats();
       
       log(`\n  ✅ Purchase completed!`, colors.green);
@@ -265,8 +290,23 @@ class ShopTester {
       log(`    📦 Inventory: ${inventoryBefore.totalItems} → ${inventoryAfter.totalItems} items`, colors.blue);
       log(`    🏪 Item stock: ${affordableItem.currentStock + 1} → ${affordableItem.currentStock}`, colors.blue);
       
+      // Debug des catégories d'inventaire
+      const categories = ['weapons', 'helmets', 'armors', 'boots', 'gloves', 'accessories', 'potions', 'scrolls', 'enhancementItems'];
+      log(`    🔍 Inventory breakdown:`, colors.blue);
+      for (const category of categories) {
+        const items = this.inventory.storage[category as keyof typeof this.inventory.storage];
+        if (Array.isArray(items) && items.length > 0) {
+          log(`      - ${category}: ${items.length} items`, colors.reset);
+        }
+      }
+      
+      if (inventoryBefore.totalItems === inventoryAfter.totalItems) {
+        log(`    ⚠️ WARNING: Inventory count didn't change - possible bug in addItem or getInventoryStats`, colors.yellow);
+      }
+      
     } catch (error: any) {
       log(`❌ Error testing purchase flow: ${error.message}`, colors.red);
+      console.error("Full error:", error);
     }
   }
 
