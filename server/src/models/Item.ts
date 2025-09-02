@@ -8,7 +8,6 @@ interface IItemStats {
   hp: number;
   atk: number;
   def: number;
-  defMagique: number;
   
   // Stats avancées
   crit: number;        // Chance de critique (%)
@@ -18,18 +17,8 @@ interface IItemStats {
   
   // Stats spécialisées
   vitesse: number;
-  intelligence: number;
-  force: number;
   moral: number;
   reductionCooldown: number;
-  
-  // Stats élémentaires
-  fireResist: number;
-  waterResist: number;
-  windResist: number;
-  electricResist: number;
-  lightResist: number;
-  darkResist: number;
   
   // Bonus spéciaux
   healingBonus: number;    // Bonus aux soins (%)
