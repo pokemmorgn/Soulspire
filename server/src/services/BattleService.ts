@@ -1,6 +1,7 @@
 import Battle, { IBattleParticipant, IBattleResult } from "../models/Battle";
 import Player from "../models/Player";
 import Hero from "../models/Hero";
+import LevelProgress from "../models/LevelProgress";
 import { BattleEngine, IBattleOptions } from "./BattleEngine";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
@@ -87,6 +88,16 @@ export class BattleService {
         await this.applyBattleRewards(player, result);
         await this.updatePlayerProgress(player, worldId, levelId, difficulty);
       }
+
+      await LevelProgress.recordAttempt(
+        playerId, 
+        serverId, 
+        worldId, 
+        levelId, 
+        difficulty, 
+        result.victory, 
+        result.battleDuration
+      );
 
       await Promise.all([
         MissionService.updateProgress(
@@ -208,6 +219,16 @@ export class BattleService {
         const pvpRewards = this.calculatePvPRewards();
         await this.applyBattleRewards(player, { ...result, rewards: pvpRewards });
       }
+
+      await LevelProgress.recordAttempt(
+        playerId, 
+        serverId, 
+        0, 
+        0, 
+        "Normal", 
+        result.victory, 
+        result.battleDuration
+      );
 
       await Promise.all([
         MissionService.updateProgress(
