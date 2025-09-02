@@ -2,6 +2,7 @@ import express, { Request, Response } from "express";
 import Joi from "joi";
 import Player from "../models/Player";
 import Inventory from "../models/Inventory";
+import Item from "../models/Item";
 import authMiddleware from "../middleware/authMiddleware";
 
 const router = express.Router();
@@ -9,36 +10,30 @@ const router = express.Router();
 // Schémas de validation
 const addItemSchema = Joi.object({
   itemId: Joi.string().required(),
-  name: Joi.string().required(),
-  type: Joi.string().valid("Weapon", "Armor", "Accessory").required(),
-  rarity: Joi.string().valid("Common", "Rare", "Epic", "Legendary").required(),
+  quantity: Joi.number().min(1).default(1),
   level: Joi.number().min(1).max(100).default(1),
-  stats: Joi.object({
-    atk: Joi.number().min(0).default(0),
-    def: Joi.number().min(0).default(0),
-    hp: Joi.number().min(0).default(0)
-  }).default({ atk: 0, def: 0, hp: 0 })
-});
-
-const addMaterialSchema = Joi.object({
-  materialId: Joi.string().required(),
-  quantity: Joi.number().min(1).required()
-});
-
-const addFragmentSchema = Joi.object({
-  heroId: Joi.string().required(),
-  quantity: Joi.number().min(1).required()
+  enhancement: Joi.number().min(0).max(15).default(0)
 });
 
 const equipItemSchema = Joi.object({
-  itemId: Joi.string().required(),
+  instanceId: Joi.string().required(),
   heroId: Joi.string().required()
+});
+
+const openChestSchema = Joi.object({
+  instanceId: Joi.string().required()
+});
+
+const upgradeItemSchema = Joi.object({
+  instanceId: Joi.string().required(),
+  targetLevel: Joi.number().min(1).max(100).optional(),
+  targetEnhancement: Joi.number().min(0).max(15).optional()
 });
 
 // === GET PLAYER INVENTORY ===
 router.get("/", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // Récupération depuis le modèle Player (inventaire intégré)
+    // Récupération depuis le modèle Player (monnaies)
     const player = await Player.findById(req.userId)
       .select("gold gems paidGems tickets fragments materials");
 
@@ -50,38 +45,21 @@ router.get("/", authMiddleware, async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    // Récupération de l'équipement depuis le modèle Inventory séparé
+    // Récupération de l'inventaire complet
     let inventory = await Inventory.findOne({ playerId: req.userId });
     if (!inventory) {
       inventory = new Inventory({ playerId: req.userId });
       await inventory.save();
     }
 
-    // ✅ Sécurisation : fallback sur {} si undefined ou null
+    // Sécurisation des Maps
     const fragmentsMap = player.fragments || new Map();
     const materialsMap = player.materials || new Map();
-
     const fragmentsObj = Object.fromEntries(fragmentsMap.entries());
     const materialsObj = Object.fromEntries(materialsMap.entries());
 
-    // Statistiques de l'inventaire
-    const stats = {
-      totalEquipment: inventory.equipment.length,
-      equipmentByType: {
-        Weapon: inventory.equipment.filter(item => item.type === "Weapon").length,
-        Armor: inventory.equipment.filter(item => item.type === "Armor").length,
-        Accessory: inventory.equipment.filter(item => item.type === "Accessory").length
-      },
-      equipmentByRarity: {
-        Common: inventory.equipment.filter(item => item.rarity === "Common").length,
-        Rare: inventory.equipment.filter(item => item.rarity === "Rare").length,
-        Epic: inventory.equipment.filter(item => item.rarity === "Epic").length,
-        Legendary: inventory.equipment.filter(item => item.rarity === "Legendary").length
-      },
-      totalFragments: Object.values(fragmentsObj).reduce((sum: number, count: number) => sum + count, 0),
-      totalMaterials: Object.values(materialsObj).reduce((sum: number, count: number) => sum + count, 0),
-      equippedItems: inventory.equipment.filter(item => item.equippedTo).length
-    };
+    // Calcul des statistiques avec le nouveau système
+    const stats = inventory.getInventoryStats();
 
     res.json({
       message: "Inventory retrieved successfully",
@@ -94,9 +72,14 @@ router.get("/", authMiddleware, async (req: Request, res: Response): Promise<voi
         },
         fragments: fragmentsObj,
         materials: materialsObj,
-        equipment: inventory.equipment
+        storage: inventory.storage
       },
-      stats
+      stats,
+      config: {
+        maxCapacity: inventory.maxCapacity,
+        autoSell: inventory.autoSell,
+        autoSellRarity: inventory.autoSellRarity
+      }
     });
   } catch (err) {
     console.error("Get inventory error:", err);
@@ -107,52 +90,11 @@ router.get("/", authMiddleware, async (req: Request, res: Response): Promise<voi
   }
 });
 
-// === ADD EQUIPMENT ===
-router.post("/equipment/add", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+// === GET ITEMS BY CATEGORY ===
+router.get("/category/:category", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { error } = addItemSchema.validate(req.body);
-    if (error) {
-      res.status(400).json({ 
-        error: error.details[0].message,
-        code: "VALIDATION_ERROR"
-      });
-      return;
-    }
-
-    let inventory = await Inventory.findOne({ playerId: req.userId });
-    if (!inventory) {
-      inventory = new Inventory({ playerId: req.userId });
-    }
-
-    const newEquipment = {
-      itemId: req.body.itemId,
-      name: req.body.name,
-      type: req.body.type,
-      rarity: req.body.rarity,
-      level: req.body.level || 1,
-      stats: req.body.stats || { atk: 0, def: 0, hp: 0 }
-    };
-
-    inventory.equipment.push(newEquipment);
-    await inventory.save();
-
-    res.json({
-      message: "Equipment added successfully",
-      equipment: newEquipment
-    });
-  } catch (err) {
-    console.error("Add equipment error:", err);
-    res.status(500).json({ 
-      error: "Internal server error",
-      code: "ADD_EQUIPMENT_FAILED"
-    });
-  }
-});
-
-// === REMOVE EQUIPMENT ===
-router.delete("/equipment/:itemId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { itemId } = req.params;
+    const { category } = req.params;
+    const { subCategory } = req.query;
 
     const inventory = await Inventory.findOne({ playerId: req.userId });
     if (!inventory) {
@@ -163,42 +105,113 @@ router.delete("/equipment/:itemId", authMiddleware, async (req: Request, res: Re
       return;
     }
 
-    const itemIndex = inventory.equipment.findIndex(item => item.itemId === itemId);
-    if (itemIndex === -1) {
-      res.status(404).json({ 
-        error: "Equipment not found",
-        code: "EQUIPMENT_NOT_FOUND"
-      });
-      return;
-    }
-
-    // Vérifier si l'équipement est équipé
-    if (inventory.equipment[itemIndex].equippedTo) {
-      res.status(400).json({ 
-        error: "Cannot remove equipped item. Unequip it first.",
-        code: "ITEM_EQUIPPED"
-      });
-      return;
-    }
-
-    inventory.equipment.splice(itemIndex, 1);
-    await inventory.save();
+    const items = inventory.getItemsByCategory(category, subCategory as string);
 
     res.json({
-      message: "Equipment removed successfully",
-      itemId
+      message: `${category} items retrieved successfully`,
+      category,
+      subCategory,
+      items,
+      count: items.length
     });
   } catch (err) {
-    console.error("Remove equipment error:", err);
+    console.error("Get items by category error:", err);
     res.status(500).json({ 
       error: "Internal server error",
-      code: "REMOVE_EQUIPMENT_FAILED"
+      code: "GET_ITEMS_FAILED"
+    });
+  }
+});
+
+// === ADD ITEM TO INVENTORY ===
+router.post("/add", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { error } = addItemSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ 
+        error: error.details[0].message,
+        code: "VALIDATION_ERROR"
+      });
+      return;
+    }
+
+    const { itemId, quantity, level, enhancement } = req.body;
+
+    // Vérifier que l'objet existe
+    const item = await Item.findOne({ itemId });
+    if (!item) {
+      res.status(404).json({ 
+        error: "Item not found",
+        code: "ITEM_NOT_FOUND"
+      });
+      return;
+    }
+
+    let inventory = await Inventory.findOne({ playerId: req.userId });
+    if (!inventory) {
+      inventory = new Inventory({ playerId: req.userId });
+    }
+
+    const ownedItem = await inventory.addItem(itemId, quantity, level);
+    if (enhancement && enhancement > 0) {
+      ownedItem.enhancement = enhancement;
+      await inventory.save();
+    }
+
+    res.json({
+      message: "Item added successfully",
+      item: ownedItem,
+      itemData: item
+    });
+  } catch (err) {
+    console.error("Add item error:", err);
+    res.status(500).json({ 
+      error: "Internal server error",
+      code: "ADD_ITEM_FAILED"
+    });
+  }
+});
+
+// === REMOVE ITEM ===
+router.delete("/item/:instanceId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { instanceId } = req.params;
+    const { quantity } = req.query;
+
+    const inventory = await Inventory.findOne({ playerId: req.userId });
+    if (!inventory) {
+      res.status(404).json({ 
+        error: "Inventory not found",
+        code: "INVENTORY_NOT_FOUND"
+      });
+      return;
+    }
+
+    const removed = await inventory.removeItem(instanceId, quantity ? parseInt(quantity as string) : undefined);
+    
+    if (!removed) {
+      res.status(404).json({ 
+        error: "Item not found",
+        code: "ITEM_NOT_FOUND"
+      });
+      return;
+    }
+
+    res.json({
+      message: "Item removed successfully",
+      instanceId
+    });
+  } catch (err) {
+    console.error("Remove item error:", err);
+    res.status(500).json({ 
+      error: "Internal server error",
+      code: "REMOVE_ITEM_FAILED"
     });
   }
 });
 
 // === EQUIP ITEM TO HERO ===
-router.post("/equipment/equip", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/equip", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = equipItemSchema.validate(req.body);
     if (error) {
@@ -209,7 +222,7 @@ router.post("/equipment/equip", authMiddleware, async (req: Request, res: Respon
       return;
     }
 
-    const { itemId, heroId } = req.body;
+    const { instanceId, heroId } = req.body;
 
     const [player, inventory] = await Promise.all([
       Player.findById(req.userId),
@@ -242,40 +255,20 @@ router.post("/equipment/equip", authMiddleware, async (req: Request, res: Respon
       return;
     }
 
-    // Trouver l'équipement
-    const equipment = inventory.equipment.find(item => item.itemId === itemId);
-    if (!equipment) {
+    const success = await inventory.equipItem(instanceId, heroId);
+    
+    if (!success) {
       res.status(404).json({ 
-        error: "Equipment not found",
-        code: "EQUIPMENT_NOT_FOUND"
+        error: "Equipment not found or cannot be equipped",
+        code: "EQUIP_FAILED"
       });
       return;
     }
 
-    // Déséquiper l'ancien équipement du même type sur ce héros
-    const existingEquipment = inventory.equipment.find(
-      item => item.equippedTo?.toString() === heroId && item.type === equipment.type
-    );
-    if (existingEquipment) {
-      existingEquipment.equippedTo = undefined;
-    }
-
-    // Équiper le nouvel équipement
-    equipment.equippedTo = playerHero._id;
-    await inventory.save();
-
     res.json({
       message: "Equipment equipped successfully",
-      equipment: {
-        itemId: equipment.itemId,
-        name: equipment.name,
-        type: equipment.type,
-        equippedTo: heroId
-      },
-      unequipped: existingEquipment ? {
-        itemId: existingEquipment.itemId,
-        name: existingEquipment.name
-      } : null
+      instanceId,
+      heroId
     });
   } catch (err) {
     console.error("Equip item error:", err);
@@ -287,9 +280,9 @@ router.post("/equipment/equip", authMiddleware, async (req: Request, res: Respon
 });
 
 // === UNEQUIP ITEM ===
-router.post("/equipment/unequip", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/unequip/:instanceId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { itemId } = req.body;
+    const { instanceId } = req.params;
 
     const inventory = await Inventory.findOne({ playerId: req.userId });
     if (!inventory) {
@@ -300,33 +293,19 @@ router.post("/equipment/unequip", authMiddleware, async (req: Request, res: Resp
       return;
     }
 
-    const equipment = inventory.equipment.find(item => item.itemId === itemId);
-    if (!equipment) {
+    const success = await inventory.unequipItem(instanceId);
+    
+    if (!success) {
       res.status(404).json({ 
-        error: "Equipment not found",
-        code: "EQUIPMENT_NOT_FOUND"
+        error: "Equipment not found or not equipped",
+        code: "UNEQUIP_FAILED"
       });
       return;
     }
-
-    if (!equipment.equippedTo) {
-      res.status(400).json({ 
-        error: "Equipment is not equipped",
-        code: "EQUIPMENT_NOT_EQUIPPED"
-      });
-      return;
-    }
-
-    equipment.equippedTo = undefined;
-    await inventory.save();
 
     res.json({
       message: "Equipment unequipped successfully",
-      equipment: {
-        itemId: equipment.itemId,
-        name: equipment.name,
-        type: equipment.type
-      }
+      instanceId
     });
   } catch (err) {
     console.error("Unequip item error:", err);
@@ -337,10 +316,10 @@ router.post("/equipment/unequip", authMiddleware, async (req: Request, res: Resp
   }
 });
 
-// === ADD MATERIALS ===
-router.post("/materials/add", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+// === UPGRADE EQUIPMENT ===
+router.post("/upgrade", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { error } = addMaterialSchema.validate(req.body);
+    const { error } = upgradeItemSchema.validate(req.body);
     if (error) {
       res.status(400).json({ 
         error: error.details[0].message,
@@ -349,41 +328,46 @@ router.post("/materials/add", authMiddleware, async (req: Request, res: Response
       return;
     }
 
-    const { materialId, quantity } = req.body;
+    const { instanceId, targetLevel, targetEnhancement } = req.body;
 
-    const player = await Player.findById(req.userId);
-    if (!player) {
+    const inventory = await Inventory.findOne({ playerId: req.userId });
+    if (!inventory) {
       res.status(404).json({ 
-        error: "Player not found",
-        code: "PLAYER_NOT_FOUND"
+        error: "Inventory not found",
+        code: "INVENTORY_NOT_FOUND"
       });
       return;
     }
 
-    const currentQuantity = player.materials.get(materialId) || 0;
-    player.materials.set(materialId, currentQuantity + quantity);
-    await player.save();
+    const success = await inventory.upgradeEquipment(instanceId, targetLevel, targetEnhancement);
+    
+    if (!success) {
+      res.status(400).json({ 
+        error: "Upgrade failed - insufficient resources or invalid target",
+        code: "UPGRADE_FAILED"
+      });
+      return;
+    }
 
     res.json({
-      message: "Materials added successfully",
-      material: {
-        id: materialId,
-        quantity: player.materials.get(materialId)
-      }
+      message: "Equipment upgraded successfully",
+      instanceId,
+      newLevel: targetLevel,
+      newEnhancement: targetEnhancement
     });
   } catch (err) {
-    console.error("Add materials error:", err);
+    console.error("Upgrade equipment error:", err);
     res.status(500).json({ 
       error: "Internal server error",
-      code: "ADD_MATERIALS_FAILED"
+      code: "UPGRADE_EQUIPMENT_FAILED"
     });
   }
 });
 
-// === ADD FRAGMENTS ===
-router.post("/fragments/add", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+// === OPEN CHEST ===
+router.post("/chest/open", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { error } = addFragmentSchema.validate(req.body);
+    const { error } = openChestSchema.validate(req.body);
     if (error) {
       res.status(400).json({ 
         error: error.details[0].message,
@@ -392,36 +376,123 @@ router.post("/fragments/add", authMiddleware, async (req: Request, res: Response
       return;
     }
 
-    const { heroId, quantity } = req.body;
+    const { instanceId } = req.body;
 
-    const player = await Player.findById(req.userId);
-    if (!player) {
+    const inventory = await Inventory.findOne({ playerId: req.userId });
+    if (!inventory) {
       res.status(404).json({ 
-        error: "Player not found",
-        code: "PLAYER_NOT_FOUND"
+        error: "Inventory not found",
+        code: "INVENTORY_NOT_FOUND"
       });
       return;
     }
 
-    const currentQuantity = player.fragments.get(heroId) || 0;
-    player.fragments.set(heroId, currentQuantity + quantity);
-    await player.save();
+    // Trouver le coffre dans l'inventaire (il faudra implémenter cette logique)
+    const chestItem = inventory.getItem(instanceId);
+    if (!chestItem) {
+      res.status(404).json({ 
+        error: "Chest not found",
+        code: "CHEST_NOT_FOUND"
+      });
+      return;
+    }
+
+    // Récupérer les données du coffre
+    const itemData = await Item.findOne({ itemId: chestItem.itemId });
+    if (!itemData || itemData.category !== "Chest") {
+      res.status(400).json({ 
+        error: "Item is not a chest",
+        code: "NOT_A_CHEST"
+      });
+      return;
+    }
+
+    // Ouvrir le coffre
+    const rewards = await itemData.openChest(req.userId);
+    
+    // Supprimer le coffre de l'inventaire
+    await inventory.removeItem(instanceId, 1);
+
+    // Ajouter les récompenses à l'inventaire (logique simplifiée)
+    const addedItems = [];
+    for (const reward of rewards) {
+      if (reward.type === "Item" && reward.itemId) {
+        const ownedItem = await inventory.addItem(reward.itemId, reward.quantity);
+        addedItems.push(ownedItem);
+      }
+      // TODO: Gérer les autres types de récompenses (Currency, Fragment, Hero)
+    }
 
     res.json({
-      message: "Fragments added successfully",
-      fragment: {
-        heroId,
-        quantity: player.fragments.get(heroId)
-      }
+      message: "Chest opened successfully",
+      rewards,
+      addedItems
     });
   } catch (err) {
-    console.error("Add fragments error:", err);
+    console.error("Open chest error:", err);
     res.status(500).json({ 
       error: "Internal server error",
-      code: "ADD_FRAGMENTS_FAILED"
+      code: "OPEN_CHEST_FAILED"
+    });
+  }
+});
+
+// === GET EQUIPPED ITEMS FOR HERO ===
+router.get("/equipped/:heroId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { heroId } = req.params;
+
+    const inventory = await Inventory.findOne({ playerId: req.userId });
+    if (!inventory) {
+      res.status(404).json({ 
+        error: "Inventory not found",
+        code: "INVENTORY_NOT_FOUND"
+      });
+      return;
+    }
+
+    const equippedItems = inventory.getEquippedItems(heroId);
+
+    res.json({
+      message: "Equipped items retrieved successfully",
+      heroId,
+      items: equippedItems,
+      count: equippedItems.length
+    });
+  } catch (err) {
+    console.error("Get equipped items error:", err);
+    res.status(500).json({ 
+      error: "Internal server error",
+      code: "GET_EQUIPPED_ITEMS_FAILED"
+    });
+  }
+});
+
+// === CLEANUP EXPIRED ITEMS ===
+router.post("/cleanup", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const inventory = await Inventory.findOne({ playerId: req.userId });
+    if (!inventory) {
+      res.status(404).json({ 
+        error: "Inventory not found",
+        code: "INVENTORY_NOT_FOUND"
+      });
+      return;
+    }
+
+    const removedCount = await inventory.cleanupExpiredItems();
+
+    res.json({
+      message: "Inventory cleanup completed",
+      removedItems: removedCount
+    });
+  } catch (err) {
+    console.error("Cleanup inventory error:", err);
+    res.status(500).json({ 
+      error: "Internal server error",
+      code: "CLEANUP_FAILED"
     });
   }
 });
 
 export default router;
-
