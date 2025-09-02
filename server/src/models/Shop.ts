@@ -128,6 +128,11 @@ interface IShopDocument extends Document {
   generateDailyItems(): Promise<void>;
   generateWeeklyItems(): Promise<void>;
   applyDiscount(instanceId: string, discountPercent: number): boolean;
+  calculateNextResetTime(): void;
+  generateItemsForShopType(): Promise<void>;
+  generateGeneralItems(): Promise<void>;
+  generateArenaItems(): Promise<void>;
+  generateClanItems(): Promise<void>;
 }
 
 // === SCHÉMAS MONGOOSE ===
@@ -295,23 +300,53 @@ shopSchema.index({ priority: -1 });
 // Obtenir shops actifs pour un joueur
 shopSchema.statics.getActiveShopsForPlayer = async function(playerId: string) {
   const Player = mongoose.model('Player');
-  const player = await Player.findById(playerId).select('level vipLevel chapter');
+  const player = await Player.findById(playerId).select('level vipLevel');
   
   if (!player) return [];
   
   const now = new Date();
-  return this.find({
+  
+  // Construction du filtre principal
+  const filter: any = {
     isActive: true,
-    levelRequirement: { $lte: player.level },
+    levelRequirement: { $lte: player.level }
+  };
+  
+  // Conditions temporelles et VIP
+  const andConditions: any[] = [];
+  
+  // Conditions de temps de début
+  andConditions.push({
     $or: [
       { startTime: { $exists: false } },
       { startTime: { $lte: now } }
-    ],
+    ]
+  });
+  
+  // Conditions de temps de fin
+  andConditions.push({
     $or: [
       { endTime: { $exists: false } },
       { endTime: { $gte: now } }
     ]
-  }).sort({ priority: -1, shopType: 1 });
+  });
+  
+  // Conditions VIP si applicable
+  if (player.vipLevel) {
+    andConditions.push({
+      $or: [
+        { vipLevelRequirement: { $exists: false } },
+        { vipLevelRequirement: { $lte: player.vipLevel } }
+      ]
+    });
+  }
+  
+  // Appliquer toutes les conditions
+  if (andConditions.length > 0) {
+    filter.$and = andConditions;
+  }
+  
+  return this.find(filter).sort({ priority: -1, shopType: 1 });
 };
 
 // Obtenir shops à renouveler
@@ -535,6 +570,67 @@ shopSchema.methods.generateArenaItems = async function() {
   }
 };
 
+// Générer objets du shop clan
+shopSchema.methods.generateClanItems = async function() {
+  const Item = mongoose.model('Item');
+  const items = await Item.find({ rarity: { $in: ["Epic", "Legendary"] } }).limit(10);
+  
+  for (const item of items.slice(0, this.maxItemsShown)) {
+    this.addItem({
+      itemId: item.itemId,
+      type: "Item", 
+      name: item.name,
+      content: { itemId: item.itemId, quantity: 1 },
+      cost: { clanCoins: Math.floor(item.sellPrice * 0.3) },
+      rarity: item.rarity,
+      maxStock: 2,
+      maxPurchasePerPlayer: 1,
+      weight: 50
+    });
+  }
+};
+
+// Générer objets quotidiens
+shopSchema.methods.generateDailyItems = async function() {
+  const Item = mongoose.model('Item');
+  const items = await Item.find({ category: "Consumable" }).limit(8);
+  
+  for (const item of items.slice(0, this.maxItemsShown)) {
+    this.addItem({
+      itemId: item.itemId,
+      type: "Item",
+      name: item.name,
+      content: { itemId: item.itemId, quantity: 3 },
+      cost: { gems: Math.floor(item.sellPrice * 0.8) },
+      rarity: item.rarity,
+      maxStock: 1,
+      maxPurchasePerPlayer: 1,
+      weight: 80,
+      isPromotional: true,
+      discountPercent: 20
+    });
+  }
+};
+
+// Générer objets par défaut
+shopSchema.methods.generateDefaultItems = async function() {
+  const Item = mongoose.model('Item');
+  const items = await Item.find().limit(10);
+  
+  for (const item of items.slice(0, Math.min(this.maxItemsShown, 4))) {
+    this.addItem({
+      itemId: item.itemId,
+      type: "Item",
+      name: item.name,
+      content: { itemId: item.itemId, quantity: 1 },
+      cost: { gold: item.sellPrice * 1.5 },
+      rarity: item.rarity,
+      maxStock: 3,
+      weight: 60
+    });
+  }
+};
+
 // Ajouter un objet
 shopSchema.methods.addItem = function(itemData: Partial<IShopItem>) {
   const newItem: IShopItem = {
@@ -566,6 +662,36 @@ shopSchema.methods.addItem = function(itemData: Partial<IShopItem>) {
   return this;
 };
 
+// Supprimer un objet
+shopSchema.methods.removeItem = function(instanceId: string): boolean {
+  const initialLength = this.items.length;
+  this.items = this.items.filter((item: IShopItem) => item.instanceId !== instanceId);
+  return this.items.length < initialLength;
+};
+
+// Vérifier l'accès du joueur
+shopSchema.methods.canPlayerAccess = async function(playerId: string): Promise<boolean> {
+  const Player = mongoose.model('Player');
+  const player = await Player.findById(playerId).select('level vipLevel');
+  
+  if (!player) return false;
+  
+  // Vérifier le niveau requis
+  if (player.level < this.levelRequirement) return false;
+  
+  // Vérifier le niveau VIP si requis
+  if (this.vipLevelRequirement && (!player.vipLevel || player.vipLevel < this.vipLevelRequirement)) {
+    return false;
+  }
+  
+  // Vérifier les dates si applicables
+  const now = new Date();
+  if (this.startTime && now < this.startTime) return false;
+  if (this.endTime && now > this.endTime) return false;
+  
+  return true;
+};
+
 // Vérifier si joueur peut acheter
 shopSchema.methods.canPlayerPurchase = async function(instanceId: string, playerId: string) {
   const item = this.items.find((item: IShopItem) => item.instanceId === instanceId);
@@ -590,6 +716,36 @@ shopSchema.methods.canPlayerPurchase = async function(instanceId: string, player
   }
   
   return { canPurchase: true };
+};
+
+// Obtenir l'historique d'achat d'un joueur
+shopSchema.methods.getPlayerPurchaseHistory = function(playerId: string) {
+  const history: any[] = [];
+  
+  this.items.forEach((item: IShopItem) => {
+    item.purchaseHistory.forEach(purchase => {
+      if (purchase.playerId === playerId) {
+        history.push({
+          ...purchase,
+          itemName: item.name,
+          itemId: item.itemId
+        });
+      }
+    });
+  });
+  
+  return history.sort((a, b) => b.purchaseDate.getTime() - a.purchaseDate.getTime());
+};
+
+// Appliquer une remise
+shopSchema.methods.applyDiscount = function(instanceId: string, discountPercent: number): boolean {
+  const item = this.items.find((item: IShopItem) => item.instanceId === instanceId);
+  if (!item) return false;
+  
+  item.discountPercent = Math.max(0, Math.min(100, discountPercent));
+  item.isPromotional = discountPercent > 0;
+  
+  return true;
 };
 
 export default mongoose.model<IShopDocument>("Shop", shopSchema);
