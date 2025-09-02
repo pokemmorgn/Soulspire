@@ -63,7 +63,7 @@ router.get("/", authMiddleware, async (req: Request, res: Response): Promise<voi
 
     // Récupérer le joueur pour vérifier les conditions d'accès
     const player = await Player.findById(req.userId)
-      .select("level vipLevel chapter");
+      .select("level vipLevel");
 
     if (!player) {
       res.status(404).json({ 
@@ -145,8 +145,7 @@ router.get("/", authMiddleware, async (req: Request, res: Response): Promise<voi
       pagination,
       playerInfo: {
         level: player.level,
-        vipLevel: player.vipLevel || 0,
-        chapter: player.chapter || 1
+        vipLevel: player.vipLevel || 0
       }
     });
   } catch (err) {
@@ -204,18 +203,18 @@ router.get("/:shopType", authMiddleware, async (req: Request, res: Response): Pr
       }
 
       // Vérifier si le joueur peut acheter
-      const purchaseCheck = await shop.canPlayerPurchase(shopItem.instanceId, req.userId);
+      const purchaseCheck = await shop.canPlayerPurchase(shopItem.instanceId, req.userId!);
 
       return {
-        ...shopItem.toObject(),
+        ...shopItem,
         itemData,
         canPurchase: purchaseCheck.canPurchase,
         purchaseBlockReason: purchaseCheck.reason,
-        finalPrice: shopItem.discountPercent > 0 ? 
+        finalPrice: (shopItem.discountPercent || 0) > 0 ? 
           Object.fromEntries(
             Object.entries(shopItem.cost).map(([currency, amount]) => [
               currency, 
-              Math.floor(amount * (100 - shopItem.discountPercent) / 100)
+              Math.floor(amount * (100 - (shopItem.discountPercent || 0)) / 100)
             ])
           ) : shopItem.cost
       };
