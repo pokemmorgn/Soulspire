@@ -129,7 +129,7 @@ class CampaignTester {
       player.heroes.push({
         heroId: (hero._id as any).toString(),
         level: 25 + i * 10, // ✅ Niveaux plus élevés pour l'équilibrage
-        stars: 4 + i, // ✅ Plus d'étoiles
+        stars: Math.min(6, 3 + i), // ✅ Maximum 6 étoiles (3, 4, 5, 6)
         equipped: i < 3 // Les 3 premiers sont équipés
       });
     }
