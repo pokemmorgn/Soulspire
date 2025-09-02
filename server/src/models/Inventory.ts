@@ -597,6 +597,26 @@ inventorySchema.methods.getEquippedItems = function(heroId?: string): IOwnedItem
   
   return equippedItems;
 };
+
+// Déséquiper un objet
+inventorySchema.methods.unequipItem = async function(instanceId: string): Promise<boolean> {
+  const equipmentCategories = ['weapons', 'helmets', 'armors', 'boots', 'gloves', 'accessories'];
+  
+  for (const category of equipmentCategories) {
+    const items = this.storage[category as keyof ICategorizedStorage] as IOwnedItem[];
+    if (Array.isArray(items)) {
+      const item = items.find(item => item.instanceId === instanceId);
+      if (item && item.isEquipped) {
+        item.isEquipped = false;
+        item.equippedTo = undefined;
+        await this.save();
+        return true;
+      }
+    }
+  }
+  
+  return false;
+};
 inventorySchema.methods.equipItem = async function(
   instanceId: string, 
   heroId: string
