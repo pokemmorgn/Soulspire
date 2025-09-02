@@ -1,338 +1,349 @@
-import mongoose, { Document, Schema } from "mongoose";
+import express, { Request, Response } from "express";
+import Joi from "joi";
+import { BattleService } from "../services/BattleService";
+import authMiddleware from "../middleware/authMiddleware";
 
-export interface IBattleParticipant {
-  heroId: string;
-  name: string;
-  role: "Tank" | "DPS Melee" | "DPS Ranged" | "Support";
-  element: "Fire" | "Water" | "Wind" | "Electric" | "Light" | "Dark";
-  rarity: "Common" | "Rare" | "Epic" | "Legendary";
-  level: number;
-  stars: number;
-  
-  stats: {
-    hp: number;
-    maxHp: number;
-    atk: number;
-    def: number;
-    speed: number;
-  };
-  
-  currentHp: number;
-  energy: number;
-  status: {
-    alive: boolean;
-    buffs: string[];
-    debuffs: string[];
-  };
-}
+const router = express.Router();
 
-export interface IBattleAction {
-  turn: number;
-  actionType: "attack" | "skill" | "ultimate" | "passive";
-  actorId: string;
-  actorName: string;
-  targetIds: string[];
-  
-  damage?: number;
-  healing?: number;
-  energyGain?: number;
-  energyCost?: number;
-  
-  buffsApplied?: string[];
-  debuffsApplied?: string[];
-  
-  critical: boolean;
-  elementalAdvantage?: number;
-  
-  participantsAfter: {
-    [heroId: string]: {
-      currentHp: number;
-      energy: number;
-      buffs: string[];
-      debuffs: string[];
-      alive: boolean;
-    };
-  };
-}
-
-export interface IBattleOptions {
-  mode: "auto" | "manual";
-  speed: 1 | 2 | 3;
-  playerVipLevel?: number;
-}
-
-export interface IBattleResult {
-  victory: boolean;
-  winnerTeam: "player" | "enemy";
-  totalTurns: number;
-  battleDuration: number;
-  
-  rewards: {
-    experience: number;
-    gold: number;
-    items?: string[];
-    fragments?: { heroId: string; quantity: number }[];
-  };
-  
-  stats: {
-    totalDamageDealt: number;
-    totalHealingDone: number;
-    criticalHits: number;
-    ultimatesUsed: number;
-  };
-}
-
-export interface IBattleDocument extends Document {
-  serverId: string;
-  playerId: string;
-  battleType: "campaign" | "arena" | "dungeon" | "raid";
-  
-  playerTeam: IBattleParticipant[];
-  enemyTeam: IBattleParticipant[];
-  
-  actions: IBattleAction[];
-  result: IBattleResult;
-  battleOptions: IBattleOptions;
-  
-  battleStarted: Date;
-  battleEnded?: Date;
-  status: "preparing" | "ongoing" | "completed" | "abandoned";
-  
-  context?: {
-    worldId?: number;
-    levelId?: number;
-    difficulty?: "Normal" | "Hard" | "Nightmare";
-    enemyType?: "normal" | "elite" | "boss";
-  };
-
-  addAction(action: IBattleAction): Promise<IBattleDocument>;
-  completeBattle(result: IBattleResult): Promise<IBattleDocument>;
-  getBattleReplay(): any;
-}
-
-const participantSchema = new Schema<IBattleParticipant>({
-  heroId: { type: String, required: true },
-  name: { type: String, required: true },
-  role: { 
-    type: String, 
-    enum: ["Tank", "DPS Melee", "DPS Ranged", "Support"],
-    required: true 
-  },
-  element: { 
-    type: String, 
-    enum: ["Fire", "Water", "Wind", "Electric", "Light", "Dark"],
-    required: true 
-  },
-  rarity: { 
-    type: String, 
-    enum: ["Common", "Rare", "Epic", "Legendary"],
-    required: true 
-  },
-  level: { type: Number, required: true, min: 1, max: 100 },
-  stars: { type: Number, required: true, min: 1, max: 6 },
-  
-  stats: {
-    hp: { type: Number, required: true },
-    maxHp: { type: Number, required: true },
-    atk: { type: Number, required: true },
-    def: { type: Number, required: true },
-    speed: { type: Number, required: true }
-  },
-  
-  currentHp: { type: Number, required: true },
-  energy: { type: Number, default: 0, min: 0, max: 100 },
-  status: {
-    alive: { type: Boolean, default: true },
-    buffs: [{ type: String }],
-    debuffs: [{ type: String }]
-  }
+// Schémas de validation
+const campaignBattleSchema = Joi.object({
+  worldId: Joi.number().min(1).max(100).required(),
+  levelId: Joi.number().min(1).max(50).required(),
+  difficulty: Joi.string().valid("Normal", "Hard", "Nightmare").default("Normal")
 });
 
-const actionSchema = new Schema<IBattleAction>({
-  turn: { type: Number, required: true },
-  actionType: { 
-    type: String, 
-    enum: ["attack", "skill", "ultimate", "passive"],
-    required: true 
-  },
-  actorId: { type: String, required: true },
-  actorName: { type: String, required: true },
-  targetIds: [{ type: String, required: true }],
-  
-  damage: { type: Number, min: 0 },
-  healing: { type: Number, min: 0 },
-  energyGain: { type: Number, min: 0 },
-  energyCost: { type: Number, min: 0 },
-  
-  buffsApplied: [{ type: String }],
-  debuffsApplied: [{ type: String }],
-  
-  critical: { type: Boolean, default: false },
-  elementalAdvantage: { type: Number, default: 1.0 },
-  
-  participantsAfter: {
-    type: Map,
-    of: {
-      currentHp: { type: Number, required: true },
-      energy: { type: Number, required: true },
-      buffs: [{ type: String }],
-      debuffs: [{ type: String }],
-      alive: { type: Boolean, required: true }
+const arenaBattleSchema = Joi.object({
+  opponentId: Joi.string().required()
+});
+
+const battleHistorySchema = Joi.object({
+  limit: Joi.number().min(1).max(50).default(20)
+});
+
+// === START CAMPAIGN BATTLE ===
+router.post("/campaign", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { error } = campaignBattleSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ 
+        error: error.details[0].message,
+        code: "VALIDATION_ERROR"
+      });
+      return;
     }
-  }
-});
 
-const battleOptionsSchema = new Schema<IBattleOptions>({
-  mode: { 
-    type: String, 
-    enum: ["auto", "manual"],
-    required: true,
-    default: "auto"
-  },
-  speed: { 
-    type: Number, 
-    enum: [1, 2, 3],
-    required: true,
-    default: 1
-  },
-  playerVipLevel: { type: Number, min: 0, max: 15, default: 0 }
-});
-
-const battleSchema = new Schema<IBattleDocument>({
-  serverId: { 
-    type: String,
-    required: true,
-    match: /^S\d+$/,
-    default: "S1"
-  },
-  playerId: { type: String, required: true },
-  battleType: { 
-    type: String, 
-    enum: ["campaign", "arena", "dungeon", "raid"],
-    required: true 
-  },
-  
-  playerTeam: [participantSchema],
-  enemyTeam: [participantSchema],
-  
-  actions: [actionSchema],
-  
-  battleOptions: {
-    type: battleOptionsSchema,
-    required: true,
-    default: { mode: "auto", speed: 1, playerVipLevel: 0 }
-  },
-  
-  result: {
-    victory: { type: Boolean, required: true },
-    winnerTeam: { 
-      type: String, 
-      enum: ["player", "enemy"],
-      required: true 
-    },
-    totalTurns: { type: Number, required: true },
-    battleDuration: { type: Number, required: true },
+    const { worldId, levelId, difficulty } = req.body;
     
-    rewards: {
-      experience: { type: Number, default: 0 },
-      gold: { type: Number, default: 0 },
-      items: [{ type: String }],
-      fragments: [{
-        heroId: { type: String, required: true },
-        quantity: { type: Number, required: true, min: 1 }
-      }]
-    },
+    console.log(`🎯 ${req.userId} démarre un combat: Monde ${worldId}, Niveau ${levelId}, ${difficulty}`);
+
+    // Lancer le combat
+    const battleResult = await BattleService.startCampaignBattle(
+      req.userId!,
+      req.serverId!,
+      worldId,
+      levelId,
+      difficulty
+    );
+
+    res.json({
+      message: "Campaign battle completed",
+      battleId: battleResult.battleId,
+      victory: battleResult.result.victory,
+      result: battleResult.result,
+      replay: battleResult.replay
+    });
+
+  } catch (err: any) {
+    console.error("Campaign battle error:", err);
     
-    stats: {
-      totalDamageDealt: { type: Number, default: 0 },
-      totalHealingDone: { type: Number, default: 0 },
-      criticalHits: { type: Number, default: 0 },
-      ultimatesUsed: { type: Number, default: 0 }
+    if (err.message === "Player not found") {
+      res.status(404).json({ 
+        error: "Player not found",
+        code: "PLAYER_NOT_FOUND"
+      });
+      return;
     }
-  },
-  
-  battleStarted: { type: Date, default: Date.now },
-  battleEnded: { type: Date },
-  status: { 
-    type: String, 
-    enum: ["preparing", "ongoing", "completed", "abandoned"],
-    default: "preparing"
-  },
-  
-  context: {
-    worldId: { type: Number, min: 1 },
-    levelId: { type: Number, min: 1 },
-    difficulty: { 
-      type: String, 
-      enum: ["Normal", "Hard", "Nightmare"]
-    },
-    enemyType: { 
-      type: String, 
-      enum: ["normal", "elite", "boss"]
+    
+    if (err.message === "No equipped heroes found") {
+      res.status(400).json({ 
+        error: "You must equip at least one hero before battle",
+        code: "NO_EQUIPPED_HEROES"
+      });
+      return;
     }
+    
+    res.status(500).json({ 
+      error: "Internal server error",
+      code: "CAMPAIGN_BATTLE_FAILED"
+    });
   }
-}, {
-  timestamps: true,
-  collection: 'battles'
 });
 
-battleSchema.index({ playerId: 1 });
-battleSchema.index({ battleType: 1 });
-battleSchema.index({ status: 1 });
-battleSchema.index({ createdAt: -1 });
-battleSchema.index({ "context.worldId": 1, "context.levelId": 1 });
-battleSchema.index({ "battleOptions.mode": 1 });
-battleSchema.index({ "battleOptions.speed": 1 });
+// === START ARENA BATTLE ===
+router.post("/arena", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { error } = arenaBattleSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ 
+        error: error.details[0].message,
+        code: "VALIDATION_ERROR"
+      });
+      return;
+    }
 
-battleSchema.statics.getPlayerBattleHistory = function(playerId: string, limit: number = 50) {
-  return this.find({ playerId, status: "completed" })
-    .sort({ createdAt: -1 })
-    .limit(limit)
-    .select("battleType result context battleOptions createdAt battleDuration");
-};
+    const { opponentId } = req.body;
+    
+    // Vérifier qu'on ne combat pas contre soi-même
+    if (req.userId === opponentId) {
+      res.status(400).json({ 
+        error: "Cannot battle against yourself",
+        code: "SELF_BATTLE_NOT_ALLOWED"
+      });
+      return;
+    }
 
-battleSchema.statics.getPlayerStats = function(playerId: string) {
-  return this.aggregate([
-    { $match: { playerId, status: "completed" } },
-    { $group: {
-      _id: null,
-      totalBattles: { $sum: 1 },
-      victories: { $sum: { $cond: ["$result.victory", 1, 0] } },
-      totalDamage: { $sum: "$result.stats.totalDamageDealt" },
-      totalHealing: { $sum: "$result.stats.totalHealingDone" },
-      criticalHits: { $sum: "$result.stats.criticalHits" },
-      ultimatesUsed: { $sum: "$result.stats.ultimatesUsed" }
-    }},
-    { $addFields: {
-      winRate: { $divide: ["$victories", "$totalBattles"] },
-      avgDamagePerBattle: { $divide: ["$totalDamage", "$totalBattles"] }
-    }}
-  ]);
-};
+    console.log(`⚔️ Combat d'arène: ${req.userId} vs ${opponentId}`);
 
-battleSchema.methods.addAction = function(action: IBattleAction) {
-  this.actions.push(action);
-  this.status = "ongoing";
-  return this.save();
-};
+    // Lancer le combat PvP
+    const battleResult = await BattleService.startArenaBattle(req.userId!,req.serverId!, opponentId);
 
-battleSchema.methods.completeBattle = function(result: IBattleResult) {
-  this.result = result;
-  this.status = "completed";
-  this.battleEnded = new Date();
-  return this.save();
-};
+    res.json({
+      message: "Arena battle completed",
+      battleId: battleResult.battleId,
+      victory: battleResult.result.victory,
+      result: battleResult.result,
+      replay: battleResult.replay
+    });
 
-battleSchema.methods.getBattleReplay = function() {
-  return {
-    battleId: this._id,
-    playerTeam: this.playerTeam,
-    enemyTeam: this.enemyTeam,
-    actions: this.actions,
-    result: this.result,
-    battleOptions: this.battleOptions,
-    duration: this.battleEnded?.getTime() - this.battleStarted.getTime() || 0
-  };
-};
+  } catch (err: any) {
+    console.error("Arena battle error:", err);
+    
+    if (err.message.includes("not found")) {
+      res.status(404).json({ 
+        error: "Player or opponent not found",
+        code: "PLAYER_NOT_FOUND"
+      });
+      return;
+    }
+    
+    if (err.message.includes("equipped heroes")) {
+      res.status(400).json({ 
+        error: "Both players must have equipped heroes",
+        code: "MISSING_EQUIPPED_HEROES"
+      });
+      return;
+    }
+    
+    res.status(500).json({ 
+      error: "Internal server error",
+      code: "ARENA_BATTLE_FAILED"
+    });
+  }
+});
 
-export default mongoose.model<IBattleDocument>("Battle", battleSchema);
+// === GET BATTLE HISTORY ===
+router.get("/history", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { error } = battleHistorySchema.validate(req.query);
+    if (error) {
+      res.status(400).json({ 
+        error: error.details[0].message,
+        code: "VALIDATION_ERROR"
+      });
+      return;
+    }
+
+    const { limit } = req.query;
+    const limitNum = parseInt(limit as string) || 20;
+
+    const history = await BattleService.getBattleHistory(req.userId!,req.serverId!, limitNum);
+
+    res.json({
+      message: "Battle history retrieved successfully",
+      battles: history,
+      total: history.length
+    });
+
+  } catch (err) {
+    console.error("Get battle history error:", err);
+    res.status(500).json({ 
+      error: "Internal server error",
+      code: "GET_BATTLE_HISTORY_FAILED"
+    });
+  }
+});
+
+// === GET BATTLE STATS ===
+router.get("/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const stats = await BattleService.getPlayerBattleStats(req.userId!, req.serverId!);
+
+    res.json({
+      message: "Battle statistics retrieved successfully",
+      stats: {
+        totalBattles: stats.totalBattles,
+        victories: stats.victories,
+        defeats: stats.totalBattles - stats.victories,
+        winRate: Math.round((stats.winRate || 0) * 100) / 100, // Arrondi à 2 décimales
+        totalDamageDealt: stats.totalDamage,
+        averageBattleDuration: Math.round(stats.avgBattleDuration || 0)
+      }
+    });
+
+  } catch (err) {
+    console.error("Get battle stats error:", err);
+    res.status(500).json({ 
+      error: "Internal server error",
+      code: "GET_BATTLE_STATS_FAILED"
+    });
+  }
+});
+
+// === GET BATTLE REPLAY ===
+router.get("/replay/:battleId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { battleId } = req.params;
+
+    if (!battleId) {
+      res.status(400).json({ 
+        error: "Battle ID is required",
+        code: "BATTLE_ID_REQUIRED"
+      });
+      return;
+    }
+
+    const replay = await BattleService.getBattleReplay(battleId, req.userId!, req.serverId!);
+
+    res.json({
+      message: "Battle replay retrieved successfully",
+      replay
+    });
+
+  } catch (err: any) {
+    console.error("Get battle replay error:", err);
+    
+    if (err.message === "Battle not found") {
+      res.status(404).json({ 
+        error: "Battle not found",
+        code: "BATTLE_NOT_FOUND"
+      });
+      return;
+    }
+    
+    res.status(500).json({ 
+      error: "Internal server error",
+      code: "GET_BATTLE_REPLAY_FAILED"
+    });
+  }
+});
+
+// === QUICK BATTLE (pour tests) ===
+router.post("/quick", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    console.log(`⚡ Combat rapide pour ${req.userId}`);
+
+    // Combat rapide contre le monde 1, niveau 1
+    const battleResult = await BattleService.startCampaignBattle(req.userId!, req.serverId!,  1, 1, "Normal");
+
+    res.json({
+      message: "Quick battle completed",
+      victory: battleResult.result.victory,
+      rewards: battleResult.result.rewards,
+      summary: {
+        totalTurns: battleResult.result.totalTurns,
+        duration: `${Math.round(battleResult.result.battleDuration / 1000)}s`,
+        damageDealt: battleResult.result.stats.totalDamageDealt,
+        criticalHits: battleResult.result.stats.criticalHits,
+        ultimatesUsed: battleResult.result.stats.ultimatesUsed
+      }
+    });
+
+  } catch (err: any) {
+    console.error("Quick battle error:", err);
+    
+    if (err.message === "No equipped heroes found") {
+      res.status(400).json({ 
+        error: "Please equip at least one hero first",
+        code: "NO_EQUIPPED_HEROES",
+        suggestion: "Use POST /api/heroes/equip to equip a hero"
+      });
+      return;
+    }
+    
+    res.status(500).json({ 
+      error: "Quick battle failed",
+      code: "QUICK_BATTLE_FAILED"
+    });
+  }
+});
+
+// === GET AVAILABLE OPPONENTS (pour l'arène) ===
+router.get("/arena/opponents", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Pour l'instant, récupérer des joueurs aléatoires
+    // TODO: Implémenter un vrai système de matchmaking
+    
+    const opponents = [
+      { id: "dummy1", username: "TestBot1", level: 10, power: 1500 },
+      { id: "dummy2", username: "TestBot2", level: 15, power: 2000 },
+      { id: "dummy3", username: "TestBot3", level: 8, power: 1200 }
+    ];
+
+    res.json({
+      message: "Available opponents retrieved",
+      opponents,
+      note: "This is a placeholder implementation"
+    });
+
+  } catch (err) {
+    console.error("Get opponents error:", err);
+    res.status(500).json({ 
+      error: "Internal server error",
+      code: "GET_OPPONENTS_FAILED"
+    });
+  }
+});
+
+// === TEST BATTLE SIMULATION (développement uniquement) ===
+router.post("/test", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (process.env.NODE_ENV === "production") {
+      res.status(404).json({ error: "Not available in production" });
+      return;
+    }
+
+    console.log(`🧪 Test de combat pour ${req.userId}`);
+
+    const battleResult = await BattleService.startCampaignBattle(req.userId!, req.serverId!, 1, 1, "Normal");
+
+    // Réponse détaillée pour les tests
+    res.json({
+      message: "Test battle completed",
+      battleId: battleResult.battleId,
+      result: battleResult.result,
+      actionsCount: battleResult.replay.actions.length,
+      playerTeam: battleResult.replay.playerTeam.map((hero: any) => ({
+        name: hero.name,
+        role: hero.role,
+        level: hero.level,
+        finalHp: hero.currentHp
+      })),
+      enemyTeam: battleResult.replay.enemyTeam.map((enemy: any) => ({
+        name: enemy.name,
+        role: enemy.role,
+        level: enemy.level,
+        finalHp: enemy.currentHp
+      })),
+      replay: battleResult.replay
+    });
+
+  } catch (err: any) {
+    console.error("Test battle error:", err);
+    res.status(500).json({ 
+      error: err.message,
+      code: "TEST_BATTLE_FAILED"
+    });
+  }
+});
+
+export default router;
