@@ -64,7 +64,7 @@ class InventoryTester {
     });
     
     await testPlayer.save();
-    this.testPlayerId = testPlayer._id.toString();
+    this.testPlayerId = (testPlayer._id as any).toString();
     this.player = testPlayer;
     
     log(`✅ Test player created: ${testPlayer.username} (ID: ${this.testPlayerId})`, colors.green);
@@ -103,7 +103,7 @@ class InventoryTester {
       });
       
       await testHero.save();
-      this.testHeroId = testHero._id.toString();
+      this.testHeroId = (testHero._id as any).toString();
       
       // Ajouter le héros au joueur
       this.player.heroes.push({
@@ -119,7 +119,7 @@ class InventoryTester {
       // Utiliser le premier héros existant
       const existingHero = await Hero.findOne();
       if (existingHero) {
-        this.testHeroId = existingHero._id.toString();
+        this.testHeroId = (existingHero._id as any).toString();
         
         // Ajouter le héros au joueur s'il ne l'a pas
         const hasHero = this.player.heroes.some((h: any) => h.heroId.toString() === this.testHeroId);
@@ -376,7 +376,7 @@ const runTests = async (): Promise<void> => {
 
 if (require.main === module) {
   log("🚀 Inventory System Test Suite", colors.bright);
-  log("Arguments:", process.argv.slice(2));
+  log("Arguments:", process.argv.slice(2).join(' '));
   log("Use --keep-data to keep test data after tests\n", colors.yellow);
   
   runTests().then(() => {
