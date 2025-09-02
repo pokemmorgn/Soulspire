@@ -9,10 +9,10 @@ export interface IBattleOptions {
   playerVipLevel?: number; // Pour vérifier les droits de vitesse
 }
 
-// Interface pour les actions manuelles en attente
+// Interface pour les actions manuelles en attente (SEULS ULTIMATES)
 export interface IPendingManualAction {
   heroId: string;
-  actionType: "ultimate" | "skill";
+  actionType: "ultimate"; // PLUS de "skill" !
   targetIds?: string[];
   timestamp: number;
 }
@@ -106,7 +106,7 @@ export class BattleEngine {
     return true;
   }
   
-  // NOUVEAU: Valide qu'une action manuelle est possible
+  // NOUVEAU: Valide qu'une action manuelle est possible (SEULS ULTIMATES)
   private isValidManualAction(action: IPendingManualAction): boolean {
     const hero = this.findParticipant(action.heroId);
     if (!hero || !hero.status.alive) return false;
@@ -114,22 +114,18 @@ export class BattleEngine {
     // Vérifier que le héros est dans l'équipe du joueur
     if (!this.playerTeam.includes(hero)) return false;
     
-    // Vérifier l'énergie pour l'ultimate
-    if (action.actionType === "ultimate" && hero.energy < 100) return false;
-    
-    // Vérifier le cooldown pour les skills
-    if (action.actionType === "skill") {
-      const heroSpells = this.playerSpells.get(hero.heroId);
-      if (!heroSpells) return false;
-      
-      // Vérifier qu'au moins un sort est disponible
-      const hasAvailableSkill = [heroSpells.spell1, heroSpells.spell2, heroSpells.spell3]
-        .some(spell => spell && !SpellManager.isOnCooldown(hero.heroId, spell.id));
-      
-      if (!hasAvailableSkill) return false;
+    // En mode manuel, SEULS les ultimates sont manuels
+    if (action.actionType === "ultimate") {
+      return hero.energy >= 100;
     }
     
-    return true;
+    // Les skills ne sont plus manuels !
+    if (action.actionType === "skill") {
+      console.warn(`⚠️ Les skills ne sont plus manuels, ignoré pour ${hero.name}`);
+      return false;
+    }
+    
+    return false;
   }
 
   // Initialise l'état de combat (inchangé)
@@ -229,107 +225,120 @@ export class BattleEngine {
     }
   }
   
-  // NOUVEAU: Détermine l'action en mode manuel
+  // NOUVEAU: Détermine l'action en mode manuel (SEULS LES ULTIMATES sont manuels)
   private determineManualAction(participant: IBattleParticipant): IBattleAction | null {
-    // Chercher une action manuelle en attente pour ce héros
-    const manualActionIndex = this.pendingManualActions.findIndex(a => a.heroId === participant.heroId);
+    // Chercher une action manuelle ULTIMATE en attente pour ce héros
+    const manualUltimateIndex = this.pendingManualActions.findIndex(
+      a => a.heroId === participant.heroId && a.actionType === "ultimate"
+    );
     
-    if (manualActionIndex !== -1) {
-      const manualAction = this.pendingManualActions[manualActionIndex];
+    if (manualUltimateIndex !== -1) {
+      const manualAction = this.pendingManualActions[manualUltimateIndex];
       
       // Supprimer l'action de la file d'attente
-      this.pendingManualActions.splice(manualActionIndex, 1);
+      this.pendingManualActions.splice(manualUltimateIndex, 1);
       
       try {
-        // Exécuter l'action manuelle
-        return this.executeManualAction(participant, manualAction);
+        // Exécuter l'ultimate manuelle
+        return this.executeManualUltimate(participant);
       } catch (error) {
-        console.warn(`⚠️ Erreur action manuelle: ${error}`);
-        // Fallback sur attaque basique
-        return this.createAttackAction(participant, this.getAliveEnemies());
+        console.warn(`⚠️ Erreur ultimate manuelle: ${error}`);
+        // Fallback : utiliser l'IA pour déterminer l'action
+        return this.determineAction(participant);
       }
     }
     
-    // Pas d'action manuelle en attente
-    if (participant.energy >= 100) {
-      // Ultimate disponible mais en attente d'action manuelle
-      console.log(`⏳ ${participant.name} attend une action manuelle (Ultimate disponible)`);
-      
-      // Si on a un callback, demander l'action
-      if (this.onRequestManualAction) {
-        // Note: En mode serveur, on ne peut pas attendre de réponse asynchrone
-        // Cette partie sera gérée côté client
-      }
-      
-      // Pour l'instant, attaque basique
+    // IMPORTANT: En mode manuel, seuls les ultimates sont manuels
+    // Les sorts actifs et passifs utilisent TOUJOURS l'IA
+    const heroSpells = this.playerSpells.get(participant.heroId);
+    if (!heroSpells) {
       return this.createAttackAction(participant, this.getAliveEnemies());
     }
     
-    // Vérifier les skills disponibles
-    const heroSpells = this.playerSpells.get(participant.heroId);
-    if (heroSpells) {
-      const availableSkills = [heroSpells.spell1, heroSpells.spell2, heroSpells.spell3]
-        .filter(spell => spell && !SpellManager.isOnCooldown(participant.heroId, spell.id));
+    // Vérifier si ultimate disponible mais pas encore déclenché manuellement
+    if (participant.energy >= 100) {
+      console.log(`⏳ ${participant.name} attend déclenchement manuel de l'ULTIMATE`);
       
-      if (availableSkills.length > 0) {
-        console.log(`⏳ ${participant.name} attend une action manuelle (${availableSkills.length} skills disponibles)`);
-        // En attente d'action manuelle, attaque basique pour l'instant
-        return this.createAttackAction(participant, this.getAliveEnemies());
-      }
-    }
-    
-    // Aucun sort disponible, attaque basique
-    return this.createAttackAction(participant, this.getAliveEnemies());
-  }
-  
-  // NOUVEAU: Exécute une action manuelle spécifique
-  private executeManualAction(participant: IBattleParticipant, manualAction: IPendingManualAction): IBattleAction {
-    const targets = this.getAliveEnemies();
-    const allies = this.getAlivePlayers();
-    
-    if (manualAction.actionType === "ultimate") {
-      const heroSpells = this.playerSpells.get(participant.heroId);
-      if (heroSpells?.ultimate) {
-        const battleContext = {
-          currentTurn: this.currentTurn,
-          allPlayers: allies,
-          allEnemies: targets
-        };
-        
-        return SpellManager.castSpell(
-          heroSpells.ultimate.id,
-          participant,
-          targets,
-          heroSpells.ultimate.level,
-          battleContext
-        );
-      }
-    } else if (manualAction.actionType === "skill") {
-      // Utiliser le meilleur sort disponible (pour simplifier)
-      const heroSpells = this.playerSpells.get(participant.heroId);
-      if (heroSpells) {
-        const bestSpell = SpellManager.determineBestSpell(
-          participant,
-          heroSpells,
-          allies,
-          targets,
-          { currentTurn: this.currentTurn, allPlayers: allies, allEnemies: targets }
-        );
-        
-        if (bestSpell) {
+      // En attendant l'ultimate, utiliser les sorts actifs en auto
+      const battleContext = {
+        currentTurn: this.currentTurn,
+        allPlayers: this.getAlivePlayers(),
+        allEnemies: this.getAliveEnemies()
+      };
+      
+      // Forcer l'IA à ignorer l'ultimate et choisir un sort actif
+      const bestSpell = this.determineBestNonUltimateSpell(participant, heroSpells, battleContext);
+      
+      if (bestSpell) {
+        try {
           return SpellManager.castSpell(
             bestSpell.spellId,
             participant,
-            targets,
+            this.getAliveEnemies(),
             bestSpell.spellLevel,
-            { currentTurn: this.currentTurn, allPlayers: allies, allEnemies: targets }
+            battleContext
           );
+        } catch (error) {
+          console.warn(`⚠️ Erreur sort actif: ${error}`);
         }
       }
+      
+      // Fallback : attaque basique
+      return this.createAttackAction(participant, this.getAliveEnemies());
     }
     
-    // Fallback : attaque basique
-    return this.createAttackAction(participant, targets);
+    // Pas d'ultimate disponible, utiliser l'IA normale pour les sorts actifs
+    return this.determineAction(participant);
+  }
+  
+  // NOUVEAU: Exécute un ultimate manuel spécifique
+  private executeManualUltimate(participant: IBattleParticipant): IBattleAction {
+    const heroSpells = this.playerSpells.get(participant.heroId);
+    if (heroSpells?.ultimate && participant.energy >= 100) {
+      const battleContext = {
+        currentTurn: this.currentTurn,
+        allPlayers: this.getAlivePlayers(),
+        allEnemies: this.getAliveEnemies()
+      };
+      
+      return SpellManager.castSpell(
+        heroSpells.ultimate.id,
+        participant,
+        this.getAliveEnemies(), // Cibles par défaut
+        heroSpells.ultimate.level,
+        battleContext
+      );
+    }
+    
+    // Fallback : attaque basique si pas d'ultimate
+    return this.createAttackAction(participant, this.getAliveEnemies());
+  }
+  
+  // NOUVEAU: Détermine le meilleur sort NON-ultimate (pour mode manuel)
+  private determineBestNonUltimateSpell(
+    participant: IBattleParticipant, 
+    heroSpells: HeroSpells, 
+    battleContext: any
+  ): { spellId: string; spellLevel: number } | null {
+    const allies = this.getAlivePlayers();
+    const enemies = this.getAliveEnemies();
+    
+    // Créer une version des sorts sans l'ultimate
+    const nonUltimateSpells: HeroSpells = {
+      spell1: heroSpells.spell1,
+      spell2: heroSpells.spell2,
+      spell3: heroSpells.spell3,
+      passive: heroSpells.passive
+      // Pas d'ultimate !
+    };
+    
+    return SpellManager.determineBestSpell(
+      participant,
+      nonUltimateSpells,
+      allies,
+      enemies,
+      battleContext
+    );
   }
 
   // Génère de l'énergie pour un participant (inchangé)
@@ -741,7 +750,7 @@ export class BattleEngine {
     return [...this.actions];
   }
 
-  // NOUVEAU: Méthode pour obtenir les actions disponibles pour un héros en mode manuel
+  // NOUVEAU: Méthode pour obtenir les actions disponibles pour un héros en mode manuel (SEULS ULTIMATES)
   public getAvailableManualActions(heroId: string): string[] {
     const hero = this.findParticipant(heroId);
     if (!hero || !hero.status.alive || !this.playerTeam.includes(hero)) {
@@ -750,21 +759,12 @@ export class BattleEngine {
     
     const available: string[] = [];
     
-    // Ultimate disponible ?
+    // SEUL l'ultimate peut être manuel
     if (hero.energy >= 100) {
       available.push("ultimate");
     }
     
-    // Skills disponibles ?
-    const heroSpells = this.playerSpells.get(heroId);
-    if (heroSpells) {
-      const availableSkills = [heroSpells.spell1, heroSpells.spell2, heroSpells.spell3]
-        .filter(spell => spell && !SpellManager.isOnCooldown(heroId, spell.id));
-      
-      if (availableSkills.length > 0) {
-        available.push("skill");
-      }
-    }
+    // Les skills ne sont plus proposés en manuel !
     
     return available;
   }
