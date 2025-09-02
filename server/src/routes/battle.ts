@@ -82,7 +82,7 @@ export interface IBattleResult {
   };
 }
 
-interface IBattleDocument extends Document {
+export interface IBattleDocument extends Document {
   serverId: string;
   playerId: string;
   battleType: "campaign" | "arena" | "dungeon" | "raid";
