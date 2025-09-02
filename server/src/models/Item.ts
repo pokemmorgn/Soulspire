@@ -440,7 +440,7 @@ itemSchema.statics.createChest = function(chestData: {
     chestType: chestData.chestType,
     chestContents: chestData.contents,
     openCost: chestData.openCost || { gold: 0 },
-    sellPrice: this.calculateSellPrice(chestData.rarity, 1)
+    sellPrice: (this.constructor as any).calculateSellPrice(chestData.rarity, 1)
   });
 };
 
@@ -520,7 +520,7 @@ itemSchema.methods.openChest = async function(playerId: string): Promise<IChestC
   
   // Garantie minimale : au moins un objet de la rareté garantie
   if (this.guaranteedRarity && rewards.length === 0) {
-    const guaranteedItems = this.chestContents.filter(c => 
+    const guaranteedItems = this.chestContents.filter((c: IChestContent) => 
       c.type === "Item" // On pourrait vérifier la rareté de l'item ici
     );
     if (guaranteedItems.length > 0) {
