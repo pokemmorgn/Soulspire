@@ -478,24 +478,28 @@ const seedDatabase = async (): Promise<void> => {
     let createdCount = 0;
     let skippedCount = 0;
     
-    for (const itemData of seedItems) {
-      try {
-        // Vérifier si l'objet existe déjà
-        const existingItem = await Item.findOne({ itemId: itemData.itemId });
-        
-        if (existingItem) {
-          console.log(`⏭️ Skipped existing item: ${itemData.itemId}`);
-          skippedCount++;
-        } else {
-          const newItem = new Item(itemData);
-          await newItem.save();
-          console.log(`✅ Created item: ${itemData.itemId} (${itemData.name})`);
-          createdCount++;
-        }
-      } catch (error: any) {
-        console.error(`❌ Error creating item ${itemData.itemId}:`, error.message);
-      }
+for (const itemData of seedItems) {
+  try {
+    const result = await Item.updateOne(
+      { itemId: itemData.itemId },  // critère de recherche
+      { $set: itemData },           // données à mettre à jour/remplacer
+      { upsert: true }              // si pas trouvé → création
+    );
+
+    if (result.upsertedCount > 0) {
+      console.log(`✅ Created item: ${itemData.itemId} (${itemData.name})`);
+      createdCount++;
+    } else if (result.modifiedCount > 0) {
+      console.log(`🔄 Updated item: ${itemData.itemId} (${itemData.name})`);
+    } else {
+      console.log(`⏭️ No changes for: ${itemData.itemId}`);
+      skippedCount++;
     }
+  } catch (error: any) {
+    console.error(`❌ Error upserting item ${itemData.itemId}:`, error.message);
+  }
+}
+
     
     console.log(`\n📊 Seed Summary:`);
     console.log(`   - Created: ${createdCount} items`);
