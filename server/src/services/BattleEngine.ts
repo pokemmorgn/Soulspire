@@ -1,6 +1,21 @@
 import { IBattleParticipant, IBattleAction, IBattleResult } from "../models/Battle";
 import { SpellManager, HeroSpells } from "../gameplay/SpellManager";
-import { EffectManager } from "../gameplay/EffectManager"; // Import du gestionnaire central
+import { EffectManager } from "../gameplay/EffectManager";
+
+// Interface pour les options de combat
+export interface IBattleOptions {
+  mode: "auto" | "manual";
+  speed: 1 | 2 | 3;
+  playerVipLevel?: number; // Pour vérifier les droits de vitesse
+}
+
+// Interface pour les actions manuelles en attente
+export interface IPendingManualAction {
+  heroId: string;
+  actionType: "ultimate" | "skill";
+  targetIds?: string[];
+  timestamp: number;
+}
 
 export class BattleEngine {
   private playerTeam: IBattleParticipant[];
@@ -8,14 +23,23 @@ export class BattleEngine {
   private actions: IBattleAction[];
   private currentTurn: number;
   private battleStartTime: number;
-  private playerSpells: Map<string, HeroSpells>; // heroId -> sorts du héros
+  private playerSpells: Map<string, HeroSpells>;
   private enemySpells: Map<string, HeroSpells>;
+  
+  // NOUVEAU: Options de combat
+  private battleOptions: IBattleOptions;
+  private pendingManualActions: IPendingManualAction[];
+  private actualBattleDuration: number; // Durée réelle sans accélération
+  
+  // NOUVEAU: Callback pour demander actions manuelles (optionnel)
+  private onRequestManualAction?: (heroId: string, availableActions: string[]) => Promise<IPendingManualAction | null>;
 
   constructor(
     playerTeam: IBattleParticipant[], 
     enemyTeam: IBattleParticipant[],
     playerSpells?: Map<string, HeroSpells>,
-    enemySpells?: Map<string, HeroSpells>
+    enemySpells?: Map<string, HeroSpells>,
+    battleOptions: IBattleOptions = { mode: "auto", speed: 1 }
   ) {
     this.playerTeam = [...playerTeam];
     this.enemyTeam = [...enemyTeam];
@@ -25,14 +49,90 @@ export class BattleEngine {
     this.playerSpells = playerSpells || new Map();
     this.enemySpells = enemySpells || new Map();
     
-    // Initialiser l'état de combat pour tous les participants
-    this.initializeBattleState();
+    // NOUVEAU: Initialiser les options de combat
+    this.battleOptions = this.validateBattleOptions(battleOptions);
+    this.pendingManualActions = [];
+    this.actualBattleDuration = 0;
     
-    // Initialiser le SpellManager
+    this.initializeBattleState();
     SpellManager.initialize();
+    
+    console.log(`🎮 Combat démarré en mode ${this.battleOptions.mode} (vitesse x${this.battleOptions.speed})`);
+  }
+  
+  // NOUVEAU: Valide et ajuste les options de combat selon les privilèges
+  private validateBattleOptions(options: IBattleOptions): IBattleOptions {
+    const validated = { ...options };
+    
+    // Vérifier les droits de vitesse
+    const vipLevel = options.playerVipLevel || 0;
+    const maxSpeed = this.getMaxAllowedSpeed(vipLevel);
+    
+    if (validated.speed > maxSpeed) {
+      console.warn(`⚠️ Vitesse x${validated.speed} non autorisée (VIP ${vipLevel}), limitée à x${maxSpeed}`);
+      validated.speed = maxSpeed as 1 | 2 | 3;
+    }
+    
+    return validated;
+  }
+  
+  // NOUVEAU: Détermine la vitesse maximale selon le niveau VIP
+  private getMaxAllowedSpeed(vipLevel: number): number {
+    if (vipLevel >= 5) return 3; // VIP 5+ : x3
+    if (vipLevel >= 2) return 2; // VIP 2+ : x2
+    return 1; // Gratuit : x1 seulement
+  }
+  
+  // NOUVEAU: Setter pour le callback d'actions manuelles
+  public setManualActionCallback(callback: (heroId: string, availableActions: string[]) => Promise<IPendingManualAction | null>) {
+    this.onRequestManualAction = callback;
+  }
+  
+  // NOUVEAU: Ajouter une action manuelle en attente
+  public addManualAction(action: IPendingManualAction): boolean {
+    // Vérifier que l'action est valide
+    if (!this.isValidManualAction(action)) {
+      console.warn(`⚠️ Action manuelle invalide:`, action);
+      return false;
+    }
+    
+    // Supprimer les anciennes actions du même héros
+    this.pendingManualActions = this.pendingManualActions.filter(a => a.heroId !== action.heroId);
+    
+    // Ajouter la nouvelle action
+    this.pendingManualActions.push(action);
+    console.log(`🎯 Action manuelle ajoutée: ${action.actionType} pour ${action.heroId}`);
+    
+    return true;
+  }
+  
+  // NOUVEAU: Valide qu'une action manuelle est possible
+  private isValidManualAction(action: IPendingManualAction): boolean {
+    const hero = this.findParticipant(action.heroId);
+    if (!hero || !hero.status.alive) return false;
+    
+    // Vérifier que le héros est dans l'équipe du joueur
+    if (!this.playerTeam.includes(hero)) return false;
+    
+    // Vérifier l'énergie pour l'ultimate
+    if (action.actionType === "ultimate" && hero.energy < 100) return false;
+    
+    // Vérifier le cooldown pour les skills
+    if (action.actionType === "skill") {
+      const heroSpells = this.playerSpells.get(hero.heroId);
+      if (!heroSpells) return false;
+      
+      // Vérifier qu'au moins un sort est disponible
+      const hasAvailableSkill = [heroSpells.spell1, heroSpells.spell2, heroSpells.spell3]
+        .some(spell => spell && !SpellManager.isOnCooldown(hero.heroId, spell.id));
+      
+      if (!hasAvailableSkill) return false;
+    }
+    
+    return true;
   }
 
-  // Initialise l'état de combat (HP, énergie, effets, etc.)
+  // Initialise l'état de combat (inchangé)
   private initializeBattleState(): void {
     const allParticipants = [...this.playerTeam, ...this.enemyTeam];
     
@@ -45,7 +145,6 @@ export class BattleEngine {
         debuffs: []
       };
       
-      // Initialiser les effets actifs
       (participant as any).activeEffects = [];
     }
   }
@@ -53,6 +152,7 @@ export class BattleEngine {
   // Lance le combat complet et retourne le résultat
   public simulateBattle(): IBattleResult {
     console.log("🔥 Combat démarré !");
+    const battleStartTime = Date.now();
     
     while (!this.isBattleOver()) {
       this.processTurn();
@@ -65,64 +165,184 @@ export class BattleEngine {
       }
     }
 
+    // NOUVEAU: Calculer la durée réelle vs accélérée
+    this.actualBattleDuration = Date.now() - battleStartTime;
+    const simulatedDuration = Math.floor(this.actualBattleDuration / this.battleOptions.speed);
+
     const result = this.generateBattleResult();
+    // NOUVEAU: Ajouter les infos de combat dans le résultat
+    (result as any).battleOptions = this.battleOptions;
+    (result as any).actualDuration = this.actualBattleDuration;
+    
     console.log(`🏆 Combat terminé ! Victoire: ${result.victory ? "Joueur" : "Ennemi"}`);
+    console.log(`⏱️ Durée: ${simulatedDuration}ms (réelle: ${this.actualBattleDuration}ms, vitesse x${this.battleOptions.speed})`);
     
     return result;
   }
 
-  // Traite un tour de combat
+  // MODIFIÉ: Traite un tour de combat avec support manuel
   private processTurn(): void {
-    // Réduire les cooldowns des sorts
     SpellManager.reduceCooldowns();
     
-    // Récupérer tous les participants vivants et les trier par vitesse
     const aliveParticipants = this.getAllAliveParticipants()
       .sort((a, b) => {
-        // Vitesse + petit bonus aléatoire pour éviter les égalités
         const speedA = a.stats.speed + Math.random() * 10;
         const speedB = b.stats.speed + Math.random() * 10;
-        return speedB - speedA; // Plus rapide en premier
+        return speedB - speedA;
       });
     
-    // Chaque participant agit selon sa vitesse
     for (const participant of aliveParticipants) {
       if (!participant.status.alive) continue;
       
-      // Générer de l'énergie en début de tour
       this.generateEnergy(participant);
-      
-      // Traiter les effets actifs (DOT, etc.)
       this.processParticipantEffects(participant);
       
-      // Si le participant meurt des effets, passer au suivant
       if (!participant.status.alive) continue;
       
-      // Déterminer et exécuter l'action
-      const action = this.determineAction(participant);
+      // NOUVEAU: Déterminer l'action selon le mode
+      const action = this.determineActionWithMode(participant);
       if (action) {
         this.executeAction(action);
       }
       
-      // Vérifier si le combat est terminé après chaque action
       if (this.isBattleOver()) break;
     }
     
     console.log(`🔄 Tour ${this.currentTurn} terminé`);
   }
+  
+  // NOUVEAU: Détermine l'action selon le mode auto/manuel
+  private determineActionWithMode(participant: IBattleParticipant): IBattleAction | null {
+    const isPlayerTeam = this.playerTeam.includes(participant);
+    
+    // Pour les ennemis, toujours en mode auto
+    if (!isPlayerTeam) {
+      return this.determineAction(participant);
+    }
+    
+    // Pour les héros du joueur, selon le mode
+    if (this.battleOptions.mode === "auto") {
+      return this.determineAction(participant);
+    } else {
+      // Mode manuel : vérifier s'il y a une action en attente
+      return this.determineManualAction(participant);
+    }
+  }
+  
+  // NOUVEAU: Détermine l'action en mode manuel
+  private determineManualAction(participant: IBattleParticipant): IBattleAction | null {
+    // Chercher une action manuelle en attente pour ce héros
+    const manualActionIndex = this.pendingManualActions.findIndex(a => a.heroId === participant.heroId);
+    
+    if (manualActionIndex !== -1) {
+      const manualAction = this.pendingManualActions[manualActionIndex];
+      
+      // Supprimer l'action de la file d'attente
+      this.pendingManualActions.splice(manualActionIndex, 1);
+      
+      try {
+        // Exécuter l'action manuelle
+        return this.executeManualAction(participant, manualAction);
+      } catch (error) {
+        console.warn(`⚠️ Erreur action manuelle: ${error}`);
+        // Fallback sur attaque basique
+        return this.createAttackAction(participant, this.getAliveEnemies());
+      }
+    }
+    
+    // Pas d'action manuelle en attente
+    if (participant.energy >= 100) {
+      // Ultimate disponible mais en attente d'action manuelle
+      console.log(`⏳ ${participant.name} attend une action manuelle (Ultimate disponible)`);
+      
+      // Si on a un callback, demander l'action
+      if (this.onRequestManualAction) {
+        // Note: En mode serveur, on ne peut pas attendre de réponse asynchrone
+        // Cette partie sera gérée côté client
+      }
+      
+      // Pour l'instant, attaque basique
+      return this.createAttackAction(participant, this.getAliveEnemies());
+    }
+    
+    // Vérifier les skills disponibles
+    const heroSpells = this.playerSpells.get(participant.heroId);
+    if (heroSpells) {
+      const availableSkills = [heroSpells.spell1, heroSpells.spell2, heroSpells.spell3]
+        .filter(spell => spell && !SpellManager.isOnCooldown(participant.heroId, spell.id));
+      
+      if (availableSkills.length > 0) {
+        console.log(`⏳ ${participant.name} attend une action manuelle (${availableSkills.length} skills disponibles)`);
+        // En attente d'action manuelle, attaque basique pour l'instant
+        return this.createAttackAction(participant, this.getAliveEnemies());
+      }
+    }
+    
+    // Aucun sort disponible, attaque basique
+    return this.createAttackAction(participant, this.getAliveEnemies());
+  }
+  
+  // NOUVEAU: Exécute une action manuelle spécifique
+  private executeManualAction(participant: IBattleParticipant, manualAction: IPendingManualAction): IBattleAction {
+    const targets = this.getAliveEnemies();
+    const allies = this.getAlivePlayers();
+    
+    if (manualAction.actionType === "ultimate") {
+      const heroSpells = this.playerSpells.get(participant.heroId);
+      if (heroSpells?.ultimate) {
+        const battleContext = {
+          currentTurn: this.currentTurn,
+          allPlayers: allies,
+          allEnemies: targets
+        };
+        
+        return SpellManager.castSpell(
+          heroSpells.ultimate.id,
+          participant,
+          targets,
+          heroSpells.ultimate.level,
+          battleContext
+        );
+      }
+    } else if (manualAction.actionType === "skill") {
+      // Utiliser le meilleur sort disponible (pour simplifier)
+      const heroSpells = this.playerSpells.get(participant.heroId);
+      if (heroSpells) {
+        const bestSpell = SpellManager.determineBestSpell(
+          participant,
+          heroSpells,
+          allies,
+          targets,
+          { currentTurn: this.currentTurn, allPlayers: allies, allEnemies: targets }
+        );
+        
+        if (bestSpell) {
+          return SpellManager.castSpell(
+            bestSpell.spellId,
+            participant,
+            targets,
+            bestSpell.spellLevel,
+            { currentTurn: this.currentTurn, allPlayers: allies, allEnemies: targets }
+          );
+        }
+      }
+    }
+    
+    // Fallback : attaque basique
+    return this.createAttackAction(participant, targets);
+  }
 
-  // Génère de l'énergie pour un participant selon son moral
+  // Génère de l'énergie pour un participant (inchangé)
   private generateEnergy(participant: IBattleParticipant): void {
     if (!participant.status.alive) return;
     
-    // Énergie basée sur le moral + petite part aléatoire
     const baseGeneration = Math.floor(10 + ((participant.stats as any).moral || 60) / 8);
     const energyGain = Math.floor(baseGeneration + Math.random() * 5);
     
     participant.energy = Math.min(100, participant.energy + energyGain);
   }
 
-  // Traite les effets actifs d'un participant
+  // Traite les effets actifs d'un participant (inchangé)
   private processParticipantEffects(participant: IBattleParticipant): void {
     const effectResults = EffectManager.processEffects(participant);
     
@@ -146,23 +366,20 @@ export class BattleEngine {
     }
   }
 
-  // Détermine quelle action un participant va effectuer
+  // INCHANGÉ: Détermine quelle action un participant va effectuer (mode auto)
   private determineAction(participant: IBattleParticipant): IBattleAction | null {
     const isPlayerTeam = this.playerTeam.includes(participant);
     const targets = isPlayerTeam ? this.getAliveEnemies() : this.getAlivePlayers();
     const allies = isPlayerTeam ? this.getAlivePlayers() : this.getAliveEnemies();
     
-    // Récupérer les sorts du héros
     const heroSpells = isPlayerTeam ? 
       this.playerSpells.get(participant.heroId) : 
       this.enemySpells.get(participant.heroId);
     
     if (!heroSpells) {
-      // Pas de sorts configurés, attaque basique
       return this.createAttackAction(participant, targets);
     }
     
-    // Utiliser le SpellManager pour déterminer le meilleur sort
     const battleContext = {
       currentTurn: this.currentTurn,
       allPlayers: this.getAlivePlayers(),
@@ -179,7 +396,6 @@ export class BattleEngine {
     
     if (bestSpell) {
       try {
-        // Lancer le sort via SpellManager
         return SpellManager.castSpell(
           bestSpell.spellId,
           participant,
@@ -189,16 +405,14 @@ export class BattleEngine {
         );
       } catch (error) {
         console.warn(`⚠️ Erreur lors du cast de ${bestSpell.spellId}: ${error}`);
-        // Fallback sur attaque basique
         return this.createAttackAction(participant, targets);
       }
     }
     
-    // Aucun sort disponible, attaque basique
     return this.createAttackAction(participant, targets);
   }
 
-  // Crée une action d'attaque normale
+  // INCHANGÉ: Reste du code existant...
   private createAttackAction(actor: IBattleParticipant, possibleTargets: IBattleParticipant[]): IBattleAction {
     const target = this.selectTarget(actor, possibleTargets);
     
@@ -213,7 +427,7 @@ export class BattleEngine {
       actorName: actor.name,
       targetIds: [target.heroId],
       damage: finalDamage,
-      energyGain: Math.floor(12 + Math.random() * 8), // 12-20 énergie
+      energyGain: Math.floor(12 + Math.random() * 8),
       critical: isCritical,
       elementalAdvantage: this.getElementalAdvantage(actor.element, target.element),
       buffsApplied: [],
@@ -222,14 +436,9 @@ export class BattleEngine {
     };
   }
 
-  // Supprime toutes les anciennes méthodes de création de sorts
-  // Elles sont maintenant gérées par SpellManager
-
-  // Crée une action d'ultimate
   private createUltimateAction(actor: IBattleParticipant, possibleTargets: IBattleParticipant[]): IBattleAction {
     const baseUltimateDamage = actor.stats.atk * 3.5 * this.getRarityMultiplier(actor.rarity);
     
-    // Ultimate peut être single-target ou AoE selon le rôle
     const isAoE = actor.role === "DPS Ranged" || Math.random() < 0.4;
     const targets = isAoE ? possibleTargets : [this.selectTarget(actor, possibleTargets)];
     const damageMultiplier = isAoE ? 0.8 : 1.2;
@@ -245,15 +454,14 @@ export class BattleEngine {
       damage,
       energyGain: 0,
       energyCost: 100,
-      critical: true, // Ultimate = toujours critique
-      elementalAdvantage: 1.5, // Bonus élémentaire sur ultimate
+      critical: true,
+      elementalAdvantage: 1.5,
       buffsApplied: isAoE ? [] : ["devastation"],
       debuffsApplied: isAoE ? ["burn", "weakness"] : ["armor_break"],
       participantsAfter: {}
     };
   }
 
-  // Calcule les dégâts en tenant compte des nouvelles stats
   private calculateDamage(
     attacker: IBattleParticipant, 
     defender: IBattleParticipant, 
@@ -262,52 +470,37 @@ export class BattleEngine {
     const attackerStats = attacker.stats as any;
     const defenderStats = defender.stats as any;
     
-    // Attaque de base
     let baseAttack = attackerStats.atk;
     
-    // Bonus selon le type d'attaque
     if (attackType === "skill") {
       baseAttack += Math.floor((attackerStats.intelligence || 70) * 0.4);
-      baseAttack *= 1.6; // Compétence = 60% de bonus
+      baseAttack *= 1.6;
     } else if (attackType === "ultimate") {
       baseAttack += Math.floor((attackerStats.intelligence || 70) * 0.6);
-      baseAttack *= 2.5; // Ultimate = 150% de bonus
+      baseAttack *= 2.5;
     }
     
-    // Bonus de force pour les attaques physiques
     if (attacker.role === "DPS Melee" || attacker.role === "Tank") {
       baseAttack += Math.floor((attackerStats.force || 80) * 0.3);
     }
     
-    // Défense applicable (physique ou magique)
     let defense = defenderStats.def;
     if (attackType === "skill" || attackType === "ultimate") {
-      // Attaques magiques utilisent la défense magique
       defense = Math.floor((defenderStats.defMagique || defense) * 0.7 + defense * 0.3);
     }
     
-    // Calcul des dégâts : (Attaque - Défense/2) avec minimum de 1
     let damage = Math.max(1, baseAttack - Math.floor(defense / 2));
-    
-    // Multiplicateur élémentaire
     damage *= this.getElementalAdvantage(attacker.element, defender.element);
-    
-    // Multiplicateur de rareté
     damage *= this.getRarityMultiplier(attacker.rarity);
-    
-    // Variation aléatoire (±10%)
     damage *= (0.9 + Math.random() * 0.2);
     
     return Math.floor(damage);
   }
 
-  // Sélectionne une cible intelligemment
   private selectTarget(actor: IBattleParticipant, possibleTargets: IBattleParticipant[]): IBattleParticipant {
     if (possibleTargets.length === 1) return possibleTargets[0];
     
-    // IA simple : cibler selon le rôle
     if (actor.role === "DPS Melee" || actor.role === "DPS Ranged") {
-      // DPS ciblent les supports puis les autres DPS
       const supports = possibleTargets.filter(t => t.role === "Support");
       if (supports.length > 0) return supports[0];
       
@@ -315,25 +508,26 @@ export class BattleEngine {
       if (otherDps.length > 0) return otherDps[0];
     }
     
-    // Cibler l'ennemi avec le moins de HP relatif
     return possibleTargets.reduce((weakest, target) => 
       (target.currentHp / target.stats.maxHp) < (weakest.currentHp / weakest.stats.maxHp) ? target : weakest
     );
   }
 
-  // Teste si un critique est réussi
   private rollCritical(participant: IBattleParticipant): boolean {
-    const baseChance = 0.08; // 8% de base
-    const vitesseBonus = ((participant.stats as any).vitesse || 80) / 1000; // Bonus de vitesse
+    const baseChance = 0.08;
+    const vitesseBonus = ((participant.stats as any).vitesse || 80) / 1000;
     const rarityBonus = this.getRarityMultiplier(participant.rarity) * 0.02;
     
-    const totalChance = Math.min(0.5, baseChance + vitesseBonus + rarityBonus); // Max 50%
+    const totalChance = Math.min(0.5, baseChance + vitesseBonus + rarityBonus);
     return Math.random() < totalChance;
   }
 
-  // Exécute une action et applique ses effets
   private executeAction(action: IBattleAction): void {
-    // Appliquer les dégâts
+    // NOUVEAU: Appliquer la vitesse de combat
+    const speedMultiplier = this.battleOptions.speed;
+    const baseActionDelay = 1000; // 1 seconde par action de base
+    const actualDelay = Math.floor(baseActionDelay / speedMultiplier);
+    
     if (action.damage && action.damage > 0) {
       for (const targetId of action.targetIds) {
         const target = this.findParticipant(targetId);
@@ -348,7 +542,6 @@ export class BattleEngine {
       }
     }
     
-    // Appliquer les soins
     if (action.healing && action.healing > 0) {
       for (const targetId of action.targetIds) {
         const target = this.findParticipant(targetId);
@@ -358,7 +551,6 @@ export class BattleEngine {
       }
     }
     
-    // Appliquer les buffs
     if (action.buffsApplied && action.buffsApplied.length > 0) {
       for (const targetId of action.targetIds) {
         const target = this.findParticipant(targetId);
@@ -372,7 +564,6 @@ export class BattleEngine {
       }
     }
     
-    // Appliquer les debuffs
     if (action.debuffsApplied && action.debuffsApplied.length > 0) {
       for (const targetId of action.targetIds) {
         const target = this.findParticipant(targetId);
@@ -386,7 +577,6 @@ export class BattleEngine {
       }
     }
     
-    // Modifier l'énergie de l'acteur
     const actor = this.findParticipant(action.actorId);
     if (actor) {
       if (action.energyGain) {
@@ -397,10 +587,7 @@ export class BattleEngine {
       }
     }
     
-    // Capturer l'état après l'action
     action.participantsAfter = this.captureParticipantsState();
-    
-    // Ajouter l'action à l'historique
     this.actions.push(action);
     
     const actionDesc = action.actionType === "ultimate" ? "ULTIMATE" :
@@ -408,7 +595,6 @@ export class BattleEngine {
     console.log(`⚔️ ${action.actorName} utilise ${actionDesc} et inflige ${action.damage || 0} dégâts${action.healing ? `, soigne ${action.healing}` : ""}`);
   }
 
-  // Capture l'état actuel de tous les participants
   private captureParticipantsState(): any {
     const state: any = {};
     const allParticipants = [...this.playerTeam, ...this.enemyTeam];
@@ -426,52 +612,6 @@ export class BattleEngine {
     return state;
   }
 
-  // Applique les effets de fin de tour
-  private applyEndOfTurnEffects(): void {
-    const allParticipants = [...this.playerTeam, ...this.enemyTeam];
-    
-    for (const participant of allParticipants) {
-      if (!participant.status.alive) continue;
-      
-      // Appliquer les DOT (damage over time)
-      if (participant.status.debuffs.includes("burn")) {
-        const dotDamage = Math.floor(participant.stats.maxHp * 0.05);
-        participant.currentHp = Math.max(0, participant.currentHp - dotDamage);
-        console.log(`🔥 ${participant.name} subit ${dotDamage} dégâts de brûlure`);
-      }
-      
-      if (participant.status.debuffs.includes("poison")) {
-        const dotDamage = Math.floor(participant.stats.maxHp * 0.03);
-        participant.currentHp = Math.max(0, participant.currentHp - dotDamage);
-        console.log(`☠️ ${participant.name} subit ${dotDamage} dégâts de poison`);
-      }
-      
-      // Appliquer les HOT (heal over time)
-      if (participant.status.buffs.includes("regeneration")) {
-        const hotHeal = Math.floor(participant.stats.maxHp * 0.08);
-        participant.currentHp = Math.min(participant.stats.maxHp, participant.currentHp + hotHeal);
-        console.log(`💚 ${participant.name} récupère ${hotHeal} HP par régénération`);
-      }
-      
-      // Vérifier si le participant meurt des DOT
-      if (participant.currentHp === 0) {
-        participant.status.alive = false;
-        console.log(`💀 ${participant.name} succombe aux effets !`);
-      }
-      
-      // Nettoyer certains effets temporaires (50% de chance)
-      if (Math.random() < 0.3) {
-        participant.status.buffs = participant.status.buffs.filter(buff => 
-          !["attack_boost", "defense_up", "speed_up"].includes(buff)
-        );
-        participant.status.debuffs = participant.status.debuffs.filter(debuff => 
-          !["slow", "weakness", "confusion"].includes(debuff)
-        );
-      }
-    }
-  }
-
-  // Vérifie si le combat est terminé
   private isBattleOver(): boolean {
     const alivePlayers = this.getAlivePlayers().length;
     const aliveEnemies = this.getAliveEnemies().length;
@@ -479,16 +619,14 @@ export class BattleEngine {
     return alivePlayers === 0 || aliveEnemies === 0;
   }
 
-  // Génère le résultat final du combat
   private generateBattleResult(): IBattleResult {
     const alivePlayers = this.getAlivePlayers().length;
     const victory = alivePlayers > 0;
-    const battleDuration = Date.now() - this.battleStartTime;
     
-    // Calculer les statistiques
+    // NOUVEAU: Utiliser la durée simulée selon la vitesse
+    const simulatedDuration = Math.floor(this.actualBattleDuration / this.battleOptions.speed);
+    
     const stats = this.calculateBattleStats();
-    
-    // Calculer les récompenses (si victoire)
     const rewards = victory ? this.calculateRewards() : {
       experience: 0,
       gold: 0,
@@ -500,13 +638,12 @@ export class BattleEngine {
       victory,
       winnerTeam: victory ? "player" : "enemy",
       totalTurns: this.currentTurn - 1,
-      battleDuration,
+      battleDuration: simulatedDuration, // Durée ajustée selon la vitesse
       rewards,
       stats
     };
   }
 
-  // Calcule les statistiques du combat
   private calculateBattleStats() {
     let totalDamageDealt = 0;
     let totalHealingDone = 0;
@@ -514,7 +651,6 @@ export class BattleEngine {
     let ultimatesUsed = 0;
     
     for (const action of this.actions) {
-      // Compter seulement les actions du joueur
       if (this.playerTeam.some(p => p.heroId === action.actorId)) {
         if (action.damage) totalDamageDealt += action.damage;
         if (action.healing) totalHealingDone += action.healing;
@@ -531,12 +667,10 @@ export class BattleEngine {
     };
   }
 
-  // Calcule les récompenses de victoire
   private calculateRewards() {
     const baseExp = 80 + this.currentTurn * 2;
     const baseGold = 40 + this.currentTurn;
     
-    // Bonus selon la performance
     const performanceMultiplier = this.currentTurn < 10 ? 1.5 : this.currentTurn < 20 ? 1.2 : 1.0;
     
     return {
@@ -547,8 +681,7 @@ export class BattleEngine {
     };
   }
 
-  // === UTILITAIRES ===
-  
+  // Utilitaires inchangés
   private getElementalAdvantage(attackerElement: string, defenderElement: string): number {
     const advantages: { [key: string]: string[] } = {
       Fire: ["Wind"],
@@ -574,9 +707,6 @@ export class BattleEngine {
     return multipliers[rarity] || 1.0;
   }
 
-  // Supprime les anciennes méthodes utilitaires de sorts
-  // Maintenant gérées par SpellManager et BaseSpell
-
   private findParticipant(heroId: string): IBattleParticipant | undefined {
     return [...this.playerTeam, ...this.enemyTeam].find(p => p.heroId === heroId);
   }
@@ -593,26 +723,89 @@ export class BattleEngine {
     return this.enemyTeam.filter(p => p.status.alive);
   }
 
-  // Getter pour récupérer les actions (pour le replay)
+  // NOUVEAU: Getters pour les nouvelles propriétés
+  public getBattleOptions(): IBattleOptions {
+    return { ...this.battleOptions };
+  }
+  
+  public getPendingManualActions(): IPendingManualAction[] {
+    return [...this.pendingManualActions];
+  }
+  
+  public getActualDuration(): number {
+    return this.actualBattleDuration;
+  }
+
+  // Getter pour récupérer les actions (pour le replay) - inchangé
   public getActions(): IBattleAction[] {
     return [...this.actions];
   }
 
-  // Méthode utilitaire pour debug
-  public getTeamsStatus(): { playerTeam: any[], enemyTeam: any[] } {
+  // NOUVEAU: Méthode pour obtenir les actions disponibles pour un héros en mode manuel
+  public getAvailableManualActions(heroId: string): string[] {
+    const hero = this.findParticipant(heroId);
+    if (!hero || !hero.status.alive || !this.playerTeam.includes(hero)) {
+      return [];
+    }
+    
+    const available: string[] = [];
+    
+    // Ultimate disponible ?
+    if (hero.energy >= 100) {
+      available.push("ultimate");
+    }
+    
+    // Skills disponibles ?
+    const heroSpells = this.playerSpells.get(heroId);
+    if (heroSpells) {
+      const availableSkills = [heroSpells.spell1, heroSpells.spell2, heroSpells.spell3]
+        .filter(spell => spell && !SpellManager.isOnCooldown(heroId, spell.id));
+      
+      if (availableSkills.length > 0) {
+        available.push("skill");
+      }
+    }
+    
+    return available;
+  }
+  
+  // NOUVEAU: Méthode pour obtenir le statut de tous les héros du joueur
+  public getPlayerHeroesStatus(): Array<{
+    heroId: string;
+    name: string;
+    currentHp: number;
+    maxHp: number;
+    energy: number;
+    alive: boolean;
+    availableActions: string[];
+  }> {
+    return this.playerTeam.map(hero => ({
+      heroId: hero.heroId,
+      name: hero.name,
+      currentHp: hero.currentHp,
+      maxHp: hero.stats.maxHp,
+      energy: hero.energy,
+      alive: hero.status.alive,
+      availableActions: this.getAvailableManualActions(hero.heroId)
+    }));
+  }
+
+  // Méthode utilitaire pour debug - MISE À JOUR
+  public getTeamsStatus(): { playerTeam: any[], enemyTeam: any[], battleOptions: IBattleOptions } {
     return {
       playerTeam: this.playerTeam.map(p => ({
         name: p.name,
         hp: `${p.currentHp}/${p.stats.maxHp}`,
         energy: p.energy,
-        alive: p.status.alive
+        alive: p.status.alive,
+        availableActions: this.getAvailableManualActions(p.heroId)
       })),
       enemyTeam: this.enemyTeam.map(p => ({
         name: p.name,
         hp: `${p.currentHp}/${p.stats.maxHp}`,
         energy: p.energy,
         alive: p.status.alive
-      }))
+      })),
+      battleOptions: this.battleOptions
     };
   }
-}
