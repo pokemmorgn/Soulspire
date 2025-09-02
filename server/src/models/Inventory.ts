@@ -1,62 +1,255 @@
 import mongoose, { Document, Schema } from "mongoose";
-import { IInventory, IEquipment } from "../types/index";
 
+// === INTERFACES ===
+
+// Objet possédé par le joueur (instance d'un Item)
+interface IOwnedItem {
+  itemId: string;        // Référence vers l'Item de base
+  instanceId: string;    // ID unique de cette instance
+  quantity: number;      // Quantité possédée
+  level: number;         // Niveau de l'objet (pour équipement)
+  enhancement: number;   // Niveau d'amélioration (+0 à +15)
+  isEquipped: boolean;   // Si équipé sur un héros
+  equippedTo?: string;   // ID du héros qui l'équipe
+  
+  // Données spécifiques selon le type
+  equipmentData?: {
+    durability: number;        // Durabilité (0-100)
+    socketedGems?: string[];   // Gemmes incrustées
+    upgradeHistory: Date[];    // Historique des améliorations
+  };
+  
+  consumableData?: {
+    expirationDate?: Date;     // Date d'expiration (pour certains consommables)
+    usageCount?: number;       // Nombre d'utilisations restantes
+  };
+  
+  // Métadonnées
+  acquiredDate: Date;
+  lastUsedDate?: Date;
+}
+
+// Stockage par catégories (comme AFK Arena)
+interface ICategorizedStorage {
+  // Équipement
+  weapons: IOwnedItem[];
+  helmets: IOwnedItem[];
+  armors: IOwnedItem[];
+  boots: IOwnedItem[];
+  gloves: IOwnedItem[];
+  accessories: IOwnedItem[];
+  
+  // Consommables
+  potions: IOwnedItem[];
+  scrolls: IOwnedItem[];
+  enhancementItems: IOwnedItem[];
+  
+  // Matériaux
+  enhancementMaterials: IOwnedItem[];
+  evolutionMaterials: IOwnedItem[];
+  craftingMaterials: IOwnedItem[];
+  awakeningMaterials: IOwnedItem[];
+  
+  // Fragments et monnaies spéciales
+  heroFragments: Map<string, number>;    // heroId -> quantité
+  specialCurrencies: Map<string, number>; // currencyId -> quantité
+  
+  // Artefacts
+  artifacts: IOwnedItem[];
+}
+
+// Statistiques de l'inventaire
+interface IInventoryStats {
+  totalItems: number;
+  totalWeight: number;
+  maxCapacity: number;
+  
+  // Par catégorie
+  equipmentCount: number;
+  consumableCount: number;
+  materialCount: number;
+  artifactCount: number;
+  
+  // Par rareté
+  commonCount: number;
+  rareCount: number;
+  epicCount: number;
+  legendaryCount: number;
+  mythicCount: number;
+  ascendedCount: number;
+  
+  // Équipement spécifique
+  equippedItemsCount: number;
+  maxLevelEquipment: number;
+  setsCompleted: string[];
+}
+
+// Document principal de l'inventaire
 interface IInventoryDocument extends Document {
   playerId: string;
+  
+  // Monnaies de base (depuis Player)
   gold: number;
   gems: number;
   paidGems: number;
   tickets: number;
-  fragments: Map<string, number>;
-  materials: Map<string, number>;
-  equipment: IEquipment[];
-  addEquipment(equipment: Partial<IEquipment>): any;
-  removeEquipment(itemId: string): any;
-  getEquipmentByType(type: string): IEquipment[];
-  getEquippedItems(): IEquipment[];
-  addMaterial(materialId: string, quantity: number): any;
-  removeMaterial(materialId: string, quantity: number): boolean;
-  addFragment(heroId: string, quantity: number): any;
-  canSummonHero(heroId: string, requiredFragments?: number): boolean;
+  
+  // Stockage organisé
+  storage: ICategorizedStorage;
+  
+  // Configuration
+  maxCapacity: number;
+  autoSell: boolean;           // Auto-vendre les objets de faible rareté
+  autoSellRarity: string;      // Rareté maximum à auto-vendre
+  
+  // Dernière mise à jour
+  lastCleanup: Date;          // Dernière suppression d'objets expirés
+  
+  // === MÉTHODES D'INSTANCE ===
+  
+  // Gestion des objets
+  addItem(itemId: string, quantity?: number, level?: number): Promise<IOwnedItem>;
+  removeItem(instanceId: string, quantity?: number): Promise<boolean>;
+  hasItem(itemId: string, quantity?: number): boolean;
+  getItem(instanceId: string): IOwnedItem | null;
+  getItemsByCategory(category: string, subCategory?: string): IOwnedItem[];
+  
+  // Équipement
+  equipItem(instanceId: string, heroId: string): Promise<boolean>;
+  unequipItem(instanceId: string): Promise<boolean>;
+  getEquippedItems(heroId?: string): IOwnedItem[];
+  upgradeEquipment(instanceId: string, targetLevel?: number, targetEnhancement?: number): Promise<boolean>;
+  
+  // Gestion des sets
+  getEquippedSetPieces(heroId: string, setId: string): number;
+  getAvailableSetPieces(setId: string): IOwnedItem[];
+  
+  // Consommables
+  useConsumable(instanceId: string, heroId?: string): Promise<any>;
+  getExpiredConsumables(): IOwnedItem[];
+  
+  // Matériaux
+  getMaterialsByType(materialType: string, grade?: string): IOwnedItem[];
+  canCraftItem(itemId: string): Promise<boolean>;
+  
+  // Utilitaires
+  getInventoryStats(): IInventoryStats;
+  cleanupExpiredItems(): Promise<number>;
+  optimizeStorage(): Promise<void>;
+  calculateTotalValue(): number;
+  
+  // Tri et filtres
+  sortItemsByRarity(items: IOwnedItem[]): IOwnedItem[];
+  sortItemsByLevel(items: IOwnedItem[]): IOwnedItem[];
+  filterItemsByRarity(items: IOwnedItem[], rarity: string): IOwnedItem[];
 }
 
-const equipmentSchema = new Schema<IEquipment>({
+// === SCHÉMAS MONGOOSE ===
+
+const ownedItemSchema = new Schema<IOwnedItem>({
   itemId: { 
     type: String, 
     required: true,
+    ref: 'Item'
   },
-  name: { 
+  instanceId: { 
     type: String, 
     required: true,
-    trim: true
+    unique: true,
+    default: () => new mongoose.Types.ObjectId().toString()
   },
-  type: { 
-    type: String, 
-    enum: ["Weapon", "Armor", "Accessory"],
-    required: true
-  },
-  rarity: { 
-    type: String, 
-    enum: ["Common", "Rare", "Epic", "Legendary"],
-    required: true
+  quantity: { 
+    type: Number, 
+    required: true,
+    min: 1,
+    default: 1
   },
   level: { 
     type: Number, 
-    default: 1,
     min: 1,
-    max: 100
+    max: 100,
+    default: 1
   },
-  stats: {
-    atk: { type: Number, default: 0, min: 0 },
-    def: { type: Number, default: 0, min: 0 },
-    hp: { type: Number, default: 0, min: 0 }
+  enhancement: { 
+    type: Number, 
+    min: 0,
+    max: 15,
+    default: 0
+  },
+  isEquipped: { 
+    type: Boolean, 
+    default: false 
   },
   equippedTo: { 
-    type: Schema.Types.ObjectId, 
-    ref: "Player.heroes",
+    type: String,
     default: null
-  }
-});
+  },
+  
+  // Données spécifiques équipement
+  equipmentData: {
+    durability: { 
+      type: Number, 
+      min: 0, 
+      max: 100, 
+      default: 100 
+    },
+    socketedGems: [{ type: String }],
+    upgradeHistory: [{ type: Date }]
+  },
+  
+  // Données spécifiques consommables
+  consumableData: {
+    expirationDate: { type: Date },
+    usageCount: { 
+      type: Number, 
+      min: 0,
+      default: 1
+    }
+  },
+  
+  // Métadonnées
+  acquiredDate: { 
+    type: Date, 
+    default: Date.now 
+  },
+  lastUsedDate: { type: Date }
+}, { _id: false });
+
+const categorizedStorageSchema = new Schema<ICategorizedStorage>({
+  // Équipement par slot
+  weapons: [ownedItemSchema],
+  helmets: [ownedItemSchema],
+  armors: [ownedItemSchema],
+  boots: [ownedItemSchema],
+  gloves: [ownedItemSchema],
+  accessories: [ownedItemSchema],
+  
+  // Consommables
+  potions: [ownedItemSchema],
+  scrolls: [ownedItemSchema],
+  enhancementItems: [ownedItemSchema],
+  
+  // Matériaux
+  enhancementMaterials: [ownedItemSchema],
+  evolutionMaterials: [ownedItemSchema],
+  craftingMaterials: [ownedItemSchema],
+  awakeningMaterials: [ownedItemSchema],
+  
+  // Maps pour fragments et monnaies spéciales
+  heroFragments: { 
+    type: Map, 
+    of: Number, 
+    default: new Map()
+  },
+  specialCurrencies: { 
+    type: Map, 
+    of: Number, 
+    default: new Map()
+  },
+  
+  // Artefacts
+  artifacts: [ownedItemSchema]
+}, { _id: false });
 
 const inventorySchema = new Schema<IInventoryDocument>({
   playerId: { 
@@ -64,8 +257,8 @@ const inventorySchema = new Schema<IInventoryDocument>({
     required: true,
     unique: true
   },
-
-  // Monnaies et ressources
+  
+  // Monnaies de base (synchronisées avec Player)
   gold: { 
     type: Number, 
     default: 0,
@@ -86,83 +279,249 @@ const inventorySchema = new Schema<IInventoryDocument>({
     default: 0,
     min: 0
   },
-
-  // Fragments et matériaux
-  fragments: { 
-    type: Map, 
-    of: Number, 
-    default: new Map()
+  
+  // Stockage principal
+  storage: {
+    type: categorizedStorageSchema,
+    default: () => ({
+      weapons: [],
+      helmets: [],
+      armors: [],
+      boots: [],
+      gloves: [],
+      accessories: [],
+      potions: [],
+      scrolls: [],
+      enhancementItems: [],
+      enhancementMaterials: [],
+      evolutionMaterials: [],
+      craftingMaterials: [],
+      awakeningMaterials: [],
+      heroFragments: new Map(),
+      specialCurrencies: new Map(),
+      artifacts: []
+    })
   },
-  materials: { 
-    type: Map, 
-    of: Number, 
-    default: new Map()
+  
+  // Configuration
+  maxCapacity: { 
+    type: Number, 
+    default: 200,
+    min: 100
   },
-
-  // Équipement possédé
-  equipment: [equipmentSchema]
+  autoSell: { 
+    type: Boolean, 
+    default: false 
+  },
+  autoSellRarity: { 
+    type: String, 
+    enum: ["Common", "Rare"],
+    default: "Common"
+  },
+  
+  // Maintenance
+  lastCleanup: { 
+    type: Date, 
+    default: Date.now 
+  }
 }, {
   timestamps: true,
   collection: 'inventories'
 });
 
-// Index pour optimiser les requêtes
+// === INDEX ===
 inventorySchema.index({ playerId: 1 });
-inventorySchema.index({ "equipment.type": 1 });
-inventorySchema.index({ "equipment.rarity": 1 });
+inventorySchema.index({ "storage.weapons.itemId": 1 });
+inventorySchema.index({ "storage.weapons.isEquipped": 1 });
+inventorySchema.index({ "storage.*.instanceId": 1 });
 
-// Méthodes d'instance
-inventorySchema.methods.addEquipment = function(equipment: Partial<IEquipment>) {
-  const newEquipment = {
-    itemId: equipment.itemId || new mongoose.Types.ObjectId().toString(),
-    name: equipment.name || "Unknown Item",
-    type: equipment.type || "Weapon",
-    rarity: equipment.rarity || "Common",
-    level: equipment.level || 1,
-    stats: equipment.stats || { atk: 0, def: 0, hp: 0 }
+// === MÉTHODES STATIQUES ===
+
+inventorySchema.statics.createForPlayer = async function(playerId: string) {
+  const inventory = new this({
+    playerId,
+    maxCapacity: 200,
+    storage: {
+      weapons: [],
+      helmets: [],
+      armors: [],
+      boots: [],
+      gloves: [],
+      accessories: [],
+      potions: [],
+      scrolls: [],
+      enhancementItems: [],
+      enhancementMaterials: [],
+      evolutionMaterials: [],
+      craftingMaterials: [],
+      awakeningMaterials: [],
+      heroFragments: new Map(),
+      specialCurrencies: new Map(),
+      artifacts: []
+    }
+  });
+  
+  return await inventory.save();
+};
+
+// === MÉTHODES D'INSTANCE ===
+
+// Ajouter un objet
+inventorySchema.methods.addItem = async function(
+  itemId: string, 
+  quantity: number = 1, 
+  level: number = 1
+): Promise<IOwnedItem> {
+  // Récupérer les données de l'objet depuis le modèle Item
+  const Item = mongoose.model('Item');
+  const item = await Item.findOne({ itemId });
+  
+  if (!item) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+  
+  const newOwnedItem: IOwnedItem = {
+    itemId,
+    instanceId: new mongoose.Types.ObjectId().toString(),
+    quantity,
+    level,
+    enhancement: 0,
+    isEquipped: false,
+    acquiredDate: new Date()
   };
   
-  this.equipment.push(newEquipment);
-  return this.save();
-};
-
-inventorySchema.methods.removeEquipment = function(itemId: string) {
-  this.equipment = this.equipment.filter((item: IEquipment) => item.itemId !== itemId);
-  return this.save();
-};
-
-inventorySchema.methods.getEquipmentByType = function(type: string) {
-  return this.equipment.filter((item: IEquipment) => item.type === type);
-};
-
-inventorySchema.methods.getEquippedItems = function() {
-  return this.equipment.filter((item: IEquipment) => item.equippedTo);
-};
-
-inventorySchema.methods.addMaterial = function(materialId: string, quantity: number) {
-  const currentQuantity = this.materials.get(materialId) || 0;
-  this.materials.set(materialId, currentQuantity + quantity);
-  return this.save();
-};
-
-inventorySchema.methods.removeMaterial = function(materialId: string, quantity: number): boolean {
-  const currentQuantity = this.materials.get(materialId) || 0;
-  if (currentQuantity < quantity) return false;
+  // Déterminer la catégorie de stockage
+  let storageCategory: keyof ICategorizedStorage;
   
-  this.materials.set(materialId, currentQuantity - quantity);
-  return true;
+  if (item.category === "Equipment") {
+    storageCategory = `${item.equipmentSlot?.toLowerCase()}s` as keyof ICategorizedStorage;
+  } else if (item.category === "Consumable") {
+    storageCategory = `${item.consumableType?.toLowerCase()}s` as keyof ICategorizedStorage;
+  } else if (item.category === "Material") {
+    storageCategory = `${item.materialType?.toLowerCase()}Materials` as keyof ICategorizedStorage;
+  } else if (item.category === "Artifact") {
+    storageCategory = "artifacts";
+  } else {
+    throw new Error(`Cannot store item of category: ${item.category}`);
+  }
+  
+  // Ajouter à la bonne catégorie
+  if (Array.isArray(this.storage[storageCategory])) {
+    (this.storage[storageCategory] as IOwnedItem[]).push(newOwnedItem);
+  }
+  
+  await this.save();
+  return newOwnedItem;
 };
 
-inventorySchema.methods.addFragment = function(heroId: string, quantity: number) {
-  const currentQuantity = this.fragments.get(heroId) || 0;
-  this.fragments.set(heroId, currentQuantity + quantity);
-  return this.save();
+// Obtenir les statistiques
+inventorySchema.methods.getInventoryStats = function(): IInventoryStats {
+  const stats: IInventoryStats = {
+    totalItems: 0,
+    totalWeight: 0,
+    maxCapacity: this.maxCapacity,
+    equipmentCount: 0,
+    consumableCount: 0,
+    materialCount: 0,
+    artifactCount: 0,
+    commonCount: 0,
+    rareCount: 0,
+    epicCount: 0,
+    legendaryCount: 0,
+    mythicCount: 0,
+    ascendedCount: 0,
+    equippedItemsCount: 0,
+    maxLevelEquipment: 0,
+    setsCompleted: []
+  };
+  
+  // Compter tous les objets dans toutes les catégories
+  Object.values(this.storage).forEach(category => {
+    if (Array.isArray(category)) {
+      stats.totalItems += category.length;
+      
+      category.forEach((item: IOwnedItem) => {
+        if (item.isEquipped) stats.equippedItemsCount++;
+        if (item.level > stats.maxLevelEquipment) {
+          stats.maxLevelEquipment = item.level;
+        }
+      });
+    }
+  });
+  
+  return stats;
 };
 
-inventorySchema.methods.canSummonHero = function(heroId: string, requiredFragments: number = 50): boolean {
-  const fragments = this.fragments.get(heroId) || 0;
-  return fragments >= requiredFragments;
+// Équiper un objet
+inventorySchema.methods.equipItem = async function(
+  instanceId: string, 
+  heroId: string
+): Promise<boolean> {
+  // Chercher l'objet dans toutes les catégories d'équipement
+  const equipmentCategories = ['weapons', 'helmets', 'armors', 'boots', 'gloves', 'accessories'];
+  
+  for (const category of equipmentCategories) {
+    const items = this.storage[category as keyof ICategorizedStorage] as IOwnedItem[];
+    const item = items.find(item => item.instanceId === instanceId);
+    
+    if (item) {
+      // Déséquiper l'ancien objet du même slot sur ce héros
+      const oldItem = items.find(i => 
+        i.equippedTo === heroId && i.instanceId !== instanceId
+      );
+      if (oldItem) {
+        oldItem.isEquipped = false;
+        oldItem.equippedTo = undefined;
+      }
+      
+      // Équiper le nouvel objet
+      item.isEquipped = true;
+      item.equippedTo = heroId;
+      
+      await this.save();
+      return true;
+    }
+  }
+  
+  return false;
+};
+
+// Nettoyer les objets expirés
+inventorySchema.methods.cleanupExpiredItems = async function(): Promise<number> {
+  let removedCount = 0;
+  const now = new Date();
+  
+  // Nettoyer les consommables expirés
+  ['potions', 'scrolls', 'enhancementItems'].forEach(category => {
+    const items = this.storage[category as keyof ICategorizedStorage] as IOwnedItem[];
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i];
+      if (item.consumableData?.expirationDate && 
+          item.consumableData.expirationDate < now) {
+        items.splice(i, 1);
+        removedCount++;
+      }
+    }
+  });
+  
+  this.lastCleanup = now;
+  await this.save();
+  return removedCount;
+};
+
+// Calculer la valeur totale
+inventorySchema.methods.calculateTotalValue = function(): number {
+  let totalValue = 0;
+  
+  // Ajouter les monnaies
+  totalValue += this.gold;
+  totalValue += this.gems * 10; // Les gems valent plus
+  totalValue += this.paidGems * 20;
+  
+  // Pour calculer la valeur des objets, il faudrait faire des requêtes vers Item
+  // Pour l'instant on retourne juste les monnaies
+  
+  return totalValue;
 };
 
 export default mongoose.model<IInventoryDocument>("Inventory", inventorySchema);
-
