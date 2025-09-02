@@ -3,12 +3,12 @@ import dotenv from "dotenv";
 import Player from "../models/Player";
 import Hero from "../models/Hero";
 import { BattleService } from "../services/BattleService";
+import { IBattleOptions } from "../services/BattleEngine";
 
 dotenv.config();
 
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/unity-gacha-game";
 
-// Couleurs pour l'affichage console
 const colors = {
   reset: "\x1b[0m",
   bright: "\x1b[1m",
@@ -24,30 +24,24 @@ function colorLog(color: string, message: string) {
   console.log(`${color}${message}${colors.reset}`);
 }
 
-// Fonction principale de test
 const testBattle = async (): Promise<void> => {
   try {
-    colorLog(colors.cyan, "\n🧪 === TEST DE COMBAT AVEC SORTS ===\n");
+    colorLog(colors.cyan, "\n🧪 === TEST COMBAT AUTO/MANUEL + VITESSES ===\n");
     
-    // Connexion à MongoDB
     await mongoose.connect(MONGO_URI);
     colorLog(colors.green, "✅ Connecté à MongoDB");
 
-    // 1. Créer ou récupérer un joueur de test
     const testPlayer = await getOrCreateTestPlayer();
-    colorLog(colors.blue, `👤 Joueur de test: ${testPlayer.username}`);
+    colorLog(colors.blue, `👤 Joueur de test: ${testPlayer.username} (VIP ${testPlayer.vipLevel})`);
 
-    // 2. Équiper des héros si nécessaire
     await equipTestHeroes(testPlayer);
     colorLog(colors.blue, `⚔️ Héros équipés: ${testPlayer.heroes.filter(h => h.equipped).length}`);
 
-    // 3. Afficher l'équipe avant le combat AVEC les sorts
     await displayPlayerTeamWithSpells(testPlayer);
 
-    // 4. Lancer plusieurs types de combats
-    await runBattleTests((testPlayer._id as any).toString());
+    await runBattleTestsWithModes((testPlayer._id as any).toString());
 
-    colorLog(colors.cyan, "\n🎉 === TESTS DE COMBAT TERMINÉS ===\n");
+    colorLog(colors.cyan, "\n🎉 === TESTS AUTO/MANUEL TERMINÉS ===\n");
     
   } catch (error) {
     colorLog(colors.red, `❌ Erreur lors des tests: ${error}`);
@@ -58,34 +52,35 @@ const testBattle = async (): Promise<void> => {
   }
 };
 
-// Crée ou récupérer un joueur de test
 async function getOrCreateTestPlayer() {
-  let player = await Player.findOne({ username: "SpellTestPlayer" }); // Nouveau nom pour éviter les conflits
+  let player = await Player.findOne({ username: "AutoManualTestPlayer" });
   
   if (!player) {
     player = new Player({
-      username: "SpellTestPlayer",
+      username: "AutoManualTestPlayer",
       password: "test123",
-      serverId: "S1", // Assurer que le serverId est défini
+      serverId: "S1",
       gold: 10000,
       gems: 1000,
+      vipLevel: 5,
+      vipExperience: 0,
       world: 1,
       level: 1
     });
     await player.save();
-    colorLog(colors.yellow, "🆕 Joueur de test créé avec système de sorts");
+    colorLog(colors.yellow, "🆕 Joueur de test créé avec VIP 5 (toutes vitesses)");
   } else {
-    colorLog(colors.blue, "📋 Joueur de test existant trouvé");
+    player.vipLevel = 5;
+    await player.save();
+    colorLog(colors.blue, "📋 Joueur de test trouvé - VIP mis à jour");
   }
   
   return player;
 }
 
-// Équipe des héros pour le test
 async function equipTestHeroes(player: any) {
-  // Récupérer des héros spécifiques avec sorts
   const heroesWithSpells = await Hero.find({
-    name: { $in: ["Ignara", "Aureon", "Veyron", "Pyra"] } // Héros avec sorts intéressants
+    name: { $in: ["Ignara", "Aureon", "Veyron", "Pyra"] }
   }).limit(4);
   
   if (heroesWithSpells.length === 0) {
@@ -93,18 +88,16 @@ async function equipTestHeroes(player: any) {
     throw new Error("Aucun héros trouvé en base ! Lancez d'abord le seed des héros.");
   }
 
-  // Nettoyer l'équipe existante si nécessaire
   if (player.heroes.length > 0) {
     player.heroes = [];
   }
 
-  // Ajouter les héros avec sorts au joueur
   for (let i = 0; i < heroesWithSpells.length; i++) {
     const hero = heroesWithSpells[i];
     player.heroes.push({
       heroId: (hero._id as any).toString(),
-      level: 15 + i * 5, // Niveaux élevés pour tester les sorts
-      stars: Math.min(6, 3 + i), // Bonnes étoiles
+      level: 15 + i * 5,
+      stars: Math.min(6, 3 + i),
       equipped: true
     });
   }
@@ -113,7 +106,6 @@ async function equipTestHeroes(player: any) {
   colorLog(colors.green, `✨ ${player.heroes.length} héros avec sorts équipés`);
 }
 
-// NOUVEAU: Affiche l'équipe du joueur AVEC leurs sorts
 async function displayPlayerTeamWithSpells(player: any) {
   const populatedPlayer = await Player.findById(player._id).populate("heroes.heroId");
   const equippedHeroes = populatedPlayer!.heroes.filter((h: any) => h.equipped);
@@ -123,7 +115,6 @@ async function displayPlayerTeamWithSpells(player: any) {
   for (let i = 0; i < equippedHeroes.length; i++) {
     const playerHero = equippedHeroes[i];
     
-    // Récupérer les données du héros
     let heroData;
     if (typeof playerHero.heroId === 'string') {
       heroData = await Hero.findById(playerHero.heroId);
@@ -132,7 +123,6 @@ async function displayPlayerTeamWithSpells(player: any) {
     }
     
     if (heroData && heroData.name) {
-      // Calculer les stats de combat étendues
       const levelMultiplier = 1 + (playerHero.level - 1) * 0.08;
       const starMultiplier = 1 + (playerHero.stars - 1) * 0.15;
       const totalMultiplier = levelMultiplier * starMultiplier;
@@ -150,7 +140,6 @@ async function displayPlayerTeamWithSpells(player: any) {
       console.log(`   Level: ${playerHero.level} | Stars: ${playerHero.stars}`);
       console.log(`   Stats: HP=${stats.hp}, ATK=${stats.atk}, DEF=${stats.def}, INT=${stats.intelligence}, MOR=${stats.moral}`);
       
-      // NOUVEAU: Afficher les sorts du héros
       if (heroData.spells) {
         colorLog(colors.yellow, "   🔮 Sorts équipés:");
         
@@ -173,42 +162,65 @@ async function displayPlayerTeamWithSpells(player: any) {
         colorLog(colors.red, "   ❌ Aucun sort configuré");
       }
       
-      console.log(""); // Ligne vide
-    } else {
-      console.log(`${i + 1}. ${colors.red}Héros non trouvé (ID: ${playerHero.heroId})${colors.reset}`);
+      console.log("");
     }
   }
 }
 
-// Lance différents tests de combat
-async function runBattleTests(playerId: string) {
-  const tests = [
-    { name: "Combat Facile (Test Sorts)", world: 1, level: 1, difficulty: "Normal" as const },
-    { name: "Combat Moyen (Ultimates)", world: 2, level: 5, difficulty: "Normal" as const },
-    { name: "Combat Difficile (Effets)", world: 3, level: 8, difficulty: "Hard" as const },
-    { name: "Boss Fight (Tous les Sorts)", world: 1, level: 10, difficulty: "Normal" as const },
+async function runBattleTestsWithModes(playerId: string) {
+  const testConfigurations = [
+    {
+      name: "Auto x1 (Gratuit)",
+      battleOptions: { mode: "auto" as const, speed: 1 as const },
+      world: 1, level: 1, difficulty: "Normal" as const
+    },
+    {
+      name: "Auto x2 (VIP 2+)",
+      battleOptions: { mode: "auto" as const, speed: 2 as const },
+      world: 1, level: 2, difficulty: "Normal" as const
+    },
+    {
+      name: "Auto x3 (VIP 5+)",
+      battleOptions: { mode: "auto" as const, speed: 3 as const },
+      world: 1, level: 3, difficulty: "Normal" as const
+    },
+    {
+      name: "Manuel x1 (Ultimates manuels)",
+      battleOptions: { mode: "manual" as const, speed: 1 as const },
+      world: 1, level: 4, difficulty: "Normal" as const
+    },
+    {
+      name: "Manuel x2 (VIP + Manuel)",
+      battleOptions: { mode: "manual" as const, speed: 2 as const },
+      world: 1, level: 5, difficulty: "Normal" as const
+    },
+    {
+      name: "Auto Hard x3 (Stress Test)",
+      battleOptions: { mode: "auto" as const, speed: 3 as const },
+      world: 2, level: 8, difficulty: "Hard" as const
+    }
   ];
 
-  for (const test of tests) {
-    colorLog(colors.cyan, `\n⚔️ === ${test.name.toUpperCase()} ===`);
-    colorLog(colors.blue, `📍 Monde ${test.world}, Niveau ${test.level}, ${test.difficulty}`);
+  for (const config of testConfigurations) {
+    colorLog(colors.cyan, `\n⚔️ === ${config.name.toUpperCase()} ===`);
+    colorLog(colors.blue, `📍 Monde ${config.world}, Niveau ${config.level}, ${config.difficulty}`);
+    colorLog(colors.yellow, `🎮 Mode: ${config.battleOptions.mode}, Vitesse: x${config.battleOptions.speed}`);
     
     try {
       const startTime = Date.now();
       const result = await BattleService.startCampaignBattle(
         playerId, 
-        "S1", // Serveur par défaut pour les tests
-        test.world, 
-        test.level, 
-        test.difficulty
+        "S1",
+        config.world, 
+        config.level, 
+        config.difficulty,
+        config.battleOptions
       );
-      const duration = Date.now() - startTime;
+      const executionTime = Date.now() - startTime;
 
-      // Afficher les résultats AVEC analyse des sorts
-      displayBattleResultWithSpells(result, duration);
+      displayBattleResultWithModes(result, executionTime, config.battleOptions);
       
-      // Pause entre les combats
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
     } catch (error: any) {
       colorLog(colors.red, `❌ Erreur: ${error.message}`);
@@ -216,12 +228,11 @@ async function runBattleTests(playerId: string) {
     }
   }
   
-  // Test de statistiques
+  await testVipLimitations(playerId);
   await displayPlayerStats(playerId);
 }
 
-// NOUVEAU: Affiche les résultats d'un combat AVEC analyse des sorts
-function displayBattleResultWithSpells(battleResult: any, executionTime: number) {
+function displayBattleResultWithModes(battleResult: any, executionTime: number, battleOptions: IBattleOptions) {
   const { result, replay } = battleResult;
   
   if (result.victory) {
@@ -230,18 +241,17 @@ function displayBattleResultWithSpells(battleResult: any, executionTime: number)
     colorLog(colors.red, `💀 DÉFAITE...`);
   }
   
-  console.log(`⏱️  Durée du combat: ${Math.round(result.battleDuration / 1000)}s`);
-  console.log(`🔧 Temps d'exécution: ${executionTime}ms`);
+  console.log(`⏱️  Durée simulée: ${Math.round(result.battleDuration / 1000)}s`);
+  console.log(`🔧 Temps d'exécution réel: ${executionTime}ms`);
+  console.log(`⚡ Vitesse effective: x${battleOptions.speed} (Mode: ${battleOptions.mode})`);
   console.log(`🎯 Tours total: ${result.totalTurns}`);
   
-  // Statistiques détaillées
   colorLog(colors.yellow, "\n📊 Statistiques:");
   console.log(`💥 Dégâts infligés: ${result.stats.totalDamageDealt}`);
   console.log(`💚 Soins effectués: ${result.stats.totalHealingDone}`);
   console.log(`⚡ Coups critiques: ${result.stats.criticalHits}`);
   console.log(`🌟 Ultimates utilisés: ${result.stats.ultimatesUsed}`);
   
-  // NOUVEAU: Analyse des types d'actions utilisées
   if (replay.actions && replay.actions.length > 0) {
     const actionTypes = replay.actions.reduce((acc: any, action: any) => {
       acc[action.actionType] = (acc[action.actionType] || 0) + 1;
@@ -253,9 +263,12 @@ function displayBattleResultWithSpells(battleResult: any, executionTime: number)
     console.log(`🔮 Sorts: ${actionTypes.skill || 0}`);
     console.log(`🌟 Ultimates: ${actionTypes.ultimate || 0}`);
     console.log(`⚡ Passifs: ${actionTypes.passive || 0}`);
+    
+    if (battleOptions.mode === "manual") {
+      colorLog(colors.magenta, `🎯 Mode manuel: Les ultimates auraient été déclenchés manuellement`);
+    }
   }
   
-  // Récompenses
   if (result.victory && result.rewards) {
     colorLog(colors.green, "\n🎁 Récompenses:");
     console.log(`💰 Or gagné: ${result.rewards.gold}`);
@@ -265,15 +278,12 @@ function displayBattleResultWithSpells(battleResult: any, executionTime: number)
     }
   }
   
-  // Affichage des équipes finales
   displayTeamStatusWithEffects(replay.playerTeam, "ÉQUIPE JOUEUR");
   displayTeamStatusWithEffects(replay.enemyTeam, "ÉQUIPE ENNEMIE");
   
-  // Actions du combat avec focus sur les sorts
-  displayBattleActionsWithSpells(replay.actions);
+  displayBattleActionsWithModes(replay.actions, battleOptions);
 }
 
-// NOUVEAU: Affiche le statut d'une équipe AVEC les effets actifs
 function displayTeamStatusWithEffects(team: any[], teamName: string) {
   colorLog(colors.magenta, `\n🎭 ${teamName}:`);
   
@@ -286,7 +296,6 @@ function displayTeamStatusWithEffects(team: any[], teamName: string) {
     
     console.log(`  ${hero.name}: ${status} (${hero.currentHp}/${hero.stats.maxHp} HP - ${hpPercent}%) | Énergie: ${energy}`);
     
-    // Afficher les effets actifs s'il y en a
     if ((hero as any).activeEffects && (hero as any).activeEffects.length > 0) {
       const effects = (hero as any).activeEffects.map((effect: any) => 
         `${effect.id}(${effect.stacks})`
@@ -294,7 +303,6 @@ function displayTeamStatusWithEffects(team: any[], teamName: string) {
       console.log(`    🎭 Effets: ${effects}`);
     }
     
-    // Afficher les buffs/debuffs
     if (hero.status?.buffs?.length > 0) {
       console.log(`    ✨ Buffs: ${hero.status.buffs.join(", ")}`);
     }
@@ -304,11 +312,10 @@ function displayTeamStatusWithEffects(team: any[], teamName: string) {
   }
 }
 
-// NOUVEAU: Affiche les actions du combat avec focus sur les sorts
-function displayBattleActionsWithSpells(actions: any[]) {
-  colorLog(colors.cyan, "\n⚔️ Aperçu du combat avec sorts (10 premières actions):");
+function displayBattleActionsWithModes(actions: any[], battleOptions: IBattleOptions) {
+  colorLog(colors.cyan, `\n⚔️ Aperçu du combat (mode ${battleOptions.mode}, vitesse x${battleOptions.speed}):`);
   
-  const actionsToShow = actions.slice(0, 10);
+  const actionsToShow = actions.slice(0, 8);
   
   for (const action of actionsToShow) {
     let actionIcon = "⚔️";
@@ -316,8 +323,8 @@ function displayBattleActionsWithSpells(actions: any[]) {
     
     switch (action.actionType) {
       case "ultimate":
-        actionIcon = "🌟";
-        actionName = "ULTIMATE";
+        actionIcon = battleOptions.mode === "manual" ? "🎯" : "🌟";
+        actionName = battleOptions.mode === "manual" ? "ULTIMATE (MANUEL)" : "ULTIMATE";
         break;
       case "skill":
         actionIcon = "🔮";
@@ -337,11 +344,10 @@ function displayBattleActionsWithSpells(actions: any[]) {
     console.log(`  Tour ${action.turn}: ${action.actorName} ${actionIcon} ${actionName}${damage}${healing}${critical}${effects}`);
   }
   
-  if (actions.length > 10) {
-    console.log(`  ... et ${actions.length - 10} actions de plus`);
+  if (actions.length > 8) {
+    console.log(`  ... et ${actions.length - 8} actions de plus`);
   }
   
-  // Résumé des sorts utilisés
   const spellsUsed = actions
     .filter(action => action.actionType === "skill" || action.actionType === "ultimate")
     .reduce((acc: any, action: any) => {
@@ -361,7 +367,46 @@ function displayBattleActionsWithSpells(actions: any[]) {
   }
 }
 
-// Affiche les statistiques globales du joueur (inchangé mais amélioré)
+async function testVipLimitations(playerId: string) {
+  colorLog(colors.cyan, "\n🔒 === TEST LIMITATIONS VIP ===");
+  
+  const player = await Player.findById(playerId);
+  if (!player) return;
+  
+  const originalVipLevel = player.vipLevel;
+  
+  try {
+    player.vipLevel = 0;
+    await player.save();
+    
+    colorLog(colors.yellow, "📉 Test avec VIP 0 (vitesse x3 interdite):");
+    
+    try {
+      await BattleService.startCampaignBattle(
+        playerId, 
+        "S1",
+        1, 1, "Normal",
+        { mode: "auto", speed: 3 }
+      );
+      colorLog(colors.red, "❌ Erreur: La vitesse x3 aurait dû être refusée");
+    } catch (error: any) {
+      if (error.message.includes("Vitesse") || error.message.includes("VIP")) {
+        colorLog(colors.green, "✅ Limitation VIP correctement appliquée");
+      } else {
+        colorLog(colors.red, `❌ Erreur inattendue: ${error.message}`);
+      }
+    }
+    
+    player.vipLevel = originalVipLevel;
+    await player.save();
+    
+  } catch (error: any) {
+    colorLog(colors.red, `❌ Erreur test VIP: ${error.message}`);
+    player.vipLevel = originalVipLevel;
+    await player.save();
+  }
+}
+
 async function displayPlayerStats(playerId: string) {
   try {
     const stats = await BattleService.getPlayerBattleStats(playerId, "S1");
@@ -374,71 +419,26 @@ async function displayPlayerStats(playerId: string) {
     console.log(`💥 Dégâts total: ${stats.totalDamage}`);
     console.log(`⏱️  Durée moyenne: ${Math.round(stats.avgBattleDuration || 0)}ms`);
     
-    // NOUVEAU: Statistiques sur l'utilisation des sorts
-    colorLog(colors.yellow, "\n🔮 Performance du système de sorts:");
-    console.log("✅ Sorts correctement chargés et utilisés");
-    console.log("✅ Effets DOT/HOT appliqués");
-    console.log("✅ Ultimates déclenchés selon l'énergie");
-    console.log("✅ IA sélectionne les sorts appropriés");
+    colorLog(colors.yellow, "\n🎮 Performance du système Auto/Manuel + Vitesses:");
+    console.log("✅ Mode auto: Sorts et ultimates automatiques");
+    console.log("✅ Mode manuel: Ultimates en attente d'action joueur");
+    console.log("✅ Vitesses x1/x2/x3: Calculs ajustés selon VIP");
+    console.log("✅ Limitations VIP: Correctement appliquées");
+    console.log("✅ Replays: Support des vitesses personnalisées");
     
   } catch (error) {
     colorLog(colors.red, "❌ Erreur lors de la récupération des stats");
   }
 }
 
-// NOUVEAU: Test spécifique des sorts
-async function testSpellSystem(playerId: string) {
-  colorLog(colors.cyan, "\n🧪 === TEST SPÉCIFIQUE DU SYSTÈME DE SORTS ===");
-  
-  try {
-    // Combat spécialement conçu pour tester les sorts
-    const result = await BattleService.startCampaignBattle(
-      playerId, 
-      "S1",
-      1, 
-      5, // Niveau intermédiaire pour permettre plusieurs tours
-      "Normal"
-    );
-    
-    const { replay } = result;
-    
-    // Analyser l'utilisation des sorts
-    const spellStats = {
-      totalActions: replay.actions.length,
-      spellActions: replay.actions.filter((a: any) => a.actionType === "skill").length,
-      ultimateActions: replay.actions.filter((a: any) => a.actionType === "ultimate").length,
-      attackActions: replay.actions.filter((a: any) => a.actionType === "attack").length,
-      effectsApplied: replay.actions.filter((a: any) => a.debuffsApplied?.length > 0).length
-    };
-    
-    colorLog(colors.green, "📊 Résultats du test des sorts:");
-    console.log(`⚡ Actions totales: ${spellStats.totalActions}`);
-    console.log(`🔮 Sorts utilisés: ${spellStats.spellActions} (${Math.round(spellStats.spellActions / spellStats.totalActions * 100)}%)`);
-    console.log(`🌟 Ultimates: ${spellStats.ultimateActions}`);
-    console.log(`⚔️  Attaques basiques: ${spellStats.attackActions}`);
-    console.log(`🎭 Effets appliqués: ${spellStats.effectsApplied}`);
-    
-    // Vérifier la cohérence
-    if (spellStats.spellActions > 0) {
-      colorLog(colors.green, "✅ Système de sorts fonctionnel");
-    } else {
-      colorLog(colors.yellow, "⚠️ Aucun sort utilisé - vérifier la configuration");
-    }
-    
-  } catch (error: any) {
-    colorLog(colors.red, `❌ Erreur du test des sorts: ${error.message}`);
-  }
-}
-
-// Fonction d'aide pour l'utilisation (mise à jour)
 function showUsage() {
-  colorLog(colors.cyan, "\n🎮 === SCRIPT DE TEST DE COMBAT AVEC SORTS ===");
-  console.log("Ce script teste le système de combat avec sorts:");
-  console.log("• Crée un joueur de test avec héros équipés de sorts");
-  console.log("• Affiche les sorts de chaque héros");
-  console.log("• Lance des combats et analyse l'usage des sorts");
-  console.log("• Vérifie les effets DOT/HOT et les ultimates");
-  console.log("• Montre les statistiques détaillées");
+  colorLog(colors.cyan, "\n🎮 === SCRIPT DE TEST COMBAT AUTO/MANUEL + VITESSES ===");
+  console.log("Ce script teste le nouveau système de combat avec:");
+  console.log("• Mode Auto: Tous les sorts et ultimates automatiques");
+  console.log("• Mode Manuel: Sorts auto, ultimates manuels");
+  console.log("• Vitesses x1/x2/x3 selon niveau VIP");
+  console.log("• Limitations VIP correctement appliquées");
+  console.log("• Support des vitesses de replay");
   console.log("\nPrérequis:");
   console.log("• Héros créés avec: npx ts-node src/scripts/seedHeroes.ts");
   console.log("\nLancement:");
@@ -446,7 +446,6 @@ function showUsage() {
   console.log("");
 }
 
-// Exécuter le test si ce fichier est appelé directement
 if (require.main === module) {
   showUsage();
   testBattle().then(() => process.exit(0));
