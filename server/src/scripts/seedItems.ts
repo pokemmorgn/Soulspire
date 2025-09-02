@@ -61,6 +61,7 @@ const seedItems = [
     itemId: "wooden_bow",
     name: "WOODEN_BOW_NAME",
     description: "WOODEN_BOW_DESC",
+    iconUrl: "icons/weapons/wooden_bow.png",
     category: "Equipment",
     subCategory: "Bow",
     rarity: "Common",
@@ -85,6 +86,7 @@ const seedItems = [
     itemId: "magic_staff",
     name: "MAGIC_STAFF_NAME",
     description: "MAGIC_STAFF_DESC",
+    iconUrl: "icons/weapons/magic_staff.png",
     category: "Equipment",
     subCategory: "Staff",
     rarity: "Rare",
@@ -92,13 +94,15 @@ const seedItems = [
     maxLevel: 30,
     baseStats: {
       atk: 25,
-      intelligence: 15,
-      healingBonus: 10
+      healingBonus: 10,
+      energyRegen: 3,
+      reductionCooldown: 2
     },
     statsPerLevel: {
       atk: 2,
-      intelligence: 1.2,
-      healingBonus: 0.5
+      healingBonus: 0.5,
+      energyRegen: 0.2,
+      reductionCooldown: 0.1
     },
     equipmentSlot: "Weapon",
     classRestriction: ["Support"],
@@ -111,6 +115,7 @@ const seedItems = [
     itemId: "leather_armor",
     name: "LEATHER_ARMOR_NAME",
     description: "LEATHER_ARMOR_DESC",
+    iconUrl: "icons/armors/leather_armor.png",
     category: "Equipment",
     subCategory: "Light_Armor",
     rarity: "Common",
@@ -135,6 +140,7 @@ const seedItems = [
     itemId: "chainmail_armor",
     name: "CHAINMAIL_ARMOR_NAME",
     description: "CHAINMAIL_ARMOR_DESC",
+    iconUrl: "icons/armors/chainmail_armor.png",
     category: "Equipment",
     subCategory: "Medium_Armor",
     rarity: "Common",
@@ -143,12 +149,12 @@ const seedItems = [
     baseStats: {
       hp: 100,
       def: 20,
-      defMagique: 15
+      critResist: 8
     },
     statsPerLevel: {
       hp: 6,
       def: 1.5,
-      defMagique: 1
+      critResist: 0.3
     },
     equipmentSlot: "Armor",
     classRestriction: ["Tank", "DPS Melee"],
@@ -159,6 +165,7 @@ const seedItems = [
     itemId: "plate_armor",
     name: "PLATE_ARMOR_NAME",
     description: "PLATE_ARMOR_DESC",
+    iconUrl: "icons/armors/plate_armor.png",
     category: "Equipment",
     subCategory: "Heavy_Armor",
     rarity: "Epic",
@@ -167,14 +174,14 @@ const seedItems = [
     baseStats: {
       hp: 200,
       def: 50,
-      defMagique: 30,
-      fireResist: 10
+      critResist: 15,
+      shieldBonus: 8
     },
     statsPerLevel: {
       hp: 12,
       def: 3,
-      defMagique: 2,
-      fireResist: 0.3
+      critResist: 0.4,
+      shieldBonus: 0.2
     },
     equipmentSlot: "Armor",
     classRestriction: ["Tank"],
@@ -187,6 +194,7 @@ const seedItems = [
     itemId: "cloth_hat",
     name: "CLOTH_HAT_NAME",
     description: "CLOTH_HAT_DESC",
+    iconUrl: "icons/helmets/cloth_hat.png",
     category: "Equipment",
     subCategory: "Light_Helmet",
     rarity: "Common",
@@ -194,11 +202,13 @@ const seedItems = [
     maxLevel: 20,
     baseStats: {
       hp: 20,
-      intelligence: 8
+      moral: 8,
+      energyRegen: 1
     },
     statsPerLevel: {
       hp: 1.5,
-      intelligence: 0.6
+      moral: 0.6,
+      energyRegen: 0.1
     },
     equipmentSlot: "Helmet",
     classRestriction: ["Support"],
@@ -209,6 +219,7 @@ const seedItems = [
     itemId: "iron_helmet",
     name: "IRON_HELMET_NAME",
     description: "IRON_HELMET_DESC",
+    iconUrl: "icons/helmets/iron_helmet.png",
     category: "Equipment",
     subCategory: "Heavy_Helmet",
     rarity: "Common",
@@ -217,12 +228,12 @@ const seedItems = [
     baseStats: {
       hp: 40,
       def: 12,
-      defMagique: 8
+      critResist: 6
     },
     statsPerLevel: {
       hp: 2.5,
       def: 0.8,
-      defMagique: 0.5
+      critResist: 0.25
     },
     equipmentSlot: "Helmet",
     classRestriction: ["Tank", "DPS Melee"],
@@ -235,6 +246,7 @@ const seedItems = [
     itemId: "health_potion_small",
     name: "HEALTH_POTION_SMALL_NAME",
     description: "HEALTH_POTION_SMALL_DESC",
+    iconUrl: "icons/consumables/health_potion_small.png",
     category: "Consumable",
     subCategory: "Health_Potion",
     rarity: "Common",
@@ -249,6 +261,7 @@ const seedItems = [
     itemId: "health_potion_medium",
     name: "HEALTH_POTION_MEDIUM_NAME",
     description: "HEALTH_POTION_MEDIUM_DESC",
+    iconUrl: "icons/consumables/health_potion_medium.png",
     category: "Consumable",
     subCategory: "Health_Potion",
     rarity: "Common",
@@ -263,6 +276,7 @@ const seedItems = [
     itemId: "mana_potion_small",
     name: "MANA_POTION_SMALL_NAME",
     description: "MANA_POTION_SMALL_DESC",
+    iconUrl: "icons/consumables/mana_potion_small.png",
     category: "Consumable",
     subCategory: "Mana_Potion",
     rarity: "Common",
@@ -278,6 +292,7 @@ const seedItems = [
     itemId: "xp_scroll",
     name: "XP_SCROLL_NAME",
     description: "XP_SCROLL_DESC",
+    iconUrl: "icons/consumables/xp_scroll.png",
     category: "Consumable",
     subCategory: "XP_Scroll",
     rarity: "Rare",
@@ -294,6 +309,7 @@ const seedItems = [
     itemId: "iron_ore",
     name: "IRON_ORE_NAME",
     description: "IRON_ORE_DESC",
+    iconUrl: "icons/materials/iron_ore.png",
     category: "Material",
     subCategory: "Metal_Ore",
     rarity: "Common",
@@ -305,6 +321,7 @@ const seedItems = [
     itemId: "magic_crystal",
     name: "MAGIC_CRYSTAL_NAME",
     description: "MAGIC_CRYSTAL_DESC",
+    iconUrl: "icons/materials/magic_crystal.png",
     category: "Material",
     subCategory: "Crystal",
     rarity: "Rare",
@@ -316,6 +333,7 @@ const seedItems = [
     itemId: "dragon_scale",
     name: "DRAGON_SCALE_NAME",
     description: "DRAGON_SCALE_DESC",
+    iconUrl: "icons/materials/dragon_scale.png",
     category: "Material",
     subCategory: "Monster_Part",
     rarity: "Epic",
@@ -327,6 +345,7 @@ const seedItems = [
     itemId: "awakening_stone",
     name: "AWAKENING_STONE_NAME",
     description: "AWAKENING_STONE_DESC",
+    iconUrl: "icons/materials/awakening_stone.png",
     category: "Material",
     subCategory: "Special_Stone",
     rarity: "Legendary",
@@ -340,6 +359,7 @@ const seedItems = [
     itemId: "wooden_chest",
     name: "WOODEN_CHEST_NAME",
     description: "WOODEN_CHEST_DESC",
+    iconUrl: "icons/chests/wooden_chest.png",
     category: "Chest",
     subCategory: "Common_Chest",
     rarity: "Common",
@@ -374,6 +394,7 @@ const seedItems = [
     itemId: "silver_chest",
     name: "SILVER_CHEST_NAME",
     description: "SILVER_CHEST_DESC",
+    iconUrl: "icons/chests/silver_chest.png",
     category: "Chest",
     subCategory: "Elite_Chest",
     rarity: "Rare",
@@ -414,6 +435,7 @@ const seedItems = [
     itemId: "golden_chest",
     name: "GOLDEN_CHEST_NAME",
     description: "GOLDEN_CHEST_DESC",
+    iconUrl: "icons/chests/golden_chest.png",
     category: "Chest",
     subCategory: "Legendary_Chest",
     rarity: "Legendary",
