@@ -62,8 +62,8 @@ export class CampaignService {
       const campaignData = worlds.map(world => {
         const worldProgress = playerProgress.find(p => p.worldId === world.worldId);
         
-        // Déterminer si le monde est débloqué
-        const isUnlocked = this.isWorldUnlocked(world, player.level, playerProgress);
+        // Déterminer si le monde est débloqué (basé sur le niveau joueur seulement)
+        const isUnlocked = player.level >= world.minPlayerLevel;
         
         // Calculer les statistiques du monde
         const totalStars = worldProgress ? 
@@ -144,9 +144,8 @@ export class CampaignService {
         throw new Error("Player not found on this server");
       }
 
-      // Vérifier si le monde est débloqué
-      const allProgress = await CampaignProgress.find({ playerId, serverId });
-      const isUnlocked = this.isWorldUnlocked(world, player.level, allProgress);
+      // Vérifier si le monde est débloqué (seulement niveau joueur)
+      const isUnlocked = player.level >= world.minPlayerLevel;
 
       if (!isUnlocked) {
         return {
@@ -160,7 +159,7 @@ export class CampaignService {
       }
 
       // Récupérer les difficultés disponibles pour ce joueur
-      const availableDifficulties = await this.getAvailableDifficulties(1, worldProgress, playerId, serverId);
+      const availableDifficulties = await this.getAvailableDifficulties(playerId, serverId);
 
       // Enrichir les niveaux avec la progression
       const enrichedLevels = world.levels.map(level => {
@@ -309,7 +308,7 @@ export class CampaignService {
     }
   }
 
-  // === VÉRIFIER SI UN JOUEUR PEUT JOUER UN NIVEAU ===
+  // === VÉRIFIER SI UN JOUEUR PEUT JOUER UN NIVEAU (NOUVELLE LOGIQUE) ===
   public static async canPlayerPlayLevel(
     playerId: string,
     serverId: string,
@@ -320,10 +319,9 @@ export class CampaignService {
     
     try {
       // Récupérer le joueur et le monde
-      const [player, world, worldProgress] = await Promise.all([
+      const [player, world] = await Promise.all([
         Player.findOne({ _id: playerId, serverId }),
-        CampaignWorld.findOne({ worldId }),
-        CampaignProgress.findOne({ playerId, serverId, worldId })
+        CampaignWorld.findOne({ worldId })
       ]);
 
       if (!player) {
@@ -334,7 +332,7 @@ export class CampaignService {
         return { allowed: false, reason: "World not found" };
       }
 
-      // Vérifier le niveau du joueur
+      // Vérifier le niveau du joueur pour débloquer le monde
       if (player.level < world.minPlayerLevel) {
         return {
           allowed: false,
@@ -350,9 +348,12 @@ export class CampaignService {
         };
       }
 
-      // Pour la difficulté Normal, vérifier la progression séquentielle
+      // === NOUVELLE LOGIQUE DE DIFFICULTÉ ===
+      
+      // Pour Normal: progression séquentielle dans le monde
       if (difficulty === "Normal") {
         if (levelIndex > 1) {
+          const worldProgress = await CampaignProgress.findOne({ playerId, serverId, worldId });
           const highestCleared = worldProgress?.highestLevelCleared || 0;
           if (levelIndex > highestCleared + 1) {
             return {
@@ -374,7 +375,8 @@ export class CampaignService {
           };
         }
 
-        // Vérifier la progression en Hard pour ce monde
+        // ✅ CHANGEMENT: Peut jouer n'importe quel monde débloqué en Hard
+        // Vérifier seulement la progression séquentielle dans ce monde en Hard
         if (levelIndex > 1) {
           const highestClearedHard = await this.getHighestClearedLevel(playerId, serverId, worldId, "Hard");
           if (levelIndex > highestClearedHard + 1) {
@@ -397,7 +399,8 @@ export class CampaignService {
           };
         }
 
-        // Vérifier la progression en Nightmare pour ce monde
+        // ✅ CHANGEMENT: Peut jouer n'importe quel monde débloqué en Nightmare
+        // Vérifier seulement la progression séquentielle dans ce monde en Nightmare
         if (levelIndex > 1) {
           const highestClearedNightmare = await this.getHighestClearedLevel(playerId, serverId, worldId, "Nightmare");
           if (levelIndex > highestClearedNightmare + 1) {
@@ -475,13 +478,15 @@ export class CampaignService {
 
       await worldProgress.save();
       
-      // Mettre à jour le niveau/monde du joueur si c'est une progression en Normal
+      // Mettre à jour le niveau/monde du joueur SEULEMENT si c'est une progression en Normal
       if (difficulty === "Normal") {
         const player = await Player.findOne({ _id: playerId, serverId });
         if (player) {
-          if (worldId > player.world || (worldId === player.world && levelIndex >= player.level)) {
+          // ✅ CHANGEMENT: Mettre à jour le niveau joueur basé sur la progression Normal
+          const newPlayerLevel = Math.max(player.level, (worldId - 1) * 10 + levelIndex + 5);
+          if (newPlayerLevel > player.level) {
+            player.level = newPlayerLevel;
             player.world = worldId;
-            player.level = levelIndex + 1; // Level = prochain niveau à jouer
             await player.save();
           }
         }
@@ -496,28 +501,6 @@ export class CampaignService {
   }
 
   // === MÉTHODES UTILITAIRES PRIVÉES ===
-
-  // Vérifier si un monde est débloqué
-  private static isWorldUnlocked(
-    world: ICampaignWorld,
-    playerLevel: number,
-    allProgress: ICampaignProgress[]
-  ): boolean {
-    
-    // Vérifier le niveau minimum du joueur
-    if (playerLevel < world.minPlayerLevel) {
-      return false;
-    }
-
-    // Le premier monde est toujours débloqué
-    if (world.worldId === 1) {
-      return true;
-    }
-
-    // Vérifier que le monde précédent est complété (au moins niveau 1)
-    const previousWorldProgress = allProgress.find(p => p.worldId === world.worldId - 1);
-    return previousWorldProgress ? previousWorldProgress.highestLevelCleared >= 1 : false;
-  }
 
   // Déterminer le type d'ennemi par défaut
   private static determineEnemyType(levelIndex: number): "normal" | "elite" | "boss" {
@@ -549,20 +532,13 @@ export class CampaignService {
     };
   }
 
-  // Obtenir les difficultés disponibles
+  // ✅ NOUVELLE MÉTHODE: Obtenir les difficultés disponibles pour un joueur
   private static async getAvailableDifficulties(
-    levelIndex: number,
-    worldProgress?: ICampaignProgress | null,
-    playerId?: string,
-    serverId?: string
+    playerId: string,
+    serverId: string
   ): Promise<("Normal" | "Hard" | "Nightmare")[]> {
     
     const difficulties: ("Normal" | "Hard" | "Nightmare")[] = ["Normal"];
-    
-    // Si pas d'informations joueur, retourner seulement Normal
-    if (!playerId || !serverId) {
-      return difficulties;
-    }
     
     try {
       // Vérifier si le joueur a complété toute la campagne en Normal
