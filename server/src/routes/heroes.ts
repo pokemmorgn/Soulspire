@@ -51,7 +51,7 @@ router.get("/catalog", optionalAuthMiddleware, async (req: Request, res: Respons
 
     const [heroes, total] = await Promise.all([
       Hero.find(filter)
-        .select("name role element rarity baseStats skill")
+        .select("name role element rarity baseStats spells") // ⬅️ skill -> spells
         .skip(skip)
         .limit(limitNum)
         .sort({ name: 1 }),
@@ -93,20 +93,24 @@ router.get("/catalog/:heroId", async (req: Request, res: Response): Promise<void
       return;
     }
 
-    // Calculer les stats à différents niveaux pour référence
-    const statsByLevel = [1, 25, 50, 75, 100].map(level => ({
-      level,
-      stars1: { hp: 100, atk: 50, def: 30 }, // Méthode temporaire
-      stars3: { hp: 150, atk: 75, def: 45 },
-      stars6: { hp: 200, atk: 100, def: 60 }
-    }));
+    // Calculer des paliers utiles avec la vraie méthode
+    const levels = [1, 25, 50, 75, 100];
+    const starsList = [1, 3, 6];
+
+    const statsByLevel = levels.map(level => {
+      const byStars: Record<string, any> = {};
+      starsList.forEach(stars => {
+        byStars[`stars${stars}`] = hero.getStatsAtLevel(level, stars);
+      });
+      return { level, ...byStars };
+    });
 
     res.json({
       message: "Hero details retrieved successfully",
       hero: {
         ...hero.toObject(),
         statsByLevel,
-        rarityMultiplier: 1.5 // Valeur temporaire
+        rarityMultiplier: hero.getRarityMultiplier()
       }
     });
   } catch (err) {
@@ -133,7 +137,7 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
     const player = await Player.findById(req.userId)
       .populate({
         path: "heroes.heroId",
-        select: "name role element rarity baseStats skill"
+        select: "name role element rarity baseStats spells" // ⬅️ skill -> spells
       });
 
     if (!player) {
@@ -144,17 +148,15 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
       return;
     }
 
-    const { role, element, rarity } = req.query;
+    const { role, element, rarity } = req.query as any;
 
     // Filtrage des héros
     let filteredHeroes = player.heroes.filter((playerHero: any) => {
       if (!playerHero.heroId) return false;
-      
       const hero = playerHero.heroId;
       if (role && hero.role !== role) return false;
       if (element && hero.element !== element) return false;
       if (rarity && hero.rarity !== rarity) return false;
-      
       return true;
     });
 
@@ -162,7 +164,11 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
     const enrichedHeroes = filteredHeroes.map((playerHero: any) => {
       const hero = playerHero.heroId;
       const currentStats = hero.getStatsAtLevel(playerHero.level, playerHero.stars);
-      
+
+      // PowerLevel simple (tu peux pondérer plus tard avec d’autres stats)
+      const basicPower = (currentStats.hp + currentStats.atk + currentStats.def);
+      const powerLevel = Math.floor(basicPower * hero.getRarityMultiplier());
+
       return {
         playerHeroId: playerHero._id,
         hero: hero.toObject(),
@@ -170,24 +176,21 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
         stars: playerHero.stars,
         equipped: playerHero.equipped,
         currentStats,
-        powerLevel: Math.floor(
-          (currentStats.hp + currentStats.atk + currentStats.def) * 
-          hero.getRarityMultiplier()
-        )
+        powerLevel
       };
     });
 
     // Tri par niveau de puissance décroissant
-    enrichedHeroes.sort((a, b) => b.powerLevel - a.powerLevel);
+    enrichedHeroes.sort((a: any, b: any) => b.powerLevel - a.powerLevel);
 
     res.json({
       message: "Player heroes retrieved successfully",
       heroes: enrichedHeroes,
       summary: {
         total: enrichedHeroes.length,
-        equipped: enrichedHeroes.filter(h => h.equipped).length,
-        maxLevel: Math.max(...enrichedHeroes.map(h => h.level), 0),
-        maxStars: Math.max(...enrichedHeroes.map(h => h.stars), 0)
+        equipped: enrichedHeroes.filter((h: any) => h.equipped).length,
+        maxLevel: Math.max(...enrichedHeroes.map((h: any) => h.level), 0),
+        maxStars: Math.max(...enrichedHeroes.map((h: any) => h.stars), 0)
       }
     });
   } catch (err) {
@@ -222,7 +225,7 @@ router.post("/upgrade", authMiddleware, async (req: Request, res: Response): Pro
       return;
     }
 
-    const playerHero = player.heroes.find(h => h.heroId.toString() === heroId);
+    const playerHero = player.heroes.find((h: any) => h.heroId.toString() === heroId);
     if (!playerHero) {
       res.status(404).json({ 
         error: "Hero not owned by player",
@@ -234,16 +237,16 @@ router.post("/upgrade", authMiddleware, async (req: Request, res: Response): Pro
     let goldCost = 0;
     let materialCost = 0;
 
-    // Calcul du coût d'amélioration de niveau
+    // Coût d'amélioration de niveau
     if (targetLevel && targetLevel > playerHero.level) {
       const levelDiff = targetLevel - playerHero.level;
-      goldCost = levelDiff * playerHero.level * 100; // Coût progressif
+      goldCost = levelDiff * playerHero.level * 100; // progressif
     }
 
-    // Calcul du coût d'amélioration d'étoiles
+    // Coût d'amélioration d'étoiles
     if (targetStars && targetStars > playerHero.stars) {
       const starDiff = targetStars - playerHero.stars;
-      materialCost = starDiff * 10; // Fragments nécessaires
+      materialCost = starDiff * 10; // fragments nécessaires
     }
 
     // Vérification des ressources
@@ -281,19 +284,9 @@ router.post("/upgrade", authMiddleware, async (req: Request, res: Response): Pro
 
     res.json({
       message: "Hero upgraded successfully",
-      hero: {
-        heroId,
-        level: playerHero.level,
-        stars: playerHero.stars
-      },
-      cost: {
-        gold: goldCost,
-        fragments: materialCost
-      },
-      remaining: {
-        gold: player.gold,
-        fragments: player.fragments.get(heroId) || 0
-      }
+      hero: { heroId, level: playerHero.level, stars: playerHero.stars },
+      cost: { gold: goldCost, fragments: materialCost },
+      remaining: { gold: player.gold, fragments: player.fragments.get(heroId) || 0 }
     });
   } catch (err) {
     console.error("Upgrade hero error:", err);
@@ -327,7 +320,7 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
       return;
     }
 
-    const playerHero = player.heroes.find(h => h.heroId.toString() === heroId);
+    const playerHero = player.heroes.find((h: any) => h.heroId.toString() === heroId);
     if (!playerHero) {
       res.status(404).json({ 
         error: "Hero not owned by player",
@@ -338,7 +331,7 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
 
     // Limite d'équipement (ex: maximum 4 héros équipés)
     if (equipped) {
-      const equippedCount = player.heroes.filter(h => h.equipped).length;
+      const equippedCount = player.heroes.filter((h: any) => h.equipped).length;
       if (equippedCount >= 4 && !playerHero.equipped) {
         res.status(400).json({ 
           error: "Maximum equipped heroes limit reached (4)",
@@ -355,7 +348,7 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
       message: `Hero ${equipped ? 'equipped' : 'unequipped'} successfully`,
       heroId,
       equipped: playerHero.equipped,
-      totalEquipped: player.heroes.filter(h => h.equipped).length
+      totalEquipped: player.heroes.filter((h: any) => h.equipped).length
     });
   } catch (err) {
     console.error("Equip hero error:", err);
