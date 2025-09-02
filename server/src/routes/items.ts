@@ -129,7 +129,7 @@ router.get("/category/:category", optionalAuthMiddleware, async (req: Request, r
     const { category } = req.params;
     const { subCategory } = req.query;
 
-    const items = await Item.getByCategory(category, subCategory as string);
+    const items = await (Item as any).getByCategory(category, subCategory as string);
 
     res.json({
       message: `${category} items retrieved successfully`,
@@ -162,7 +162,7 @@ router.get("/:itemId", async (req: Request, res: Response): Promise<void> => {
     }
 
     // Calculer les stats à différents niveaux pour l'équipement
-    let statsByLevel = [];
+    let statsByLevel: Array<{ level: number; stats: any }> = [];
     if (item.category === "Equipment" && item.maxLevel > 1) {
       const levels = [1, Math.floor(item.maxLevel / 4), Math.floor(item.maxLevel / 2), Math.floor(item.maxLevel * 3/4), item.maxLevel];
       statsByLevel = levels.map(level => ({
