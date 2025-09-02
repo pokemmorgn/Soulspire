@@ -20,6 +20,7 @@ import towerRoutes from "./routes/tower";
 import eventsRoutes from "./routes/events";
 import afkRouter from "./routes/afk";
 import campaignRoutes from "./routes/campaign";
+import itemsRoutes from "./routes/items";
 
 // Configuration de l'environnement
 dotenv.config();
@@ -179,6 +180,7 @@ app.use("/api/tower", towerRoutes);
 app.use("/api/events", eventsRoutes);
 app.use("/api/afk", authMiddleware, touchLastSeen, afkRouter);
 app.use("/api/campaign", campaignRoutes);
+app.use("/api/items", itemsRoutes);
 // Route de santé de l'API
 app.get("/", (req: Request, res: Response) => {
   res.json({
