@@ -22,9 +22,12 @@ interface IPlayerDocument extends Document {
   world: number;
   level: number;
   backgroundId?: string; 
+  avatarId?: string;
   difficulty: "Normal" | "Hard" | "Nightmare";
-  formationId?: string; // <-- formation active
-  formations: IFormation[]; // <-- toutes les formations sauvegardées
+  vipLevel: number;
+  vipExperience: number;
+  formationId?: string;
+  formations: IFormation[];
   heroes: IPlayerHero[];
   tickets: number;
   fragments: Map<string, number>;
@@ -59,7 +62,7 @@ const playerHeroSchema = new Schema<IPlayerHero>({
     type: Boolean, 
     default: false 
   },
-  slot: { // <-- emplacement dans la formation
+  slot: {
     type: Number,
     min: 1,
     max: 9,
@@ -95,7 +98,6 @@ const playerSchema = new Schema<IPlayerDocument>({
     minlength: 6
   },
 
-  // Monnaies
   gold: { 
     type: Number, 
     default: 1000,
@@ -112,7 +114,6 @@ const playerSchema = new Schema<IPlayerDocument>({
     min: 0
   },
 
-  // Progression campagne
   world: { 
     type: Number, 
     default: 1,
@@ -127,28 +128,40 @@ const playerSchema = new Schema<IPlayerDocument>({
     type: String,
     default: null
   },
+  avatarId: { 
+    type: String,
+    default: null
+  },
   difficulty: { 
     type: String, 
     enum: ["Normal", "Hard", "Nightmare"],
     default: "Normal"
   },
 
-  // Formation active
+  vipLevel: { 
+    type: Number, 
+    default: 0,
+    min: 0,
+    max: 15
+  },
+  vipExperience: { 
+    type: Number, 
+    default: 0,
+    min: 0
+  },
+
   formationId: { 
     type: String,
     default: null
   },
 
-  // Toutes les formations sauvegardées
   formations: { 
     type: [formationSchema],
     default: []
   },
 
-  // Héros possédés
   heroes: [playerHeroSchema],
 
-  // Inventaire intégré
   tickets: { 
     type: Number, 
     default: 0,
@@ -164,7 +177,6 @@ const playerSchema = new Schema<IPlayerDocument>({
     of: Number, 
     default: new Map()
   },
-    /** NEW: trace de la dernière activité serveur (par Player donc par serveur) */
   lastSeenAt: {
     type: Date,
     default: () => new Date()
@@ -174,12 +186,12 @@ const playerSchema = new Schema<IPlayerDocument>({
   collection: 'players'
 });
 
-// Index
 playerSchema.index({ username: 1, serverId: 1 }, { unique: true });
 playerSchema.index({ level: -1 });
 playerSchema.index({ createdAt: -1 });
 playerSchema.index({ lastSeenAt: -1 });
-// Méthodes
+playerSchema.index({ vipLevel: -1 });
+
 playerSchema.methods.addHero = function(heroId: string, level: number = 1, stars: number = 1) {
   this.heroes.push({
     heroId,
@@ -198,13 +210,11 @@ playerSchema.methods.getEquippedHeroes = function() {
 playerSchema.methods.setFormation = function(formationId: string, slots: { slot: number, heroId: string }[]) {
   this.formationId = formationId;
 
-  // reset slots
   this.heroes.forEach((h: IPlayerHero) => {
     h.slot = null;
     h.equipped = false;
   });
 
-  // assign slots
   slots.forEach(({ slot, heroId }) => {
     const hero = this.heroes.find((h: IPlayerHero) => h.heroId === heroId);
     if (hero) {
@@ -236,5 +246,3 @@ playerSchema.methods.spendCurrency = function(cost: { gold?: number, gems?: numb
 };
 
 export default mongoose.model<IPlayerDocument>("Player", playerSchema);
-
-
