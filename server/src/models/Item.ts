@@ -61,6 +61,18 @@ interface IEquipmentSet {
   };
 }
 
+  // Contenu d'un coffre
+interface IChestContent {
+  type: "Item" | "Currency" | "Fragment" | "Hero";
+  itemId?: string;        // Pour les objets
+  currencyType?: "gold" | "gems" | "paidGems" | "tickets";
+  heroId?: string;        // Pour les héros complets
+  fragmentHeroId?: string; // Pour les fragments
+  quantity: number;
+  dropRate: number;       // Probabilité (0-100)
+  guaranteedAfter?: number; // Garantie après X ouvertures sans l'avoir eu
+}
+
 // Document principal pour les objets
 interface IItemDocument extends Document {
   // Identification
@@ -69,8 +81,8 @@ interface IItemDocument extends Document {
   description: string;
   
   // Classification
-  category: "Equipment" | "Consumable" | "Material" | "Currency" | "Fragment" | "Scroll" | "Artifact";
-  subCategory: string; // "Weapon", "Armor", "Helmet", etc.
+  category: "Equipment" | "Consumable" | "Material" | "Currency" | "Fragment" | "Scroll" | "Artifact" | "Chest";
+  subCategory: string; // "Weapon", "Armor", "Helmet", "Common_Chest", "Elite_Chest", etc.
   
   // Propriétés générales
   rarity: "Common" | "Rare" | "Epic" | "Legendary" | "Mythic" | "Ascended";
@@ -114,13 +126,58 @@ interface IItemDocument extends Document {
   // Artefacts (objets spéciaux AFK Arena)
   artifactType?: "Weapon" | "Support" | "Vitality" | "Celerity" | "Sustenance" | "Might";
   
+  // Coffres et boîtes
+  chestType?: "Common" | "Elite" | "Epic" | "Legendary" | "Special" | "Event";
+  chestContents?: IChestContent[];
+  openCost?: {
+    gold?: number;
+    gems?: number;
+    paidGems?: number;
+    keys?: number; // Clés spéciales
+  };
+  maxOpens?: number;        // Limite d'ouvertures (-1 = illimité)
+  resetDaily?: boolean;     // Se remet à zéro chaque jour
+  guaranteedRarity?: string; // Rareté minimale garantie
+  
   // Méthodes
   getStatsAtLevel(level: number): IItemStats;
   canBeEquippedBy(heroClass: string, heroLevel: number): boolean;
   getSetBonuses(equippedSetPieces: number): Partial<IItemStats>;
+  openChest(playerId: string): Promise<IChestContent[]>;
+  getChestPreview(): IChestContent[];
 }
 
 // === SCHÉMA MONGOOSE ===
+
+const chestContentSchema = new Schema<IChestContent>({
+  type: { 
+    type: String, 
+    enum: ["Item", "Currency", "Fragment", "Hero"],
+    required: true 
+  },
+  itemId: { type: String }, // Pour les objets
+  currencyType: { 
+    type: String,
+    enum: ["gold", "gems", "paidGems", "tickets"]
+  },
+  heroId: { type: String }, // Pour les héros complets
+  fragmentHeroId: { type: String }, // Pour les fragments
+  quantity: { 
+    type: Number, 
+    required: true,
+    min: 1
+  },
+  dropRate: { 
+    type: Number, 
+    required: true,
+    min: 0,
+    max: 100
+  },
+  guaranteedAfter: { 
+    type: Number,
+    min: 1
+  }
+}, { _id: false });
 
 const itemStatsSchema = new Schema<IItemStats>({
   // Stats de base
@@ -197,7 +254,7 @@ const itemSchema = new Schema<IItemDocument>({
   // Classification
   category: { 
     type: String, 
-    enum: ["Equipment", "Consumable", "Material", "Currency", "Fragment", "Scroll", "Artifact"],
+    enum: ["Equipment", "Consumable", "Material", "Currency", "Fragment", "Scroll", "Artifact", "Chest"],
     required: true
   },
   subCategory: { 
@@ -298,6 +355,31 @@ const itemSchema = new Schema<IItemDocument>({
   artifactType: { 
     type: String, 
     enum: ["Weapon", "Support", "Vitality", "Celerity", "Sustenance", "Might"]
+  },
+  
+  // Coffres et boîtes
+  chestType: { 
+    type: String, 
+    enum: ["Common", "Elite", "Epic", "Legendary", "Special", "Event"]
+  },
+  chestContents: [chestContentSchema],
+  openCost: {
+    gold: { type: Number, min: 0, default: 0 },
+    gems: { type: Number, min: 0, default: 0 },
+    paidGems: { type: Number, min: 0, default: 0 },
+    keys: { type: Number, min: 0, default: 0 }
+  },
+  maxOpens: { 
+    type: Number, 
+    default: -1 // -1 = illimité
+  },
+  resetDaily: { 
+    type: Boolean, 
+    default: false 
+  },
+  guaranteedRarity: { 
+    type: String, 
+    enum: ["Common", "Rare", "Epic", "Legendary", "Mythic", "Ascended"]
   }
 }, {
   timestamps: true,
@@ -311,7 +393,9 @@ itemSchema.index({ rarity: 1 });
 itemSchema.index({ equipmentSlot: 1 });
 itemSchema.index({ "equipmentSet.setId": 1 });
 itemSchema.index({ materialType: 1 });
-itemSchema.index({ levelRequirement: 1 });
+itemSchema.index({ chestType: 1 });
+itemSchema.index({ "chestContents.dropRate": 1 });
+itemSchema.index({ guaranteedRarity: 1 });
 
 // === MÉTHODES STATIQUES ===
 
@@ -330,6 +414,34 @@ itemSchema.statics.getSetItems = function(setId: string) {
 // Obtenir objets par rareté
 itemSchema.statics.getByRarity = function(rarity: string) {
   return this.find({ rarity }).sort({ category: 1, name: 1 });
+};
+
+// Obtenir coffres par type
+itemSchema.statics.getChestsByType = function(chestType: string) {
+  return this.find({ category: "Chest", chestType }).sort({ rarity: 1, name: 1 });
+};
+
+// Créer un coffre prédéfini
+itemSchema.statics.createChest = function(chestData: {
+  itemId: string;
+  name: string;
+  chestType: string;
+  rarity: string;
+  contents: IChestContent[];
+  openCost?: any;
+}) {
+  return new this({
+    itemId: chestData.itemId,
+    name: chestData.name,
+    description: `${chestData.chestType} chest containing various rewards`,
+    category: "Chest",
+    subCategory: `${chestData.chestType}_Chest`,
+    rarity: chestData.rarity,
+    chestType: chestData.chestType,
+    chestContents: chestData.contents,
+    openCost: chestData.openCost || { gold: 0 },
+    sellPrice: this.calculateSellPrice(chestData.rarity, 1)
+  });
 };
 
 // Générer prix de vente basé sur la rareté et tier
@@ -385,6 +497,62 @@ itemSchema.methods.getSetBonuses = function(equippedSetPieces: number): Partial<
   return {};
 };
 
+// Ouvrir un coffre et obtenir les récompenses
+itemSchema.methods.openChest = async function(playerId: string): Promise<IChestContent[]> {
+  if (this.category !== "Chest" || !this.chestContents?.length) {
+    throw new Error("This item is not a chest or has no contents");
+  }
+  
+  const rewards: IChestContent[] = [];
+  
+  // Système de drop avec garanties
+  for (const content of this.chestContents) {
+    const random = Math.random() * 100;
+    
+    if (random <= content.dropRate) {
+      rewards.push({
+        ...content,
+        // Possibilité de varier la quantité selon la rareté
+        quantity: this.calculateDropQuantity(content.quantity, this.rarity)
+      });
+    }
+  }
+  
+  // Garantie minimale : au moins un objet de la rareté garantie
+  if (this.guaranteedRarity && rewards.length === 0) {
+    const guaranteedItems = this.chestContents.filter(c => 
+      c.type === "Item" // On pourrait vérifier la rareté de l'item ici
+    );
+    if (guaranteedItems.length > 0) {
+      const randomGuaranteed = guaranteedItems[Math.floor(Math.random() * guaranteedItems.length)];
+      rewards.push(randomGuaranteed);
+    }
+  }
+  
+  return rewards;
+};
+
+// Aperçu du contenu du coffre (pour l'UI)
+itemSchema.methods.getChestPreview = function(): IChestContent[] {
+  if (this.category !== "Chest") return [];
+  return this.chestContents || [];
+};
+
+// Calculer la quantité selon la rareté du coffre
+itemSchema.methods.calculateDropQuantity = function(baseQuantity: number, chestRarity: string): number {
+  const multipliers: { [key: string]: number } = {
+    "Common": 1,
+    "Rare": 1.2,
+    "Epic": 1.5,
+    "Legendary": 2,
+    "Mythic": 3,
+    "Ascended": 5
+  };
+  
+  const multiplier = multipliers[chestRarity] || 1;
+  return Math.floor(baseQuantity * multiplier);
+};
+
 // Validation avant sauvegarde
 itemSchema.pre('save', function(next) {
   // Validation des stats selon la catégorie
@@ -398,6 +566,14 @@ itemSchema.pre('save', function(next) {
   
   if (this.category === "Material" && !this.materialType) {
     return next(new Error("Material items must have a materialType"));
+  }
+  
+  if (this.category === "Chest" && !this.chestType) {
+    return next(new Error("Chest items must have a chestType"));
+  }
+  
+  if (this.category === "Chest" && (!this.chestContents || this.chestContents.length === 0)) {
+    return next(new Error("Chest items must have chestContents"));
   }
   
   // Auto-génération du prix de vente si non défini
