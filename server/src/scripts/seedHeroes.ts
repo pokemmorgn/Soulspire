@@ -70,9 +70,23 @@ function calculateBaseStats(role: string, rarity: string) {
   };
 }
 
+// Interface pour les sorts
+interface SpellData {
+  id: string;
+  level: number;
+}
+
+interface SpellSet {
+  spell1?: SpellData;
+  spell2?: SpellData;
+  spell3?: SpellData;
+  ultimate: SpellData;
+  passive?: SpellData;
+}
+
 // Sorts spécifiques pour certains héros (basé sur votre ancien seedHeroes.ts)
-function getCustomSpells(heroName: string): any | null {
-  const customSpells: Record<string, any> = {
+function getCustomSpells(heroName: string): SpellSet | null {
+  const customSpells: Record<string, SpellSet> = {
     "Ignara": {
       spell1: { id: "fireball", level: 2 },
       spell2: { id: "flame_burst", level: 1 },
@@ -156,7 +170,7 @@ function getCustomSpells(heroName: string): any | null {
 }
 
 // Fonction pour générer les sorts selon le rôle et l'élément
-function generateSpells(heroName: string, role: string, element: string, rarity: string) {
+function generateSpells(heroName: string, role: string, element: string, rarity: string): SpellSet {
   // Vérifier d'abord si le héros a des sorts personnalisés
   const customSpells = getCustomSpells(heroName);
   if (customSpells) {
