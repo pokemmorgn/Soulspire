@@ -563,18 +563,34 @@ inventorySchema.methods.getInventoryStats = function(): IInventoryStats {
   };
   
   // Compter tous les objets dans toutes les catégories
-  Object.values(this.storage).forEach(category => {
-    if (Array.isArray(category)) {
-      stats.totalItems += category.length;
+  const categories = ['weapons', 'helmets', 'armors', 'boots', 'gloves', 'accessories', 
+                     'potions', 'scrolls', 'enhancementItems', 'enhancementMaterials', 
+                     'evolutionMaterials', 'craftingMaterials', 'awakeningMaterials', 'artifacts'];
+  
+  for (const category of categories) {
+    const items = this.storage[category as keyof ICategorizedStorage] as IOwnedItem[];
+    if (Array.isArray(items) && items.length > 0) {
+      stats.totalItems += items.length;
       
-      category.forEach((item: IOwnedItem) => {
+      // Catégoriser par type
+      if (['weapons', 'helmets', 'armors', 'boots', 'gloves', 'accessories'].includes(category)) {
+        stats.equipmentCount += items.length;
+      } else if (['potions', 'scrolls', 'enhancementItems'].includes(category)) {
+        stats.consumableCount += items.length;
+      } else if (['enhancementMaterials', 'evolutionMaterials', 'craftingMaterials', 'awakeningMaterials'].includes(category)) {
+        stats.materialCount += items.length;
+      } else if (category === 'artifacts') {
+        stats.artifactCount += items.length;
+      }
+      
+      items.forEach((item: IOwnedItem) => {
         if (item.isEquipped) stats.equippedItemsCount++;
         if (item.level > stats.maxLevelEquipment) {
           stats.maxLevelEquipment = item.level;
         }
       });
     }
-  });
+  }
   
   return stats;
 };
