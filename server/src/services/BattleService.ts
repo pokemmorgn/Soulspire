@@ -1,25 +1,24 @@
 import Battle, { IBattleParticipant, IBattleResult } from "../models/Battle";
 import Player from "../models/Player";
 import Hero from "../models/Hero";
-import { BattleEngine } from "./BattleEngine";
+import { BattleEngine, IBattleOptions } from "./BattleEngine";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
 import { HeroSpells } from "../gameplay/SpellManager";
 
 export class BattleService {
 
-  // Démarre un combat de campagne
   public static async startCampaignBattle(
     playerId: string, 
     serverId: string,
     worldId: number, 
     levelId: number, 
-    difficulty: "Normal" | "Hard" | "Nightmare" = "Normal"
+    difficulty: "Normal" | "Hard" | "Nightmare" = "Normal",
+    battleOptions: IBattleOptions = { mode: "auto", speed: 1 }
   ) {
     try {
-      console.log(`🎯 Démarrage combat campagne: Monde ${worldId}, Niveau ${levelId}, ${difficulty} sur ${serverId}`);
+      console.log(`🎯 Combat campagne: Monde ${worldId}, Niveau ${levelId}, ${difficulty} (${battleOptions.mode}, x${battleOptions.speed})`);
 
-      // Récupérer le joueur ET vérifier qu'il est sur le bon serveur
       const player = await Player.findOne({ 
         _id: playerId, 
         serverId: serverId 
@@ -29,22 +28,22 @@ export class BattleService {
         throw new Error("Player not found or not on this server");
       }
 
-      // Construire l'équipe du joueur (héros équipés) avec leurs sorts
+      battleOptions.playerVipLevel = player.vipLevel || 0;
+
       const { playerTeam, playerSpells } = await this.buildPlayerTeamWithSpells(player);
       if (playerTeam.length === 0) {
         throw new Error("No equipped heroes found");
       }
 
-      // Générer l'équipe ennemie avec leurs sorts
       const { enemyTeam, enemySpells } = await this.generateEnemyTeamWithSpells(worldId, levelId, difficulty);
 
-      // Créer le document de combat avec serverId
       const battle = new Battle({
         playerId,
         serverId: serverId,
         battleType: "campaign",
         playerTeam,
         enemyTeam,
+        battleOptions,
         actions: [],
         result: {
           victory: false,
@@ -75,18 +74,15 @@ export class BattleService {
 
       await battle.save();
 
-      // Lancer la simulation de combat AVEC les sorts
-      const battleEngine = new BattleEngine(playerTeam, enemyTeam, playerSpells, enemySpells);
+      const battleEngine = new BattleEngine(playerTeam, enemyTeam, playerSpells, enemySpells, battleOptions);
       const result = battleEngine.simulateBattle();
 
-      // Mettre à jour le combat avec les résultats
       battle.actions = battleEngine.getActions();
       battle.result = result;
       battle.status = "completed";
       battle.battleEnded = new Date();
       await battle.save();
 
-      // Appliquer les récompenses si victoire
       if (result.victory) {
         await this.applyBattleRewards(player, result);
         await this.updatePlayerProgress(player, worldId, levelId, difficulty);
@@ -130,6 +126,7 @@ export class BattleService {
           enemyTeam: battle.enemyTeam,
           actions: battle.actions,
           result: battle.result,
+          battleOptions: battle.battleOptions,
           duration: Date.now() - battle.battleStarted.getTime()
         }
       };
@@ -140,16 +137,15 @@ export class BattleService {
     }
   }
 
-  // Démarre un combat d'arène PvP
   public static async startArenaBattle(
     playerId: string, 
     serverId: string,
-    opponentId: string
+    opponentId: string,
+    battleOptions: IBattleOptions = { mode: "auto", speed: 1 }
   ) {
     try {
-      console.log(`⚔️ Combat d'arène: ${playerId} vs ${opponentId} sur serveur ${serverId}`);
+      console.log(`⚔️ Combat d'arène: ${playerId} vs ${opponentId} (${battleOptions.mode}, x${battleOptions.speed})`);
 
-      // Récupérer les deux joueurs du même serveur (sauf si cross-server autorisé)
       const [player, opponent] = await Promise.all([
         Player.findOne({ _id: playerId, serverId: serverId }).populate("heroes.heroId"),
         Player.findOne({ _id: opponentId, serverId: serverId }).populate("heroes.heroId")
@@ -159,7 +155,8 @@ export class BattleService {
         throw new Error("Player or opponent not found on this server");
       }
 
-      // Construire les équipes avec leurs sorts
+      battleOptions.playerVipLevel = player.vipLevel || 0;
+
       const { playerTeam, playerSpells } = await this.buildPlayerTeamWithSpells(player);
       const { playerTeam: enemyTeam, playerSpells: enemySpells } = await this.buildPlayerTeamWithSpells(opponent);
 
@@ -167,13 +164,13 @@ export class BattleService {
         throw new Error("Both players must have equipped heroes");
       }
 
-      // Créer le combat avec serverId
       const battle = new Battle({
         playerId,
         serverId: serverId,
         battleType: "arena",
         playerTeam,
         enemyTeam,
+        battleOptions,
         actions: [],
         result: {
           victory: false,
@@ -198,18 +195,15 @@ export class BattleService {
 
       await battle.save();
 
-      // Simuler le combat AVEC les sorts
-      const battleEngine = new BattleEngine(playerTeam, enemyTeam, playerSpells, enemySpells);
+      const battleEngine = new BattleEngine(playerTeam, enemyTeam, playerSpells, enemySpells, battleOptions);
       const result = battleEngine.simulateBattle();
 
-      // Finaliser le combat
       battle.actions = battleEngine.getActions();
       battle.result = result;
       battle.status = "completed";
       battle.battleEnded = new Date();
       await battle.save();
 
-      // Récompenses PvP spécifiques
       if (result.victory) {
         const pvpRewards = this.calculatePvPRewards();
         await this.applyBattleRewards(player, { ...result, rewards: pvpRewards });
@@ -247,6 +241,7 @@ export class BattleService {
           enemyTeam: battle.enemyTeam,
           actions: battle.actions,
           result: battle.result,
+          battleOptions: battle.battleOptions,
           duration: Date.now() - battle.battleStarted.getTime()
         }
       };
@@ -257,7 +252,6 @@ export class BattleService {
     }
   }
 
-  // NOUVEAU: Construit l'équipe du joueur avec leurs sorts
   private static async buildPlayerTeamWithSpells(player: any): Promise<{
     playerTeam: IBattleParticipant[];
     playerSpells: Map<string, HeroSpells>;
@@ -265,13 +259,11 @@ export class BattleService {
     const team: IBattleParticipant[] = [];
     const spells = new Map<string, HeroSpells>();
     
-    // Récupérer les héros équipés
     const equippedHeroes = player.heroes.filter((hero: any) => hero.equipped);
     
     for (const playerHero of equippedHeroes) {
       let heroData;
       
-      // Gérer le cas où populate a fonctionné ou non
       if (typeof playerHero.heroId === 'string') {
         heroData = await Hero.findById(playerHero.heroId);
       } else {
@@ -283,13 +275,11 @@ export class BattleService {
         continue;
       }
 
-      // Vérifier que les stats de base existent
       if (!heroData.baseStats || !heroData.baseStats.hp) {
         console.error(`❌ Stats manquantes pour le héros: ${heroData.name}`);
         continue;
       }
 
-      // Calculer les stats de combat avec les nouvelles stats étendues
       const combatStats = this.calculateCombatStats(heroData, playerHero.level, playerHero.stars);
       
       const participant: IBattleParticipant = {
@@ -312,7 +302,6 @@ export class BattleService {
       
       team.push(participant);
 
-      // NOUVEAU: Extraire les sorts du héros
       const heroSpells = this.extractHeroSpells(heroData);
       spells.set(participant.heroId, heroSpells);
       
@@ -322,7 +311,6 @@ export class BattleService {
     return { playerTeam: team, playerSpells: spells };
   }
 
-  // NOUVEAU: Génère une équipe ennemie avec des sorts
   private static async generateEnemyTeamWithSpells(
     worldId: number, 
     levelId: number, 
@@ -332,16 +320,13 @@ export class BattleService {
     enemySpells: Map<string, HeroSpells>;
   }> {
     
-    // Calculer la puissance des ennemis selon le monde/niveau
     const basePowerMultiplier = 1 + (worldId - 1) * 0.1 + (levelId - 1) * 0.02;
     const difficultyMultiplier = difficulty === "Hard" ? 1.5 : difficulty === "Nightmare" ? 2.5 : 1;
     const finalMultiplier = basePowerMultiplier * difficultyMultiplier;
 
-    // Déterminer le type d'ennemi (normal/elite/boss)
     const enemyType = this.getEnemyType(levelId);
     const enemyCount = enemyType === "boss" ? 1 : enemyType === "elite" ? 2 : 3;
 
-    // Récupérer des héros aléatoires comme base pour les ennemis
     const availableHeroes = await Hero.aggregate([{ $sample: { size: enemyCount } }]);
     
     const enemyTeam: IBattleParticipant[] = [];
@@ -350,11 +335,9 @@ export class BattleService {
     for (let i = 0; i < availableHeroes.length; i++) {
       const heroData = availableHeroes[i];
       
-      // Niveau des ennemis basé sur le monde
       const enemyLevel = Math.min(100, Math.max(1, worldId * 5 + levelId));
       const enemyStars = enemyType === "boss" ? 6 : enemyType === "elite" ? 4 : 2;
       
-      // Stats de base multipliées par la difficulté avec les nouvelles stats
       const baseStats = this.calculateCombatStats(heroData, enemyLevel, enemyStars);
       const enhancedStats = {
         hp: Math.floor(baseStats.hp * finalMultiplier),
@@ -362,16 +345,15 @@ export class BattleService {
         atk: Math.floor(baseStats.atk * finalMultiplier),
         def: Math.floor(baseStats.def * finalMultiplier),
         defMagique: Math.floor(baseStats.defMagique * finalMultiplier),
-        vitesse: Math.floor(baseStats.vitesse * Math.min(2.0, finalMultiplier)), // Vitesse limitée
+        vitesse: Math.floor(baseStats.vitesse * Math.min(2.0, finalMultiplier)),
         intelligence: Math.floor(baseStats.intelligence * finalMultiplier),
         force: Math.floor(baseStats.force * finalMultiplier),
         moral: Math.floor(baseStats.moral * finalMultiplier),
         reductionCooldown: Math.min(50, baseStats.reductionCooldown + (enemyType === "boss" ? 15 : 0)),
-        // Nouvelles stats calculées
         magicResistance: Math.floor((baseStats.defMagique + baseStats.intelligence * 0.3) / 10),
         energyGeneration: Math.floor(10 + (baseStats.moral / 8)),
         criticalChance: Math.min(50, Math.floor(5 + baseStats.vitesse / 10)),
-        speed: baseStats.vitesse // Pour compatibilité avec BattleEngine
+        speed: baseStats.vitesse
       };
       
       const enemyId = `enemy_${heroData._id}_${i}`;
@@ -385,7 +367,7 @@ export class BattleService {
         stars: enemyStars,
         stats: enhancedStats,
         currentHp: enhancedStats.hp,
-        energy: enemyType === "boss" ? Math.min(100, Math.floor(baseStats.moral / 2)) : 0, // CORRIGÉ: Clamp à 100 max
+        energy: enemyType === "boss" ? Math.min(100, Math.floor(baseStats.moral / 2)) : 0,
         status: {
           alive: true,
           buffs: enemyType === "boss" ? ["boss_aura"] : [],
@@ -395,7 +377,6 @@ export class BattleService {
       
       enemyTeam.push(enemy);
 
-      // NOUVEAU: Générer des sorts pour l'ennemi basés sur le héros original
       const heroSpells = this.extractHeroSpells(heroData);
       enemySpells.set(enemyId, heroSpells);
     }
@@ -403,11 +384,9 @@ export class BattleService {
     return { enemyTeam, enemySpells };
   }
 
-  // NOUVEAU: Extrait les sorts d'un héros depuis sa config
   private static extractHeroSpells(heroData: any): HeroSpells {
     const heroSpells: HeroSpells = {};
 
-    // Récupérer les sorts depuis le modèle Hero
     if (heroData.spells) {
       if (heroData.spells.spell1?.id) {
         heroSpells.spell1 = {
@@ -445,7 +424,6 @@ export class BattleService {
       }
     }
 
-    // Si aucun sort n'est défini, créer des sorts par défaut
     if (!heroSpells.ultimate) {
       heroSpells.ultimate = {
         id: this.getDefaultUltimate(heroData.element, heroData.role),
@@ -456,7 +434,6 @@ export class BattleService {
     return heroSpells;
   }
 
-  // NOUVEAU: Génère un ultimate par défaut selon élément/rôle
   private static getDefaultUltimate(element: string, role: string): string {
     const ultimatesByElement: Record<string, string> = {
       "Fire": "fire_storm",
@@ -474,13 +451,10 @@ export class BattleService {
       "Support": "mass_healing"
     };
 
-    // Priorité à l'élément, fallback sur le rôle
     return ultimatesByElement[element] || ultimatesByRole[role] || "basic_ultimate";
   }
 
-  // Calcule les stats de combat étendues d'un héros (inchangé)
   private static calculateCombatStats(heroData: any, level: number, stars: number) {
-    // Vérifier que les stats de base existent
     if (!heroData.baseStats) {
       console.error(`❌ baseStats manquant pour ${heroData.name}`);
       throw new Error(`Hero ${heroData.name} missing baseStats`);
@@ -495,16 +469,13 @@ export class BattleService {
       throw new Error(`Hero ${heroData.name} has incomplete base stats`);
     }
 
-    // Multiplicateurs d'évolution
-    const levelMultiplier = 1 + (level - 1) * 0.08; // Stats principales
+    const levelMultiplier = 1 + (level - 1) * 0.08;
     const starMultiplier = 1 + (stars - 1) * 0.15;
     const primaryMultiplier = levelMultiplier * starMultiplier;
     
-    // Multiplicateurs réduits pour certaines stats
-    const speedMultiplier = 1 + (primaryMultiplier - 1) * 0.4; // Vitesse évolue moins
-    const mentalMultiplier = 1 + (primaryMultiplier - 1) * 0.6; // Stats mentales évoluent modérément
+    const speedMultiplier = 1 + (primaryMultiplier - 1) * 0.4;
+    const mentalMultiplier = 1 + (primaryMultiplier - 1) * 0.6;
     
-    // Stats finales calculées
     const finalHp = Math.floor(hp * primaryMultiplier);
     const finalAtk = Math.floor(atk * primaryMultiplier);
     const finalDef = Math.floor(def * primaryMultiplier);
@@ -515,13 +486,11 @@ export class BattleService {
     const finalMoral = Math.floor((moral || 60) * mentalMultiplier);
     const finalReductionCooldown = Math.min(50, Math.floor((reductionCooldown || 0) * (1 + (level - 1) * 0.01)));
     
-    // Stats dérivées calculées
     const magicResistance = Math.floor((finalDefMagique + finalIntelligence * 0.3) / 10);
-    const energyGeneration = Math.floor(10 + (finalMoral / 8)); // Base 10-35 par tour
-    const criticalChance = Math.min(50, Math.floor(5 + finalVitesse / 10)); // 5-25% crit
+    const energyGeneration = Math.floor(10 + (finalMoral / 8));
+    const criticalChance = Math.min(50, Math.floor(5 + finalVitesse / 10));
     
     return {
-      // Stats principales
       hp: finalHp,
       maxHp: finalHp,
       atk: finalAtk,
@@ -532,46 +501,32 @@ export class BattleService {
       force: finalForce,
       moral: finalMoral,
       reductionCooldown: finalReductionCooldown,
-      
-      // Stats dérivées pour le combat
       magicResistance,
       energyGeneration,
       criticalChance,
-      
-      // Compatibilité avec l'ancien système
       speed: finalVitesse
     };
   }
 
-  // Détermine le type d'ennemi selon le niveau
   private static getEnemyType(levelId: number): "normal" | "elite" | "boss" {
-    if (levelId % 10 === 0) return "boss";      // Niveaux 10, 20, 30 = boss
-    if (levelId % 5 === 0) return "elite";      // Niveaux 5, 15, 25 = elite
-    return "normal";                             // Autres = normal
+    if (levelId % 10 === 0) return "boss";
+    if (levelId % 5 === 0) return "elite";
+    return "normal";
   }
 
-  // Applique les récompenses de combat au joueur
   private static async applyBattleRewards(player: any, result: IBattleResult) {
-    // Appliquer l'expérience et l'or
     player.gold += result.rewards.gold;
-    
-    // TODO: Appliquer l'expérience aux héros
-    // TODO: Ajouter les objets obtenus
-    // TODO: Ajouter les fragments
-    
     await player.save();
     
     console.log(`💰 Récompenses appliquées: ${result.rewards.gold} or, ${result.rewards.experience} XP`);
   }
 
-  // Met à jour la progression du joueur en campagne
   private static async updatePlayerProgress(
     player: any, 
     worldId: number, 
     levelId: number, 
     difficulty: string
   ) {
-    // Mettre à jour le niveau maximum atteint
     if (worldId > player.world || (worldId === player.world && levelId > player.level)) {
       player.world = worldId;
       player.level = levelId;
@@ -582,7 +537,6 @@ export class BattleService {
     console.log(`📈 Progression mise à jour: Monde ${player.world}, Niveau ${player.level}`);
   }
 
-  // Calcule les récompenses spécifiques au PvP
   private static calculatePvPRewards() {
     return {
       experience: 50,
@@ -592,7 +546,6 @@ export class BattleService {
     };
   }
 
-  // Récupère l'historique des combats d'un joueur
   public static async getBattleHistory(playerId: string, serverId: string, limit: number = 20) {
     return await Battle.find({ 
       playerId, 
@@ -601,10 +554,9 @@ export class BattleService {
     })
       .sort({ createdAt: -1 })
       .limit(limit)
-      .select("battleType result context createdAt battleDuration");
+      .select("battleType result context battleOptions createdAt battleDuration");
   }
 
-  // Récupère les statistiques de combat d'un joueur
   public static async getPlayerBattleStats(playerId: string, serverId: string) {
     const stats = await Battle.aggregate([
       { $match: { 
@@ -633,8 +585,7 @@ export class BattleService {
     };
   }
 
-  // Récupère le replay d'un combat spécifique
-  public static async getBattleReplay(battleId: string, playerId: string, serverId: string) {
+  public static async getBattleReplay(battleId: string, playerId: string, serverId: string, replaySpeed?: 1 | 2 | 3) {
     const battle = await Battle.findOne({ 
       _id: battleId, 
       playerId: playerId,
@@ -645,14 +596,22 @@ export class BattleService {
       throw new Error("Battle not found");
     }
     
+    const originalDuration = battle.battleEnded ? 
+      battle.battleEnded.getTime() - battle.battleStarted.getTime() : 0;
+    
+    const adjustedDuration = replaySpeed ? 
+      Math.floor(originalDuration / replaySpeed) : originalDuration;
+    
     return {
       battleId: battle._id,
       playerTeam: battle.playerTeam,
       enemyTeam: battle.enemyTeam,
       actions: battle.actions,
       result: battle.result,
-      duration: battle.battleEnded ? 
-        battle.battleEnded.getTime() - battle.battleStarted.getTime() : 0
+      battleOptions: battle.battleOptions,
+      duration: adjustedDuration,
+      originalDuration: originalDuration,
+      replaySpeed: replaySpeed || 1
     };
   }
 }
