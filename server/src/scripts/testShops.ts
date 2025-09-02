@@ -370,8 +370,9 @@ class ShopTester {
         
         if (playerHistory.length > 0) {
           log(`  📝 ${shop.shopType} - ${playerHistory.length} purchases:`, colors.blue);
-          playerHistory.slice(0, 3).forEach((purchase, index) => {
-            log(`    ${index + 1}. ${purchase.itemName} x${purchase.quantity} on ${purchase.purchaseDate.toLocaleDateString()}`, colors.reset);
+          playerHistory.slice(0, 3).forEach((purchase: any, index: number) => {
+            const itemName = purchase.itemName || 'Unknown Item';
+            log(`    ${index + 1}. ${itemName} x${purchase.quantity} on ${purchase.purchaseDate.toLocaleDateString()}`, colors.reset);
           });
           if (playerHistory.length > 3) {
             log(`    ... and ${playerHistory.length - 3} more`, colors.reset);
