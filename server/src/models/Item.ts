@@ -8,22 +8,24 @@ interface IItemStats {
   hp: number;
   atk: number;
   def: number;
-  
+
   // Stats avancées
   crit: number;        // Chance de critique (%)
   critDamage: number;  // Dégâts critiques (%)
+  critResist: number;  // Résistance aux critiques (%)
   dodge: number;       // Esquive (%)
   accuracy: number;    // Précision (%)
-  
+
   // Stats spécialisées
   vitesse: number;
   moral: number;
-  reductionCooldown: number;
-  
+  reductionCooldown: number; // Réduction de CD (%)
+  healthleech: number;       // Vol de vie (%)
+
   // Bonus spéciaux
   healingBonus: number;    // Bonus aux soins (%)
   shieldBonus: number;     // Bonus aux boucliers (%)
-  energyRegen: number;     // Régénération d'énergie
+  energyRegen: number;     // Régénération d'énergie (valeur plate)
 }
 
 // Effet spécial d'un objet
@@ -37,7 +39,7 @@ interface IItemEffect {
   duration?: number; // en secondes pour les effets temporaires
 }
 
-// Set d'équipement (comme AFK Arena)
+// Set d'équipement (placeholder – à relier avec un système de sets dédié)
 interface IEquipmentSet {
   setId: string;
   name: string;
@@ -50,7 +52,7 @@ interface IEquipmentSet {
   };
 }
 
-  // Contenu d'un coffre
+// Contenu d'un coffre
 interface IChestContent {
   type: "Item" | "Currency" | "Fragment" | "Hero";
   itemId?: string;        // Pour les objets
@@ -69,38 +71,38 @@ interface IItemDocument extends Document {
   name: string;
   description: string;
   iconUrl: string;          // URL de l'icône pour Unity
-  
+
   // Classification
   category: "Equipment" | "Consumable" | "Material" | "Currency" | "Fragment" | "Scroll" | "Artifact" | "Chest";
   subCategory: string; // "Weapon", "Armor", "Helmet", "Common_Chest", "Elite_Chest", etc.
-  
+
   // Propriétés générales
   rarity: "Common" | "Rare" | "Epic" | "Legendary" | "Mythic" | "Ascended";
   tier: number; // T1, T2, T3, etc. (pour l'amélioration)
   maxLevel: number;
-  
+
   // Valeurs économiques
   sellPrice: number;
   buyPrice?: number;
-  
+
   // Stats et effets (pour l'équipement principalement)
   baseStats: Partial<IItemStats>;
   statsPerLevel: Partial<IItemStats>; // Stats gagnées par niveau
-  
+
   // Effets spéciaux
   effects: IItemEffect[];
-  
+
   // Set d'équipement
   equipmentSet?: {
     setId: string;
     setName: string;
   };
-  
+
   // Équipement spécifique
   equipmentSlot?: "Weapon" | "Helmet" | "Armor" | "Boots" | "Gloves" | "Accessory";
   classRestriction?: string[]; // Classes qui peuvent équiper cet objet
   levelRequirement: number;
-  
+
   // Consommables
   consumableType?: "Potion" | "Scroll" | "Enhancement" | "XP" | "Currency";
   consumableEffect?: {
@@ -108,14 +110,14 @@ interface IItemDocument extends Document {
     value: number;
     duration?: number;
   };
-  
+
   // Matériaux
   materialType?: "Enhancement" | "Evolution" | "Crafting" | "Awakening";
   materialGrade?: "Basic" | "Advanced" | "Master" | "Legendary";
-  
-  // Artefacts (objets spéciaux AFK Arena)
+
+  // Artefacts (catégorisation haut niveau)
   artifactType?: "Weapon" | "Support" | "Vitality" | "Celerity" | "Sustenance" | "Might";
-  
+
   // Coffres et boîtes
   chestType?: "Common" | "Elite" | "Epic" | "Legendary" | "Special" | "Event";
   chestContents?: IChestContent[];
@@ -128,7 +130,7 @@ interface IItemDocument extends Document {
   maxOpens?: number;        // Limite d'ouvertures (-1 = illimité)
   resetDaily?: boolean;     // Se remet à zéro chaque jour
   guaranteedRarity?: string; // Rareté minimale garantie
-  
+
   // Méthodes
   getStatsAtLevel(level: number): IItemStats;
   canBeEquippedBy(heroClass: string, heroLevel: number): boolean;
@@ -145,28 +147,16 @@ const chestContentSchema = new Schema<IChestContent>({
     enum: ["Item", "Currency", "Fragment", "Hero"],
     required: true 
   },
-  itemId: { type: String }, // Pour les objets
+  itemId: { type: String },
   currencyType: { 
     type: String,
     enum: ["gold", "gems", "paidGems", "tickets"]
   },
-  heroId: { type: String }, // Pour les héros complets
-  fragmentHeroId: { type: String }, // Pour les fragments
-  quantity: { 
-    type: Number, 
-    required: true,
-    min: 1
-  },
-  dropRate: { 
-    type: Number, 
-    required: true,
-    min: 0,
-    max: 100
-  },
-  guaranteedAfter: { 
-    type: Number,
-    min: 1
-  }
+  heroId: { type: String },
+  fragmentHeroId: { type: String },
+  quantity: { type: Number, required: true, min: 1 },
+  dropRate: { type: Number, required: true, min: 0, max: 100 },
+  guaranteedAfter: { type: Number, min: 1 }
 }, { _id: false });
 
 const itemStatsSchema = new Schema<IItemStats>({
@@ -174,29 +164,20 @@ const itemStatsSchema = new Schema<IItemStats>({
   hp: { type: Number, default: 0, min: 0 },
   atk: { type: Number, default: 0, min: 0 },
   def: { type: Number, default: 0, min: 0 },
-  defMagique: { type: Number, default: 0, min: 0 },
-  
+
   // Stats avancées
   crit: { type: Number, default: 0, min: 0, max: 100 },
-  critDamage: { type: Number, default: 0, min: 0 },
+  critDamage: { type: Number, default: 0, min: 0 }, // pas de max arbitraire
+  critResist: { type: Number, default: 0, min: 0, max: 100 },
   dodge: { type: Number, default: 0, min: 0, max: 100 },
   accuracy: { type: Number, default: 0, min: 0, max: 100 },
-  
+
   // Stats spécialisées
   vitesse: { type: Number, default: 0, min: 0 },
-  intelligence: { type: Number, default: 0, min: 0 },
-  force: { type: Number, default: 0, min: 0 },
   moral: { type: Number, default: 0, min: 0 },
   reductionCooldown: { type: Number, default: 0, min: 0, max: 50 },
-  
-  // Résistances élémentaires
-  fireResist: { type: Number, default: 0, min: 0, max: 100 },
-  waterResist: { type: Number, default: 0, min: 0, max: 100 },
-  windResist: { type: Number, default: 0, min: 0, max: 100 },
-  electricResist: { type: Number, default: 0, min: 0, max: 100 },
-  lightResist: { type: Number, default: 0, min: 0, max: 100 },
-  darkResist: { type: Number, default: 0, min: 0, max: 100 },
-  
+  healthleech: { type: Number, default: 0, min: 0, max: 100 },
+
   // Bonus spéciaux
   healingBonus: { type: Number, default: 0, min: 0 },
   shieldBonus: { type: Number, default: 0, min: 0 },
@@ -218,29 +199,15 @@ const itemEffectSchema = new Schema<IItemEffect>({
     default: "always"
   },
   value: { type: Number, required: true },
-  duration: { type: Number, min: 0 } // en secondes
+  duration: { type: Number, min: 0 }
 }, { _id: false });
 
 const itemSchema = new Schema<IItemDocument>({
   // Identification unique
-  itemId: { 
-    type: String, 
-    required: true,
-    unique: true,
-    trim: true
-  },
-  name: { 
-    type: String, 
-    required: true,
-    trim: true,
-    maxlength: 100
-  },
-  description: { 
-    type: String, 
-    maxlength: 500,
-    default: ""
-  },
-  
+  itemId: { type: String, required: true, unique: true, trim: true },
+  name: { type: String, required: true, trim: true, maxlength: 100 },
+  description: { type: String, maxlength: 500, default: "" },
+
   // Affichage
   iconUrl: { 
     type: String, 
@@ -251,68 +218,41 @@ const itemSchema = new Schema<IItemDocument>({
       return `icons/items/${this.itemId}.png`;
     }
   },
-  
+
   // Classification
   category: { 
     type: String, 
     enum: ["Equipment", "Consumable", "Material", "Currency", "Fragment", "Scroll", "Artifact", "Chest"],
     required: true
   },
-  subCategory: { 
-    type: String, 
-    required: true,
-    trim: true
-  },
-  
+  subCategory: { type: String, required: true, trim: true },
+
   // Propriétés générales
   rarity: { 
     type: String, 
     enum: ["Common", "Rare", "Epic", "Legendary", "Mythic", "Ascended"],
     required: true
   },
-  tier: { 
-    type: Number, 
-    min: 1,
-    max: 10,
-    default: 1
-  },
-  maxLevel: { 
-    type: Number, 
-    min: 1,
-    max: 100,
-    default: 1
-  },
-  
+  tier: { type: Number, min: 1, max: 10, default: 1 },
+  maxLevel: { type: Number, min: 1, max: 100, default: 1 },
+
   // Économie
-  sellPrice: { 
-    type: Number, 
-    min: 0,
-    required: true
-  },
-  buyPrice: { 
-    type: Number, 
-    min: 0
-  },
-  
+  sellPrice: { type: Number, min: 0, required: true },
+  buyPrice: { type: Number, min: 0 },
+
   // Stats pour équipement
-  baseStats: {
-    type: itemStatsSchema,
-    default: {}
-  },
-  statsPerLevel: {
-    type: itemStatsSchema,
-    default: {}
-  },
-  
+  baseStats: { type: itemStatsSchema, default: {} },
+  statsPerLevel: { type: itemStatsSchema, default: {} },
+
   // Effets spéciaux
   effects: [itemEffectSchema],
-  
+
   // Set d'équipement
   equipmentSet: {
     setId: { type: String },
     setName: { type: String, trim: true }
   },
-  
+
   // Équipement spécifique
   equipmentSlot: { 
     type: String, 
@@ -322,12 +262,8 @@ const itemSchema = new Schema<IItemDocument>({
     type: String,
     enum: ["Tank", "DPS Melee", "DPS Ranged", "Support", "All"]
   }],
-  levelRequirement: { 
-    type: Number, 
-    min: 1,
-    default: 1
-  },
-  
+  levelRequirement: { type: Number, min: 1, default: 1 },
+
   // Consommables
   consumableType: { 
     type: String, 
@@ -339,9 +275,9 @@ const itemSchema = new Schema<IItemDocument>({
       enum: ["heal", "buff", "xp", "currency", "enhancement"]
     },
     value: { type: Number, min: 0 },
-    duration: { type: Number, min: 0 } // en secondes
+    duration: { type: Number, min: 0 }
   },
-  
+
   // Matériaux
   materialType: { 
     type: String, 
@@ -351,13 +287,13 @@ const itemSchema = new Schema<IItemDocument>({
     type: String, 
     enum: ["Basic", "Advanced", "Master", "Legendary"]
   },
-  
-  // Artefacts spéciaux
+
+  // Artefacts spéciaux (catégorie)
   artifactType: { 
     type: String, 
     enum: ["Weapon", "Support", "Vitality", "Celerity", "Sustenance", "Might"]
   },
-  
+
   // Coffres et boîtes
   chestType: { 
     type: String, 
@@ -370,14 +306,8 @@ const itemSchema = new Schema<IItemDocument>({
     paidGems: { type: Number, min: 0, default: 0 },
     keys: { type: Number, min: 0, default: 0 }
   },
-  maxOpens: { 
-    type: Number, 
-    default: -1 // -1 = illimité
-  },
-  resetDaily: { 
-    type: Boolean, 
-    default: false 
-  },
+  maxOpens: { type: Number, default: -1 },
+  resetDaily: { type: Boolean, default: false },
   guaranteedRarity: { 
     type: String, 
     enum: ["Common", "Rare", "Epic", "Legendary", "Mythic", "Ascended"]
@@ -455,10 +385,8 @@ itemSchema.statics.calculateSellPrice = function(rarity: string, tier: number): 
     "Mythic": 5000,
     "Ascended": 25000
   };
-  
   const rarityPrice = basePrice[rarity] || 10;
   const tierMultiplier = 1 + (tier - 1) * 0.5;
-  
   return Math.floor(rarityPrice * tierMultiplier);
 };
 
@@ -467,69 +395,61 @@ itemSchema.statics.calculateSellPrice = function(rarity: string, tier: number): 
 // Calculer les stats finales à un niveau donné
 itemSchema.methods.getStatsAtLevel = function(level: number): IItemStats {
   const finalStats: any = { ...this.baseStats };
-  
+
   // Appliquer les stats par niveau
-  for (const [stat, baseValue] of Object.entries(this.statsPerLevel)) {
-    if (typeof baseValue === 'number' && baseValue > 0) {
-      finalStats[stat] = (finalStats[stat] || 0) + (baseValue * (level - 1));
+  for (const [stat, inc] of Object.entries(this.statsPerLevel || {})) {
+    if (typeof inc === "number" && inc > 0) {
+      finalStats[stat] = (finalStats[stat] || 0) + inc * Math.max(0, level - 1);
     }
   }
-  
+
   return finalStats;
 };
 
 // Vérifier si peut être équipé par un héros
 itemSchema.methods.canBeEquippedBy = function(heroClass: string, heroLevel: number): boolean {
-  // Vérifier le niveau requis
   if (heroLevel < this.levelRequirement) return false;
-  
-  // Vérifier les restrictions de classe
+
   if (this.classRestriction && this.classRestriction.length > 0) {
     return this.classRestriction.includes(heroClass) || this.classRestriction.includes("All");
   }
-  
+
   return true;
 };
 
-// Obtenir les bonus de set (nécessite une requête externe pour les autres pièces)
-itemSchema.methods.getSetBonuses = function(equippedSetPieces: number): Partial<IItemStats> {
-  // Cette méthode devrait être appelée avec les données du set complet
-  // Pour l'instant, retourne un objet vide - sera implémenté avec le système de sets
+// Obtenir les bonus de set (placeholder – nécessite un système de set externe)
+itemSchema.methods.getSetBonuses = function(_equippedSetPieces: number): Partial<IItemStats> {
   return {};
 };
 
 // Ouvrir un coffre et obtenir les récompenses
-itemSchema.methods.openChest = async function(playerId: string): Promise<IChestContent[]> {
+itemSchema.methods.openChest = async function(_playerId: string): Promise<IChestContent[]> {
   if (this.category !== "Chest" || !this.chestContents?.length) {
     throw new Error("This item is not a chest or has no contents");
   }
-  
+
   const rewards: IChestContent[] = [];
-  
-  // Système de drop avec garanties
+
+  // Système de drop simple + garanties de base
   for (const content of this.chestContents) {
     const random = Math.random() * 100;
-    
     if (random <= content.dropRate) {
       rewards.push({
         ...content,
-        // Possibilité de varier la quantité selon la rareté
         quantity: this.calculateDropQuantity(content.quantity, this.rarity)
       });
     }
   }
-  
-  // Garantie minimale : au moins un objet de la rareté garantie
+
+  // Garantie minimale : au moins un item si guaranteedRarity définie
   if (this.guaranteedRarity && rewards.length === 0) {
-    const guaranteedItems = this.chestContents.filter((c: IChestContent) => 
-      c.type === "Item" // On pourrait vérifier la rareté de l'item ici
-    );
+    const guaranteedItems = this.chestContents.filter((c: IChestContent) => c.type === "Item");
     if (guaranteedItems.length > 0) {
       const randomGuaranteed = guaranteedItems[Math.floor(Math.random() * guaranteedItems.length)];
       rewards.push(randomGuaranteed);
     }
   }
-  
+
   return rewards;
 };
 
@@ -549,7 +469,6 @@ itemSchema.methods.calculateDropQuantity = function(baseQuantity: number, chestR
     "Mythic": 3,
     "Ascended": 5
   };
-  
   const multiplier = multipliers[chestRarity] || 1;
   return Math.floor(baseQuantity * multiplier);
 };
@@ -560,37 +479,37 @@ itemSchema.pre('save', function(next) {
   if (this.category === "Equipment" && !this.equipmentSlot) {
     return next(new Error("Equipment items must have an equipmentSlot"));
   }
-  
+
   if (this.category === "Consumable" && !this.consumableType) {
     return next(new Error("Consumable items must have a consumableType"));
   }
-  
+
   if (this.category === "Material" && !this.materialType) {
     return next(new Error("Material items must have a materialType"));
   }
-  
+
   if (this.category === "Chest" && !this.chestType) {
     return next(new Error("Chest items must have a chestType"));
   }
-  
+
   if (this.category === "Chest" && (!this.chestContents || this.chestContents.length === 0)) {
     return next(new Error("Chest items must have chestContents"));
   }
-  
+
   // Auto-génération du prix de vente si non défini
   if (!this.sellPrice) {
     this.sellPrice = (this.constructor as any).calculateSellPrice(this.rarity, this.tier);
   }
-  
+
   // Validation des restrictions de classe pour équipement
   if (this.category === "Equipment" && this.classRestriction) {
     const validClasses = ["Tank", "DPS Melee", "DPS Ranged", "Support", "All"];
-    const invalidClasses = this.classRestriction.filter(c => !validClasses.includes(c));
+    const invalidClasses = this.classRestriction.filter((c: string) => !validClasses.includes(c));
     if (invalidClasses.length > 0) {
       return next(new Error(`Invalid class restrictions: ${invalidClasses.join(", ")}`));
     }
   }
-  
+
   next();
 });
 
