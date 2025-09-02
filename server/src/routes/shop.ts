@@ -293,7 +293,7 @@ router.post("/:shopType/purchase", authMiddleware, async (req: Request, res: Res
     }
 
     // Vérifier si le joueur peut acheter
-    const purchaseCheck = await shop.canPlayerPurchase(instanceId, req.userId);
+    const purchaseCheck = await shop.canPlayerPurchase(instanceId, req.userId!);
     if (!purchaseCheck.canPurchase) {
       res.status(400).json({ 
         error: `Cannot purchase item: ${purchaseCheck.reason}`,
@@ -307,8 +307,9 @@ router.post("/:shopType/purchase", authMiddleware, async (req: Request, res: Res
     Object.entries(shopItem.cost).forEach(([currency, amount]) => {
       if (amount > 0) {
         let finalAmount = amount * quantity;
-        if (shopItem.discountPercent > 0) {
-          finalAmount = Math.floor(finalAmount * (100 - shopItem.discountPercent) / 100);
+        const discount = shopItem.discountPercent || 0;
+        if (discount > 0) {
+          finalAmount = Math.floor(finalAmount * (100 - discount) / 100);
         }
         finalCost[currency] = finalAmount;
       }
