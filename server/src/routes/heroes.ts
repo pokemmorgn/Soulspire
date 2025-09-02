@@ -31,7 +31,7 @@ router.get("/catalog", optionalAuthMiddleware, async (req: Request, res: Respons
   try {
     const { error } = heroFilterSchema.validate(req.query);
     if (error) {
-      res.status(400).json({ 
+      res.status(400).json({
         error: error.details[0].message,
         code: "VALIDATION_ERROR"
       });
@@ -51,7 +51,10 @@ router.get("/catalog", optionalAuthMiddleware, async (req: Request, res: Respons
 
     const [heroes, total] = await Promise.all([
       Hero.find(filter)
-        .select("name role element rarity baseStats spells") // ⬅️ skill -> spells
+        .select(
+          "name role element rarity baseStats spells " +
+          "icon sprite splashArt personality strengths weaknesses"
+        ) // ⬅️ ajoute assets + narratif
         .skip(skip)
         .limit(limitNum)
         .sort({ name: 1 }),
@@ -72,7 +75,7 @@ router.get("/catalog", optionalAuthMiddleware, async (req: Request, res: Respons
     });
   } catch (err) {
     console.error("Get catalog error:", err);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Internal server error",
       code: "GET_CATALOG_FAILED"
     });
@@ -86,7 +89,7 @@ router.get("/catalog/:heroId", async (req: Request, res: Response): Promise<void
 
     const hero = await Hero.findById(heroId);
     if (!hero) {
-      res.status(404).json({ 
+      res.status(404).json({
         error: "Hero not found",
         code: "HERO_NOT_FOUND"
       });
@@ -108,14 +111,14 @@ router.get("/catalog/:heroId", async (req: Request, res: Response): Promise<void
     res.json({
       message: "Hero details retrieved successfully",
       hero: {
-        ...hero.toObject(),
+        ...hero.toObject(), // contient aussi icon/sprite/splashArt/personality/strengths/weaknesses
         statsByLevel,
         rarityMultiplier: hero.getRarityMultiplier()
       }
     });
   } catch (err) {
     console.error("Get hero details error:", err);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Internal server error",
       code: "GET_HERO_DETAILS_FAILED"
     });
@@ -127,7 +130,7 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
   try {
     const { error } = heroFilterSchema.validate(req.query);
     if (error) {
-      res.status(400).json({ 
+      res.status(400).json({
         error: error.details[0].message,
         code: "VALIDATION_ERROR"
       });
@@ -137,11 +140,13 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
     const player = await Player.findById(req.userId)
       .populate({
         path: "heroes.heroId",
-        select: "name role element rarity baseStats spells" // ⬅️ skill -> spells
-      });
+        select:
+          "name role element rarity baseStats spells " +
+          "icon sprite splashArt personality strengths weaknesses"
+      }); // ⬅️ ajoute assets + narratif
 
     if (!player) {
-      res.status(404).json({ 
+      res.status(404).json({
         error: "Player not found",
         code: "PLAYER_NOT_FOUND"
       });
@@ -165,13 +170,13 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
       const hero = playerHero.heroId;
       const currentStats = hero.getStatsAtLevel(playerHero.level, playerHero.stars);
 
-      // PowerLevel simple (tu peux pondérer plus tard avec d’autres stats)
+      // PowerLevel simple (pondère par rareté)
       const basicPower = (currentStats.hp + currentStats.atk + currentStats.def);
       const powerLevel = Math.floor(basicPower * hero.getRarityMultiplier());
 
       return {
         playerHeroId: playerHero._id,
-        hero: hero.toObject(),
+        hero: hero.toObject(), // inclut aussi icon/sprite/splashArt/personality/strengths/weaknesses
         level: playerHero.level,
         stars: playerHero.stars,
         equipped: playerHero.equipped,
@@ -195,7 +200,7 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
     });
   } catch (err) {
     console.error("Get player heroes error:", err);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Internal server error",
       code: "GET_PLAYER_HEROES_FAILED"
     });
@@ -207,7 +212,7 @@ router.post("/upgrade", authMiddleware, async (req: Request, res: Response): Pro
   try {
     const { error } = heroUpgradeSchema.validate(req.body);
     if (error) {
-      res.status(400).json({ 
+      res.status(400).json({
         error: error.details[0].message,
         code: "VALIDATION_ERROR"
       });
@@ -218,7 +223,7 @@ router.post("/upgrade", authMiddleware, async (req: Request, res: Response): Pro
 
     const player = await Player.findById(req.userId);
     if (!player) {
-      res.status(404).json({ 
+      res.status(404).json({
         error: "Player not found",
         code: "PLAYER_NOT_FOUND"
       });
@@ -227,7 +232,7 @@ router.post("/upgrade", authMiddleware, async (req: Request, res: Response): Pro
 
     const playerHero = player.heroes.find((h: any) => h.heroId.toString() === heroId);
     if (!playerHero) {
-      res.status(404).json({ 
+      res.status(404).json({
         error: "Hero not owned by player",
         code: "HERO_NOT_OWNED"
       });
@@ -251,7 +256,7 @@ router.post("/upgrade", authMiddleware, async (req: Request, res: Response): Pro
 
     // Vérification des ressources
     if (goldCost > 0 && player.gold < goldCost) {
-      res.status(400).json({ 
+      res.status(400).json({
         error: `Insufficient gold. Required: ${goldCost}, Available: ${player.gold}`,
         code: "INSUFFICIENT_GOLD"
       });
@@ -261,7 +266,7 @@ router.post("/upgrade", authMiddleware, async (req: Request, res: Response): Pro
     if (materialCost > 0) {
       const currentFragments = player.fragments.get(heroId) || 0;
       if (currentFragments < materialCost) {
-        res.status(400).json({ 
+        res.status(400).json({
           error: `Insufficient fragments. Required: ${materialCost}, Available: ${currentFragments}`,
           code: "INSUFFICIENT_FRAGMENTS"
         });
@@ -290,7 +295,7 @@ router.post("/upgrade", authMiddleware, async (req: Request, res: Response): Pro
     });
   } catch (err) {
     console.error("Upgrade hero error:", err);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Internal server error",
       code: "UPGRADE_HERO_FAILED"
     });
@@ -302,7 +307,7 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
   try {
     const { error } = equipHeroSchema.validate(req.body);
     if (error) {
-      res.status(400).json({ 
+      res.status(400).json({
         error: error.details[0].message,
         code: "VALIDATION_ERROR"
       });
@@ -313,7 +318,7 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
 
     const player = await Player.findById(req.userId);
     if (!player) {
-      res.status(404).json({ 
+      res.status(404).json({
         error: "Player not found",
         code: "PLAYER_NOT_FOUND"
       });
@@ -322,7 +327,7 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
 
     const playerHero = player.heroes.find((h: any) => h.heroId.toString() === heroId);
     if (!playerHero) {
-      res.status(404).json({ 
+      res.status(404).json({
         error: "Hero not owned by player",
         code: "HERO_NOT_OWNED"
       });
@@ -333,7 +338,7 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
     if (equipped) {
       const equippedCount = player.heroes.filter((h: any) => h.equipped).length;
       if (equippedCount >= 4 && !playerHero.equipped) {
-        res.status(400).json({ 
+        res.status(400).json({
           error: "Maximum equipped heroes limit reached (4)",
           code: "MAX_EQUIPPED_REACHED"
         });
@@ -352,7 +357,7 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
     });
   } catch (err) {
     console.error("Equip hero error:", err);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Internal server error",
       code: "EQUIP_HERO_FAILED"
     });
