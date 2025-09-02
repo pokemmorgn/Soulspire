@@ -1,6 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
 
-// Interface pour les participants du combat
 export interface IBattleParticipant {
   heroId: string;
   name: string;
@@ -10,48 +9,41 @@ export interface IBattleParticipant {
   level: number;
   stars: number;
   
-  // Stats de combat calculées
   stats: {
     hp: number;
     maxHp: number;
     atk: number;
     def: number;
-    speed: number; // Détermine l'ordre d'action
+    speed: number;
   };
   
-  // État du combat
   currentHp: number;
-  energy: number; // 0-100, ultimate à 100
+  energy: number;
   status: {
     alive: boolean;
-    buffs: string[]; // ["attack_boost", "defense_up", etc.]
-    debuffs: string[]; // ["burn", "poison", "stun", etc.]
+    buffs: string[];
+    debuffs: string[];
   };
 }
 
-// Interface pour une action de combat
 export interface IBattleAction {
   turn: number;
   actionType: "attack" | "skill" | "ultimate" | "passive";
   actorId: string;
   actorName: string;
-  targetIds: string[]; // Peut cibler plusieurs ennemis
+  targetIds: string[];
   
-  // Détails de l'action
   damage?: number;
   healing?: number;
   energyGain?: number;
   energyCost?: number;
   
-  // Effets appliqués
   buffsApplied?: string[];
   debuffsApplied?: string[];
   
-  // Résultat
   critical: boolean;
-  elementalAdvantage?: number; // 1.0 = normal, 1.5 = avantagé, 0.75 = désavantagé
+  elementalAdvantage?: number;
   
-  // État après l'action
   participantsAfter: {
     [heroId: string]: {
       currentHp: number;
@@ -63,14 +55,18 @@ export interface IBattleAction {
   };
 }
 
-// Interface pour le résultat du combat
+export interface IBattleOptions {
+  mode: "auto" | "manual";
+  speed: 1 | 2 | 3;
+  playerVipLevel?: number;
+}
+
 export interface IBattleResult {
   victory: boolean;
   winnerTeam: "player" | "enemy";
   totalTurns: number;
-  battleDuration: number; // en millisecondes
+  battleDuration: number;
   
-  // Récompenses
   rewards: {
     experience: number;
     gold: number;
@@ -78,7 +74,6 @@ export interface IBattleResult {
     fragments?: { heroId: string; quantity: number }[];
   };
   
-  // Statistiques
   stats: {
     totalDamageDealt: number;
     totalHealingDone: number;
@@ -87,26 +82,22 @@ export interface IBattleResult {
   };
 }
 
-// Interface principale du document Battle
 interface IBattleDocument extends Document {
   serverId: string;
   playerId: string;
   battleType: "campaign" | "arena" | "dungeon" | "raid";
   
-  // Configuration du combat
   playerTeam: IBattleParticipant[];
   enemyTeam: IBattleParticipant[];
   
-  // Déroulement du combat
   actions: IBattleAction[];
   result: IBattleResult;
+  battleOptions: IBattleOptions;
   
-  // Métadonnées
   battleStarted: Date;
   battleEnded?: Date;
   status: "preparing" | "ongoing" | "completed" | "abandoned";
   
-  // Contexte (pour campagne/dungeon)
   context?: {
     worldId?: number;
     levelId?: number;
@@ -114,13 +105,11 @@ interface IBattleDocument extends Document {
     enemyType?: "normal" | "elite" | "boss";
   };
 
-  // Méthodes d'instance
   addAction(action: IBattleAction): Promise<IBattleDocument>;
   completeBattle(result: IBattleResult): Promise<IBattleDocument>;
   getBattleReplay(): any;
 }
 
-// Schéma pour les participants
 const participantSchema = new Schema<IBattleParticipant>({
   heroId: { type: String, required: true },
   name: { type: String, required: true },
@@ -159,7 +148,6 @@ const participantSchema = new Schema<IBattleParticipant>({
   }
 });
 
-// Schéma pour les actions de combat
 const actionSchema = new Schema<IBattleAction>({
   turn: { type: Number, required: true },
   actionType: { 
@@ -194,14 +182,29 @@ const actionSchema = new Schema<IBattleAction>({
   }
 });
 
-// Schéma principal Battle
+const battleOptionsSchema = new Schema<IBattleOptions>({
+  mode: { 
+    type: String, 
+    enum: ["auto", "manual"],
+    required: true,
+    default: "auto"
+  },
+  speed: { 
+    type: Number, 
+    enum: [1, 2, 3],
+    required: true,
+    default: 1
+  },
+  playerVipLevel: { type: Number, min: 0, max: 15, default: 0 }
+});
+
 const battleSchema = new Schema<IBattleDocument>({
-    serverId: { 
+  serverId: { 
     type: String,
     required: true,
     match: /^S\d+$/,
     default: "S1"
-    },
+  },
   playerId: { type: String, required: true },
   battleType: { 
     type: String, 
@@ -213,6 +216,12 @@ const battleSchema = new Schema<IBattleDocument>({
   enemyTeam: [participantSchema],
   
   actions: [actionSchema],
+  
+  battleOptions: {
+    type: battleOptionsSchema,
+    required: true,
+    default: { mode: "auto", speed: 1, playerVipLevel: 0 }
+  },
   
   result: {
     victory: { type: Boolean, required: true },
@@ -267,19 +276,19 @@ const battleSchema = new Schema<IBattleDocument>({
   collection: 'battles'
 });
 
-// Index pour optimiser les requêtes
 battleSchema.index({ playerId: 1 });
 battleSchema.index({ battleType: 1 });
 battleSchema.index({ status: 1 });
 battleSchema.index({ createdAt: -1 });
 battleSchema.index({ "context.worldId": 1, "context.levelId": 1 });
+battleSchema.index({ "battleOptions.mode": 1 });
+battleSchema.index({ "battleOptions.speed": 1 });
 
-// Méthodes statiques
 battleSchema.statics.getPlayerBattleHistory = function(playerId: string, limit: number = 50) {
   return this.find({ playerId, status: "completed" })
     .sort({ createdAt: -1 })
     .limit(limit)
-    .select("battleType result context createdAt battleDuration");
+    .select("battleType result context battleOptions createdAt battleDuration");
 };
 
 battleSchema.statics.getPlayerStats = function(playerId: string) {
@@ -301,7 +310,6 @@ battleSchema.statics.getPlayerStats = function(playerId: string) {
   ]);
 };
 
-// Méthodes d'instance
 battleSchema.methods.addAction = function(action: IBattleAction) {
   this.actions.push(action);
   this.status = "ongoing";
@@ -322,7 +330,8 @@ battleSchema.methods.getBattleReplay = function() {
     enemyTeam: this.enemyTeam,
     actions: this.actions,
     result: this.result,
-    duration: this.battleDuration || (this.battleEnded?.getTime() - this.battleStarted.getTime()) || 0
+    battleOptions: this.battleOptions,
+    duration: this.battleEnded?.getTime() - this.battleStarted.getTime() || 0
   };
 };
 
