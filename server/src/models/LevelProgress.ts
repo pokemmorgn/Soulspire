@@ -105,7 +105,8 @@ levelProgressSchema.statics.recordAttempt = async function(
   victory: boolean,
   battleTime: number
 ) {
-  const progress = await this.getOrCreate(playerId, serverId, worldId, levelId, difficulty);
+  const LevelProgressModel = this as ILevelProgressModel;
+  const progress = await LevelProgressModel.getOrCreate(playerId, serverId, worldId, levelId, difficulty);
   
   progress.attempts++;
   progress.lastAttemptDate = new Date();
