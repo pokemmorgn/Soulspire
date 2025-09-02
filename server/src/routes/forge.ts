@@ -175,7 +175,7 @@ router.post("/preview", authMiddleware, async (req: Request, res: Response): Pro
     
     if (preview.cost.materials) {
       for (const [materialId, requiredAmount] of Object.entries(preview.cost.materials)) {
-        if (!inventory.hasItem(materialId, requiredAmount)) {
+        if (!inventory.hasItem(materialId, requiredAmount as number)) {
           hasMaterials = false;
           missingMaterials.push(materialId);
         }
@@ -286,7 +286,7 @@ router.post("/execute", authMiddleware, async (req: Request, res: Response): Pro
       result: {
         ...result,
         previousStats,
-        improvement: this.calculateStatImprovement(previousStats, result.newStats)
+        improvement: calculateStatImprovement(previousStats, result.newStats)
       },
       item: {
         instanceId: updatedOwnedItem?.instanceId,
@@ -544,8 +544,8 @@ router.post("/admin/config", authMiddleware, async (req: Request, res: Response)
         name: forge.name,
         description: forge.description,
         isActive: forge.isActive,
-        createdAt: forge.createdAt,
-        updatedAt: forge.updatedAt
+        createdAt: (forge as any).createdAt,
+        updatedAt: (forge as any).updatedAt
       }
     });
   } catch (err) {
