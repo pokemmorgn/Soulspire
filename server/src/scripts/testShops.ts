@@ -135,7 +135,10 @@ class ShopTester {
           `(Level: ${this.testPlayer.level}/${shop.levelRequirement}, VIP: ${this.testPlayer.vipLevel || 0}/${shop.vipLevelRequirement || 0})` : 
           "";
           
-        log(`  ${accessStatus} ${shop.shopType} - ${shop.name} ${reason}`, canAccess ? colors.green : colors.red);
+        const shopName = shop.name || "Unnamed Shop";
+        const shopType = shop.shopType || "Unknown";
+        
+        log(`  ${accessStatus} ${shopType} - ${shopName} ${reason}`, canAccess ? colors.green : colors.red);
       }
     } catch (error: any) {
       log(`❌ Error testing shop access: ${error.message}`, colors.red);
@@ -149,30 +152,37 @@ class ShopTester {
       const shops = await Shop.find({ isActive: true });
       
       for (const shop of shops) {
-        log(`\n  🏪 Testing ${shop.shopType} shop...`, colors.blue);
+        const shopType = shop.shopType || "Unknown";
+        const shopName = shop.name || "Unnamed Shop";
         
-        const oldItemCount = shop.items.length;
-        await shop.refreshShop();
-        const newItemCount = shop.items.length;
+        log(`\n  🏪 Testing ${shopType} shop (${shopName})...`, colors.blue);
         
-        log(`    📊 Items: ${oldItemCount} → ${newItemCount}`, colors.green);
-        
-        // Analyser les objets générés
-        const itemsByRarity: { [key: string]: number } = {};
-        const itemsByType: { [key: string]: number } = {};
-        
-        shop.items.forEach(item => {
-          itemsByRarity[item.rarity] = (itemsByRarity[item.rarity] || 0) + 1;
-          itemsByType[item.type] = (itemsByType[item.type] || 0) + 1;
-        });
-        
-        log(`    🏷️ By Rarity: ${Object.entries(itemsByRarity).map(([r, c]) => `${r}:${c}`).join(', ')}`, colors.blue);
-        log(`    📦 By Type: ${Object.entries(itemsByType).map(([t, c]) => `${t}:${c}`).join(', ')}`, colors.blue);
-        
-        // Vérifier quelques objets en détail
-        if (shop.items.length > 0) {
-          const sampleItem = shop.items[0];
-          log(`    🔍 Sample item: ${sampleItem.name} (${sampleItem.rarity}) - Cost: ${JSON.stringify(sampleItem.cost)}`, colors.blue);
+        try {
+          const oldItemCount = shop.items.length;
+          await shop.refreshShop();
+          const newItemCount = shop.items.length;
+          
+          log(`    📊 Items: ${oldItemCount} → ${newItemCount}`, colors.green);
+          
+          // Analyser les objets générés
+          const itemsByRarity: { [key: string]: number } = {};
+          const itemsByType: { [key: string]: number } = {};
+          
+          shop.items.forEach(item => {
+            itemsByRarity[item.rarity] = (itemsByRarity[item.rarity] || 0) + 1;
+            itemsByType[item.type] = (itemsByType[item.type] || 0) + 1;
+          });
+          
+          log(`    🏷️ By Rarity: ${Object.entries(itemsByRarity).map(([r, c]) => `${r}:${c}`).join(', ')}`, colors.blue);
+          log(`    📦 By Type: ${Object.entries(itemsByType).map(([t, c]) => `${t}:${c}`).join(', ')}`, colors.blue);
+          
+          // Vérifier quelques objets en détail
+          if (shop.items.length > 0) {
+            const sampleItem = shop.items[0];
+            log(`    🔍 Sample item: ${sampleItem.name} (${sampleItem.rarity}) - Cost: ${JSON.stringify(sampleItem.cost)}`, colors.blue);
+          }
+        } catch (shopError: any) {
+          log(`    ❌ Error refreshing shop: ${shopError.message}`, colors.red);
         }
       }
     } catch (error: any) {
@@ -317,6 +327,9 @@ class ShopTester {
       log(`  📈 Shop Statistics Summary:`, colors.blue);
       
       for (const shop of shops) {
+        const shopType = shop.shopType || "Unknown";
+        const shopName = shop.name || "Unnamed Shop";
+        
         const totalItems = shop.items.length;
         const featuredItems = shop.items.filter(item => item.isFeatured).length;
         const promotionalItems = shop.items.filter(item => item.isPromotional).length;
@@ -330,7 +343,7 @@ class ShopTester {
         const nextReset = shop.nextResetTime ? Math.max(0, shop.nextResetTime.getTime() - Date.now()) : 0;
         const hoursUntilReset = Math.floor(nextReset / (1000 * 60 * 60));
         
-        log(`\n    🏪 ${shop.shopType} (${shop.name}):`, colors.yellow);
+        log(`\n    🏪 ${shopType} (${shopName}):`, colors.yellow);
         log(`      📦 Total Items: ${totalItems}`, colors.reset);
         log(`      ⭐ Featured: ${featuredItems}`, colors.reset);
         log(`      🎯 Promotional: ${promotionalItems}`, colors.reset);
@@ -350,7 +363,7 @@ class ShopTester {
       log(`    🏪 Active Shops: ${totalShops}`, colors.reset);
       log(`    📦 Total Items: ${totalActiveItems}`, colors.reset);
       log(`    🛒 Global Purchases: ${totalGlobalPurchases}`, colors.reset);
-      log(`    📊 Average Items per Shop: ${(totalActiveItems / totalShops).toFixed(1)}`, colors.reset);
+      log(`    📊 Average Items per Shop: ${totalShops > 0 ? (totalActiveItems / totalShops).toFixed(1) : '0'}`, colors.reset);
       
     } catch (error: any) {
       log(`❌ Error testing shop statistics: ${error.message}`, colors.red);
