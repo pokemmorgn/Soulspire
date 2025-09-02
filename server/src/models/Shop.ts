@@ -325,7 +325,7 @@ shopSchema.statics.getShopsToReset = function() {
 
 // Créer shop prédéfini
 shopSchema.statics.createPredefinedShop = function(shopType: ShopType) {
-  const shopConfigs = {
+  const shopConfigs: Record<ShopType, any> = {
     General: {
       name: "GENERAL_SHOP_NAME",
       resetFrequency: "never",
@@ -356,6 +356,48 @@ shopSchema.statics.createPredefinedShop = function(shopType: ShopType) {
       resetFrequency: "weekly",
       maxItemsShown: 10,
       vipLevelRequirement: 1,
+      priority: 95
+    },
+    Labyrinth: {
+      name: "LABYRINTH_SHOP_NAME",
+      resetFrequency: "weekly",
+      maxItemsShown: 6,
+      levelRequirement: 20
+    },
+    Event: {
+      name: "EVENT_SHOP_NAME",
+      resetFrequency: "event",
+      maxItemsShown: 8,
+      levelRequirement: 5
+    },
+    Weekly: {
+      name: "WEEKLY_SHOP_NAME",
+      resetFrequency: "weekly",
+      maxItemsShown: 6,
+      priority: 80
+    },
+    Monthly: {
+      name: "MONTHLY_SHOP_NAME",
+      resetFrequency: "monthly",
+      maxItemsShown: 10,
+      priority: 85
+    },
+    Flash: {
+      name: "FLASH_SHOP_NAME",
+      resetFrequency: "daily",
+      maxItemsShown: 4,
+      priority: 100
+    },
+    Bundle: {
+      name: "BUNDLE_SHOP_NAME",
+      resetFrequency: "never",
+      maxItemsShown: 8,
+      priority: 90
+    },
+    Seasonal: {
+      name: "SEASONAL_SHOP_NAME",
+      resetFrequency: "event",
+      maxItemsShown: 12,
       priority: 95
     }
   };
@@ -526,7 +568,7 @@ shopSchema.methods.addItem = function(itemData: Partial<IShopItem>) {
 
 // Vérifier si joueur peut acheter
 shopSchema.methods.canPlayerPurchase = async function(instanceId: string, playerId: string) {
-  const item = this.items.find(item => item.instanceId === instanceId);
+  const item = this.items.find((item: IShopItem) => item.instanceId === instanceId);
   if (!item) {
     return { canPurchase: false, reason: "ITEM_NOT_FOUND" };
   }
@@ -539,8 +581,8 @@ shopSchema.methods.canPlayerPurchase = async function(instanceId: string, player
   // Vérifier les achats par joueur
   if (item.maxPurchasePerPlayer !== -1) {
     const playerPurchases = item.purchaseHistory
-      .filter(p => p.playerId === playerId)
-      .reduce((sum, p) => sum + p.quantity, 0);
+      .filter((p: any) => p.playerId === playerId)
+      .reduce((sum: number, p: any) => sum + p.quantity, 0);
     
     if (playerPurchases >= item.maxPurchasePerPlayer) {
       return { canPurchase: false, reason: "PURCHASE_LIMIT_REACHED" };
