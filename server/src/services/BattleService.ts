@@ -635,4 +635,120 @@ export class BattleService {
       replaySpeed: replaySpeed || 1
     };
   }
+
+  public static async skipBattle(
+    playerId: string,
+    serverId: string,
+    worldId: number,
+    levelId: number,
+    difficulty: "Normal" | "Hard" | "Nightmare",
+    bestTime: number
+  ) {
+    const progress = await LevelProgress.getOrCreate(playerId, serverId, worldId, levelId, difficulty);
+    
+    if (!progress.canSkip()) {
+      throw new Error(`Skip requires 3+ victories (you have ${progress.victories})`);
+    }
+
+    const player = await Player.findOne({ _id: playerId, serverId: serverId });
+    if (!player) {
+      throw new Error("Player not found");
+    }
+
+    const skipRewards = this.calculateSkipRewards(worldId, levelId, difficulty, bestTime);
+    
+    player.gold += skipRewards.gold;
+    await player.save();
+
+    await this.updatePlayerProgress(player, worldId, levelId, difficulty);
+
+    console.log(`⏩ Combat skippé: ${skipRewards.gold} or, ${skipRewards.experience} XP`);
+
+    return {
+      victory: true,
+      skipped: true,
+      rewards: skipRewards,
+      message: `Level ${worldId}-${levelId} skipped successfully`,
+      basedOnBestTime: bestTime
+    };
+  }
+
+  public static async quitBattle(
+    battleId: string,
+    playerId: string,
+    serverId: string,
+    reason: "quit" | "timeout" | "disconnect" = "quit"
+  ) {
+    const battle = await Battle.findOne({ 
+      _id: battleId, 
+      playerId: playerId,
+      serverId: serverId
+    });
+    
+    if (!battle) {
+      throw new Error("Battle not found");
+    }
+
+    if (battle.status === "completed") {
+      throw new Error("Battle already completed");
+    }
+
+    battle.status = "abandoned";
+    battle.battleEnded = new Date();
+    
+    battle.result = {
+      victory: false,
+      winnerTeam: "enemy",
+      totalTurns: 0,
+      battleDuration: Date.now() - battle.battleStarted.getTime(),
+      rewards: { experience: 0, gold: 0, items: [], fragments: [] },
+      stats: { totalDamageDealt: 0, totalHealingDone: 0, criticalHits: 0, ultimatesUsed: 0 }
+    };
+
+    await battle.save();
+
+    if (battle.context?.worldId && battle.context?.levelId && battle.context?.difficulty) {
+      await LevelProgress.recordAttempt(
+        playerId,
+        serverId,
+        battle.context.worldId,
+        battle.context.levelId,
+        battle.context.difficulty,
+        false,
+        0
+      );
+    }
+
+    console.log(`🏃 Combat abandonné: ${battleId} (${reason})`);
+
+    return {
+      battleId: battle._id,
+      quit: true,
+      reason: reason,
+      message: "Battle abandoned - no rewards given"
+    };
+  }
+
+  private static calculateSkipRewards(
+    worldId: number, 
+    levelId: number, 
+    difficulty: "Normal" | "Hard" | "Nightmare",
+    bestTime: number
+  ) {
+    const baseExp = 80 + worldId * 8 + levelId * 3;
+    const baseGold = 40 + worldId * 5 + levelId * 2;
+    
+    const difficultyMultiplier = difficulty === "Hard" ? 1.5 : difficulty === "Nightmare" ? 2.0 : 1.0;
+    
+    const timeBonus = bestTime > 0 && bestTime < 10000 ? 1.2 : 1.0;
+    
+    const skipBonus = 1.1;
+    
+    return {
+      experience: Math.floor(baseExp * difficultyMultiplier * timeBonus * skipBonus),
+      gold: Math.floor(baseGold * difficultyMultiplier * timeBonus * skipBonus),
+      items: [],
+      fragments: []
+    };
+  }
 }
