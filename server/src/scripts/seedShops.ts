@@ -6,68 +6,84 @@ dotenv.config();
 
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/unity-gacha-game";
 
+// === FONCTION DE SEED ===
 const seedShops = async (): Promise<void> => {
   try {
-    console.log("🌱 Starting shop seeding...");
+    console.log("🏪 Starting shops seed...");
     
     // Connexion à MongoDB
     await mongoose.connect(MONGO_URI);
     console.log("✅ Connected to MongoDB");
-
-    // Supprimer les shops existants
-    await Shop.deleteMany({});
-    console.log("🗑️ Cleared existing shops");
-
-    // Créer les 4 types de shops
-    const shopTypes = ["Daily", "Weekly", "Monthly", "Premium"];
-    const createdShops = [];
-
-    for (const type of shopTypes) {
-      const shopItems = (Shop as any).generateShopItems(type);
-      
-      const shop = new Shop({
-        type,
-        items: shopItems,
-        isActive: true
-      });
-
-      await shop.save();
-      createdShops.push(shop);
-      
-      console.log(`✅ Created ${type} shop with ${shopItems.length} items`);
+    
+    // Types de shops à créer
+    const shopTypes = ["General", "Arena", "Clan", "Daily", "VIP", "Labyrinth", "Event"];
+    
+    // Supprimer tous les shops existants (optionnel)
+    const deleteAll = process.argv.includes('--clear');
+    if (deleteAll) {
+      await Shop.deleteMany({});
+      console.log("🗑️ Cleared existing shops");
     }
-
-    // Afficher un résumé
-    console.log("\n📊 Shop Seeding Summary:");
-    for (const shop of createdShops) {
-      console.log(`   ${shop.type}: ${shop.items.length} items`);
-      console.log(`   Next Reset: ${shop.nextResetTime.toISOString()}`);
-      
-      // Afficher quelques items d'exemple
-      const sampleItems = shop.items.slice(0, 2);
-      for (const item of sampleItems) {
-        const costStr = Object.entries(item.cost)
-          .filter(([_, value]) => value > 0)
-          .map(([key, value]) => `${value} ${key}`)
-          .join(", ");
-        console.log(`     - ${item.name}: ${costStr}`);
+    
+    // Créer les shops prédéfinis
+    let createdCount = 0;
+    let skippedCount = 0;
+    
+    for (const shopType of shopTypes) {
+      try {
+        // Vérifier si le shop existe déjà
+        const existingShop = await Shop.findOne({ shopType });
+        
+        if (existingShop) {
+          console.log(`⏭️ Skipped existing shop: ${shopType}`);
+          skippedCount++;
+        } else {
+          const newShop = (Shop as any).createPredefinedShop(shopType);
+          await newShop.save();
+          console.log(`✅ Created shop: ${shopType} (${newShop.name})`);
+          createdCount++;
+        }
+      } catch (error: any) {
+        console.error(`❌ Error creating shop ${shopType}:`, error.message);
       }
-      console.log("");
     }
-
-    console.log("🎉 Shop seeding completed successfully!");
+    
+    console.log(`\n📊 Seed Summary:`);
+    console.log(`   - Created: ${createdCount} shops`);
+    console.log(`   - Skipped: ${skippedCount} shops`);
+    console.log(`   - Total in seed: ${shopTypes.length} shops`);
+    
+    // Vérification finale
+    const totalShops = await Shop.countDocuments();
+    const activeShops = await Shop.countDocuments({ isActive: true });
+    console.log(`   - Total shops in database: ${totalShops}`);
+    console.log(`   - Active shops: ${activeShops}`);
+    
+    // Afficher les détails des shops créés
+    console.log(`\n📋 Shops Details:`);
+    const allShops = await Shop.find().select("shopType name resetFrequency maxItemsShown levelRequirement");
+    for (const shop of allShops) {
+      console.log(`   ${shop.shopType}: ${shop.items?.length || 0} items`);
+    }
+    
+    console.log("🎉 Shops seed completed successfully!");
     
   } catch (error) {
-    console.error("❌ Shop seeding failed:", error);
+    console.error("❌ Seed failed:", error);
   } finally {
-    await mongoose.disconnect();
-    console.log("🔌 Disconnected from MongoDB");
+    await mongoose.connection.close();
+    console.log("🔌 MongoDB connection closed");
+    process.exit(0);
   }
 };
 
-// Exécuter le seeding si ce fichier est appelé directement
+// === EXÉCUTION DU SCRIPT ===
 if (require.main === module) {
-  seedShops().then(() => process.exit(0));
+  console.log("🚀 Shops Database Seeder");
+  console.log("Arguments:", process.argv.slice(2).join(' '));
+  console.log("Use --clear to delete existing shops before seeding\n");
+  
+  seedShops();
 }
 
-export { seedShops };
+export default seedShops;
