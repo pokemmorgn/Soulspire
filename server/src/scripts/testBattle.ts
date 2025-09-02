@@ -36,7 +36,7 @@ const testBattle = async (): Promise<void> => {
     colorLog(colors.blue, `👤 Joueur de test: ${testPlayer.username} (VIP ${testPlayer.vipLevel})`);
 
     await equipTestHeroes(testPlayer);
-    colorLog(colors.blue, `⚔️ Héros équipés: ${testPlayer.heroes.filter(h => h.equipped).length}`);
+    colorLog(colors.blue, `⚔️ Héros équipés: ${testPlayer.heroes.filter((h: any) => h.equipped).length}`);
 
     await displayPlayerTeamWithSpells(testPlayer);
 
@@ -118,7 +118,7 @@ async function displayPlayerTeamWithSpells(player: any) {
   for (let i = 0; i < equippedHeroes.length; i++) {
     const playerHero = equippedHeroes[i];
     
-    let heroData;
+    let heroData: any;
     if (typeof playerHero.heroId === 'string') {
       heroData = await Hero.findById(playerHero.heroId);
     } else {
@@ -126,22 +126,28 @@ async function displayPlayerTeamWithSpells(player: any) {
     }
     
     if (heroData && heroData.name) {
-      const levelMultiplier = 1 + (playerHero.level - 1) * 0.08;
-      const starMultiplier = 1 + (playerHero.stars - 1) * 0.15;
-      const totalMultiplier = levelMultiplier * starMultiplier;
-      
-      const stats = {
-        hp: Math.floor(heroData.baseStats.hp * totalMultiplier),
-        atk: Math.floor(heroData.baseStats.atk * totalMultiplier),
-        def: Math.floor(heroData.baseStats.def * totalMultiplier),
-        intelligence: Math.floor((heroData.baseStats.intelligence || 70) * totalMultiplier),
-        moral: Math.floor((heroData.baseStats.moral || 60) * totalMultiplier * 0.6)
-      };
-      
+      // ✅ Utiliser la vraie méthode getStatsAtLevel alignée avec le nouveau set de stats
+      const stats = (heroData as any).getStatsAtLevel(playerHero.level, playerHero.stars);
+
       console.log(`${i + 1}. ${colors.bright}${heroData.name}${colors.reset}`);
       console.log(`   Role: ${heroData.role} | Element: ${heroData.element} | Rarity: ${heroData.rarity}`);
       console.log(`   Level: ${playerHero.level} | Stars: ${playerHero.stars}`);
-      console.log(`   Stats: HP=${stats.hp}, ATK=${stats.atk}, DEF=${stats.def}, INT=${stats.intelligence}, MOR=${stats.moral}`);
+
+      // Aperçu concis des stats clés (nouvelles)
+      console.log(
+        `   Stats: ` +
+        `HP=${stats.hp}, ATK=${stats.atk}, DEF=${stats.def}, ` +
+        `VIT=${stats.vitesse}, MOR=${stats.moral}, RC=${stats.reductionCooldown}%`
+      );
+      console.log(
+        `          ` +
+        `CRIT=${stats.crit}%, CDMG=${stats.critDamage}%, CRES=${stats.critResist}%, ` +
+        `DODGE=${stats.dodge}%, ACC=${stats.accuracy}%`
+      );
+      console.log(
+        `          ` +
+        `LEECH=${stats.healthleech}%, HEAL+=${stats.healingBonus}%, SHIELD+=${stats.shieldBonus}%, ERG+${stats.energyRegen}`
+      );
       
       if (heroData.spells) {
         colorLog(colors.yellow, "   🔮 Sorts équipés:");
@@ -172,36 +178,12 @@ async function displayPlayerTeamWithSpells(player: any) {
 
 async function runBattleTestsWithModes(playerId: string) {
   const testConfigurations = [
-    {
-      name: "Auto x1 (Gratuit)",
-      battleOptions: { mode: "auto" as const, speed: 1 as const },
-      world: 1, level: 1, difficulty: "Normal" as const
-    },
-    {
-      name: "Auto x2 (VIP 2+)",
-      battleOptions: { mode: "auto" as const, speed: 2 as const },
-      world: 1, level: 2, difficulty: "Normal" as const
-    },
-    {
-      name: "Auto x3 (VIP 5+)",
-      battleOptions: { mode: "auto" as const, speed: 3 as const },
-      world: 1, level: 3, difficulty: "Normal" as const
-    },
-    {
-      name: "Manuel x1 (Ultimates manuels)",
-      battleOptions: { mode: "manual" as const, speed: 1 as const },
-      world: 1, level: 4, difficulty: "Normal" as const
-    },
-    {
-      name: "Manuel x2 (VIP + Manuel)",
-      battleOptions: { mode: "manual" as const, speed: 2 as const },
-      world: 1, level: 5, difficulty: "Normal" as const
-    },
-    {
-      name: "Auto Hard x3 (Stress Test)",
-      battleOptions: { mode: "auto" as const, speed: 3 as const },
-      world: 2, level: 8, difficulty: "Hard" as const
-    }
+    { name: "Auto x1 (Gratuit)",        battleOptions: { mode: "auto" as const,   speed: 1 as const }, world: 1, level: 1, difficulty: "Normal" as const },
+    { name: "Auto x2 (VIP 2+)",         battleOptions: { mode: "auto" as const,   speed: 2 as const }, world: 1, level: 2, difficulty: "Normal" as const },
+    { name: "Auto x3 (VIP 5+)",         battleOptions: { mode: "auto" as const,   speed: 3 as const }, world: 1, level: 3, difficulty: "Normal" as const },
+    { name: "Manuel x1 (Ultimates)",    battleOptions: { mode: "manual" as const, speed: 1 as const }, world: 1, level: 4, difficulty: "Normal" as const },
+    { name: "Manuel x2 (VIP + Manuel)", battleOptions: { mode: "manual" as const, speed: 2 as const }, world: 1, level: 5, difficulty: "Normal" as const },
+    { name: "Auto Hard x3 (Stress)",    battleOptions: { mode: "auto" as const,   speed: 3 as const }, world: 2, level: 8, difficulty: "Hard" as const }
   ];
 
   for (const config of testConfigurations) {
