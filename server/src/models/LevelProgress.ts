@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from "mongoose";
+import mongoose, { Document, Schema, Model } from "mongoose";
 
 interface ILevelProgressDocument extends Document {
   serverId: string;
@@ -15,6 +15,26 @@ interface ILevelProgressDocument extends Document {
   
   canSkip(): boolean;
   canRetry(): boolean;
+}
+
+interface ILevelProgressModel extends Model<ILevelProgressDocument> {
+  getOrCreate(
+    playerId: string, 
+    serverId: string, 
+    worldId: number, 
+    levelId: number, 
+    difficulty: string
+  ): Promise<ILevelProgressDocument>;
+  
+  recordAttempt(
+    playerId: string,
+    serverId: string,
+    worldId: number,
+    levelId: number,
+    difficulty: string,
+    victory: boolean,
+    battleTime: number
+  ): Promise<ILevelProgressDocument>;
 }
 
 const levelProgressSchema = new Schema<ILevelProgressDocument>({
@@ -104,4 +124,4 @@ levelProgressSchema.statics.recordAttempt = async function(
   return progress;
 };
 
-export default mongoose.model<ILevelProgressDocument>("LevelProgress", levelProgressSchema);
+export default mongoose.model<ILevelProgressDocument, ILevelProgressModel>("LevelProgress", levelProgressSchema);
