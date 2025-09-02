@@ -79,6 +79,7 @@ interface IItemDocument extends Document {
   itemId: string;
   name: string;
   description: string;
+  iconUrl: string;          // URL de l'icône pour Unity
   
   // Classification
   category: "Equipment" | "Consumable" | "Material" | "Currency" | "Fragment" | "Scroll" | "Artifact" | "Chest";
@@ -249,6 +250,17 @@ const itemSchema = new Schema<IItemDocument>({
     type: String, 
     maxlength: 500,
     default: ""
+  },
+  
+  // Affichage
+  iconUrl: { 
+    type: String, 
+    required: true,
+    trim: true,
+    default: function(this: IItemDocument) {
+      // Auto-génération d'URL d'icône basée sur l'itemId
+      return `icons/items/${this.itemId}.png`;
+    }
   },
   
   // Classification
