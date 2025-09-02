@@ -6,25 +6,56 @@ import authMiddleware, { optionalAuthMiddleware } from "../middleware/authMiddle
 
 const router = express.Router();
 
-// Schémas de validation
+// -------------------- Utils --------------------
+function slugify(s: string): string {
+  return (s || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function getHeroKeyId(hero: any): string {
+  // Préférence au champ heroId stocké, sinon fallback slug(name)
+  if (hero.heroId && typeof hero.heroId === "string" && hero.heroId.trim()) return hero.heroId;
+  if (hero.name && typeof hero.name === "string" && hero.name.trim()) return slugify(hero.name);
+  return ""; // dernier recours (évitons de casser la réponse)
+}
+
+function buildGenericKeys(hero: any) {
+  const kid = getHeroKeyId(hero);
+  return {
+    heroId: kid,
+    name: `${kid}_name`,
+    description: `${kid}_description`,
+    icon: `${kid}_icon`,
+    sprite: `${kid}_sprite`,
+    splashArt: `${kid}_splashArt`,
+    strengths: `${kid}_strengths`,
+    weaknesses: `${kid}_weaknesses`,
+  };
+}
+
+// -------------------- Validation --------------------
 const heroFilterSchema = Joi.object({
   role: Joi.string().valid("Tank", "DPS Melee", "DPS Ranged", "Support").optional(),
   element: Joi.string().valid("Fire", "Water", "Wind", "Electric", "Light", "Dark").optional(),
   rarity: Joi.string().valid("Common", "Rare", "Epic", "Legendary").optional(),
   page: Joi.number().min(1).default(1),
-  limit: Joi.number().min(1).max(100).default(20)
+  limit: Joi.number().min(1).max(100).default(20),
 });
 
 const heroUpgradeSchema = Joi.object({
-  heroId: Joi.string().required(),
+  heroId: Joi.string().required(),            // <- ATTENTION: ici c'est l'_id Mongo côté Player.heroes[]
   targetLevel: Joi.number().min(1).max(100).optional(),
-  targetStars: Joi.number().min(1).max(6).optional()
+  targetStars: Joi.number().min(1).max(6).optional(),
 });
 
 const equipHeroSchema = Joi.object({
-  heroId: Joi.string().required(),
-  equipped: Joi.boolean().required()
+  heroId: Joi.string().required(),            // <- idem: _id Mongo du Hero
+  equipped: Joi.boolean().required(),
 });
+
+// -------------------- Routes --------------------
 
 // === GET ALL HEROES (CATALOG) ===
 router.get("/catalog", optionalAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
@@ -35,9 +66,9 @@ router.get("/catalog", optionalAuthMiddleware, async (req: Request, res: Respons
       return;
     }
 
-    const { role, element, rarity, page, limit } = req.query;
-    const pageNum = parseInt(page as string) || 1;
-    const limitNum = parseInt(limit as string) || 20;
+    const { role, element, rarity, page, limit } = req.query as any;
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 20;
     const skip = (pageNum - 1) * limitNum;
 
     const filter: any = {};
@@ -47,17 +78,41 @@ router.get("/catalog", optionalAuthMiddleware, async (req: Request, res: Respons
 
     const [heroes, total] = await Promise.all([
       Hero.find(filter)
-        .select("name role element rarity baseStats spells")
+        .select("_id heroId name role element rarity baseStats spells")
         .skip(skip)
         .limit(limitNum)
         .sort({ name: 1 }),
-      Hero.countDocuments(filter)
+      Hero.countDocuments(filter),
     ]);
+
+    // Injecte les clés génériques
+    const payload = heroes.map(h => {
+      const obj = h.toObject();
+      const keys = buildGenericKeys(obj);
+      return {
+        _id: obj._id,
+        heroId: keys.heroId, // stable pour assets/traductions
+        // Clés génériques pour le client (textes + assets)
+        name: keys.name,
+        description: keys.description,
+        icon: keys.icon,
+        sprite: keys.sprite,
+        splashArt: keys.splashArt,
+        strengths: keys.strengths,
+        weaknesses: keys.weaknesses,
+        // Données gameplay
+        role: obj.role,
+        element: obj.element,
+        rarity: obj.rarity,
+        baseStats: obj.baseStats,
+        spells: obj.spells,
+      };
+    });
 
     res.json({
       message: "Heroes catalog retrieved successfully",
-      heroes,
-      pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) }
+      heroes: payload,
+      pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) },
     });
   } catch (err) {
     console.error("Get catalog error:", err);
@@ -70,12 +125,17 @@ router.get("/catalog/:heroId", async (req: Request, res: Response): Promise<void
   try {
     const { heroId } = req.params;
 
-    const hero = await Hero.findById(heroId);
+    // Ici heroId est l'_id MongoDB du document Hero (si tu veux supporter aussi heroId slug, ajoute une recherche alternative)
+    const hero = await Hero.findById(heroId).select("_id heroId name role element rarity baseStats spells");
     if (!hero) {
       res.status(404).json({ error: "Hero not found", code: "HERO_NOT_FOUND" });
       return;
     }
 
+    const obj = hero.toObject();
+    const keys = buildGenericKeys(obj);
+
+    // Paliers de stats
     const levels = [1, 25, 50, 75, 100];
     const starsList = [1, 3, 6];
     const statsByLevel = levels.map(level => {
@@ -87,10 +147,25 @@ router.get("/catalog/:heroId", async (req: Request, res: Response): Promise<void
     res.json({
       message: "Hero details retrieved successfully",
       hero: {
-        ...hero.toObject(),
+        _id: obj._id,
+        heroId: keys.heroId,
+        // clés génériques
+        name: keys.name,
+        description: keys.description,
+        icon: keys.icon,
+        sprite: keys.sprite,
+        splashArt: keys.splashArt,
+        strengths: keys.strengths,
+        weaknesses: keys.weaknesses,
+        // gameplay
+        role: obj.role,
+        element: obj.element,
+        rarity: obj.rarity,
+        baseStats: obj.baseStats,
+        spells: obj.spells,
         statsByLevel,
-        rarityMultiplier: hero.getRarityMultiplier()
-      }
+        rarityMultiplier: hero.getRarityMultiplier(),
+      },
     });
   } catch (err) {
     console.error("Get hero details error:", err);
@@ -109,7 +184,7 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
 
     const player = await Player.findById(req.userId).populate({
       path: "heroes.heroId",
-      select: "name role element rarity baseStats spells"
+      select: "_id heroId name role element rarity baseStats spells",
     });
 
     if (!player) {
@@ -119,40 +194,60 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
 
     const { role, element, rarity } = req.query as any;
 
-    const filteredHeroes = player.heroes.filter((ph: any) => {
-      const hero = ph.heroId;
-      if (!hero) return false;
-      if (role && hero.role !== role) return false;
-      if (element && hero.element !== element) return false;
-      if (rarity && hero.rarity !== rarity) return false;
+    const filtered = player.heroes.filter((ph: any) => {
+      const h = ph.heroId;
+      if (!h) return false;
+      if (role && h.role !== role) return false;
+      if (element && h.element !== element) return false;
+      if (rarity && h.rarity !== rarity) return false;
       return true;
     });
 
-    const enrichedHeroes = filteredHeroes.map((ph: any) => {
-      const hero = ph.heroId;
-      const currentStats = hero.getStatsAtLevel(ph.level, ph.stars);
+    const enriched = filtered.map((ph: any) => {
+      const heroDoc = ph.heroId;
+      const obj = heroDoc.toObject();
+      const keys = buildGenericKeys(obj);
+
+      const currentStats = heroDoc.getStatsAtLevel(ph.level, ph.stars);
       const basicPower = currentStats.hp + currentStats.atk + currentStats.def;
-      const powerLevel = Math.floor(basicPower * hero.getRarityMultiplier());
+      const powerLevel = Math.floor(basicPower * heroDoc.getRarityMultiplier());
+
       return {
         playerHeroId: ph._id,
-        hero: hero.toObject(),
+        // renvoyer aussi l'_id du hero + heroId (slug)
+        hero: {
+          _id: obj._id,
+          heroId: keys.heroId,
+          name: keys.name,
+          description: keys.description,
+          icon: keys.icon,
+          sprite: keys.sprite,
+          splashArt: keys.splashArt,
+          strengths: keys.strengths,
+          weaknesses: keys.weaknesses,
+          role: obj.role,
+          element: obj.element,
+          rarity: obj.rarity,
+          baseStats: obj.baseStats,
+          spells: obj.spells,
+        },
         level: ph.level,
         stars: ph.stars,
         equipped: ph.equipped,
         currentStats,
-        powerLevel
+        powerLevel,
       };
     }).sort((a: any, b: any) => b.powerLevel - a.powerLevel);
 
     res.json({
       message: "Player heroes retrieved successfully",
-      heroes: enrichedHeroes,
+      heroes: enriched,
       summary: {
-        total: enrichedHeroes.length,
-        equipped: enrichedHeroes.filter(h => h.equipped).length,
-        maxLevel: Math.max(...enrichedHeroes.map(h => h.level), 0),
-        maxStars: Math.max(...enrichedHeroes.map(h => h.stars), 0)
-      }
+        total: enriched.length,
+        equipped: enriched.filter(h => h.equipped).length,
+        maxLevel: Math.max(...enriched.map(h => h.level), 0),
+        maxStars: Math.max(...enriched.map(h => h.stars), 0),
+      },
     });
   } catch (err) {
     console.error("Get player heroes error:", err);
@@ -169,7 +264,7 @@ router.post("/upgrade", authMiddleware, async (req: Request, res: Response): Pro
       return;
     }
 
-    const { heroId, targetLevel, targetStars } = req.body;
+    const { heroId, targetLevel, targetStars } = req.body; // heroId = _id Mongo du Hero dans l'inventaire
 
     const player = await Player.findById(req.userId);
     if (!player) {
@@ -199,7 +294,7 @@ router.post("/upgrade", authMiddleware, async (req: Request, res: Response): Pro
     if (goldCost > 0 && player.gold < goldCost) {
       res.status(400).json({
         error: `Insufficient gold. Required: ${goldCost}, Available: ${player.gold}`,
-        code: "INSUFFICIENT_GOLD"
+        code: "INSUFFICIENT_GOLD",
       });
       return;
     }
@@ -209,7 +304,7 @@ router.post("/upgrade", authMiddleware, async (req: Request, res: Response): Pro
       if (currentFragments < materialCost) {
         res.status(400).json({
           error: `Insufficient fragments. Required: ${materialCost}, Available: ${currentFragments}`,
-          code: "INSUFFICIENT_FRAGMENTS"
+          code: "INSUFFICIENT_FRAGMENTS",
         });
         return;
       }
@@ -230,7 +325,7 @@ router.post("/upgrade", authMiddleware, async (req: Request, res: Response): Pro
       message: "Hero upgraded successfully",
       hero: { heroId, level: playerHero.level, stars: playerHero.stars },
       cost: { gold: goldCost, fragments: materialCost },
-      remaining: { gold: player.gold, fragments: player.fragments.get(heroId) || 0 }
+      remaining: { gold: player.gold, fragments: player.fragments.get(heroId) || 0 },
     });
   } catch (err) {
     console.error("Upgrade hero error:", err);
@@ -247,7 +342,7 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
       return;
     }
 
-    const { heroId, equipped } = req.body;
+    const { heroId, equipped } = req.body; // heroId = _id Mongo du Hero
 
     const player = await Player.findById(req.userId);
     if (!player) {
@@ -276,7 +371,7 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
       message: `Hero ${equipped ? "equipped" : "unequipped"} successfully`,
       heroId,
       equipped: playerHero.equipped,
-      totalEquipped: player.heroes.filter((h: any) => h.equipped).length
+      totalEquipped: player.heroes.filter((h: any) => h.equipped).length,
     });
   } catch (err) {
     console.error("Equip hero error:", err);
