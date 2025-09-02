@@ -407,6 +407,15 @@ router.post("/chest/open", authMiddleware, async (req: Request, res: Response): 
       return;
     }
 
+    // Vérifier que userId existe
+    if (!req.userId) {
+      res.status(401).json({ 
+        error: "User not authenticated",
+        code: "USER_NOT_AUTHENTICATED"
+      });
+      return;
+    }
+
     // Ouvrir le coffre
     const rewards = await itemData.openChest(req.userId);
     
