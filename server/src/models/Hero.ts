@@ -15,12 +15,17 @@ export interface IHeroDocument extends Document {
   element: "Fire" | "Water" | "Wind" | "Electric" | "Light" | "Dark";
   rarity: "Common" | "Rare" | "Epic" | "Legendary";
 
-  // Nouveaux champs d’assets
-  icon: string;       // petite icône (liste, UI)
-  sprite: string;     // sprite de combat
-  splashArt: string;  // illustration plein écran
+  // Assets
+  icon: string;
+  sprite: string;
+  splashArt: string;
 
-  // Stats alignées sur IItemStats
+  // Narratif
+  personality?: string;
+  strengths?: string;
+  weaknesses?: string;
+
+  // Stats
   baseStats: {
     hp: number; atk: number; def: number;
     crit: number; critDamage: number; critResist: number; dodge: number; accuracy: number;
@@ -48,18 +53,14 @@ const heroSchema = new Schema<IHeroDocument>({
   rarity: { type: String, enum: ["Common", "Rare", "Epic", "Legendary"], required: true },
 
   // === Assets ===
-  icon: {
-    type: String,
-    required: true,
-    trim: true,
-    // Si tu veux auto-générer depuis le nom, dé-commente ce default
-    // default: function (this: IHeroDocument) {
-    //   const slug = this.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-    //   return `icons/heroes/${slug}.png`;
-    // }
-  },
+  icon: { type: String, required: true, trim: true },
   sprite: { type: String, required: false, trim: true, default: "" },
   splashArt: { type: String, required: false, trim: true, default: "" },
+
+  // === Narratif ===
+  personality: { type: String, trim: true, default: "", maxlength: 2000 },
+  strengths:   { type: String, trim: true, default: "", maxlength: 2000 },
+  weaknesses:  { type: String, trim: true, default: "", maxlength: 2000 },
 
   // === Stats ===
   baseStats: {
@@ -176,8 +177,8 @@ heroSchema.methods.getEnergyGeneration = function () {
 };
 
 heroSchema.methods.getAllSpells = function () {
-  const out: Array<{ slot: string; id: string; level: number }> = [];
   const s = this.spells;
+  const out: Array<{ slot: string; id: string; level: number }> = [];
   if (s.spell1?.id) out.push({ slot: "spell1", id: s.spell1.id, level: s.spell1.level });
   if (s.spell2?.id) out.push({ slot: "spell2", id: s.spell2.id, level: s.spell2.level });
   if (s.spell3?.id) out.push({ slot: "spell3", id: s.spell3.id, level: s.spell3.level });
@@ -207,14 +208,13 @@ heroSchema.methods.upgradeSpell = function (slot: string, newLevel: number) {
 
 // Pré-save (cohérence & clamps)
 heroSchema.pre("save", function (next) {
-  this.baseStats.reductionCooldown = cap(this.baseStats.reductionCooldown, 0, 50);
-  this.baseStats.crit        = cap(this.baseStats.crit, 0, 100);
-  this.baseStats.critResist  = cap(this.baseStats.critResist, 0, 100);
-  this.baseStats.dodge       = cap(this.baseStats.dodge, 0, 100);
-  this.baseStats.accuracy    = cap(this.baseStats.accuracy, 0, 100);
-  this.baseStats.healthleech = cap(this.baseStats.healthleech, 0, 100);
+  this.baseStats.reductionCooldown = Math.min(50, Math.max(0, this.baseStats.reductionCooldown));
+  this.baseStats.crit        = Math.min(100, Math.max(0, this.baseStats.crit));
+  this.baseStats.critResist  = Math.min(100, Math.max(0, this.baseStats.critResist));
+  this.baseStats.dodge       = Math.min(100, Math.max(0, this.baseStats.dodge));
+  this.baseStats.accuracy    = Math.min(100, Math.max(0, this.baseStats.accuracy));
+  this.baseStats.healthleech = Math.min(100, Math.max(0, this.baseStats.healthleech));
 
-  // Ultimate par défaut si manquant
   if (!this.spells.ultimate?.id) {
     const defaults: Record<IHeroDocument["element"], string> = {
       Fire: "fire_storm", Water: "tidal_wave", Wind: "tornado",
@@ -223,7 +223,6 @@ heroSchema.pre("save", function (next) {
     this.spells.ultimate = { id: defaults[this.element] || "basic_ultimate", level: 1 };
   }
 
-  // (Optionnel) imposer icon si vide
   if (!this.icon || !this.icon.trim()) {
     const slug = this.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
     this.icon = `icons/heroes/${slug}.png`;
