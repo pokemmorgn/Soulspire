@@ -2,6 +2,7 @@ import express, { Request, Response } from "express";
 import Joi from "joi";
 import { BattleService } from "../services/BattleService";
 import { IBattleOptions } from "../services/BattleEngine";
+import LevelProgress from "../models/LevelProgress";
 import authMiddleware from "../middleware/authMiddleware";
 
 const router = express.Router();
@@ -27,8 +28,32 @@ const battleHistorySchema = Joi.object({
   limit: Joi.number().min(1).max(50).default(20)
 });
 
+const skipBattleSchema = Joi.object({
+  worldId: Joi.number().min(1).max(100).required(),
+  levelId: Joi.number().min(1).max(50).required(),
+  difficulty: Joi.string().valid("Normal", "Hard", "Nightmare").default("Normal")
+});
+
+const quitBattleSchema = Joi.object({
+  battleId: Joi.string().required(),
+  reason: Joi.string().valid("quit", "timeout", "disconnect").default("quit")
+});
+
 const replaySchema = Joi.object({
   speed: Joi.number().valid(1, 2, 3).optional()
+});
+
+const levelInfoSchema = Joi.object({
+  worldId: Joi.number().min(1).max(100).required(),
+  levelId: Joi.number().min(1).max(50).required(),
+  difficulty: Joi.string().valid("Normal", "Hard", "Nightmare").default("Normal")
+});
+
+const retryBattleSchema = Joi.object({
+  worldId: Joi.number().min(1).max(100).required(),
+  levelId: Joi.number().min(1).max(50).required(),
+  difficulty: Joi.string().valid("Normal", "Hard", "Nightmare").default("Normal"),
+  battleOptions: battleOptionsSchema.default({ mode: "auto", speed: 1 })
 });
 
 router.post("/campaign", authMiddleware, async (req: Request, res: Response): Promise<void> => {
@@ -393,6 +418,272 @@ router.post("/test", authMiddleware, async (req: Request, res: Response): Promis
     res.status(500).json({ 
       error: err.message,
       code: "TEST_BATTLE_FAILED"
+    });
+  }
+});
+
+router.get("/level-info", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { error } = levelInfoSchema.validate(req.query);
+    if (error) {
+      res.status(400).json({ 
+        error: error.details[0].message,
+        code: "VALIDATION_ERROR"
+      });
+      return;
+    }
+
+    const { worldId, levelId, difficulty } = req.query;
+    
+    const progress = await LevelProgress.getOrCreate(
+      req.userId!,
+      req.serverId!,
+      parseInt(worldId as string),
+      parseInt(levelId as string),
+      difficulty as string
+    );
+
+    res.json({
+      message: "Level info retrieved successfully",
+      levelInfo: {
+        worldId: progress.worldId,
+        levelId: progress.levelId,
+        difficulty: progress.difficulty,
+        victories: progress.victories,
+        attempts: progress.attempts,
+        bestTime: progress.bestTime,
+        canSkip: progress.canSkip(),
+        canRetry: progress.canRetry(),
+        firstClearDate: progress.firstClearDate,
+        lastAttemptDate: progress.lastAttemptDate
+      }
+    });
+
+  } catch (err) {
+    console.error("Get level info error:", err);
+    res.status(500).json({ 
+      error: "Internal server error",
+      code: "GET_LEVEL_INFO_FAILED"
+    });
+  }
+});
+
+router.post("/skip", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { error } = skipBattleSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ 
+        error: error.details[0].message,
+        code: "VALIDATION_ERROR"
+      });
+      return;
+    }
+
+    const { worldId, levelId, difficulty } = req.body;
+    
+    const progress = await LevelProgress.getOrCreate(
+      req.userId!,
+      req.serverId!,
+      worldId,
+      levelId,
+      difficulty
+    );
+
+    if (!progress.canSkip()) {
+      res.status(403).json({ 
+        error: `Skip requires 3+ victories (you have ${progress.victories})`,
+        code: "SKIP_NOT_ALLOWED",
+        required: 3,
+        current: progress.victories
+      });
+      return;
+    }
+
+    console.log(`⏩ ${req.userId} skip: Monde ${worldId}, Niveau ${levelId}, ${difficulty}`);
+
+    const skipResult = await BattleService.skipBattle(
+      req.userId!,
+      req.serverId!,
+      worldId,
+      levelId,
+      difficulty,
+      progress.bestTime
+    );
+
+    res.json({
+      message: "Battle skipped successfully",
+      result: skipResult,
+      levelInfo: {
+        victories: progress.victories,
+        bestTime: progress.bestTime
+      }
+    });
+
+  } catch (err: any) {
+    console.error("Skip battle error:", err);
+    
+    if (err.message === "Player not found") {
+      res.status(404).json({ 
+        error: "Player not found",
+        code: "PLAYER_NOT_FOUND"
+      });
+      return;
+    }
+    
+    res.status(500).json({ 
+      error: "Internal server error",
+      code: "SKIP_BATTLE_FAILED"
+    });
+  }
+});
+
+router.post("/quit/:battleId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { battleId } = req.params;
+    const { error } = quitBattleSchema.validate({ ...req.body, battleId });
+    
+    if (error) {
+      res.status(400).json({ 
+        error: error.details[0].message,
+        code: "VALIDATION_ERROR"
+      });
+      return;
+    }
+
+    if (!battleId) {
+      res.status(400).json({ 
+        error: "Battle ID is required",
+        code: "BATTLE_ID_REQUIRED"
+      });
+      return;
+    }
+
+    const { reason } = req.body;
+
+    console.log(`🏃 ${req.userId} quit battle: ${battleId} (${reason})`);
+
+    const quitResult = await BattleService.quitBattle(
+      battleId,
+      req.userId!,
+      req.serverId!,
+      reason
+    );
+
+    res.json({
+      message: "Battle quit successfully",
+      result: quitResult
+    });
+
+  } catch (err: any) {
+    console.error("Quit battle error:", err);
+    
+    if (err.message === "Battle not found") {
+      res.status(404).json({ 
+        error: "Battle not found",
+        code: "BATTLE_NOT_FOUND"
+      });
+      return;
+    }
+    
+    if (err.message === "Battle already completed") {
+      res.status(400).json({ 
+        error: "Cannot quit a completed battle",
+        code: "BATTLE_ALREADY_COMPLETED"
+      });
+      return;
+    }
+    
+    res.status(500).json({ 
+      error: "Internal server error",
+      code: "QUIT_BATTLE_FAILED"
+    });
+  }
+});
+
+router.post("/retry", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { error } = retryBattleSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ 
+        error: error.details[0].message,
+        code: "VALIDATION_ERROR"
+      });
+      return;
+    }
+
+    const { worldId, levelId, difficulty, battleOptions } = req.body;
+    
+    const progress = await LevelProgress.getOrCreate(
+      req.userId!,
+      req.serverId!,
+      worldId,
+      levelId,
+      difficulty
+    );
+
+    if (!progress.canRetry()) {
+      res.status(403).json({ 
+        error: "No previous attempts found for this level",
+        code: "RETRY_NOT_ALLOWED"
+      });
+      return;
+    }
+
+    console.log(`🔄 ${req.userId} retry: Monde ${worldId}, Niveau ${levelId}, ${difficulty}`);
+
+    const battleResult = await BattleService.startCampaignBattle(
+      req.userId!,
+      req.serverId!,
+      worldId,
+      levelId,
+      difficulty,
+      battleOptions as IBattleOptions
+    );
+
+    res.json({
+      message: "Retry battle completed",
+      battleId: battleResult.battleId,
+      victory: battleResult.result.victory,
+      result: battleResult.result,
+      battleOptions: battleOptions,
+      replay: battleResult.replay,
+      isRetry: true,
+      levelInfo: {
+        attempts: progress.attempts + 1,
+        victories: progress.victories + (battleResult.result.victory ? 1 : 0)
+      }
+    });
+
+  } catch (err: any) {
+    console.error("Retry battle error:", err);
+    
+    if (err.message === "Player not found") {
+      res.status(404).json({ 
+        error: "Player not found",
+        code: "PLAYER_NOT_FOUND"
+      });
+      return;
+    }
+    
+    if (err.message === "No equipped heroes found") {
+      res.status(400).json({ 
+        error: "You must equip at least one hero before battle",
+        code: "NO_EQUIPPED_HEROES"
+      });
+      return;
+    }
+    
+    if (err.message.includes("Vitesse") || err.message.includes("VIP")) {
+      res.status(403).json({ 
+        error: "Speed not allowed for your VIP level",
+        code: "SPEED_NOT_ALLOWED"
+      });
+      return;
+    }
+    
+    res.status(500).json({ 
+      error: "Internal server error",
+      code: "RETRY_BATTLE_FAILED"
     });
   }
 });
