@@ -68,7 +68,7 @@ class CampaignTester {
 
   // === SETUP ET INITIALISATION ===
   
-  private async setupDatabase(): Promise<void> {
+  public async setupDatabase(): Promise<void> {
     await mongoose.connect(MONGO_URI);
     colorLog(colors.green, "✅ Connecté à MongoDB");
     
@@ -94,7 +94,7 @@ class CampaignTester {
     colorLog(colors.yellow, "🧹 Données de test précédentes nettoyées");
   }
 
-  private async setupTestPlayer(): Promise<void> {
+  public async setupTestPlayer(): Promise<void> {
     // Créer un joueur de test
     const testPlayer = new Player({
       username: "CampaignTestPlayer",
@@ -326,7 +326,7 @@ class CampaignTester {
     colorLog(colors.green, "✅ Test validation de progression terminé");
   }
 
-  private async testAPIEndpoints(): Promise<void> {
+  public async testAPIEndpoints(): Promise<void> {
     colorLog(colors.cyan, "\n🌐 === TEST ENDPOINTS API ===");
     
     // Test 1: getAllWorlds
@@ -596,7 +596,7 @@ class CampaignTester {
 
   // === AFFICHAGE ET STATISTIQUES FINALES ===
 
-  private async displayFinalStats(): Promise<void> {
+  public async displayFinalStats(): Promise<void> {
     colorLog(colors.cyan, "\n📈 === STATISTIQUES FINALES ===");
     
     // Stats joueur
