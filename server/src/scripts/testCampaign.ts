@@ -128,8 +128,8 @@ class CampaignTester {
       const hero = testHeroes[i];
       player.heroes.push({
         heroId: (hero._id as any).toString(),
-        level: 10 + i * 5,
-        stars: 2 + i,
+        level: 25 + i * 10, // ✅ Niveaux plus élevés pour l'équilibrage
+        stars: 4 + i, // ✅ Plus d'étoiles
         equipped: i < 3 // Les 3 premiers sont équipés
       });
     }
@@ -499,6 +499,7 @@ class CampaignTester {
     console.log("\n⚔️ Test combat sans héros:");
     const playerWithoutHeroes = new Player({
       username: "NoHeroesPlayer",
+      password: "test123", // ✅ Ajout du mot de passe requis
       serverId: this.serverId,
       heroes: [] // Aucun héros
     });
