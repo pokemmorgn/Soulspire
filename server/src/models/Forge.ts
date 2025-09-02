@@ -350,10 +350,10 @@ forgeSchema.methods.calculateReforgeCost = function(
 
 // Valider que les stats lockées sont valides pour ce slot
 forgeSchema.methods.validateLockedStats = function(equipmentSlot: string, lockedStats: string[]): boolean {
-  const slotConfig = this.config.slotConfigs.find(config => config.slot === equipmentSlot);
+  const slotConfig = this.config.slotConfigs.find((config: IForgeSlotConfig) => config.slot === equipmentSlot);
   if (!slotConfig) return false;
   
-  return lockedStats.every(stat => slotConfig.availableStats.includes(stat));
+  return lockedStats.every((stat: string) => slotConfig.availableStats.includes(stat));
 };
 
 // Générer de nouvelles stats pour le reforge
@@ -363,7 +363,7 @@ forgeSchema.methods.generateNewStats = function(
   lockedStats: string[], 
   currentStats: any
 ): any {
-  const slotConfig = this.config.slotConfigs.find(config => config.slot === equipmentSlot);
+  const slotConfig = this.config.slotConfigs.find((config: IForgeSlotConfig) => config.slot === equipmentSlot);
   if (!slotConfig) throw new Error(`No configuration found for slot: ${equipmentSlot}`);
   
   const statRanges = this.config.statRanges.get(rarity);
@@ -372,7 +372,7 @@ forgeSchema.methods.generateNewStats = function(
   const newStats: { [stat: string]: number } = {};
   
   // Conserver les stats lockées
-  lockedStats.forEach(stat => {
+  lockedStats.forEach((stat: string) => {
     if (currentStats[stat] !== undefined) {
       newStats[stat] = currentStats[stat];
     }
@@ -382,7 +382,7 @@ forgeSchema.methods.generateNewStats = function(
   const totalStats = Math.floor(Math.random() * (slotConfig.maxStats - slotConfig.minStats + 1)) + slotConfig.minStats;
   
   // Stats disponibles (sans les lockées)
-  const availableStats = slotConfig.availableStats.filter(stat => !lockedStats.includes(stat));
+  const availableStats = slotConfig.availableStats.filter((stat: string) => !lockedStats.includes(stat));
   
   // Calculer combien de nouvelles stats générer
   const newStatsNeeded = totalStats - lockedStats.length;
@@ -393,7 +393,7 @@ forgeSchema.methods.generateNewStats = function(
   const selectedStats = shuffled.slice(0, statsToGenerate);
   
   // Générer les valeurs pour chaque stat
-  selectedStats.forEach(stat => {
+  selectedStats.forEach((stat: string) => {
     const range = statRanges.get(stat);
     if (range) {
       const value = Math.floor(Math.random() * (range.max - range.min + 1)) + range.min;
@@ -499,7 +499,7 @@ forgeSchema.methods.executeReforge = async function(
   // Consommer les matériaux
   if (cost.materials) {
     for (const [materialId, amount] of Object.entries(cost.materials)) {
-      const materialItem = inventory.storage.craftingMaterials.find(item => item.itemId === materialId);
+      const materialItem = inventory.storage.craftingMaterials.find((item: any) => item.itemId === materialId);
       if (materialItem) {
         await inventory.removeItem(materialItem.instanceId, amount);
       }
