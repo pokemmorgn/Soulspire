@@ -15,17 +15,7 @@ export interface IHeroDocument extends Document {
   element: "Fire" | "Water" | "Wind" | "Electric" | "Light" | "Dark";
   rarity: "Common" | "Rare" | "Epic" | "Legendary";
 
-  // Assets
-  icon: string;
-  sprite: string;
-  splashArt: string;
-
-  // Narratif
-  personality?: string;
-  strengths?: string;
-  weaknesses?: string;
-
-  // Stats
+  // Stats alignées sur IItemStats
   baseStats: {
     hp: number; atk: number; def: number;
     crit: number; critDamage: number; critResist: number; dodge: number; accuracy: number;
@@ -52,27 +42,17 @@ const heroSchema = new Schema<IHeroDocument>({
   element: { type: String, enum: ["Fire", "Water", "Wind", "Electric", "Light", "Dark"], required: true },
   rarity: { type: String, enum: ["Common", "Rare", "Epic", "Legendary"], required: true },
 
-  // === Assets ===
-  icon: { type: String, required: true, trim: true },
-  sprite: { type: String, required: false, trim: true, default: "" },
-  splashArt: { type: String, required: false, trim: true, default: "" },
-
-  // === Narratif ===
-  personality: { type: String, trim: true, default: "", maxlength: 2000 },
-  strengths:   { type: String, trim: true, default: "", maxlength: 2000 },
-  weaknesses:  { type: String, trim: true, default: "", maxlength: 2000 },
-
   // === Stats ===
   baseStats: {
-    hp: { type: Number, required: true, min: 100, max: 15000 },
-    atk: { type: Number, required: true, min: 10, max: 3000 },
-    def: { type: Number, required: true, min: 10, max: 1500 },
+    hp:  { type: Number, required: true, min: 100, max: 15000 },
+    atk: { type: Number, required: true, min: 10,  max: 3000 },
+    def: { type: Number, required: true, min: 10,  max: 1500 },
 
-    crit: { type: Number, required: true, min: 0, max: 100, default: 5 },
-    critDamage: { type: Number, required: true, min: 0, default: 50 },
+    crit:       { type: Number, required: true, min: 0, max: 100, default: 5 },
+    critDamage: { type: Number, required: true, min: 0,           default: 50 },
     critResist: { type: Number, required: true, min: 0, max: 100, default: 0 },
-    dodge: { type: Number, required: true, min: 0, max: 100, default: 0 },
-    accuracy: { type: Number, required: true, min: 0, max: 100, default: 0 },
+    dodge:      { type: Number, required: true, min: 0, max: 100, default: 0 },
+    accuracy:   { type: Number, required: true, min: 0, max: 100, default: 0 },
 
     vitesse: {
       type: Number, required: true, min: 50, max: 200,
@@ -101,17 +81,17 @@ const heroSchema = new Schema<IHeroDocument>({
     healthleech: { type: Number, required: true, min: 0, max: 100, default: 0 },
 
     healingBonus: { type: Number, required: true, min: 0, default: 0 },
-    shieldBonus: { type: Number, required: true, min: 0, default: 0 },
-    energyRegen: { type: Number, required: true, min: 0, default: 10 },
+    shieldBonus:  { type: Number, required: true, min: 0, default: 0 },
+    energyRegen:  { type: Number, required: true, min: 0, default: 10 },
   },
 
   // === Sorts ===
   spells: {
-    spell1: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 10 } },
-    spell2: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 10 } },
-    spell3: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 10 } },
+    spell1:   { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 10 } },
+    spell2:   { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 10 } },
+    spell3:   { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 10 } },
     ultimate: { id: { type: String, required: true }, level: { type: Number, default: 1, min: 1, max: 5 } },
-    passive: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 5 } },
+    passive:  { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 5 } },
   },
 }, { timestamps: true, collection: "heroes" });
 
@@ -128,25 +108,25 @@ function scalePercent(base: number, factor: number, capMax = 100) { return cap(b
 // Méthodes
 heroSchema.methods.getStatsAtLevel = function (level: number, stars: number = 1) {
   const levelMul = 1 + (level - 1) * 0.08;
-  const starMul = 1 + (stars - 1) * 0.15;
+  const starMul  = 1 + (stars - 1) * 0.15;
   const mul = levelMul * starMul;
   const b = this.baseStats;
 
   return {
-    hp: Math.floor(b.hp * mul),
+    hp:  Math.floor(b.hp  * mul),
     atk: Math.floor(b.atk * mul),
     def: Math.floor(b.def * mul),
 
-    crit:        scalePercent(b.crit,        1 + (mul - 1) * 0.2),
-    critDamage:  Math.floor(b.critDamage *   (1 + (mul - 1) * 0.15)),
-    critResist:  scalePercent(b.critResist,  1 + (mul - 1) * 0.2),
-    dodge:       scalePercent(b.dodge,       1 + (mul - 1) * 0.2),
-    accuracy:    scalePercent(b.accuracy,    1 + (mul - 1) * 0.2),
+    crit:        scalePercent(b.crit,       1 + (mul - 1) * 0.2),
+    critDamage:  Math.floor(b.critDamage *  (1 + (mul - 1) * 0.15)),
+    critResist:  scalePercent(b.critResist, 1 + (mul - 1) * 0.2),
+    dodge:       scalePercent(b.dodge,      1 + (mul - 1) * 0.2),
+    accuracy:    scalePercent(b.accuracy,   1 + (mul - 1) * 0.2),
 
     vitesse: Math.floor(b.vitesse * (1 + (mul - 1) * 0.5)),
-    moral: Math.floor(b.moral * (1 + (mul - 1) * 0.3)),
+    moral:   Math.floor(b.moral   * (1 + (mul - 1) * 0.3)),
     reductionCooldown: cap(Math.floor(b.reductionCooldown * (1 + (level - 1) * 0.01)), 0, 50),
-    healthleech: scalePercent(b.healthleech, 1 + (mul - 1) * 0.2),
+    healthleech:       scalePercent(b.healthleech, 1 + (mul - 1) * 0.2),
 
     healingBonus: Math.floor(b.healingBonus * (1 + (mul - 1) * 0.2)),
     shieldBonus:  Math.floor(b.shieldBonus  * (1 + (mul - 1) * 0.2)),
@@ -160,7 +140,8 @@ heroSchema.methods.getRarityMultiplier = function () {
 
 heroSchema.methods.getElementAdvantage = function (target: string) {
   const adv: Record<string, string[]> = {
-    Fire: ["Wind"], Water: ["Fire"], Wind: ["Electric"], Electric: ["Water"], Light: ["Dark"], Dark: ["Light"]
+    Fire: ["Wind"], Water: ["Fire"], Wind: ["Electric"],
+    Electric: ["Water"], Light: ["Dark"], Dark: ["Light"]
   };
   if (adv[this.element]?.includes(target)) return 1.5;
   if (adv[target]?.includes(this.element)) return 0.75;
@@ -177,8 +158,8 @@ heroSchema.methods.getEnergyGeneration = function () {
 };
 
 heroSchema.methods.getAllSpells = function () {
-  const s = this.spells;
   const out: Array<{ slot: string; id: string; level: number }> = [];
+  const s = this.spells;
   if (s.spell1?.id) out.push({ slot: "spell1", id: s.spell1.id, level: s.spell1.level });
   if (s.spell2?.id) out.push({ slot: "spell2", id: s.spell2.id, level: s.spell2.level });
   if (s.spell3?.id) out.push({ slot: "spell3", id: s.spell3.id, level: s.spell3.level });
@@ -208,24 +189,20 @@ heroSchema.methods.upgradeSpell = function (slot: string, newLevel: number) {
 
 // Pré-save (cohérence & clamps)
 heroSchema.pre("save", function (next) {
-  this.baseStats.reductionCooldown = Math.min(50, Math.max(0, this.baseStats.reductionCooldown));
-  this.baseStats.crit        = Math.min(100, Math.max(0, this.baseStats.crit));
-  this.baseStats.critResist  = Math.min(100, Math.max(0, this.baseStats.critResist));
-  this.baseStats.dodge       = Math.min(100, Math.max(0, this.baseStats.dodge));
-  this.baseStats.accuracy    = Math.min(100, Math.max(0, this.baseStats.accuracy));
-  this.baseStats.healthleech = Math.min(100, Math.max(0, this.baseStats.healthleech));
+  this.baseStats.reductionCooldown = cap(this.baseStats.reductionCooldown, 0, 50);
+  this.baseStats.crit        = cap(this.baseStats.crit, 0, 100);
+  this.baseStats.critResist  = cap(this.baseStats.critResist, 0, 100);
+  this.baseStats.dodge       = cap(this.baseStats.dodge, 0, 100);
+  this.baseStats.accuracy    = cap(this.baseStats.accuracy, 0, 100);
+  this.baseStats.healthleech = cap(this.baseStats.healthleech, 0, 100);
 
+  // Ultimate par défaut si manquant
   if (!this.spells.ultimate?.id) {
     const defaults: Record<IHeroDocument["element"], string> = {
       Fire: "fire_storm", Water: "tidal_wave", Wind: "tornado",
       Electric: "lightning_strike", Light: "divine_light", Dark: "shadow_realm"
     };
     this.spells.ultimate = { id: defaults[this.element] || "basic_ultimate", level: 1 };
-  }
-
-  if (!this.icon || !this.icon.trim()) {
-    const slug = this.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-    this.icon = `icons/heroes/${slug}.png`;
   }
 
   next();
