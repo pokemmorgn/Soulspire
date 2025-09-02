@@ -57,8 +57,7 @@ export class BattleEngine {
     const maxSpeed = this.getMaxAllowedSpeed(vipLevel);
     
     if (validated.speed > maxSpeed) {
-      console.warn(`⚠️ Vitesse x${validated.speed} non autorisée (VIP ${vipLevel}), limitée à x${maxSpeed}`);
-      validated.speed = maxSpeed as 1 | 2 | 3;
+      throw new Error(`Vitesse x${validated.speed} nécessite VIP ${this.getRequiredVipForSpeed(validated.speed)}+ (vous êtes VIP ${vipLevel})`);
     }
     
     return validated;
@@ -68,6 +67,12 @@ export class BattleEngine {
     if (vipLevel >= 5) return 3;
     if (vipLevel >= 2) return 2;
     return 1;
+  }
+  
+  private getRequiredVipForSpeed(speed: number): number {
+    if (speed >= 3) return 5;
+    if (speed >= 2) return 2;
+    return 0;
   }
   
   public addManualUltimate(heroId: string): boolean {
