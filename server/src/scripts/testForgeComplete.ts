@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
-import { createForgeService } from "../models/Forge";
+import { createForgeService } from "../models/Forge/index";
 import Player from "../models/Player";
 import Inventory from "../models/Inventory";
 import Item from "../models/Item";
