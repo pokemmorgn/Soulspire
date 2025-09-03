@@ -344,11 +344,11 @@ forgeReforgeSchema.methods.generateNewStats = function(equipmentSlot: string, ra
   };
   
   const selectedStats: string[] = [];
-  const weightedStats = availableStats.map(stat => ({ 
+  const weightedStats = availableStats.map((stat: string) => ({ 
     stat, 
     weight: statWeights[stat] || 1,
     random: Math.random() * (statWeights[stat] || 1)
-  })).sort((a, b) => b.random - a.random);
+  })).sort((a: any, b: any) => b.random - a.random);
   
   for (let i = 0; i < statsToGenerate && i < weightedStats.length; i++) {
     selectedStats.push(weightedStats[i].stat);
