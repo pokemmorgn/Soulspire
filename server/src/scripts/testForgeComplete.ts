@@ -207,24 +207,46 @@ class CompleteForgeTester {
     log(`✅ Forge service created for player ${this.testPlayerId}`, colors.green);
   }
 
-  async ensureTestItemsExist(): Promise<void> {
-    log("\n🗡️ Ensuring test items exist...", colors.yellow);
-    
-    const allTestItems = [...testEquipmentData, ...testMaterialsData];
-    let createdCount = 0;
-    
-    for (const itemData of allTestItems) {
-      const existing = await Item.findOne({ itemId: itemData.itemId });
-      if (!existing) {
-        const newItem = new Item(itemData);
-        await newItem.save();
-        createdCount++;
-        log(`   ✅ Created: ${itemData.itemId} (${itemData.rarity} ${itemData.category})`, colors.green);
+// (excerpt) ensureTestItemsExist with a defensive default for subCategory
+async ensureTestItemsExist(): Promise<void> {
+  log("\n🗡️ Ensuring test items exist...", colors.yellow);
+
+  const allTestItems = [...testEquipmentData, ...testMaterialsData];
+  let createdCount = 0;
+
+  for (const itemData of allTestItems) {
+    // Defensive fallback: ensure subCategory is present to satisfy the Item schema
+    if (!itemData.subCategory) {
+      switch (itemData.category) {
+        case "Equipment":
+          itemData.subCategory = "Misc_Equipment";
+          break;
+        case "Material":
+          itemData.subCategory = "Generic_Material";
+          break;
+        case "Consumable":
+          itemData.subCategory = "Generic_Consumable";
+          break;
+        case "Chest":
+          itemData.subCategory = "Generic_Chest";
+          break;
+        default:
+          itemData.subCategory = "General";
       }
+      log(`   ⚠️ Added default subCategory ('${itemData.subCategory}') to ${itemData.itemId}`, colors.yellow);
     }
-    
-    log(`✅ Test items ready (${createdCount} created, ${allTestItems.length - createdCount} existed)`, colors.green);
+
+    const existing = await Item.findOne({ itemId: itemData.itemId });
+    if (!existing) {
+      const newItem = new Item(itemData);
+      await newItem.save();
+      createdCount++;
+      log(`   ✅ Created: ${itemData.itemId} (${itemData.rarity} ${itemData.category})`, colors.green);
+    }
   }
+
+  log(`✅ Test items ready (${createdCount} created, ${allTestItems.length - createdCount} existed)`, colors.green);
+}
 
   async addTestItemsToInventory(): Promise<void> {
     log("\n📥 Adding test items to inventory...", colors.yellow);
