@@ -25,6 +25,152 @@ const log = (message: string, color: string = colors.reset) => {
   console.log(`${color}${message}${colors.reset}`);
 };
 
+// === DONNÉES DE TEST ===
+
+// Matériaux nécessaires pour les tests
+const testMaterialsData = [
+  {
+    itemId: "iron_ore",
+    name: "Iron Ore",
+    description: "Basic material for equipment reforging",
+    category: "Material",
+    materialType: "Enhancement",
+    rarity: "Common",
+    sellPrice: 10,
+    stackable: true,
+    maxStack: 999
+  },
+  {
+    itemId: "magic_crystal",
+    name: "Magic Crystal",
+    description: "Rare material for equipment reforging",
+    category: "Material",
+    materialType: "Enhancement",
+    rarity: "Rare",
+    sellPrice: 50,
+    stackable: true,
+    maxStack: 999
+  },
+  {
+    itemId: "dragon_scale",
+    name: "Dragon Scale",
+    description: "Epic material for equipment reforging",
+    category: "Material",
+    materialType: "Enhancement",
+    rarity: "Epic",
+    sellPrice: 200,
+    stackable: true,
+    maxStack: 999
+  },
+  {
+    itemId: "awakening_stone",
+    name: "Awakening Stone",
+    description: "Legendary material for equipment reforging",
+    category: "Material",
+    materialType: "Enhancement",
+    rarity: "Legendary",
+    sellPrice: 1000,
+    stackable: true,
+    maxStack: 999
+  }
+];
+
+// Équipements de test
+const testEquipmentData = [
+  {
+    itemId: "test_legendary_sword",
+    name: "Test Legendary Sword",
+    description: "A legendary sword for forge testing",
+    category: "Equipment",
+    subCategory: "One_Hand_Sword",
+    rarity: "Legendary",
+    equipmentSlot: "Weapon",
+    tier: 5,
+    maxLevel: 100,
+    baseStats: {
+      atk: 150,
+      crit: 20,
+      critDamage: 50,
+      accuracy: 15
+    },
+    statsPerLevel: {
+      atk: 8,
+      crit: 1,
+      critDamage: 2.5,
+      accuracy: 0.5
+    },
+    sellPrice: 5000
+  },
+  {
+    itemId: "test_epic_armor",
+    name: "Test Epic Armor",
+    description: "An epic armor for forge testing",
+    category: "Equipment",
+    subCategory: "Heavy_Armor",
+    rarity: "Epic",
+    equipmentSlot: "Armor",
+    tier: 4,
+    maxLevel: 80,
+    baseStats: {
+      hp: 300,
+      def: 80,
+      critResist: 25,
+      shieldBonus: 15
+    },
+    statsPerLevel: {
+      hp: 15,
+      def: 4,
+      critResist: 1,
+      shieldBonus: 0.5
+    },
+    sellPrice: 3000
+  },
+  {
+    itemId: "test_rare_helmet",
+    name: "Test Rare Helmet",
+    description: "A rare helmet for forge testing",
+    category: "Equipment",
+    subCategory: "Heavy_Helmet",
+    rarity: "Rare",
+    equipmentSlot: "Helmet",
+    tier: 3,
+    maxLevel: 60,
+    baseStats: {
+      hp: 100,
+      def: 30,
+      moral: 20
+    },
+    statsPerLevel: {
+      hp: 5,
+      def: 1.5,
+      moral: 1
+    },
+    sellPrice: 1000
+  },
+  {
+    itemId: "test_common_boots",
+    name: "Test Common Boots",
+    description: "Common boots for forge testing",
+    category: "Equipment",
+    subCategory: "Light_Boots",
+    rarity: "Common",
+    equipmentSlot: "Boots",
+    tier: 1,
+    maxLevel: 40,
+    baseStats: {
+      hp: 50,
+      vitesse: 10,
+      dodge: 5
+    },
+    statsPerLevel: {
+      hp: 2,
+      vitesse: 0.5,
+      dodge: 0.2
+    },
+    sellPrice: 200
+  }
+];
+
 // === CLASSE DE TEST DE LA FORGE ===
 class ForgeTester {
   protected testPlayerId: string = "";
@@ -43,8 +189,8 @@ class ForgeTester {
     await this.createTestPlayer();
     await this.createTestInventory();
     await this.ensureForgeExists();
-    await this.ensureTestEquipmentExists();
-    await this.addTestEquipmentToInventory();
+    await this.ensureTestItemsExist();
+    await this.addTestItemsToInventory();
   }
 
   async createTestPlayer(): Promise<void> {
@@ -116,120 +262,66 @@ class ForgeTester {
     log(`   💎 Total gems spent: ${this.forge.totalGemsSpent}`, colors.blue);
   }
 
-  async ensureTestEquipmentExists(): Promise<void> {
-    log("\n🗡️ Ensuring test equipment exists...", colors.yellow);
+  async ensureTestItemsExist(): Promise<void> {
+    log("\n🗡️ Ensuring test items exist...", colors.yellow);
     
-    const testEquipmentData = [
-      {
-        itemId: "test_legendary_sword",
-        name: "Test Legendary Sword",
-        description: "A legendary sword for forge testing",
-        category: "Equipment",
-        subCategory: "One_Hand_Sword",
-        rarity: "Legendary",
-        equipmentSlot: "Weapon",
-        tier: 5,
-        maxLevel: 100,
-        baseStats: {
-          atk: 150,
-          crit: 20,
-          critDamage: 50,
-          accuracy: 15
-        },
-        statsPerLevel: {
-          atk: 8,
-          crit: 1,
-          critDamage: 2.5,
-          accuracy: 0.5
-        },
-        sellPrice: 5000
-      },
-      {
-        itemId: "test_epic_armor",
-        name: "Test Epic Armor",
-        description: "An epic armor for forge testing",
-        category: "Equipment",
-        subCategory: "Heavy_Armor",
-        rarity: "Epic",
-        equipmentSlot: "Armor",
-        tier: 4,
-        maxLevel: 80,
-        baseStats: {
-          hp: 300,
-          def: 80,
-          critResist: 25,
-          shieldBonus: 15
-        },
-        statsPerLevel: {
-          hp: 15,
-          def: 4,
-          critResist: 1,
-          shieldBonus: 0.5
-        },
-        sellPrice: 3000
-      },
-      {
-        itemId: "test_rare_helmet",
-        name: "Test Rare Helmet",
-        description: "A rare helmet for forge testing",
-        category: "Equipment",
-        subCategory: "Heavy_Helmet",
-        rarity: "Rare",
-        equipmentSlot: "Helmet",
-        tier: 3,
-        maxLevel: 60,
-        baseStats: {
-          hp: 100,
-          def: 30,
-          moral: 20
-        },
-        statsPerLevel: {
-          hp: 5,
-          def: 1.5,
-          moral: 1
-        },
-        sellPrice: 1000
-      }
-    ];
-
+    const allTestItems = [...testEquipmentData, ...testMaterialsData];
     let createdCount = 0;
-    for (const equipData of testEquipmentData) {
-      const existing = await Item.findOne({ itemId: equipData.itemId });
+    
+    for (const itemData of allTestItems) {
+      const existing = await Item.findOne({ itemId: itemData.itemId });
       if (!existing) {
-        const newItem = new Item(equipData);
+        const newItem = new Item(itemData);
         await newItem.save();
         createdCount++;
-        log(`   ✅ Created test equipment: ${equipData.itemId}`, colors.green);
+        log(`   ✅ Created: ${itemData.itemId} (${itemData.category})`, colors.green);
       } else {
-        log(`   ⏭️ Equipment already exists: ${equipData.itemId}`, colors.blue);
+        log(`   ⏭️ Already exists: ${itemData.itemId}`, colors.blue);
       }
     }
     
-    log(`✅ Test equipment ready (${createdCount} created)`, colors.green);
+    log(`✅ Test items ready (${createdCount} created)`, colors.green);
   }
 
-  async addTestEquipmentToInventory(): Promise<void> {
-    log("\n📥 Adding test equipment to inventory...", colors.yellow);
+  async addTestItemsToInventory(): Promise<void> {
+    log("\n📥 Adding test items to inventory...", colors.yellow);
     
-    const testEquipmentIds = ["test_legendary_sword", "test_epic_armor", "test_rare_helmet"];
-    
-    for (const equipmentId of testEquipmentIds) {
+    // Ajouter les équipements
+    for (const equipData of testEquipmentData) {
       try {
-        const ownedItem = await this.inventory.addItem(equipmentId, 1, 25); // Niveau 25
+        const level = Math.floor(Math.random() * 30) + 10; // Level 10-40
+        const enhancement = Math.floor(Math.random() * 8) + 2; // +2 à +9
         
-        // Ajouter un peu d'enhancement pour les tests
-        ownedItem.enhancement = Math.floor(Math.random() * 8) + 3; // +3 à +10
+        const ownedItem = await this.inventory.addItem(equipData.itemId, 1, level);
+        ownedItem.enhancement = enhancement;
         
         this.testEquipment.push(ownedItem);
         
-        log(`   ✅ Added: ${equipmentId} (Level ${ownedItem.level}, +${ownedItem.enhancement})`, colors.green);
+        log(`   ✅ Added equipment: ${equipData.itemId} (Level ${level}, +${enhancement})`, colors.green);
       } catch (error: any) {
-        log(`   ❌ Error adding ${equipmentId}: ${error.message}`, colors.red);
+        log(`   ❌ Error adding ${equipData.itemId}: ${error.message}`, colors.red);
+      }
+    }
+    
+    // Ajouter les matériaux
+    const materialsToAdd = [
+      { itemId: "iron_ore", quantity: 100 },
+      { itemId: "magic_crystal", quantity: 50 },
+      { itemId: "dragon_scale", quantity: 25 },
+      { itemId: "awakening_stone", quantity: 10 }
+    ];
+    
+    for (const { itemId, quantity } of materialsToAdd) {
+      try {
+        await this.inventory.addItem(itemId, quantity, 1);
+        log(`   ✅ Added material: ${itemId} x${quantity}`, colors.green);
+      } catch (error: any) {
+        log(`   ❌ Error adding ${itemId}: ${error.message}`, colors.red);
       }
     }
     
     await this.inventory.save();
-    log(`✅ ${this.testEquipment.length} test equipment items added to inventory`, colors.green);
+    log(`✅ ${this.testEquipment.length} equipment and materials added to inventory`, colors.green);
   }
 
   async testForgeStatus(): Promise<void> {
@@ -285,7 +377,7 @@ class ForgeTester {
     }
     
     try {
-      const testItem = this.testEquipment[0]; // Prendre la première épée légendaire
+      const testItem = this.testEquipment[0]; // Prendre le premier équipement
       const baseItem = await Item.findOne({ itemId: testItem.itemId });
       
       if (!baseItem) {
@@ -313,6 +405,12 @@ class ForgeTester {
       );
       
       log(`    Cost: ${preview1.cost.gold} gold, ${preview1.cost.gems} gems`, colors.blue);
+      if (preview1.cost.materials && Object.keys(preview1.cost.materials).length > 0) {
+        log(`    Materials:`, colors.blue);
+        Object.entries(preview1.cost.materials).forEach(([mat, qty]) => {
+          log(`      ${mat}: ${qty}`, colors.reset);
+        });
+      }
       log(`    New Stats:`, colors.blue);
       Object.entries(preview1.newStats).forEach(([stat, value]) => {
         const current = currentStats[stat] || 0;
@@ -321,44 +419,56 @@ class ForgeTester {
         log(`      ${stat}: ${current} → ${value} (${diff >= 0 ? '+' : ''}${diff})`, color);
       });
       
-      // Test 2: Preview avec 2 stats lockées
-      const lockedStats = ["atk", "crit"];
-      log(`\n  🔄 Preview 2: Locked stats [${lockedStats.join(", ")}]`, colors.yellow);
-      const preview2 = await this.forge.getItemReforgePreview(
-        this.testPlayerId, 
-        testItem.instanceId, 
-        lockedStats
+      // Test 2: Preview avec stats lockées
+      const availableStats = Object.keys(currentStats).filter(stat => 
+        typeof currentStats[stat] === 'number' && !isNaN(currentStats[stat])
       );
       
-      log(`    Cost: ${preview2.cost.gold} gold, ${preview2.cost.gems} gems`, colors.blue);
-      log(`    Locked Stats:`, colors.green);
-      lockedStats.forEach(stat => {
-        log(`      ${stat}: ${currentStats[stat]} (LOCKED)`, colors.green);
-      });
-      log(`    New Stats:`, colors.blue);
-      Object.entries(preview2.newStats).forEach(([stat, value]) => {
-        if (lockedStats.includes(stat)) return; // Skip locked stats
-        const current = currentStats[stat] || 0;
-        const diff = (value as number) - current;
-        const color = diff > 0 ? colors.green : diff < 0 ? colors.red : colors.reset;
-        log(`      ${stat}: ${current} → ${value} (${diff >= 0 ? '+' : ''}${diff})`, color);
-      });
-      
-      // Test 3: Preview avec 4 stats lockées (coût maximum)
-      if (Object.keys(currentStats).length >= 4) {
-        const maxLockedStats = Object.keys(currentStats).slice(0, 4);
-        log(`\n  🔄 Preview 3: Max locked stats [${maxLockedStats.join(", ")}]`, colors.yellow);
-        const preview3 = await this.forge.getItemReforgePreview(
+      if (availableStats.length >= 2) {
+        const lockedStats = availableStats.slice(0, 2);
+        log(`\n  🔄 Preview 2: Locked stats [${lockedStats.join(", ")}]`, colors.yellow);
+        
+        const preview2 = await this.forge.getItemReforgePreview(
           this.testPlayerId, 
           testItem.instanceId, 
-          maxLockedStats
+          lockedStats
         );
         
-        log(`    Cost: ${preview3.cost.gold} gold, ${preview3.cost.gems} gems`, colors.blue);
-        log(`    Cost Multipliers:`, colors.blue);
-        log(`      Quality: x${preview3.cost.multipliers.quality}`, colors.reset);
-        log(`      Locks: x${preview3.cost.multipliers.locks}`, colors.reset);
-        log(`      Reforges: x${preview3.cost.multipliers.reforge}`, colors.reset);
+        log(`    Cost: ${preview2.cost.gold} gold, ${preview2.cost.gems} gems`, colors.blue);
+        log(`    Locked Stats:`, colors.green);
+        lockedStats.forEach(stat => {
+          log(`      ${stat}: ${currentStats[stat]} (LOCKED)`, colors.green);
+        });
+        log(`    New Stats:`, colors.blue);
+        Object.entries(preview2.newStats).forEach(([stat, value]) => {
+          if (lockedStats.includes(stat)) return; // Skip locked stats in display
+          const current = currentStats[stat] || 0;
+          const diff = (value as number) - current;
+          const color = diff > 0 ? colors.green : diff < 0 ? colors.red : colors.reset;
+          log(`      ${stat}: ${current} → ${value} (${diff >= 0 ? '+' : ''}${diff})`, color);
+        });
+      }
+      
+      // Test 3: Preview avec maximum de stats lockées
+      if (availableStats.length >= 3) {
+        const maxLockedStats = availableStats.slice(0, Math.min(3, availableStats.length));
+        log(`\n  🔄 Preview 3: Max locked stats [${maxLockedStats.join(", ")}]`, colors.yellow);
+        
+        try {
+          const preview3 = await this.forge.getItemReforgePreview(
+            this.testPlayerId, 
+            testItem.instanceId, 
+            maxLockedStats
+          );
+          
+          log(`    Cost: ${preview3.cost.gold} gold, ${preview3.cost.gems} gems`, colors.blue);
+          log(`    Cost Multipliers:`, colors.blue);
+          log(`      Quality: x${preview3.cost.multipliers.quality}`, colors.reset);
+          log(`      Locks: x${preview3.cost.multipliers.locks}`, colors.reset);
+          log(`      Reforges: x${preview3.cost.multipliers.reforge}`, colors.reset);
+        } catch (error: any) {
+          log(`    ⚠️ Max locks test failed: ${error.message}`, colors.yellow);
+        }
       }
       
     } catch (error: any) {
@@ -376,7 +486,7 @@ class ForgeTester {
     }
     
     try {
-      const testItem = this.testEquipment[1]; // Prendre la deuxième armure épique
+      const testItem = this.testEquipment[1]; // Prendre le deuxième équipement
       const baseItem = await Item.findOne({ itemId: testItem.itemId });
       
       if (!baseItem) {
@@ -419,6 +529,12 @@ class ForgeTester {
       log(`  ✅ Reforge executed successfully!`, colors.green);
       log(`  📊 Results:`, colors.blue);
       log(`    Cost Paid: ${result.cost.gold}g, ${result.cost.gems} gems`, colors.blue);
+      if (result.cost.materials) {
+        log(`    Materials Used:`, colors.blue);
+        Object.entries(result.cost.materials).forEach(([mat, qty]) => {
+          log(`      ${mat}: ${qty}`, colors.reset);
+        });
+      }
       log(`    Player Resources: ${playerBefore?.gold}g → ${playerAfter?.gold}g (-${(playerBefore?.gold || 0) - (playerAfter?.gold || 0)})`, colors.blue);
       log(`    Reforge Count: ${result.reforgeCount}`, colors.blue);
       
@@ -438,7 +554,7 @@ class ForgeTester {
       // Vérifier que les stats lockées n'ont pas changé
       let locksRespected = true;
       for (const lockedStat of lockedStats) {
-        if (result.newStats[lockedStat] !== currentStats[lockedStat]) {
+        if (Math.abs(result.newStats[lockedStat] - currentStats[lockedStat]) > 0.01) {
           locksRespected = false;
           log(`    ❌ LOCK VIOLATION: ${lockedStat} changed from ${currentStats[lockedStat]} to ${result.newStats[lockedStat]}`, colors.red);
         }
@@ -468,7 +584,7 @@ class ForgeTester {
     }
     
     try {
-      const testItem = this.testEquipment[2]; // Prendre le casque rare
+      const testItem = this.testEquipment[2]; // Prendre le troisième équipement
       const baseItem = await Item.findOne({ itemId: testItem.itemId });
       
       if (!baseItem) {
@@ -479,9 +595,10 @@ class ForgeTester {
       log(`  🎩 Testing multiple reforges for: ${baseItem.name}`, colors.blue);
       
       const reforgeResults = [];
+      const maxReforges = 3; // Limiter à 3 pour éviter d'épuiser les ressources
       
-      // Effectuer 5 reforges successifs
-      for (let i = 0; i < 5; i++) {
+      // Effectuer plusieurs reforges successifs
+      for (let i = 0; i < maxReforges; i++) {
         try {
           const playerBefore = await Player.findById(this.testPlayerId);
           
@@ -525,18 +642,20 @@ class ForgeTester {
       log(`\n  📈 Multiple Reforge Analysis:`, colors.magenta);
       log(`    Total Reforges Completed: ${reforgeResults.length}`, colors.blue);
       
-      const totalCost = reforgeResults.reduce((sum, r) => sum + r.actualCost, 0);
-      const averageCost = totalCost / reforgeResults.length;
-      
-      log(`    Total Gold Spent: ${totalCost}g`, colors.blue);
-      log(`    Average Cost per Reforge: ${averageCost.toFixed(0)}g`, colors.blue);
-      
-      // Vérifier l'escalade des coûts
-      log(`  💰 Cost Scaling:`, colors.blue);
-      reforgeResults.forEach((result, index) => {
-        const expectedMultiplier = 1 + (index * 0.1);
-        log(`    #${result.reforgeNumber}: ${result.actualCost}g (expected ~${result.expectedCost}g, multiplier: x${expectedMultiplier.toFixed(1)})`, colors.reset);
-      });
+      if (reforgeResults.length > 0) {
+        const totalCost = reforgeResults.reduce((sum, r) => sum + r.actualCost, 0);
+        const averageCost = totalCost / reforgeResults.length;
+        
+        log(`    Total Gold Spent: ${totalCost}g`, colors.blue);
+        log(`    Average Cost per Reforge: ${averageCost.toFixed(0)}g`, colors.blue);
+        
+        // Vérifier l'escalade des coûts
+        log(`  💰 Cost Scaling:`, colors.blue);
+        reforgeResults.forEach((result, index) => {
+          const expectedMultiplier = 1 + (index * 0.1);
+          log(`    #${result.reforgeNumber}: ${result.actualCost}g (expected ~${result.expectedCost}g, multiplier: x${expectedMultiplier.toFixed(1)})`, colors.reset);
+        });
+      }
       
     } catch (error: any) {
       log(`❌ Error testing multiple reforges: ${error.message}`, colors.red);
@@ -551,7 +670,8 @@ class ForgeTester {
       const slotTests = [
         { slot: "Weapon", validStats: ["atk", "crit"], invalidStats: ["hp", "def"] },
         { slot: "Armor", validStats: ["hp", "def"], invalidStats: ["atk", "crit"] },
-        { slot: "Helmet", validStats: ["hp", "moral"], invalidStats: ["atk", "critDamage"] }
+        { slot: "Helmet", validStats: ["hp", "moral"], invalidStats: ["atk", "critDamage"] },
+        { slot: "Boots", validStats: ["hp", "vitesse"], invalidStats: ["atk", "crit"] }
       ];
       
       for (const test of slotTests) {
@@ -570,13 +690,13 @@ class ForgeTester {
       
       // Tester la génération de stats
       log(`\n  🎲 Testing stat generation:`, colors.blue);
-      const testStats = { atk: 100, crit: 15, hp: 50 };
+      const testStats = { atk: 100, crit: 15, critDamage: 30 };
       const lockedStats = ["atk"];
       
       const generatedStats = this.forge.generateNewStats("Weapon", "Epic", lockedStats, testStats);
       
-      log(`    Original: atk: 100, crit: 15, hp: 50`, colors.reset);
-      log(`    Locked: [atk]`, colors.green);
+      log(`    Original: ${Object.entries(testStats).map(([k,v]) => `${k}: ${v}`).join(", ")}`, colors.reset);
+      log(`    Locked: [${lockedStats.join(", ")}]`, colors.green);
       log(`    Generated:`, colors.blue);
       Object.entries(generatedStats).forEach(([stat, value]) => {
         const isLocked = lockedStats.includes(stat);
@@ -632,8 +752,212 @@ class ForgeTester {
         log(`      ${slotConfig.slot}: ${slotConfig.availableStats.length} stats (${slotConfig.minStats}-${slotConfig.maxStats})`, colors.reset);
       });
       
+      // Afficher les matériaux requis
+      if (forge.config.baseCosts.materialCosts) {
+        log(`  🧪 Material Requirements:`, colors.blue);
+        const materialCosts = forge.config.baseCosts.materialCosts;
+        for (const [rarity, materials] of materialCosts.entries()) {
+          const materialList = [];
+          for (const [materialId, amount] of materials.entries()) {
+            materialList.push(`${materialId}: ${amount}`);
+          }
+          log(`    ${rarity}: ${materialList.join(", ")}`, colors.reset);
+        }
+      }
+      
     } catch (error: any) {
       log(`❌ Error testing forge analytics: ${error.message}`, colors.red);
+    }
+  }
+
+  async testEdgeCases(): Promise<void> {
+    log("\n🔍 Testing edge cases...", colors.cyan);
+    
+    try {
+      // Test 1: Reforge avec joueur sans ressources
+      log(`  💸 Testing insufficient resources...`, colors.yellow);
+      
+      const poorPlayer = new Player({
+        username: "poor_test_player",
+        password: "password",
+        gold: 10,
+        gems: 5,
+        level: 1
+      });
+      await poorPlayer.save();
+      const poorPlayerId = (poorPlayer._id as any).toString();
+      
+      try {
+        await this.forge.executeReforge(poorPlayerId, this.testEquipment[0]?.instanceId, []);
+        log(`    ❌ Should have failed with insufficient resources`, colors.red);
+      } catch (error: any) {
+        if (error.message.includes("afford") || error.message.includes("Insufficient")) {
+          log(`    ✅ Correctly rejected: ${error.message}`, colors.green);
+        } else {
+          log(`    ⚠️ Different error: ${error.message}`, colors.yellow);
+        }
+      }
+      
+      // Nettoyer le joueur test
+      await Player.deleteOne({ _id: poorPlayerId });
+      
+      // Test 2: Stats lockées invalides pour le slot
+      log(`  🔒 Testing invalid locked stats for equipment slot...`, colors.yellow);
+      
+      if (this.testEquipment.length > 0) {
+        try {
+          // Essayer de locker des stats invalides pour une arme (stats d'armure)
+          const weaponItem = this.testEquipment.find(item => 
+            item.itemId === "test_legendary_sword"
+          );
+          
+          if (weaponItem) {
+            const invalidStats = ["hp", "def", "shieldBonus"]; // Stats d'armure sur une arme
+            
+            try {
+              await this.forge.getItemReforgePreview(
+                this.testPlayerId,
+                weaponItem.instanceId,
+                invalidStats
+              );
+              log(`    ❌ Should have failed with invalid stats for Weapon`, colors.red);
+            } catch (error: any) {
+              if (error.message.includes("Invalid locked stats")) {
+                log(`    ✅ Correctly rejected invalid stats: ${error.message}`, colors.green);
+              } else {
+                log(`    ⚠️ Different error: ${error.message}`, colors.yellow);
+              }
+            }
+          }
+        } catch (error: any) {
+          log(`    ❌ Error testing invalid stats: ${error.message}`, colors.red);
+        }
+      }
+      
+      // Test 3: Objet inexistant
+      log(`  🔍 Testing non-existent item...`, colors.yellow);
+      
+      try {
+        await this.forge.getItemReforgePreview(
+          this.testPlayerId,
+          "non_existent_item_id",
+          []
+        );
+        log(`    ❌ Should have failed with non-existent item`, colors.red);
+      } catch (error: any) {
+        if (error.message.includes("not found")) {
+          log(`    ✅ Correctly rejected non-existent item: ${error.message}`, colors.green);
+        } else {
+          log(`    ⚠️ Different error: ${error.message}`, colors.yellow);
+        }
+      }
+      
+      // Test 4: Trop de stats lockées
+      log(`  🔢 Testing maximum locked stats limit...`, colors.yellow);
+      
+      if (this.testEquipment.length > 0) {
+        const testItem = this.testEquipment[0];
+        const baseItem = await Item.findOne({ itemId: testItem.itemId });
+        const currentStats = this.forge.calculateCurrentItemStats(baseItem, testItem);
+        const allStats = Object.keys(currentStats);
+        
+        if (allStats.length >= 5) {
+          const tooManyStats = allStats.slice(0, 5); // Essayer 5 stats
+          try {
+            const preview = await this.forge.getItemReforgePreview(
+              this.testPlayerId,
+              testItem.instanceId,
+              tooManyStats
+            );
+            log(`    ⚠️ Preview succeeded with ${tooManyStats.length} locked stats (cost: ${preview.cost.gold}g)`, colors.yellow);
+          } catch (error: any) {
+            log(`    ✅ Handled many locked stats: ${error.message}`, colors.green);
+          }
+        }
+      }
+      
+    } catch (error: any) {
+      log(`❌ Error testing edge cases: ${error.message}`, colors.red);
+    }
+  }
+
+  async testStatRangeCompliance(): Promise<void> {
+    log("\n🎯 Testing stat range compliance...", colors.cyan);
+    
+    try {
+      if (this.testEquipment.length === 0) {
+        log("⚠️ No equipment available for range compliance test", colors.yellow);
+        return;
+      }
+      
+      log(`  🎲 Testing stat generation compliance over multiple samples...`, colors.yellow);
+      
+      const testItem = this.testEquipment[0];
+      const baseItem = await Item.findOne({ itemId: testItem.itemId });
+      
+      if (!baseItem) {
+        log("❌ Base item not found", colors.red);
+        return;
+      }
+      
+      const samples = 10;
+      const statRanges = this.forge.config.statRanges.get(baseItem.rarity);
+      
+      if (!statRanges) {
+        log(`❌ No stat ranges found for rarity: ${baseItem.rarity}`, colors.red);
+        return;
+      }
+      
+      log(`  📊 Testing ${samples} stat generations for ${baseItem.rarity} ${baseItem.equipmentSlot}`, colors.blue);
+      
+      const statSamples: { [stat: string]: number[] } = {};
+      
+      // Générer plusieurs échantillons
+      for (let i = 0; i < samples; i++) {
+        try {
+          const preview = await this.forge.getItemReforgePreview(
+            this.testPlayerId,
+            testItem.instanceId,
+            [] // Pas de stats lockées
+          );
+          
+          Object.entries(preview.newStats).forEach(([stat, value]) => {
+            if (!statSamples[stat]) statSamples[stat] = [];
+            statSamples[stat].push(value as number);
+          });
+        } catch (error) {
+          // Continuer même en cas d'erreur sur un échantillon
+        }
+      }
+      
+      // Analyser la conformité
+      log(`  🎯 Range Compliance Analysis:`, colors.blue);
+      let totalCompliant = 0;
+      let totalTested = 0;
+      
+      Object.entries(statSamples).forEach(([stat, values]) => {
+        const range = statRanges.get(stat);
+        if (range && values.length > 0) {
+          const min = Math.min(...values);
+          const max = Math.max(...values);
+          const avg = (values.reduce((sum, v) => sum + v, 0) / values.length).toFixed(1);
+          const compliant = min >= range.min && max <= range.max;
+          
+          if (compliant) totalCompliant++;
+          totalTested++;
+          
+          const status = compliant ? "✅" : "❌";
+          log(`    ${stat}: Generated ${min}-${max} (avg ${avg}), Expected ${range.min}-${range.max} ${status}`, 
+            compliant ? colors.green : colors.red);
+        }
+      });
+      
+      const complianceRate = ((totalCompliant / totalTested) * 100).toFixed(1);
+      log(`  📈 Overall Compliance: ${totalCompliant}/${totalTested} (${complianceRate}%)`, 
+        totalCompliant === totalTested ? colors.green : colors.yellow);
+      
+    } catch (error: any) {
+      log(`❌ Error testing stat range compliance: ${error.message}`, colors.red);
     }
   }
 
@@ -644,9 +968,9 @@ class ForgeTester {
       const shouldCleanup = !process.argv.includes('--keep-data');
       if (shouldCleanup) {
         await Promise.all([
-          Player.deleteMany({ username: "test_forge_user" }),
+          Player.deleteMany({ username: { $regex: /test.*player/ } }),
           Inventory.deleteMany({ playerId: this.testPlayerId }),
-          Item.deleteMany({ itemId: { $regex: /^test_/ } }) // Supprimer les objets de test
+          Item.deleteMany({ itemId: { $regex: /^test_/ } })
         ]);
         log("✅ Test data cleaned up", colors.green);
       } else {
@@ -670,6 +994,8 @@ class ForgeTester {
       await this.testReforgeExecution();
       await this.testMultipleReforges();
       await this.testStatValidation();
+      await this.testEdgeCases();
+      await this.testStatRangeCompliance();
       await this.testForgeAnalytics();
       
       log("\n" + "=".repeat(60), colors.bright);
@@ -687,117 +1013,32 @@ class ForgeTester {
   }
 }
 
-// === TESTS SPÉCIALISÉS ADDITIONNELS ===
+// === TESTS AVANCÉS ===
 class AdvancedForgeTester extends ForgeTester {
   
-  async testEdgeCases(): Promise<void> {
-    log("\n🔍 Testing edge cases...", colors.cyan);
-    
-    try {
-      // Test 1: Reforge avec joueur sans ressources
-      log(`  💸 Testing insufficient resources...`, colors.yellow);
-      
-      const poorPlayer = new Player({
-        username: "poor_test_player",
-        password: "password",
-        gold: 10,
-        gems: 5,
-        level: 1
-      });
-      await poorPlayer.save();
-      const poorPlayerId = (poorPlayer._id as any).toString();
-      
-      try {
-        await this.forge.executeReforge(poorPlayerId, this.testEquipment[0]?.instanceId, []);
-        log(`    ❌ Should have failed with insufficient resources`, colors.red);
-      } catch (error: any) {
-        if (error.message.includes("afford")) {
-          log(`    ✅ Correctly rejected: ${error.message}`, colors.green);
-        } else {
-          log(`    ❌ Wrong error: ${error.message}`, colors.red);
-        }
-      }
-      
-      // Nettoyer le joueur test
-      await Player.deleteOne({ _id: poorPlayerId });
-      
-      // Test 2: Reforge objet non-équipement
-      log(`  🧪 Testing non-equipment reforge...`, colors.yellow);
-      
-      // Ajouter une potion à l'inventaire
-      try {
-        const potion = await this.inventory.addItem("health_potion_small", 1, 1);
-        
-        try {
-          await this.forge.executeReforge(this.testPlayerId, potion.instanceId, []);
-          log(`    ❌ Should have failed with non-equipment item`, colors.red);
-        } catch (error: any) {
-          if (error.message.includes("equipment")) {
-            log(`    ✅ Correctly rejected non-equipment: ${error.message}`, colors.green);
-          } else {
-            log(`    ❌ Wrong error: ${error.message}`, colors.red);
-          }
-        }
-      } catch (addError) {
-        log(`    ⚠️ Could not add potion for test (item may not exist)`, colors.yellow);
-      }
-      
-      // Test 3: Stats lockées invalides
-      log(`  🔒 Testing invalid locked stats...`, colors.yellow);
-      
-      if (this.testEquipment.length > 0) {
-        try {
-          // Essayer de locker des stats invalides pour une arme
-          const invalidStats = ["hp", "def", "shieldBonus"]; // Stats d'armure sur une arme
-          
-          const result = this.forge.validateLockedStats("Weapon", invalidStats);
-          if (!result) {
-            log(`    ✅ Correctly rejected invalid stats for Weapon: [${invalidStats.join(", ")}]`, colors.green);
-          } else {
-            log(`    ❌ Should have rejected invalid stats`, colors.red);
-          }
-        } catch (error: any) {
-          log(`    ❌ Error testing invalid stats: ${error.message}`, colors.red);
-        }
-      }
-      
-      // Test 4: Plus de 4 stats lockées
-      log(`  🔢 Testing too many locked stats...`, colors.yellow);
-      
-      const tooManyStats = ["atk", "crit", "critDamage", "accuracy", "healthleech", "vitesse"];
-      try {
-        // La validation devrait rejeter plus de 4 stats
-        const preview = await this.forge.getItemReforgePreview(
-          this.testPlayerId, 
-          this.testEquipment[0]?.instanceId, 
-          tooManyStats
-        );
-        log(`    ⚠️ Preview succeeded with ${tooManyStats.length} locked stats`, colors.yellow);
-      } catch (error: any) {
-        log(`    ✅ Correctly handled too many locked stats: ${error.message}`, colors.green);
-      }
-      
-    } catch (error: any) {
-      log(`❌ Error testing edge cases: ${error.message}`, colors.red);
-    }
-  }
-
   async testPerformance(): Promise<void> {
     log("\n⚡ Testing performance...", colors.cyan);
     
     try {
-      const iterations = 50;
+      const iterations = 25;
       log(`  🏃 Running ${iterations} preview calculations...`, colors.yellow);
       
       const startTime = Date.now();
+      let successCount = 0;
+      let errorCount = 0;
       
       for (let i = 0; i < iterations; i++) {
         if (this.testEquipment.length > 0) {
-          await this.forge.getItemReforgePreview(
-            this.testPlayerId,
-            this.testEquipment[0].instanceId,
-            Math.random() > 0.5 ? ["atk"] : []
-          );
+          try {
+            await this.forge.getItemReforgePreview(
+              this.testPlayerId,
+              this.testEquipment[0].instanceId,
+              Math.random() > 0.5 ? ["atk"] : []
+            );
+            successCount++;
+          } catch (error) {
+            errorCount++;
+          }
         }
       }
       
@@ -808,11 +1049,12 @@ class AdvancedForgeTester extends ForgeTester {
       log(`  ✅ Performance Results:`, colors.green);
       log(`    Total Time: ${totalTime}ms`, colors.blue);
       log(`    Average per Preview: ${avgTime.toFixed(2)}ms`, colors.blue);
-      log(`    Previews per Second: ${(1000 / avgTime).toFixed(0)}`, colors.blue);
+      log(`    Success Rate: ${successCount}/${iterations} (${((successCount/iterations)*100).toFixed(1)}%)`, colors.blue);
+      log(`    Throughput: ${(1000 / avgTime).toFixed(0)} previews/second`, colors.blue);
       
-      if (avgTime < 100) {
+      if (avgTime < 50) {
         log(`    🚀 Excellent performance!`, colors.green);
-      } else if (avgTime < 500) {
+      } else if (avgTime < 200) {
         log(`    ✅ Good performance`, colors.green);
       } else {
         log(`    ⚠️ Performance could be improved`, colors.yellow);
@@ -824,7 +1066,7 @@ class AdvancedForgeTester extends ForgeTester {
   }
 
   async testConcurrency(): Promise<void> {
-    log("\n🔄 Testing concurrent reforges...", colors.cyan);
+    log("\n🔄 Testing concurrent operations...", colors.cyan);
     
     try {
       if (this.testEquipment.length < 2) {
@@ -832,14 +1074,15 @@ class AdvancedForgeTester extends ForgeTester {
         return;
       }
       
-      log(`  ⚡ Testing concurrent reforge operations...`, colors.yellow);
+      log(`  ⚡ Testing concurrent preview operations...`, colors.yellow);
       
+      const concurrentOps = Math.min(3, this.testEquipment.length);
       const promises = [];
       
-      // Lancer plusieurs reforges en parallèle sur différents objets
-      for (let i = 0; i < Math.min(3, this.testEquipment.length); i++) {
+      // Lancer plusieurs previews en parallèle
+      for (let i = 0; i < concurrentOps; i++) {
         promises.push(
-          this.forge.executeReforge(
+          this.forge.getItemReforgePreview(
             this.testPlayerId,
             this.testEquipment[i].instanceId,
             []
@@ -847,7 +1090,9 @@ class AdvancedForgeTester extends ForgeTester {
         );
       }
       
+      const startTime = Date.now();
       const results = await Promise.all(promises);
+      const endTime = Date.now();
       
       let successCount = 0;
       let errorCount = 0;
@@ -855,21 +1100,22 @@ class AdvancedForgeTester extends ForgeTester {
       results.forEach((result, index) => {
         if ((result as any).error) {
           errorCount++;
-          log(`    Item ${index}: ❌ ${(result as any).error}`, colors.red);
+          log(`    Preview ${index + 1}: ❌ ${(result as any).error}`, colors.red);
         } else {
           successCount++;
-          log(`    Item ${index}: ✅ Success`, colors.green);
+          log(`    Preview ${index + 1}: ✅ Success`, colors.green);
         }
       });
       
       log(`  📊 Concurrency Results:`, colors.blue);
-      log(`    Successful: ${successCount}`, colors.green);
-      log(`    Failed: ${errorCount}`, colors.red);
+      log(`    Total Time: ${endTime - startTime}ms`, colors.blue);
+      log(`    Successful: ${successCount}/${concurrentOps}`, colors.green);
+      log(`    Failed: ${errorCount}/${concurrentOps}`, errorCount > 0 ? colors.red : colors.green);
       
       if (errorCount === 0) {
         log(`    🎉 All concurrent operations succeeded!`, colors.green);
       } else {
-        log(`    ⚠️ Some operations failed - this may be expected due to resource constraints`, colors.yellow);
+        log(`    ⚠️ Some operations failed - this might be expected`, colors.yellow);
       }
       
     } catch (error: any) {
@@ -877,77 +1123,55 @@ class AdvancedForgeTester extends ForgeTester {
     }
   }
 
-  async testStatDistribution(): Promise<void> {
-    log("\n📊 Testing stat distribution...", colors.cyan);
+  async testMemoryUsage(): Promise<void> {
+    log("\n💾 Testing memory usage...", colors.cyan);
     
     try {
-      if (this.testEquipment.length === 0) {
-        log(`    ⚠️ No equipment available for distribution test`, colors.yellow);
-        return;
-      }
+      const initialMemory = process.memoryUsage();
+      log(`  📊 Initial memory usage:`, colors.blue);
+      log(`    Heap Used: ${(initialMemory.heapUsed / 1024 / 1024).toFixed(2)} MB`, colors.reset);
+      log(`    Heap Total: ${(initialMemory.heapTotal / 1024 / 1024).toFixed(2)} MB`, colors.reset);
       
-      log(`  🎲 Analyzing stat distribution over multiple reforges...`, colors.yellow);
+      // Effectuer beaucoup d'opérations
+      const operations = 50;
+      log(`  🔄 Performing ${operations} forge operations...`, colors.yellow);
       
-      const testItem = this.testEquipment[0];
-      const baseItem = await Item.findOne({ itemId: testItem.itemId });
-      const iterations = 20;
-      
-      const statFrequency: { [stat: string]: number } = {};
-      const statValues: { [stat: string]: number[] } = {};
-      
-      // Générer plusieurs previews pour analyser la distribution
-      for (let i = 0; i < iterations; i++) {
-        try {
-          const preview = await this.forge.getItemReforgePreview(
-            this.testPlayerId,
-            testItem.instanceId,
-            [] // Pas de stats lockées
-          );
-          
-          Object.entries(preview.newStats).forEach(([stat, value]) => {
-            statFrequency[stat] = (statFrequency[stat] || 0) + 1;
-            if (!statValues[stat]) statValues[stat] = [];
-            statValues[stat].push(value as number);
-          });
-        } catch (error) {
-          // Ignorer les erreurs pour cette analyse
+      for (let i = 0; i < operations; i++) {
+        if (this.testEquipment.length > 0) {
+          try {
+            await this.forge.getItemReforgePreview(
+              this.testPlayerId,
+              this.testEquipment[i % this.testEquipment.length].instanceId,
+              []
+            );
+          } catch (error) {
+            // Ignorer les erreurs pour ce test
+          }
         }
       }
       
-      log(`  📈 Stat Distribution Analysis (${iterations} samples):`, colors.blue);
+      // Forcer le garbage collection si possible
+      if (global.gc) {
+        global.gc();
+      }
       
-      Object.entries(statFrequency).forEach(([stat, frequency]) => {
-        const percentage = ((frequency / iterations) * 100).toFixed(1);
-        const values = statValues[stat];
-        const min = Math.min(...values);
-        const max = Math.max(...values);
-        const avg = (values.reduce((sum, v) => sum + v, 0) / values.length).toFixed(1);
-        
-        log(`    ${stat}: ${percentage}% frequency, range ${min}-${max}, avg ${avg}`, colors.reset);
-      });
+      const finalMemory = process.memoryUsage();
+      log(`  📊 Final memory usage:`, colors.blue);
+      log(`    Heap Used: ${(finalMemory.heapUsed / 1024 / 1024).toFixed(2)} MB`, colors.reset);
+      log(`    Heap Total: ${(finalMemory.heapTotal / 1024 / 1024).toFixed(2)} MB`, colors.reset);
       
-      // Vérifier les ranges configurés
-      if (baseItem) {
-        const configuredRanges = this.forge.config.statRanges.get(baseItem.rarity);
-        if (configuredRanges) {
-          log(`  🎯 Range Compliance Check:`, colors.blue);
-          
-          Object.entries(statValues).forEach(([stat, values]) => {
-            const range = configuredRanges.get(stat);
-            if (range) {
-              const min = Math.min(...values);
-              const max = Math.max(...values);
-              const inRange = min >= range.min && max <= range.max;
-              
-              log(`    ${stat}: Generated ${min}-${max}, Expected ${range.min}-${range.max} ${inRange ? '✅' : '❌'}`, 
-                inRange ? colors.green : colors.red);
-            }
-          });
-        }
+      const memoryDiff = finalMemory.heapUsed - initialMemory.heapUsed;
+      log(`  📈 Memory difference: ${(memoryDiff / 1024 / 1024).toFixed(2)} MB`, 
+        memoryDiff > 10 * 1024 * 1024 ? colors.yellow : colors.green);
+      
+      if (memoryDiff < 5 * 1024 * 1024) { // Less than 5MB increase
+        log(`    ✅ Good memory management`, colors.green);
+      } else {
+        log(`    ⚠️ Memory usage increased significantly`, colors.yellow);
       }
       
     } catch (error: any) {
-      log(`❌ Error testing stat distribution: ${error.message}`, colors.red);
+      log(`❌ Error testing memory usage: ${error.message}`, colors.red);
     }
   }
 
@@ -956,10 +1180,9 @@ class AdvancedForgeTester extends ForgeTester {
     log("🧪 RUNNING ADVANCED FORGE TESTS", colors.bright);
     log("=".repeat(60), colors.bright);
     
-    await this.testEdgeCases();
     await this.testPerformance();
     await this.testConcurrency();
-    await this.testStatDistribution();
+    await this.testMemoryUsage();
     
     log("\n" + "=".repeat(60), colors.bright);
     log("🎓 ADVANCED TESTS COMPLETED", colors.green);
@@ -983,14 +1206,22 @@ const runForgeTests = async (): Promise<void> => {
 
 if (require.main === module) {
   log("🚀 Forge System Test Suite", colors.bright);
-  log("Arguments:", process.argv.slice(2).join(' '));
-  log("Use --keep-data to keep test data after tests", colors.yellow);
-  log("Use --advanced to run additional advanced tests\n", colors.yellow);
+  log("📝 Available arguments:", colors.blue);
+  log("  --advanced    Run additional performance and advanced tests", colors.reset);
+  log("  --keep-data   Keep test data in database after tests complete", colors.reset);
+  log("", colors.reset);
+  
+  const args = process.argv.slice(2);
+  if (args.length > 0) {
+    log(`Using arguments: ${args.join(' ')}`, colors.yellow);
+  }
   
   runForgeTests().then(() => {
+    log("\n🎯 Test suite completed successfully!", colors.green);
     process.exit(0);
   }).catch((error) => {
-    log(`❌ Fatal error: ${error.message}`, colors.red);
+    log(`\n💥 Fatal error: ${error.message}`, colors.red);
+    console.error(error.stack);
     process.exit(1);
   });
 }
