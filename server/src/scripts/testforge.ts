@@ -27,11 +27,11 @@ const log = (message: string, color: string = colors.reset) => {
 
 // === CLASSE DE TEST DE LA FORGE ===
 class ForgeTester {
-  private testPlayerId: string = "";
-  private testPlayer: any = null;
-  private inventory: any = null;
-  private forge: any = null;
-  private testEquipment: any[] = [];
+  protected testPlayerId: string = "";
+  protected testPlayer: any = null;
+  protected inventory: any = null;
+  protected forge: any = null;
+  protected testEquipment: any[] = [];
 
   async setup(): Promise<void> {
     log("🔧 Setting up forge test environment...", colors.cyan);
