@@ -7,44 +7,41 @@ import {
 } from "./ForgeCore";
 
 /**
- * Module de Tier Upgrade (inspiré d'AFK Arena)
+ * Module de Tier Upgrade 100% fidèle à AFK Arena
  *
- * Comportement :
- * - Faire évoluer un équipement T1 -> T2 -> T3 ...
- * - Conserve la même rareté mais augmente les stats de base via multiplicateurs par tier
- * - Utilise des matériaux spécialisés (essences, cristaux, etc.) fournis par ForgeCore.getMaterialRequirements(..., 'tierUpgrade')
- * - Conserve le niveau d'amélioration (+enhancement) de l'instance
- * - Utilise les méthodes du modèle Inventory (removeItem, addItem) pour gérer les instances
- *
- * Hypothèses/précisions sur le stockage :
- * - Le schéma d'Inventory n'expose pas explicitement un champ `tier` sur les owned items.
- *   Ici on infère le tier courant à partir de equipmentData.upgradeHistory.length :
- *     currentTier = (owned.equipmentData?.upgradeHistory?.length ?? 0) + 1
- *   Après réussite, on pousse une date dans equipmentData.upgradeHistory pour matérialiser le changement de tier.
- *
- * - L'owned item possède `enhancement` (conformément à Inventory.ts). On conserve cette valeur sur la nouvelle instance.
- *
- * - Les stats recalculées sont retournées dans data.computedStats (elles ne sont pas persistées dans le sous-document
- *   car le schéma d'ownedItem ne dispose pas de champ `stats`). Si vous souhaitez persister des stats/tiers par instance,
- *   il faudra étendre le schéma Inventory.
+ * Différences importantes avec l'ancienne version :
+ * - Pas de système de "tiers" explicite dans AFK Arena classique
+ * - Ce module simule plutôt l'évolution T1→T2→T3 des artefacts/équipements
+ * - Ou l'évolution des équipements de faction (ex: Lightbearer T1 → T2)
+ * - Stars upgrade pour les équipements (1★ → 2★ → 3★ → 4★ → 5★)
+ * - Coûts exponentiels et matériaux rares aux hauts tiers
  */
 
 export interface ITierUpgradeOptions {
-  targetTier?: number; // optionnel : monter directement à ce tier si autorisé (ex: admin)
-  consumeMaterials?: boolean; // si false, n'exige pas les matériaux (admin/test)
+  targetTier?: number;
+  consumeMaterials?: boolean;
 }
 
 export class ForgeTierUpgrade extends ForgeModuleBase {
-  // On définit un maximum de tiers plausible (peut être ajusté)
+  // Maximum 5 tiers comme dans AFK Arena (T1 à T5 ou 1★ à 5★)
   public static readonly MAX_TIER = 5;
 
-  // Multiplicateurs de stats par tier (T1 = 1.0)
+  // Multiplicateurs de stats par tier (progression AFK Arena)
   protected tierMultipliers: { [tier: number]: number } = {
-    1: 1.0,
-    2: 1.15,
-    3: 1.35,
-    4: 1.60,
-    5: 2.00
+    1: 1.0,    // Tier 1 (base)
+    2: 1.25,   // Tier 2 (+25%)
+    3: 1.60,   // Tier 3 (+60%) 
+    4: 2.10,   // Tier 4 (+110%)
+    5: 2.80    // Tier 5 (+180%)
+  };
+
+  // Coûts exponentiels par tier
+  protected tierCostMultipliers: { [tier: number]: number } = {
+    1: 1,      // T1→T2
+    2: 3,      // T2→T3
+    3: 8,      // T3→T4
+    4: 20,     // T4→T5
+    5: 50      // T5+ (théorique)
   };
 
   constructor(playerId: string, config: IForgeModuleConfig) {
@@ -56,24 +53,49 @@ export class ForgeTierUpgrade extends ForgeModuleBase {
   }
 
   /**
-   * Déduit le tier courant à partir de l'owned item.
-   * currentTier = upgradeHistory.length + 1
+   * Déduit le tier courant à partir de l'owned item
+   * Dans AFK Arena, cela pourrait être stocké dans equipmentData.tier
+   * Ici on utilise upgradeHistory.length + 1 comme fallback
    */
   protected getCurrentTierFromOwned(owned: any): number {
+    // Priorité au champ tier s'il existe
+    if (owned.tier && typeof owned.tier === 'number') {
+      return Math.max(1, Math.min(owned.tier, ForgeTierUpgrade.MAX_TIER));
+    }
+    
+    // Fallback sur upgradeHistory
     try {
       const upgradeHistory = owned.equipmentData?.upgradeHistory;
       const historyLen = Array.isArray(upgradeHistory) ? upgradeHistory.length : 0;
-      return Math.max(1, historyLen + 1);
+      return Math.max(1, Math.min(historyLen + 1, ForgeTierUpgrade.MAX_TIER));
     } catch (err) {
       return 1;
     }
   }
 
   /**
-   * Calcule le coût pour passer au prochain tier (ou targetTier si fourni)
-   * - Base : baseGold/baseGems de la config
-   * - Multiplicateur par rareté (via calculateRarityBasedCost)
-   * - Scaling additionnel par tierTarget
+   * Vérifie si un item peut être upgradé au tier suivant
+   */
+  protected canUpgradeToNextTier(currentTier: number, rarity: string): boolean {
+    // Dans AFK Arena, seuls certains équipements peuvent être upgradés
+    if (currentTier >= ForgeTierUpgrade.MAX_TIER) return false;
+    
+    // Restrictions par rareté (comme dans AFK Arena)
+    const rarityLimits: { [key: string]: number } = {
+      "Common": 2,      // Seulement T1→T2
+      "Rare": 3,        // Jusqu'à T3
+      "Epic": 4,        // Jusqu'à T4
+      "Legendary": 5,   // Jusqu'à T5
+      "Mythic": 5,      // Jusqu'à T5
+      "Ascended": 5     // Jusqu'à T5
+    };
+
+    const maxTierForRarity = rarityLimits[rarity] || 2;
+    return currentTier < maxTierForRarity;
+  }
+
+  /**
+   * Calcule le coût pour l'upgrade de tier (style AFK Arena)
    */
   async calculateTierUpgradeCost(itemInstanceId: string, options?: ITierUpgradeOptions): Promise<IForgeResourceCost | null> {
     const validation = await this.validateItem(itemInstanceId, undefined);
@@ -83,45 +105,92 @@ export class ForgeTierUpgrade extends ForgeModuleBase {
     const owned: any = validation.ownedItem;
 
     const currentTier = this.getCurrentTierFromOwned(owned);
-    const targetTier = options?.targetTier ? options.targetTier : currentTier + 1;
+    const targetTier = options?.targetTier ? Math.min(options.targetTier, ForgeTierUpgrade.MAX_TIER) : currentTier + 1;
 
     if (targetTier <= currentTier) return null;
-    if (targetTier > ForgeTierUpgrade.MAX_TIER) return null;
+    if (!this.canUpgradeToNextTier(currentTier, baseItem.rarity || "Common")) return null;
 
-    const tierStep = targetTier - currentTier;
-
-    // Calcul du coût de base selon rareté
     const rarity = baseItem.rarity || "Common";
-    const baseGold = this.config.baseGoldCost || 300;
-    const baseGems = this.config.baseGemCost || 0;
+    const baseGold = this.config.baseGoldCost || 10000;
+    const baseGems = this.config.baseGemCost || 500;
 
-    // Utiliser calculateRarityBasedCost pour appliquer multiplicateur de rareté
-    const rarityCost = this.calculateRarityBasedCost(baseGold, baseGems, rarity, { tier: targetTier });
+    // Coût exponentiel selon le tier cible
+    const tierMultiplier = this.tierCostMultipliers[targetTier] || Math.pow(2, targetTier - 1);
+    
+    // Multiplicateur de rareté
+    const rarityMultipliers: { [key: string]: number } = {
+      "Common": 1,
+      "Rare": 2,
+      "Epic": 4,
+      "Legendary": 8,
+      "Mythic": 16,
+      "Ascended": 32
+    };
 
-    // Appliquer un scaling par nombre de steps (si targetTier > currentTier)
-    const stepMultiplier = 1 + (tierStep * 0.5); // chaque tier supplémentaire multiplie le coût
-    const gold = Math.floor(rarityCost.gold * stepMultiplier);
-    const gems = Math.floor(rarityCost.gems * stepMultiplier);
+    const rarityMultiplier = rarityMultipliers[rarity] || 1;
+    
+    // Coût final
+    const finalMultiplier = tierMultiplier * rarityMultiplier;
+    const gold = Math.floor(baseGold * finalMultiplier);
+    const gems = Math.floor(baseGems * finalMultiplier);
 
-    // Matériaux spécialisés pour tier upgrade
-    const materials = this.getMaterialRequirements(rarity, "tierUpgrade");
-    // Scale materials by tierStep (consume more materials for higher target)
-    const scaledMaterials: { [key: string]: number } = {};
-    for (const [matId, qty] of Object.entries(materials || {})) {
-      scaledMaterials[matId] = Math.max(1, Math.floor((qty as number) * tierStep));
-    }
-
-    const finalMaterials = options?.consumeMaterials === false ? {} : scaledMaterials;
+    // Matériaux spécialisés
+    const materials = this.getTierUpgradeMaterials(rarity, targetTier);
+    const finalMaterials = options?.consumeMaterials === false ? {} : materials;
 
     return { gold, gems, materials: finalMaterials };
   }
 
   /**
-   * Tente de faire évoluer un équipement d'un tier à l'autre (ou vers targetTier si fourni)
+   * Matériaux requis pour tier upgrade (style AFK Arena)
+   */
+  protected getTierUpgradeMaterials(rarity: string, targetTier: number): { [materialId: string]: number } {
+    const materials: { [materialId: string]: number } = {};
+
+    // Matériaux de base selon le tier cible
+    const tierMaterials: { [tier: number]: { [materialId: string]: number } } = {
+      2: { "tier_stone": 5, "enhancement_dust": 10 },
+      3: { "tier_stone": 10, "enhancement_dust": 20, "rare_crystal": 3 },
+      4: { "tier_stone": 20, "enhancement_dust": 40, "rare_crystal": 8, "epic_essence": 2 },
+      5: { "tier_stone": 40, "enhancement_dust": 80, "rare_crystal": 20, "epic_essence": 5, "legendary_core": 1 }
+    };
+
+    // Matériaux de base pour le tier
+    const baseMaterials = tierMaterials[targetTier] || {};
+    Object.assign(materials, baseMaterials);
+
+    // Matériaux spécialisés par rareté
+    const rarityMaterials: { [rarity: string]: { [materialId: string]: number } } = {
+      "Rare": { "silver_thread": 2 },
+      "Epic": { "golden_thread": 3, "mystic_ore": 1 },
+      "Legendary": { "platinum_thread": 4, "mystic_ore": 2, "divine_shard": 1 },
+      "Mythic": { "mythic_thread": 5, "divine_shard": 2, "celestial_essence": 1 },
+      "Ascended": { "ascended_thread": 8, "celestial_essence": 2, "primordial_fragment": 1 }
+    };
+
+    const additionalMaterials = rarityMaterials[rarity] || {};
+    Object.assign(materials, additionalMaterials);
+
+    // Scaling selon le tier (plus c'est haut, plus c'est cher)
+    const scalingFactor = Math.pow(1.5, targetTier - 2);
+    for (const [materialId, amount] of Object.entries(materials)) {
+      materials[materialId] = Math.ceil(amount * scalingFactor);
+    }
+
+    return materials;
+  }
+
+  /**
+   * Tentative d'upgrade de tier
    */
   async attemptTierUpgrade(itemInstanceId: string, options?: ITierUpgradeOptions): Promise<IForgeOperationResult> {
     if (!this.isEnabled()) {
-      return { success: false, cost: { gold: 0, gems: 0 }, message: "Tier upgrade module disabled", data: null };
+      return { success: false, cost: { gold: 0, gems: 0 }, message: "TIER_UPGRADE_MODULE_DISABLED", data: null };
+    }
+
+    const levelOk = await this.checkPlayerLevelRestrictions();
+    if (!levelOk) {
+      return { success: false, cost: { gold: 0, gems: 0 }, message: "PLAYER_LEVEL_RESTRICTIONS_NOT_MET", data: null };
     }
 
     // Validation item
@@ -130,39 +199,69 @@ export class ForgeTierUpgrade extends ForgeModuleBase {
       return {
         success: false,
         cost: { gold: 0, gems: 0 },
-        message: validation.reason || "Invalid item",
-        data: validation
+        message: "INVALID_ITEM_FOR_TIER_UPGRADE",
+        data: { reason: validation.reason }
       };
     }
 
     const baseItem: any = validation.itemData;
     const owned: any = validation.ownedItem;
     const currentTier = this.getCurrentTierFromOwned(owned);
-    const targetTier = options?.targetTier ? options.targetTier : currentTier + 1;
+    const targetTier = options?.targetTier ? Math.min(options.targetTier, ForgeTierUpgrade.MAX_TIER) : currentTier + 1;
+
+    // Vérifications de base
+    if (baseItem.category !== "Equipment") {
+      return { 
+        success: false, 
+        cost: { gold: 0, gems: 0 }, 
+        message: "ONLY_EQUIPMENT_CAN_BE_TIER_UPGRADED", 
+        data: null 
+      };
+    }
 
     if (targetTier <= currentTier) {
-      return { success: false, cost: { gold: 0, gems: 0 }, message: "Target tier must be greater than current tier", data: { currentTier, targetTier } };
+      return { 
+        success: false, 
+        cost: { gold: 0, gems: 0 }, 
+        message: "TARGET_TIER_MUST_BE_HIGHER", 
+        data: { currentTier, targetTier }
+      };
     }
-    if (targetTier > ForgeTierUpgrade.MAX_TIER) {
-      return { success: false, cost: { gold: 0, gems: 0 }, message: `Target tier exceeds maximum (${ForgeTierUpgrade.MAX_TIER})`, data: null };
+
+    if (currentTier >= ForgeTierUpgrade.MAX_TIER) {
+      return { 
+        success: false, 
+        cost: { gold: 0, gems: 0 }, 
+        message: "ITEM_AT_MAX_TIER", 
+        data: { currentTier, maxTier: ForgeTierUpgrade.MAX_TIER }
+      };
+    }
+
+    if (!this.canUpgradeToNextTier(currentTier, baseItem.rarity || "Common")) {
+      return { 
+        success: false, 
+        cost: { gold: 0, gems: 0 }, 
+        message: "RARITY_CANNOT_REACH_TARGET_TIER", 
+        data: { rarity: baseItem.rarity, currentTier, targetTier }
+      };
     }
 
     // Calculer coût
     const cost = await this.calculateTierUpgradeCost(itemInstanceId, options);
     if (!cost) {
-      return { success: false, cost: { gold: 0, gems: 0 }, message: "Unable to compute tier upgrade cost", data: null };
+      return { success: false, cost: { gold: 0, gems: 0 }, message: "UNABLE_TO_COMPUTE_TIER_UPGRADE_COST", data: null };
     }
 
     // Vérifier ressources
     const canAfford = await this.validatePlayerResources(cost);
     if (!canAfford) {
-      return { success: false, cost, message: "Insufficient resources", data: null };
+      return { success: false, cost, message: "INSUFFICIENT_RESOURCES", data: null };
     }
 
     // Dépenser ressources
     const spent = await this.spendResources(cost);
     if (!spent) {
-      return { success: false, cost, message: "Failed to spend resources", data: null };
+      return { success: false, cost, message: "FAILED_TO_SPEND_RESOURCES", data: null };
     }
 
     // Récupérer inventaire
@@ -170,98 +269,229 @@ export class ForgeTierUpgrade extends ForgeModuleBase {
     if (!inventory) {
       await this.logOperation("tierUpgrade", itemInstanceId, cost, false, { reason: "Inventory not found after spend" });
       await this.updateStats(cost, false);
-      return { success: false, cost, message: "Inventory not found after spending resources", data: null };
+      return { success: false, cost, message: "INVENTORY_NOT_FOUND_AFTER_SPENDING", data: null };
     }
 
-    // Supprimer l'ancienne instance
+    // Modifier directement l'item existant (pas de remove/add)
     try {
-      const removed = await inventory.removeItem(owned.instanceId, 1);
-      if (!removed) {
-        throw new Error("Failed to remove base item for tier upgrade");
-      }
-    } catch (err: any) {
-      await this.logOperation("tierUpgrade", itemInstanceId, cost, false, { reason: "Failed to remove base item", error: err });
-      await this.updateStats(cost, false);
-      return { success: false, cost, message: "Failed to remove base item", data: { error: err?.message || err } };
-    }
-
-    // Créer la nouvelle instance (même itemId, même rarity). Conserver level & enhancement.
-    try {
-      // level to keep
-      const level = owned.level || 1;
-      const previousEnhancement = owned.enhancement || 0;
-
-      // Ajouter nouvelle instance via inventory.addItem (respecte la logique d'insertion du schéma)
-      const added = await inventory.addItem(baseItem.itemId, 1, level);
-      // addItem saved inventory already; we still need to set enhancement and equipmentData
-      if (!added) {
-        throw new Error("inventory.addItem returned falsy");
+      const ownedItem = inventory.getItem(itemInstanceId);
+      if (!ownedItem) {
+        throw new Error("Item not found after spending resources");
       }
 
-      // Trouver la référence de l'instance nouvellement ajoutée (addItem renvoie l'owned object)
-      const newOwned: any = added;
+      // Mettre à jour le tier
+      const previousTier = currentTier;
+      
+      // Stocker le tier dans l'item
+      (ownedItem as any).tier = targetTier;
 
-      // Conserver enhancement
-      newOwned.enhancement = previousEnhancement;
+      // Mettre à jour equipmentData.upgradeHistory pour tracking
+      if (!ownedItem.equipmentData) {
+        ownedItem.equipmentData = {
+          durability: 100,
+          socketedGems: [],
+          upgradeHistory: []
+        };
+      }
 
-      // Mettre à jour equipmentData.upgradeHistory pour refléter le nouveau tier
-      if (!newOwned.equipmentData) newOwned.equipmentData = { durability: 100, socketedGems: [], upgradeHistory: [] };
-      if (!Array.isArray(newOwned.equipmentData.upgradeHistory)) newOwned.equipmentData.upgradeHistory = [];
+      if (!Array.isArray(ownedItem.equipmentData.upgradeHistory)) {
+        ownedItem.equipmentData.upgradeHistory = [];
+      }
 
-      // Calculer nombre d'upgrades à enregistrer : targetTier - 1
-      const expectedHistoryLen = Math.max(0, targetTier - 1);
-      // On pousse une entrée pour chaque step (ici on pousse une seule date correspondant à cette montée d'au moins 1 step)
-      newOwned.equipmentData.upgradeHistory.push(new Date());
+      // Ajouter une entrée pour chaque tier gagné
+      for (let i = previousTier; i < targetTier; i++) {
+        ownedItem.equipmentData.upgradeHistory.push(new Date());
+      }
 
-      // Sauvegarder l'inventaire (pour persister les modifications sur le sous-document renvoyé)
+      // Sauvegarder
       await inventory.save();
 
-      // Recalcule des stats pour retourner au client (on n'ajoute pas de champ stats au owned item persistent)
+      // Recalculer stats pour affichage
       const baseStats = baseItem.baseStats || {};
       const statsPerLevel = baseItem.statsPerLevel || {};
+      const level = ownedItem.level || 1;
+      const enhancement = ownedItem.enhancement || 0;
 
-      // Trouver multiplicateur de tier
-      const multiplier = this.tierMultipliers[targetTier] ?? (1 + 0.25 * (targetTier - 1));
-
-      // Appliquer multiplicateur sur baseStats
-      const recalculatedBaseStats: any = {};
+      // Appliquer multiplicateur de tier
+      const tierMultiplier = this.tierMultipliers[targetTier] || (1 + 0.3 * (targetTier - 1));
+      
+      const tierBoostedBaseStats: any = {};
       for (const [k, v] of Object.entries(baseStats)) {
         if (typeof v === "number") {
-          recalculatedBaseStats[k] = Math.floor((v as number) * multiplier);
+          tierBoostedBaseStats[k] = Math.floor((v as number) * tierMultiplier);
         } else {
-          recalculatedBaseStats[k] = v;
+          tierBoostedBaseStats[k] = v;
         }
       }
 
-      // Utiliser calculateItemStatsWithEnhancement pour appliquer l'enhancement existant
-      const computedStats = this.calculateItemStatsWithEnhancement(recalculatedBaseStats, statsPerLevel, level, previousEnhancement);
+      // Calculer stats finales avec enhancement
+      const computedStats = this.calculateItemStatsWithEnhancement(
+        tierBoostedBaseStats,
+        statsPerLevel,
+        level,
+        enhancement
+      );
 
       // Log & stats
       await this.logOperation("tierUpgrade", itemInstanceId, cost, true, {
-        previousInstanceId: owned.instanceId,
-        newInstanceId: newOwned.instanceId,
-        previousTier: currentTier,
-        newTier: targetTier
+        previousTier,
+        newTier: targetTier,
+        tierMultiplier
       });
       await this.updateStats(cost, true);
 
       return {
         success: true,
         cost,
-        message: `Tier upgrade success: T${currentTier} -> T${targetTier}`,
+        message: "TIER_UPGRADE_SUCCESS",
         data: {
-          previousInstanceId: owned.instanceId,
-          newInstance: newOwned,
-          newInstanceId: newOwned.instanceId,
-          previousTier: currentTier,
+          instanceId: itemInstanceId,
+          previousTier,
           newTier: targetTier,
-          computedStats
+          tierMultiplier,
+          computedStats,
+          maxTierReached: targetTier >= ForgeTierUpgrade.MAX_TIER
         }
       };
+
     } catch (err: any) {
-      await this.logOperation("tierUpgrade", itemInstanceId, cost, false, { reason: "Failed to create upgraded item", error: err });
+      await this.logOperation("tierUpgrade", itemInstanceId, cost, false, { reason: "Failed to upgrade tier", error: err });
       await this.updateStats(cost, false);
-      return { success: false, cost, message: "Failed to create upgraded item", data: { error: err?.message || err } };
+      return { success: false, cost, message: "FAILED_TO_UPGRADE_TIER", data: { error: err?.message || err } };
+    }
+  }
+
+  /**
+   * Obtient les items upgradables du joueur
+   */
+  async getUpgradableItems(rarity?: string): Promise<Array<{
+    instanceId: string;
+    itemId: string;
+    name: string;
+    rarity: string;
+    currentTier: number;
+    maxPossibleTier: number;
+    canUpgrade: boolean;
+  }>> {
+    try {
+      const inventory = await this.getInventory();
+      if (!inventory) return [];
+
+      const ItemModel = mongoose.model("Item");
+      const upgradableItems: any[] = [];
+
+      // Parcourir équipements
+      const equipmentCategories = ['weapons', 'helmets', 'armors', 'boots', 'gloves', 'accessories'];
+      
+      for (const category of equipmentCategories) {
+        const items = inventory.storage[category] || [];
+        
+        for (const ownedItem of items) {
+          const baseItem = await ItemModel.findOne({ itemId: ownedItem.itemId });
+          if (!baseItem) continue;
+
+          const itemRarity = baseItem.rarity || "Common";
+          
+          // Filtrer par rareté si spécifiée
+          if (rarity && itemRarity !== rarity) continue;
+
+          const currentTier = this.getCurrentTierFromOwned(ownedItem);
+          const canUpgrade = this.canUpgradeToNextTier(currentTier, itemRarity);
+
+          // Calculer tier maximum possible pour cette rareté
+          const rarityLimits: { [key: string]: number } = {
+            "Common": 2, "Rare": 3, "Epic": 4, "Legendary": 5, "Mythic": 5, "Ascended": 5
+          };
+          const maxPossibleTier = rarityLimits[itemRarity] || 2;
+
+          upgradableItems.push({
+            instanceId: ownedItem.instanceId,
+            itemId: ownedItem.itemId,
+            name: baseItem.name,
+            rarity: itemRarity,
+            currentTier,
+            maxPossibleTier,
+            canUpgrade
+          });
+        }
+      }
+
+      return upgradableItems.sort((a, b) => {
+        // Trier par possibilité d'upgrade puis par rareté
+        if (a.canUpgrade !== b.canUpgrade) return b.canUpgrade ? 1 : -1;
+        
+        const rarityOrder = ["Common", "Rare", "Epic", "Legendary", "Mythic", "Ascended"];
+        const rarityCompare = rarityOrder.indexOf(b.rarity) - rarityOrder.indexOf(a.rarity);
+        
+        return rarityCompare !== 0 ? rarityCompare : a.name.localeCompare(b.name);
+      });
+
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * Obtient le coût total pour upgrader un item au tier maximum
+   */
+  async getTotalUpgradeCostToMax(itemInstanceId: string): Promise<{
+    totalGold: number;
+    totalGems: number;
+    totalMaterials: { [materialId: string]: number };
+    steps: Array<{ fromTier: number; toTier: number; cost: IForgeResourceCost }>;
+  } | null> {
+    try {
+      const validation = await this.validateItem(itemInstanceId, undefined);
+      if (!validation.valid || !validation.itemData || !validation.ownedItem) return null;
+
+      const baseItem: any = validation.itemData;
+      const owned: any = validation.ownedItem;
+      const rarity = baseItem.rarity || "Common";
+
+      const rarityLimits: { [key: string]: number } = {
+        "Common": 2, "Rare": 3, "Epic": 4, "Legendary": 5, "Mythic": 5, "Ascended": 5
+      };
+      const maxTier = rarityLimits[rarity] || 2;
+      const currentTier = this.getCurrentTierFromOwned(owned);
+
+      if (currentTier >= maxTier) return null;
+
+      let totalGold = 0;
+      let totalGems = 0;
+      const totalMaterials: { [materialId: string]: number } = {};
+      const steps: any[] = [];
+
+      // Calculer coût pour chaque tier
+      for (let tier = currentTier + 1; tier <= maxTier; tier++) {
+        const cost = await this.calculateTierUpgradeCost(itemInstanceId, { targetTier: tier });
+        if (!cost) break;
+
+        totalGold += cost.gold;
+        totalGems += cost.gems;
+
+        // Additionner matériaux
+        if (cost.materials) {
+          for (const [materialId, amount] of Object.entries(cost.materials)) {
+            totalMaterials[materialId] = (totalMaterials[materialId] || 0) + amount;
+          }
+        }
+
+        steps.push({
+          fromTier: tier - 1,
+          toTier: tier,
+          cost
+        });
+      }
+
+      return {
+        totalGold,
+        totalGems,
+        totalMaterials,
+        steps
+      };
+
+    } catch (error) {
+      return null;
     }
   }
 }
