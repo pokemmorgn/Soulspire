@@ -582,7 +582,7 @@ export type {
   IForgeOperationResult,
   IForgeResourceCost,
   IForgeModuleConfig
-} from "./ForgeCore";
+};
 
 // Export du service principal par défaut
 export default ForgeService;
