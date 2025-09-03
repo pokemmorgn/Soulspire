@@ -210,41 +210,44 @@ class CompleteForgeTester {
 // (excerpt) ensureTestItemsExist with a defensive default for subCategory
 async ensureTestItemsExist(): Promise<void> {
   log("\n🗡️ Ensuring test items exist...", colors.yellow);
-
+  
   const allTestItems = [...testEquipmentData, ...testMaterialsData];
   let createdCount = 0;
-
+  
   for (const itemData of allTestItems) {
+    // Cast to any to avoid TS union-property errors in test fixtures
+    const item = itemData as any;
+
     // Defensive fallback: ensure subCategory is present to satisfy the Item schema
-    if (!itemData.subCategory) {
-      switch (itemData.category) {
+    if (!item.subCategory) {
+      switch (item.category) {
         case "Equipment":
-          itemData.subCategory = "Misc_Equipment";
+          item.subCategory = "Misc_Equipment";
           break;
         case "Material":
-          itemData.subCategory = "Generic_Material";
+          item.subCategory = "Generic_Material";
           break;
         case "Consumable":
-          itemData.subCategory = "Generic_Consumable";
+          item.subCategory = "Generic_Consumable";
           break;
         case "Chest":
-          itemData.subCategory = "Generic_Chest";
+          item.subCategory = "Generic_Chest";
           break;
         default:
-          itemData.subCategory = "General";
+          item.subCategory = "General";
       }
-      log(`   ⚠️ Added default subCategory ('${itemData.subCategory}') to ${itemData.itemId}`, colors.yellow);
+      log(`   ⚠️ Added default subCategory ('${item.subCategory}') to ${item.itemId}`, colors.yellow);
     }
 
-    const existing = await Item.findOne({ itemId: itemData.itemId });
+    const existing = await Item.findOne({ itemId: item.itemId });
     if (!existing) {
-      const newItem = new Item(itemData);
+      const newItem = new Item(item);
       await newItem.save();
       createdCount++;
-      log(`   ✅ Created: ${itemData.itemId} (${itemData.rarity} ${itemData.category})`, colors.green);
+      log(`   ✅ Created: ${item.itemId} (${item.rarity} ${item.category})`, colors.green);
     }
   }
-
+  
   log(`✅ Test items ready (${createdCount} created, ${allTestItems.length - createdCount} existed)`, colors.green);
 }
 
