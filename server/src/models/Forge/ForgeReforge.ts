@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from "mongoose";
+import mongoose, { Document, Schema, Model } from "mongoose";
 import { ForgeModuleBase, IForgeResourceCost, IForgeOperationResult, IForgeModuleConfig } from "./ForgeCore";
 
 // === INTERFACES SPÉCIFIQUES AU REFORGE ===
@@ -57,6 +57,12 @@ interface IForgeReforgeDocument extends Document {
   validateLockedStats(equipmentSlot: string, lockedStats: string[]): boolean;
   calculateCurrentItemStats(baseItem: any, ownedItem: any): any;
   getItemReforgePreview(playerId: string, itemInstanceId: string, lockedStats: string[]): Promise<IReforgeResult>;
+}
+
+// === INTERFACE POUR LE MODÈLE AVEC MÉTHODES STATIQUES ===
+interface IForgeReforgeModel extends Model<IForgeReforgeDocument> {
+  getActiveReforge(): Promise<IForgeReforgeDocument | null>;
+  createDefaultReforge(): IForgeReforgeDocument;
 }
 
 // === CONFIGURATION PAR DÉFAUT ===
@@ -175,12 +181,12 @@ const forgeReforgeSchema = new Schema<IForgeReforgeDocument>({
 forgeReforgeSchema.index({ configId: 1 });
 forgeReforgeSchema.index({ isActive: 1 });
 
-// === MÉTHODES STATIQUES ===
-forgeReforgeSchema.statics.getActiveReforge = function() {
+// === MÉTHODES STATIQUES (CORRIGÉES) ===
+forgeReforgeSchema.statics.getActiveReforge = function(this: IForgeReforgeModel) {
   return this.findOne({ isActive: true });
 };
 
-forgeReforgeSchema.statics.createDefaultReforge = function() {
+forgeReforgeSchema.statics.createDefaultReforge = function(this: IForgeReforgeModel) {
   return new this({
     configId: "default_reforge",
     name: "Equipment Reforge",
@@ -189,7 +195,7 @@ forgeReforgeSchema.statics.createDefaultReforge = function() {
   });
 };
 
-// === MÉTHODES D'INSTANCE ===
+// === MÉTHODES D'INSTANCE (INCHANGÉES) ===
 
 forgeReforgeSchema.methods.calculateReforgeCost = function(rarity: string, lockedStats: string[], reforgeCount: number = 0): any {
   const baseGold = this.config.baseGoldCost;
@@ -486,7 +492,7 @@ forgeReforgeSchema.pre('save', function(next) {
   next();
 });
 
-// === CLASSE SERVICE POUR LE REFORGE ===
+// === CLASSE SERVICE POUR LE REFORGE (CORRIGÉE) ===
 
 export class ForgeReforgeService extends ForgeModuleBase {
   private reforgeDocument: IForgeReforgeDocument | null = null;
@@ -500,9 +506,9 @@ export class ForgeReforgeService extends ForgeModuleBase {
   }
 
   async initialize(): Promise<void> {
-    this.reforgeDocument = await ForgeReforge.getActiveReforge();
+    this.reforgeDocument = await (ForgeReforge as IForgeReforgeModel).getActiveReforge();
     if (!this.reforgeDocument) {
-      this.reforgeDocument = ForgeReforge.createDefaultReforge();
+      this.reforgeDocument = (ForgeReforge as IForgeReforgeModel).createDefaultReforge();
       await this.reforgeDocument.save();
     }
   }
@@ -520,7 +526,11 @@ export class ForgeReforgeService extends ForgeModuleBase {
       await this.initialize();
     }
 
-    return await this.reforgeDocument!.getItemReforgePreview(this.playerId, itemInstanceId, lockedStats);
+    if (!this.reforgeDocument) {
+      throw new Error("Failed to initialize reforge document");
+    }
+
+    return await this.reforgeDocument.getItemReforgePreview(this.playerId, itemInstanceId, lockedStats);
   }
 
   async executeReforge(itemInstanceId: string, lockedStats: string[]): Promise<IForgeOperationResult> {
@@ -544,8 +554,16 @@ export class ForgeReforgeService extends ForgeModuleBase {
       await this.initialize();
     }
 
+    if (!this.reforgeDocument) {
+      return {
+        success: false,
+        cost: { gold: 0, gems: 0 },
+        message: "Failed to initialize reforge system"
+      };
+    }
+
     try {
-      const result = await this.reforgeDocument!.executeReforge(this.playerId, itemInstanceId, lockedStats);
+      const result = await this.reforgeDocument.executeReforge(this.playerId, itemInstanceId, lockedStats);
       
       await this.updateStats(result.cost, true);
       await this.logOperation("reforge", itemInstanceId, result.cost, true, {
@@ -580,7 +598,11 @@ export class ForgeReforgeService extends ForgeModuleBase {
       await this.initialize();
     }
 
-    const slotConfig = this.reforgeDocument!.config.slotConfigs.find(config => config.slot === equipmentSlot);
+    if (!this.reforgeDocument) {
+      throw new Error("Failed to initialize reforge document");
+    }
+
+    const slotConfig = this.reforgeDocument.config.slotConfigs.find(config => config.slot === equipmentSlot);
     return slotConfig ? slotConfig.availableStats : [];
   }
 
@@ -589,7 +611,11 @@ export class ForgeReforgeService extends ForgeModuleBase {
       await this.initialize();
     }
 
-    const statRanges = this.reforgeDocument!.config.statRanges;
+    if (!this.reforgeDocument) {
+      throw new Error("Failed to initialize reforge document");
+    }
+
+    const statRanges = this.reforgeDocument.config.statRanges;
     let ranges: any;
 
     // Gérer les deux cas : Map et objet standard
@@ -616,7 +642,7 @@ export class ForgeReforgeService extends ForgeModuleBase {
 }
 
 // === EXPORT DU MODÈLE MONGOOSE ===
-const ForgeReforge = mongoose.model<IForgeReforgeDocument>("ForgeReforge", forgeReforgeSchema);
+const ForgeReforge = mongoose.model<IForgeReforgeDocument, IForgeReforgeModel>("ForgeReforge", forgeReforgeSchema);
 
 export { IReforgeResult, IForgeReforgeDocument, DEFAULT_REFORGE_CONFIG };
 export default ForgeReforge;
