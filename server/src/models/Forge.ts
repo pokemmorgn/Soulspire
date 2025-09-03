@@ -449,11 +449,212 @@ forgeSchema.methods.calculateReforgePreview = function(
 forgeSchema.methods.calculateCurrentItemStats = function(baseItem: any, ownedItem: any): any {
   const currentStats: any = {};
   
-  // Stats de base - filtrer les champs MongoDB internes
+  // Stats de base - inclure TOUTES les stats valides (même à 0)
   if (baseItem.baseStats) {
     for (const [stat, value] of Object.entries(baseItem.baseStats)) {
-      if (typeof value === 'number' && !isNaN(value) && !stat.startsWith('$') && !stat.startsWith('_')) {
-        currentStats[stat] = value;
+      if (typeof value === 'number' && !isNaN(value) && !stat.startsWith('
+
+// Exécuter un reforge réel
+forgeSchema.methods.executeReforge = async function(
+  playerId: string,
+  itemInstanceId: string,
+  lockedStats: string[]
+): Promise<IReforgeResult> {
+  const Player = mongoose.model('Player');
+  const Inventory = mongoose.model('Inventory'); 
+  const Item = mongoose.model('Item');
+
+  // Récupérer le joueur et l'inventaire
+  const [player, inventory] = await Promise.all([
+    Player.findById(playerId),
+    Inventory.findOne({ playerId })
+  ]);
+
+  if (!player) throw new Error("Player not found");
+  if (!inventory) throw new Error("Inventory not found");
+
+  // Trouver l'objet dans l'inventaire
+  const ownedItem = inventory.getItem(itemInstanceId);
+  if (!ownedItem) throw new Error("Item not found in inventory");
+
+  // Récupérer les données de l'objet de base
+  const baseItem = await Item.findOne({ itemId: ownedItem.itemId });
+  if (!baseItem) throw new Error("Base item not found");
+  
+  if (baseItem.category !== "Equipment") {
+    throw new Error("Only equipment can be reforged");
+  }
+
+  // Obtenir les stats actuelles (baseStats + statsPerLevel * level + enhancement bonus)
+  const currentStats = this.calculateCurrentItemStats(baseItem, ownedItem);
+  
+  // Calculer le nombre de reforges précédents (stocké dans equipmentData)
+  const reforgeCount = ownedItem.equipmentData?.upgradeHistory?.length || 0;
+  
+  // Calculer le coût
+  const cost = this.calculateReforgeCost(baseItem.rarity, lockedStats, reforgeCount);
+  
+  // Vérifier que le joueur peut payer
+  if (!player.canAfford(cost)) {
+    throw new Error("Cannot afford reforge cost");
+  }
+  
+  // Vérifier les matériaux si nécessaire
+  if (cost.materials && Object.keys(cost.materials).length > 0) {
+    for (const [materialId, requiredAmount] of Object.entries(cost.materials)) {
+      if (!inventory.hasItem(materialId, requiredAmount)) {
+        throw new Error(`Insufficient material: ${materialId}`);
+      }
+    }
+  }
+
+  // Générer les nouvelles stats
+  const newStats = this.generateNewStats(
+    baseItem.equipmentSlot, 
+    baseItem.rarity, 
+    lockedStats, 
+    currentStats
+  );
+
+  // Effectuer la transaction
+  await player.spendCurrency(cost);
+  
+  // Consommer les matériaux
+  if (cost.materials) {
+    for (const [materialId, amount] of Object.entries(cost.materials)) {
+      const materialItem = inventory.storage.craftingMaterials.find((item: any) => item.itemId === materialId);
+      if (materialItem) {
+        await inventory.removeItem(materialItem.instanceId, amount);
+      }
+    }
+  }
+
+  // Mettre à jour les stats de l'objet (on stocke les stats reforge dans equipmentData)
+  if (!ownedItem.equipmentData) {
+    ownedItem.equipmentData = {
+      durability: 100,
+      socketedGems: [],
+      upgradeHistory: []
+    };
+  }
+
+  // Ajouter l'historique de reforge
+  ownedItem.equipmentData.upgradeHistory.push(new Date());
+  
+  // Stocker les nouvelles stats (on peut les stocker dans un champ custom)
+  (ownedItem as any).reforgedStats = newStats;
+
+  // Sauvegarder tout
+  await Promise.all([
+    player.save(),
+    inventory.save()
+  ]);
+
+  // Mettre à jour les statistiques globales
+  this.totalReforges += 1;
+  this.totalGoldSpent += cost.gold;
+  this.totalGemsSpent += cost.gems;
+  await this.save();
+
+  return {
+    newStats,
+    cost,
+    lockedStats: [...lockedStats],
+    reforgeCount: reforgeCount + 1
+  };
+};
+
+// Obtenir l'historique des reforges d'un objet
+forgeSchema.methods.getReforgeHistory = function(itemInstanceId: string): IReforgeHistory[] {
+  // Pour l'instant, on va chercher dans l'inventaire
+  // Dans une version plus avancée, on pourrait avoir une collection dédiée
+  return [];
+};
+
+// Méthode pour obtenir un aperçu des stats sans les appliquer
+forgeSchema.methods.getItemReforgePreview = async function(
+  playerId: string,
+  itemInstanceId: string,
+  lockedStats: string[]
+): Promise<IReforgeResult> {
+  const Inventory = mongoose.model('Inventory');
+  const Item = mongoose.model('Item');
+
+  const inventory = await Inventory.findOne({ playerId });
+  if (!inventory) throw new Error("Inventory not found");
+
+  const ownedItem = inventory.getItem(itemInstanceId);
+  if (!ownedItem) throw new Error("Item not found in inventory");
+
+  const baseItem = await Item.findOne({ itemId: ownedItem.itemId });
+  if (!baseItem) throw new Error("Base item not found");
+
+  if (baseItem.category !== "Equipment") {
+    throw new Error("Only equipment can be reforged");
+  }
+
+  // Obtenir les stats actuelles
+  const currentStats = this.calculateCurrentItemStats(baseItem, ownedItem);
+  
+  // Calculer le preview
+  return this.calculateReforgePreview(
+    ownedItem.itemId,
+    currentStats,
+    lockedStats,
+    baseItem.rarity,
+    baseItem.equipmentSlot
+  );
+};
+
+// Validation avant sauvegarde
+forgeSchema.pre('save', function(next) {
+  // Valider la configuration
+  if (!this.config || !this.config.slotConfigs || this.config.slotConfigs.length === 0) {
+    return next(new Error("Forge must have slot configurations"));
+  }
+  
+  if (!this.config.baseCosts || this.config.baseCosts.gold < 0 || this.config.baseCosts.gems < 0) {
+    return next(new Error("Invalid base costs configuration"));
+  }
+  
+  if (!this.config.lockMultipliers || this.config.lockMultipliers.length < 5) {
+    return next(new Error("Lock multipliers must have at least 5 entries"));
+  }
+  
+  // Valider que tous les multiplicateurs sont >= 1
+  const invalidMultipliers = this.config.lockMultipliers.filter(mult => mult < 1);
+  if (invalidMultipliers.length > 0) {
+    return next(new Error("All lock multipliers must be >= 1"));
+  }
+  
+  next();
+});
+
+// Ajouter un schéma pour stocker les stats reforge dans l'inventory
+const reforgedStatsSchema = new Schema({
+  hp: { type: Number, default: 0 },
+  atk: { type: Number, default: 0 },
+  def: { type: Number, default: 0 },
+  crit: { type: Number, default: 0 },
+  critDamage: { type: Number, default: 0 },
+  critResist: { type: Number, default: 0 },
+  dodge: { type: Number, default: 0 },
+  accuracy: { type: Number, default: 0 },
+  vitesse: { type: Number, default: 0 },
+  moral: { type: Number, default: 0 },
+  reductionCooldown: { type: Number, default: 0 },
+  healthleech: { type: Number, default: 0 },
+  healingBonus: { type: Number, default: 0 },
+  shieldBonus: { type: Number, default: 0 },
+  energyRegen: { type: Number, default: 0 }
+}, { _id: false });
+
+export { IReforgeResult, IForgeDocument, reforgedStatsSchema };
+export default mongoose.model<IForgeDocument>("Forge", forgeSchema);) && !stat.startsWith('_')) {
+        // Inclure seulement les stats > 0 pour éviter les stats inutiles
+        if (value > 0) {
+          currentStats[stat] = value;
+        }
       }
     }
   }
@@ -461,9 +662,209 @@ forgeSchema.methods.calculateCurrentItemStats = function(baseItem: any, ownedIte
   // Stats par niveau
   if (baseItem.statsPerLevel && ownedItem.level > 1) {
     for (const [stat, increment] of Object.entries(baseItem.statsPerLevel)) {
-      if (typeof increment === 'number' && !isNaN(increment) && !stat.startsWith('$') && !stat.startsWith('_')) {
-        const levelBonus = increment * (ownedItem.level - 1);
-        currentStats[stat] = (currentStats[stat] || 0) + levelBonus;
+      if (typeof increment === 'number' && !isNaN(increment) && !stat.startsWith('
+
+// Exécuter un reforge réel
+forgeSchema.methods.executeReforge = async function(
+  playerId: string,
+  itemInstanceId: string,
+  lockedStats: string[]
+): Promise<IReforgeResult> {
+  const Player = mongoose.model('Player');
+  const Inventory = mongoose.model('Inventory'); 
+  const Item = mongoose.model('Item');
+
+  // Récupérer le joueur et l'inventaire
+  const [player, inventory] = await Promise.all([
+    Player.findById(playerId),
+    Inventory.findOne({ playerId })
+  ]);
+
+  if (!player) throw new Error("Player not found");
+  if (!inventory) throw new Error("Inventory not found");
+
+  // Trouver l'objet dans l'inventaire
+  const ownedItem = inventory.getItem(itemInstanceId);
+  if (!ownedItem) throw new Error("Item not found in inventory");
+
+  // Récupérer les données de l'objet de base
+  const baseItem = await Item.findOne({ itemId: ownedItem.itemId });
+  if (!baseItem) throw new Error("Base item not found");
+  
+  if (baseItem.category !== "Equipment") {
+    throw new Error("Only equipment can be reforged");
+  }
+
+  // Obtenir les stats actuelles (baseStats + statsPerLevel * level + enhancement bonus)
+  const currentStats = this.calculateCurrentItemStats(baseItem, ownedItem);
+  
+  // Calculer le nombre de reforges précédents (stocké dans equipmentData)
+  const reforgeCount = ownedItem.equipmentData?.upgradeHistory?.length || 0;
+  
+  // Calculer le coût
+  const cost = this.calculateReforgeCost(baseItem.rarity, lockedStats, reforgeCount);
+  
+  // Vérifier que le joueur peut payer
+  if (!player.canAfford(cost)) {
+    throw new Error("Cannot afford reforge cost");
+  }
+  
+  // Vérifier les matériaux si nécessaire
+  if (cost.materials && Object.keys(cost.materials).length > 0) {
+    for (const [materialId, requiredAmount] of Object.entries(cost.materials)) {
+      if (!inventory.hasItem(materialId, requiredAmount)) {
+        throw new Error(`Insufficient material: ${materialId}`);
+      }
+    }
+  }
+
+  // Générer les nouvelles stats
+  const newStats = this.generateNewStats(
+    baseItem.equipmentSlot, 
+    baseItem.rarity, 
+    lockedStats, 
+    currentStats
+  );
+
+  // Effectuer la transaction
+  await player.spendCurrency(cost);
+  
+  // Consommer les matériaux
+  if (cost.materials) {
+    for (const [materialId, amount] of Object.entries(cost.materials)) {
+      const materialItem = inventory.storage.craftingMaterials.find((item: any) => item.itemId === materialId);
+      if (materialItem) {
+        await inventory.removeItem(materialItem.instanceId, amount);
+      }
+    }
+  }
+
+  // Mettre à jour les stats de l'objet (on stocke les stats reforge dans equipmentData)
+  if (!ownedItem.equipmentData) {
+    ownedItem.equipmentData = {
+      durability: 100,
+      socketedGems: [],
+      upgradeHistory: []
+    };
+  }
+
+  // Ajouter l'historique de reforge
+  ownedItem.equipmentData.upgradeHistory.push(new Date());
+  
+  // Stocker les nouvelles stats (on peut les stocker dans un champ custom)
+  (ownedItem as any).reforgedStats = newStats;
+
+  // Sauvegarder tout
+  await Promise.all([
+    player.save(),
+    inventory.save()
+  ]);
+
+  // Mettre à jour les statistiques globales
+  this.totalReforges += 1;
+  this.totalGoldSpent += cost.gold;
+  this.totalGemsSpent += cost.gems;
+  await this.save();
+
+  return {
+    newStats,
+    cost,
+    lockedStats: [...lockedStats],
+    reforgeCount: reforgeCount + 1
+  };
+};
+
+// Obtenir l'historique des reforges d'un objet
+forgeSchema.methods.getReforgeHistory = function(itemInstanceId: string): IReforgeHistory[] {
+  // Pour l'instant, on va chercher dans l'inventaire
+  // Dans une version plus avancée, on pourrait avoir une collection dédiée
+  return [];
+};
+
+// Méthode pour obtenir un aperçu des stats sans les appliquer
+forgeSchema.methods.getItemReforgePreview = async function(
+  playerId: string,
+  itemInstanceId: string,
+  lockedStats: string[]
+): Promise<IReforgeResult> {
+  const Inventory = mongoose.model('Inventory');
+  const Item = mongoose.model('Item');
+
+  const inventory = await Inventory.findOne({ playerId });
+  if (!inventory) throw new Error("Inventory not found");
+
+  const ownedItem = inventory.getItem(itemInstanceId);
+  if (!ownedItem) throw new Error("Item not found in inventory");
+
+  const baseItem = await Item.findOne({ itemId: ownedItem.itemId });
+  if (!baseItem) throw new Error("Base item not found");
+
+  if (baseItem.category !== "Equipment") {
+    throw new Error("Only equipment can be reforged");
+  }
+
+  // Obtenir les stats actuelles
+  const currentStats = this.calculateCurrentItemStats(baseItem, ownedItem);
+  
+  // Calculer le preview
+  return this.calculateReforgePreview(
+    ownedItem.itemId,
+    currentStats,
+    lockedStats,
+    baseItem.rarity,
+    baseItem.equipmentSlot
+  );
+};
+
+// Validation avant sauvegarde
+forgeSchema.pre('save', function(next) {
+  // Valider la configuration
+  if (!this.config || !this.config.slotConfigs || this.config.slotConfigs.length === 0) {
+    return next(new Error("Forge must have slot configurations"));
+  }
+  
+  if (!this.config.baseCosts || this.config.baseCosts.gold < 0 || this.config.baseCosts.gems < 0) {
+    return next(new Error("Invalid base costs configuration"));
+  }
+  
+  if (!this.config.lockMultipliers || this.config.lockMultipliers.length < 5) {
+    return next(new Error("Lock multipliers must have at least 5 entries"));
+  }
+  
+  // Valider que tous les multiplicateurs sont >= 1
+  const invalidMultipliers = this.config.lockMultipliers.filter(mult => mult < 1);
+  if (invalidMultipliers.length > 0) {
+    return next(new Error("All lock multipliers must be >= 1"));
+  }
+  
+  next();
+});
+
+// Ajouter un schéma pour stocker les stats reforge dans l'inventory
+const reforgedStatsSchema = new Schema({
+  hp: { type: Number, default: 0 },
+  atk: { type: Number, default: 0 },
+  def: { type: Number, default: 0 },
+  crit: { type: Number, default: 0 },
+  critDamage: { type: Number, default: 0 },
+  critResist: { type: Number, default: 0 },
+  dodge: { type: Number, default: 0 },
+  accuracy: { type: Number, default: 0 },
+  vitesse: { type: Number, default: 0 },
+  moral: { type: Number, default: 0 },
+  reductionCooldown: { type: Number, default: 0 },
+  healthleech: { type: Number, default: 0 },
+  healingBonus: { type: Number, default: 0 },
+  shieldBonus: { type: Number, default: 0 },
+  energyRegen: { type: Number, default: 0 }
+}, { _id: false });
+
+export { IReforgeResult, IForgeDocument, reforgedStatsSchema };
+export default mongoose.model<IForgeDocument>("Forge", forgeSchema);) && !stat.startsWith('_')) {
+        if (increment > 0) { // Seulement les stats qui progressent
+          const levelBonus = increment * (ownedItem.level - 1);
+          currentStats[stat] = (currentStats[stat] || 0) + levelBonus;
+        }
       }
     }
   }
@@ -483,7 +884,205 @@ forgeSchema.methods.calculateCurrentItemStats = function(baseItem: any, ownedIte
     // Remplacer complètement avec les stats reforge
     const reforgedStats: any = {};
     for (const [stat, value] of Object.entries(ownedItem.reforgedStats)) {
-      if (typeof value === 'number' && !isNaN(value) && !stat.startsWith('$') && !stat.startsWith('_')) {
+      if (typeof value === 'number' && !isNaN(value) && !stat.startsWith('
+
+// Exécuter un reforge réel
+forgeSchema.methods.executeReforge = async function(
+  playerId: string,
+  itemInstanceId: string,
+  lockedStats: string[]
+): Promise<IReforgeResult> {
+  const Player = mongoose.model('Player');
+  const Inventory = mongoose.model('Inventory'); 
+  const Item = mongoose.model('Item');
+
+  // Récupérer le joueur et l'inventaire
+  const [player, inventory] = await Promise.all([
+    Player.findById(playerId),
+    Inventory.findOne({ playerId })
+  ]);
+
+  if (!player) throw new Error("Player not found");
+  if (!inventory) throw new Error("Inventory not found");
+
+  // Trouver l'objet dans l'inventaire
+  const ownedItem = inventory.getItem(itemInstanceId);
+  if (!ownedItem) throw new Error("Item not found in inventory");
+
+  // Récupérer les données de l'objet de base
+  const baseItem = await Item.findOne({ itemId: ownedItem.itemId });
+  if (!baseItem) throw new Error("Base item not found");
+  
+  if (baseItem.category !== "Equipment") {
+    throw new Error("Only equipment can be reforged");
+  }
+
+  // Obtenir les stats actuelles (baseStats + statsPerLevel * level + enhancement bonus)
+  const currentStats = this.calculateCurrentItemStats(baseItem, ownedItem);
+  
+  // Calculer le nombre de reforges précédents (stocké dans equipmentData)
+  const reforgeCount = ownedItem.equipmentData?.upgradeHistory?.length || 0;
+  
+  // Calculer le coût
+  const cost = this.calculateReforgeCost(baseItem.rarity, lockedStats, reforgeCount);
+  
+  // Vérifier que le joueur peut payer
+  if (!player.canAfford(cost)) {
+    throw new Error("Cannot afford reforge cost");
+  }
+  
+  // Vérifier les matériaux si nécessaire
+  if (cost.materials && Object.keys(cost.materials).length > 0) {
+    for (const [materialId, requiredAmount] of Object.entries(cost.materials)) {
+      if (!inventory.hasItem(materialId, requiredAmount)) {
+        throw new Error(`Insufficient material: ${materialId}`);
+      }
+    }
+  }
+
+  // Générer les nouvelles stats
+  const newStats = this.generateNewStats(
+    baseItem.equipmentSlot, 
+    baseItem.rarity, 
+    lockedStats, 
+    currentStats
+  );
+
+  // Effectuer la transaction
+  await player.spendCurrency(cost);
+  
+  // Consommer les matériaux
+  if (cost.materials) {
+    for (const [materialId, amount] of Object.entries(cost.materials)) {
+      const materialItem = inventory.storage.craftingMaterials.find((item: any) => item.itemId === materialId);
+      if (materialItem) {
+        await inventory.removeItem(materialItem.instanceId, amount);
+      }
+    }
+  }
+
+  // Mettre à jour les stats de l'objet (on stocke les stats reforge dans equipmentData)
+  if (!ownedItem.equipmentData) {
+    ownedItem.equipmentData = {
+      durability: 100,
+      socketedGems: [],
+      upgradeHistory: []
+    };
+  }
+
+  // Ajouter l'historique de reforge
+  ownedItem.equipmentData.upgradeHistory.push(new Date());
+  
+  // Stocker les nouvelles stats (on peut les stocker dans un champ custom)
+  (ownedItem as any).reforgedStats = newStats;
+
+  // Sauvegarder tout
+  await Promise.all([
+    player.save(),
+    inventory.save()
+  ]);
+
+  // Mettre à jour les statistiques globales
+  this.totalReforges += 1;
+  this.totalGoldSpent += cost.gold;
+  this.totalGemsSpent += cost.gems;
+  await this.save();
+
+  return {
+    newStats,
+    cost,
+    lockedStats: [...lockedStats],
+    reforgeCount: reforgeCount + 1
+  };
+};
+
+// Obtenir l'historique des reforges d'un objet
+forgeSchema.methods.getReforgeHistory = function(itemInstanceId: string): IReforgeHistory[] {
+  // Pour l'instant, on va chercher dans l'inventaire
+  // Dans une version plus avancée, on pourrait avoir une collection dédiée
+  return [];
+};
+
+// Méthode pour obtenir un aperçu des stats sans les appliquer
+forgeSchema.methods.getItemReforgePreview = async function(
+  playerId: string,
+  itemInstanceId: string,
+  lockedStats: string[]
+): Promise<IReforgeResult> {
+  const Inventory = mongoose.model('Inventory');
+  const Item = mongoose.model('Item');
+
+  const inventory = await Inventory.findOne({ playerId });
+  if (!inventory) throw new Error("Inventory not found");
+
+  const ownedItem = inventory.getItem(itemInstanceId);
+  if (!ownedItem) throw new Error("Item not found in inventory");
+
+  const baseItem = await Item.findOne({ itemId: ownedItem.itemId });
+  if (!baseItem) throw new Error("Base item not found");
+
+  if (baseItem.category !== "Equipment") {
+    throw new Error("Only equipment can be reforged");
+  }
+
+  // Obtenir les stats actuelles
+  const currentStats = this.calculateCurrentItemStats(baseItem, ownedItem);
+  
+  // Calculer le preview
+  return this.calculateReforgePreview(
+    ownedItem.itemId,
+    currentStats,
+    lockedStats,
+    baseItem.rarity,
+    baseItem.equipmentSlot
+  );
+};
+
+// Validation avant sauvegarde
+forgeSchema.pre('save', function(next) {
+  // Valider la configuration
+  if (!this.config || !this.config.slotConfigs || this.config.slotConfigs.length === 0) {
+    return next(new Error("Forge must have slot configurations"));
+  }
+  
+  if (!this.config.baseCosts || this.config.baseCosts.gold < 0 || this.config.baseCosts.gems < 0) {
+    return next(new Error("Invalid base costs configuration"));
+  }
+  
+  if (!this.config.lockMultipliers || this.config.lockMultipliers.length < 5) {
+    return next(new Error("Lock multipliers must have at least 5 entries"));
+  }
+  
+  // Valider que tous les multiplicateurs sont >= 1
+  const invalidMultipliers = this.config.lockMultipliers.filter(mult => mult < 1);
+  if (invalidMultipliers.length > 0) {
+    return next(new Error("All lock multipliers must be >= 1"));
+  }
+  
+  next();
+});
+
+// Ajouter un schéma pour stocker les stats reforge dans l'inventory
+const reforgedStatsSchema = new Schema({
+  hp: { type: Number, default: 0 },
+  atk: { type: Number, default: 0 },
+  def: { type: Number, default: 0 },
+  crit: { type: Number, default: 0 },
+  critDamage: { type: Number, default: 0 },
+  critResist: { type: Number, default: 0 },
+  dodge: { type: Number, default: 0 },
+  accuracy: { type: Number, default: 0 },
+  vitesse: { type: Number, default: 0 },
+  moral: { type: Number, default: 0 },
+  reductionCooldown: { type: Number, default: 0 },
+  healthleech: { type: Number, default: 0 },
+  healingBonus: { type: Number, default: 0 },
+  shieldBonus: { type: Number, default: 0 },
+  energyRegen: { type: Number, default: 0 }
+}, { _id: false });
+
+export { IReforgeResult, IForgeDocument, reforgedStatsSchema };
+export default mongoose.model<IForgeDocument>("Forge", forgeSchema);) && !stat.startsWith('_')) {
         reforgedStats[stat] = value;
       }
     }
@@ -493,10 +1092,208 @@ forgeSchema.methods.calculateCurrentItemStats = function(baseItem: any, ownedIte
     }
   }
   
-  // Nettoyer et valider le résultat final
+  // Nettoyer et valider le résultat final - accepter toutes les valeurs >= 0
   const cleanStats: any = {};
   for (const [stat, value] of Object.entries(currentStats)) {
-    if (typeof value === 'number' && !isNaN(value) && value >= 0 && !stat.startsWith('$') && !stat.startsWith('_')) {
+    if (typeof value === 'number' && !isNaN(value) && value >= 0 && !stat.startsWith('
+
+// Exécuter un reforge réel
+forgeSchema.methods.executeReforge = async function(
+  playerId: string,
+  itemInstanceId: string,
+  lockedStats: string[]
+): Promise<IReforgeResult> {
+  const Player = mongoose.model('Player');
+  const Inventory = mongoose.model('Inventory'); 
+  const Item = mongoose.model('Item');
+
+  // Récupérer le joueur et l'inventaire
+  const [player, inventory] = await Promise.all([
+    Player.findById(playerId),
+    Inventory.findOne({ playerId })
+  ]);
+
+  if (!player) throw new Error("Player not found");
+  if (!inventory) throw new Error("Inventory not found");
+
+  // Trouver l'objet dans l'inventaire
+  const ownedItem = inventory.getItem(itemInstanceId);
+  if (!ownedItem) throw new Error("Item not found in inventory");
+
+  // Récupérer les données de l'objet de base
+  const baseItem = await Item.findOne({ itemId: ownedItem.itemId });
+  if (!baseItem) throw new Error("Base item not found");
+  
+  if (baseItem.category !== "Equipment") {
+    throw new Error("Only equipment can be reforged");
+  }
+
+  // Obtenir les stats actuelles (baseStats + statsPerLevel * level + enhancement bonus)
+  const currentStats = this.calculateCurrentItemStats(baseItem, ownedItem);
+  
+  // Calculer le nombre de reforges précédents (stocké dans equipmentData)
+  const reforgeCount = ownedItem.equipmentData?.upgradeHistory?.length || 0;
+  
+  // Calculer le coût
+  const cost = this.calculateReforgeCost(baseItem.rarity, lockedStats, reforgeCount);
+  
+  // Vérifier que le joueur peut payer
+  if (!player.canAfford(cost)) {
+    throw new Error("Cannot afford reforge cost");
+  }
+  
+  // Vérifier les matériaux si nécessaire
+  if (cost.materials && Object.keys(cost.materials).length > 0) {
+    for (const [materialId, requiredAmount] of Object.entries(cost.materials)) {
+      if (!inventory.hasItem(materialId, requiredAmount)) {
+        throw new Error(`Insufficient material: ${materialId}`);
+      }
+    }
+  }
+
+  // Générer les nouvelles stats
+  const newStats = this.generateNewStats(
+    baseItem.equipmentSlot, 
+    baseItem.rarity, 
+    lockedStats, 
+    currentStats
+  );
+
+  // Effectuer la transaction
+  await player.spendCurrency(cost);
+  
+  // Consommer les matériaux
+  if (cost.materials) {
+    for (const [materialId, amount] of Object.entries(cost.materials)) {
+      const materialItem = inventory.storage.craftingMaterials.find((item: any) => item.itemId === materialId);
+      if (materialItem) {
+        await inventory.removeItem(materialItem.instanceId, amount);
+      }
+    }
+  }
+
+  // Mettre à jour les stats de l'objet (on stocke les stats reforge dans equipmentData)
+  if (!ownedItem.equipmentData) {
+    ownedItem.equipmentData = {
+      durability: 100,
+      socketedGems: [],
+      upgradeHistory: []
+    };
+  }
+
+  // Ajouter l'historique de reforge
+  ownedItem.equipmentData.upgradeHistory.push(new Date());
+  
+  // Stocker les nouvelles stats (on peut les stocker dans un champ custom)
+  (ownedItem as any).reforgedStats = newStats;
+
+  // Sauvegarder tout
+  await Promise.all([
+    player.save(),
+    inventory.save()
+  ]);
+
+  // Mettre à jour les statistiques globales
+  this.totalReforges += 1;
+  this.totalGoldSpent += cost.gold;
+  this.totalGemsSpent += cost.gems;
+  await this.save();
+
+  return {
+    newStats,
+    cost,
+    lockedStats: [...lockedStats],
+    reforgeCount: reforgeCount + 1
+  };
+};
+
+// Obtenir l'historique des reforges d'un objet
+forgeSchema.methods.getReforgeHistory = function(itemInstanceId: string): IReforgeHistory[] {
+  // Pour l'instant, on va chercher dans l'inventaire
+  // Dans une version plus avancée, on pourrait avoir une collection dédiée
+  return [];
+};
+
+// Méthode pour obtenir un aperçu des stats sans les appliquer
+forgeSchema.methods.getItemReforgePreview = async function(
+  playerId: string,
+  itemInstanceId: string,
+  lockedStats: string[]
+): Promise<IReforgeResult> {
+  const Inventory = mongoose.model('Inventory');
+  const Item = mongoose.model('Item');
+
+  const inventory = await Inventory.findOne({ playerId });
+  if (!inventory) throw new Error("Inventory not found");
+
+  const ownedItem = inventory.getItem(itemInstanceId);
+  if (!ownedItem) throw new Error("Item not found in inventory");
+
+  const baseItem = await Item.findOne({ itemId: ownedItem.itemId });
+  if (!baseItem) throw new Error("Base item not found");
+
+  if (baseItem.category !== "Equipment") {
+    throw new Error("Only equipment can be reforged");
+  }
+
+  // Obtenir les stats actuelles
+  const currentStats = this.calculateCurrentItemStats(baseItem, ownedItem);
+  
+  // Calculer le preview
+  return this.calculateReforgePreview(
+    ownedItem.itemId,
+    currentStats,
+    lockedStats,
+    baseItem.rarity,
+    baseItem.equipmentSlot
+  );
+};
+
+// Validation avant sauvegarde
+forgeSchema.pre('save', function(next) {
+  // Valider la configuration
+  if (!this.config || !this.config.slotConfigs || this.config.slotConfigs.length === 0) {
+    return next(new Error("Forge must have slot configurations"));
+  }
+  
+  if (!this.config.baseCosts || this.config.baseCosts.gold < 0 || this.config.baseCosts.gems < 0) {
+    return next(new Error("Invalid base costs configuration"));
+  }
+  
+  if (!this.config.lockMultipliers || this.config.lockMultipliers.length < 5) {
+    return next(new Error("Lock multipliers must have at least 5 entries"));
+  }
+  
+  // Valider que tous les multiplicateurs sont >= 1
+  const invalidMultipliers = this.config.lockMultipliers.filter(mult => mult < 1);
+  if (invalidMultipliers.length > 0) {
+    return next(new Error("All lock multipliers must be >= 1"));
+  }
+  
+  next();
+});
+
+// Ajouter un schéma pour stocker les stats reforge dans l'inventory
+const reforgedStatsSchema = new Schema({
+  hp: { type: Number, default: 0 },
+  atk: { type: Number, default: 0 },
+  def: { type: Number, default: 0 },
+  crit: { type: Number, default: 0 },
+  critDamage: { type: Number, default: 0 },
+  critResist: { type: Number, default: 0 },
+  dodge: { type: Number, default: 0 },
+  accuracy: { type: Number, default: 0 },
+  vitesse: { type: Number, default: 0 },
+  moral: { type: Number, default: 0 },
+  reductionCooldown: { type: Number, default: 0 },
+  healthleech: { type: Number, default: 0 },
+  healingBonus: { type: Number, default: 0 },
+  shieldBonus: { type: Number, default: 0 },
+  energyRegen: { type: Number, default: 0 }
+}, { _id: false });
+
+export { IReforgeResult, IForgeDocument, reforgedStatsSchema };
+export default mongoose.model<IForgeDocument>("Forge", forgeSchema);) && !stat.startsWith('_')) {
       cleanStats[stat] = Math.floor(value);
     }
   }
@@ -507,8 +1304,11 @@ forgeSchema.methods.calculateCurrentItemStats = function(baseItem: any, ownedIte
       itemId: ownedItem.itemId,
       level: ownedItem.level,
       enhancement: ownedItem.enhancement,
-      baseStats: baseItem.baseStats,
-      statsPerLevel: baseItem.statsPerLevel,
+      hasBaseStats: !!baseItem.baseStats,
+      baseStatsKeys: baseItem.baseStats ? Object.keys(baseItem.baseStats) : [],
+      baseStatsNonZero: baseItem.baseStats ? Object.entries(baseItem.baseStats).filter(([k,v]) => v > 0) : [],
+      hasStatsPerLevel: !!baseItem.statsPerLevel,
+      statsPerLevelNonZero: baseItem.statsPerLevel ? Object.entries(baseItem.statsPerLevel).filter(([k,v]) => v > 0) : [],
       reforgedStats: ownedItem.reforgedStats
     });
   }
