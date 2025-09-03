@@ -506,9 +506,9 @@ export class ForgeReforgeService extends ForgeModuleBase {
   }
 
   async initialize(): Promise<void> {
-    this.reforgeDocument = await (ForgeReforge as IForgeReforgeModel).getActiveReforge();
+    this.reforgeDocument = await ForgeReforge.getActiveReforge();
     if (!this.reforgeDocument) {
-      this.reforgeDocument = (ForgeReforge as IForgeReforgeModel).createDefaultReforge();
+      this.reforgeDocument = ForgeReforge.createDefaultReforge();
       await this.reforgeDocument.save();
     }
   }
