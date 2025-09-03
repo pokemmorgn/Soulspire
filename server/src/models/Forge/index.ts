@@ -1,14 +1,16 @@
 import { ForgeCore, IForgeModuleConfig, IForgeOperationResult, IForgeResourceCost } from "./ForgeCore";
 import { ForgeReforgeService, IReforgeResult } from "./ForgeReforge";
+import ForgeEnhancement from "./ForgeEnhancement";
+import ForgeFusion from "./ForgeFusion";
+import ForgeTierUpgrade from "./ForgeTierUpgrade";
 
 // === INTERFACES PRINCIPALES DU SERVICE FORGE ===
-// (Renommées pour éviter les conflits d'export)
 
 export interface IForgeMainServiceConfig {
   reforge: IForgeModuleConfig;
-  enhancement?: IForgeModuleConfig;
-  fusion?: IForgeModuleConfig;
-  tierUpgrade?: IForgeModuleConfig;
+  enhancement: IForgeModuleConfig;
+  fusion: IForgeModuleConfig;
+  tierUpgrade: IForgeModuleConfig;
 }
 
 export interface IForgeMainStatus {
@@ -24,20 +26,23 @@ export interface IForgeMainStatus {
       stats: any;
       availableOperations: number;
     };
-    enhancement?: {
+    enhancement: {
       enabled: boolean;
       stats: any;
+      availableOperations: number;
       maxLevel: number;
     };
-    fusion?: {
+    fusion: {
       enabled: boolean;
       stats: any;
-      availableRecipes: number;
+      availableOperations: number;
+      requiredItems: number;
     };
-    tierUpgrade?: {
+    tierUpgrade: {
       enabled: boolean;
       stats: any;
-      availableUpgrades: number;
+      availableOperations: number;
+      maxTier: number;
     };
   };
   inventory: {
@@ -48,62 +53,69 @@ export interface IForgeMainStatus {
   };
 }
 
-// === CONFIGURATION PAR DÉFAUT ===
+// === CONFIGURATION PAR DÉFAUT AFK ARENA STYLE ===
 
 export const DEFAULT_FORGE_SERVICE_CONFIG: IForgeMainServiceConfig = {
   reforge: {
     enabled: true,
-    baseGoldCost: 1000,
-    baseGemCost: 50,
-    materialRequirements: {
-      "Common": { "iron_ore": 2 },
-      "Rare": { "magic_crystal": 1 },
-      "Epic": { "dragon_scale": 1 },
-      "Legendary": { "awakening_stone": 1 }
-    },
-    levelRestrictions: {
-      minPlayerLevel: 1
-    }
-  },
-  enhancement: {
-    enabled: true,
-    baseGoldCost: 500,
-    baseGemCost: 25,
-    materialRequirements: {
-      "Common": { "enhancement_stone_basic": 1 },
-      "Rare": { "enhancement_stone_basic": 2, "enhancement_stone_advanced": 1 },
-      "Epic": { "enhancement_stone_advanced": 2, "enhancement_stone_master": 1 },
-      "Legendary": { "enhancement_stone_master": 2, "enhancement_stone_legendary": 1 }
-    },
-    levelRestrictions: {
-      minPlayerLevel: 1
-    }
-  },
-  fusion: {
-    enabled: true,
     baseGoldCost: 2000,
     baseGemCost: 100,
     materialRequirements: {
-      "Common": { "fusion_catalyst_basic": 1 },
-      "Rare": { "fusion_catalyst_advanced": 1 },
-      "Epic": { "fusion_catalyst_master": 1 }
+      "Common": { "reforge_stone": 2 },
+      "Rare": { "reforge_stone": 3, "magic_dust": 1 },
+      "Epic": { "reforge_stone": 5, "magic_dust": 2 },
+      "Legendary": { "reforge_stone": 8, "magic_dust": 3, "mystic_scroll": 1 },
+      "Mythic": { "reforge_stone": 12, "magic_dust": 5, "mystic_scroll": 2 },
+      "Ascended": { "reforge_stone": 20, "magic_dust": 8, "mystic_scroll": 3, "celestial_essence": 1 }
     },
     levelRestrictions: {
       minPlayerLevel: 10
     }
   },
-  tierUpgrade: {
+  enhancement: {
+    enabled: true,
+    baseGoldCost: 1000,
+    baseGemCost: 50,
+    materialRequirements: {
+      "Common": { "enhancement_stone": 1 },
+      "Rare": { "enhancement_stone": 2, "silver_dust": 1 },
+      "Epic": { "enhancement_stone": 3, "gold_dust": 1 },
+      "Legendary": { "enhancement_stone": 5, "platinum_dust": 1, "legendary_essence": 1 },
+      "Mythic": { "enhancement_stone": 8, "mythic_dust": 1, "celestial_fragment": 1 },
+      "Ascended": { "enhancement_stone": 12, "divine_fragment": 1, "primordial_essence": 1 }
+    },
+    levelRestrictions: {
+      minPlayerLevel: 5
+    }
+  },
+  fusion: {
     enabled: true,
     baseGoldCost: 5000,
     baseGemCost: 200,
     materialRequirements: {
-      "Common": { "tier_essence_basic": 5 },
-      "Rare": { "tier_essence_advanced": 3 },
-      "Epic": { "tier_essence_master": 2 },
-      "Legendary": { "tier_essence_legendary": 1 }
+      "Common": { "fusion_stone": 5, "silver_dust": 10 },
+      "Rare": { "fusion_stone": 8, "gold_dust": 5, "magic_essence": 2 },
+      "Epic": { "fusion_stone": 12, "platinum_dust": 3, "legendary_essence": 1 },
+      "Legendary": { "fusion_stone": 20, "mythic_dust": 2, "celestial_fragment": 1 }
     },
     levelRestrictions: {
       minPlayerLevel: 15
+    }
+  },
+  tierUpgrade: {
+    enabled: true,
+    baseGoldCost: 10000,
+    baseGemCost: 500,
+    materialRequirements: {
+      "Common": { "tier_stone": 5, "enhancement_dust": 10 },
+      "Rare": { "tier_stone": 10, "enhancement_dust": 20, "silver_thread": 2 },
+      "Epic": { "tier_stone": 20, "enhancement_dust": 40, "golden_thread": 3 },
+      "Legendary": { "tier_stone": 40, "enhancement_dust": 80, "platinum_thread": 4, "divine_shard": 1 },
+      "Mythic": { "tier_stone": 80, "enhancement_dust": 160, "mythic_thread": 5, "celestial_essence": 1 },
+      "Ascended": { "tier_stone": 160, "enhancement_dust": 320, "ascended_thread": 8, "primordial_fragment": 1 }
+    },
+    levelRestrictions: {
+      minPlayerLevel: 20
     }
   }
 };
@@ -113,23 +125,19 @@ export const DEFAULT_FORGE_SERVICE_CONFIG: IForgeMainServiceConfig = {
 export class ForgeService extends ForgeCore {
   private config: IForgeMainServiceConfig;
   private reforgeService: ForgeReforgeService;
-  
-  // Placeholder pour les autres services (à implémenter)
-  // private enhancementService: ForgeEnhancementService;
-  // private fusionService: ForgeFusionService;
-  // private tierUpgradeService: ForgeTierUpgradeService;
+  private enhancementService: ForgeEnhancement;
+  private fusionService: ForgeFusion;
+  private tierUpgradeService: ForgeTierUpgrade;
 
   constructor(playerId: string, config: IForgeMainServiceConfig = DEFAULT_FORGE_SERVICE_CONFIG) {
     super(playerId);
     this.config = config;
     
-    // Initialiser le service de reforge
+    // Initialiser tous les services
     this.reforgeService = new ForgeReforgeService(playerId, config.reforge);
-    
-    // TODO: Initialiser les autres services quand ils seront créés
-    // this.enhancementService = new ForgeEnhancementService(playerId, config.enhancement);
-    // this.fusionService = new ForgeFusionService(playerId, config.fusion);
-    // this.tierUpgradeService = new ForgeTierUpgradeService(playerId, config.tierUpgrade);
+    this.enhancementService = new ForgeEnhancement(playerId, config.enhancement);
+    this.fusionService = new ForgeFusion(playerId, config.fusion);
+    this.tierUpgradeService = new ForgeTierUpgrade(playerId, config.tierUpgrade);
   }
 
   // === MÉTHODES PUBLIQUES PRINCIPALES ===
@@ -146,11 +154,11 @@ export class ForgeService extends ForgeCore {
       ]);
 
       if (!player || !inventory) {
-        throw new Error("Player or inventory not found");
+        throw new Error("PLAYER_OR_INVENTORY_NOT_FOUND");
       }
 
       // Compter les objets par catégorie
-      const inventoryStats = this.countInventoryItems(inventory);
+      const inventoryStats = await this.countInventoryItems(inventory);
 
       // Initialiser le service de reforge si nécessaire
       await this.reforgeService.initialize();
@@ -167,6 +175,24 @@ export class ForgeService extends ForgeCore {
             enabled: this.config.reforge.enabled,
             stats: this.reforgeService.getStats(),
             availableOperations: inventoryStats.reforgeableItems
+          },
+          enhancement: {
+            enabled: this.config.enhancement.enabled,
+            stats: this.enhancementService.getStats(),
+            availableOperations: inventoryStats.enhanceableItems,
+            maxLevel: 30
+          },
+          fusion: {
+            enabled: this.config.fusion.enabled,
+            stats: this.fusionService.getStats(),
+            availableOperations: inventoryStats.fusableItems,
+            requiredItems: 3
+          },
+          tierUpgrade: {
+            enabled: this.config.tierUpgrade.enabled,
+            stats: this.tierUpgradeService.getStats(),
+            availableOperations: inventoryStats.upgradeableItems,
+            maxTier: 5
           }
         },
         inventory: inventoryStats
@@ -174,132 +200,175 @@ export class ForgeService extends ForgeCore {
 
       return status;
     } catch (error: any) {
-      throw new Error(`Failed to get forge status: ${error.message}`);
+      throw new Error(`FAILED_TO_GET_FORGE_STATUS: ${error.message}`);
     }
   }
 
   // === MÉTHODES POUR LE REFORGE ===
 
-  /**
-   * Obtient un aperçu du coût et résultat d'un reforge
-   */
   async getReforgePreview(itemInstanceId: string, lockedStats: string[] = []): Promise<IReforgeResult> {
-    return await this.reforgeService.getReforgePreview(itemInstanceId, lockedStats);
+    try {
+      return await this.reforgeService.getReforgePreview(itemInstanceId, lockedStats);
+    } catch (error: any) {
+      throw new Error(error.message || "REFORGE_PREVIEW_FAILED");
+    }
   }
 
-  /**
-   * Exécute un reforge sur un équipement
-   */
   async executeReforge(itemInstanceId: string, lockedStats: string[] = []): Promise<IForgeOperationResult> {
     return await this.reforgeService.executeReforge(itemInstanceId, lockedStats);
   }
 
-  /**
-   * Obtient les stats disponibles pour un slot d'équipement
-   */
   async getAvailableStatsForSlot(equipmentSlot: string): Promise<string[]> {
-    return await this.reforgeService.getAvailableStats(equipmentSlot);
+    try {
+      return await this.reforgeService.getAvailableStats(equipmentSlot);
+    } catch (error: any) {
+      throw new Error(error.message || "GET_AVAILABLE_STATS_FAILED");
+    }
   }
 
-  /**
-   * Obtient les ranges de stats pour une rareté donnée
-   */
+  async getMaxLockedStatsForSlot(equipmentSlot: string): Promise<number> {
+    try {
+      return await this.reforgeService.getMaxLockedStats(equipmentSlot);
+    } catch (error: any) {
+      throw new Error(error.message || "GET_MAX_LOCKED_STATS_FAILED");
+    }
+  }
+
   async getStatRangesByRarity(rarity: string): Promise<{ [stat: string]: { min: number; max: number } }> {
-    return await this.reforgeService.getStatRanges(rarity);
+    try {
+      return await this.reforgeService.getStatRanges(rarity);
+    } catch (error: any) {
+      throw new Error(error.message || "GET_STAT_RANGES_FAILED");
+    }
   }
 
-  // === MÉTHODES POUR L'ENHANCEMENT (Placeholder) ===
+  // === MÉTHODES POUR L'ENHANCEMENT ===
 
-  /**
-   * Obtient un aperçu du coût d'enhancement
-   */
-  async getEnhancementPreview(itemInstanceId: string, targetLevel?: number): Promise<any> {
-    // TODO: Implémenter quand ForgeEnhancementService sera créé
-    throw new Error("Enhancement service not yet implemented");
+  async getEnhancementCost(itemInstanceId: string, usePaidGemsToGuarantee?: boolean): Promise<IForgeResourceCost> {
+    try {
+      const cost = await this.enhancementService.getEnhancementCost(itemInstanceId, { usePaidGemsToGuarantee });
+      if (!cost) throw new Error("UNABLE_TO_COMPUTE_ENHANCEMENT_COST");
+      return cost;
+    } catch (error: any) {
+      throw new Error(error.message || "GET_ENHANCEMENT_COST_FAILED");
+    }
   }
 
-  /**
-   * Exécute un enhancement sur un équipement
-   */
-  async executeEnhancement(itemInstanceId: string, targetLevel?: number): Promise<IForgeOperationResult> {
-    // TODO: Implémenter quand ForgeEnhancementService sera créé
-    throw new Error("Enhancement service not yet implemented");
+  async executeEnhancement(itemInstanceId: string, usePaidGemsToGuarantee?: boolean): Promise<IForgeOperationResult> {
+    return await this.enhancementService.attemptEnhance(itemInstanceId, { usePaidGemsToGuarantee });
   }
 
-  // === MÉTHODES POUR LA FUSION (Placeholder) ===
+  // === MÉTHODES POUR LA FUSION ===
 
-  /**
-   * Obtient les recettes de fusion disponibles
-   */
-  async getAvailableFusionRecipes(): Promise<any[]> {
-    // TODO: Implémenter quand ForgeFusionService sera créé
-    throw new Error("Fusion service not yet implemented");
+  async getFusionCost(itemInstanceId: string): Promise<IForgeResourceCost> {
+    try {
+      const cost = await this.fusionService.calculateFusionCost(itemInstanceId);
+      if (!cost) throw new Error("UNABLE_TO_COMPUTE_FUSION_COST");
+      return cost;
+    } catch (error: any) {
+      throw new Error(error.message || "GET_FUSION_COST_FAILED");
+    }
   }
 
-  /**
-   * Exécute une fusion d'équipements
-   */
-  async executeFusion(recipeId: string, inputItemIds: string[]): Promise<IForgeOperationResult> {
-    // TODO: Implémenter quand ForgeFusionService sera créé
-    throw new Error("Fusion service not yet implemented");
+  async executeFusion(itemInstanceIds: string[]): Promise<IForgeOperationResult> {
+    return await this.fusionService.attemptFusion(itemInstanceIds);
   }
 
-  // === MÉTHODES POUR LE TIER UPGRADE (Placeholder) ===
-
-  /**
-   * Obtient un aperçu du coût de tier upgrade
-   */
-  async getTierUpgradePreview(itemInstanceId: string): Promise<any> {
-    // TODO: Implémenter quand ForgeTierUpgradeService sera créé
-    throw new Error("Tier upgrade service not yet implemented");
+  async getFusableItems(rarity?: string): Promise<Array<{ itemId: string; count: number; rarity: string; name: string }>> {
+    try {
+      return await this.fusionService.getFusableItems(rarity);
+    } catch (error: any) {
+      throw new Error("GET_FUSABLE_ITEMS_FAILED");
+    }
   }
 
-  /**
-   * Exécute un tier upgrade sur un équipement
-   */
-  async executeTierUpgrade(itemInstanceId: string): Promise<IForgeOperationResult> {
-    // TODO: Implémenter quand ForgeTierUpgradeService sera créé
-    throw new Error("Tier upgrade service not yet implemented");
+  async getPossibleFusionsCount(itemId: string, rarity: string): Promise<number> {
+    try {
+      return await this.fusionService.getPossibleFusionsCount(itemId, rarity);
+    } catch (error: any) {
+      throw new Error("GET_POSSIBLE_FUSIONS_COUNT_FAILED");
+    }
+  }
+
+  // === MÉTHODES POUR LE TIER UPGRADE ===
+
+  async getTierUpgradeCost(itemInstanceId: string, targetTier?: number): Promise<IForgeResourceCost> {
+    try {
+      const cost = await this.tierUpgradeService.calculateTierUpgradeCost(itemInstanceId, { targetTier });
+      if (!cost) throw new Error("UNABLE_TO_COMPUTE_TIER_UPGRADE_COST");
+      return cost;
+    } catch (error: any) {
+      throw new Error(error.message || "GET_TIER_UPGRADE_COST_FAILED");
+    }
+  }
+
+  async executeTierUpgrade(itemInstanceId: string, targetTier?: number): Promise<IForgeOperationResult> {
+    return await this.tierUpgradeService.attemptTierUpgrade(itemInstanceId, { targetTier });
+  }
+
+  async getUpgradableItems(rarity?: string): Promise<Array<{
+    instanceId: string;
+    itemId: string;
+    name: string;
+    rarity: string;
+    currentTier: number;
+    maxPossibleTier: number;
+    canUpgrade: boolean;
+  }>> {
+    try {
+      return await this.tierUpgradeService.getUpgradableItems(rarity);
+    } catch (error: any) {
+      throw new Error("GET_UPGRADABLE_ITEMS_FAILED");
+    }
+  }
+
+  async getTotalUpgradeCostToMax(itemInstanceId: string): Promise<{
+    totalGold: number;
+    totalGems: number;
+    totalMaterials: { [materialId: string]: number };
+    steps: Array<{ fromTier: number; toTier: number; cost: IForgeResourceCost }>;
+  }> {
+    try {
+      const cost = await this.tierUpgradeService.getTotalUpgradeCostToMax(itemInstanceId);
+      if (!cost) throw new Error("UNABLE_TO_COMPUTE_TOTAL_UPGRADE_COST");
+      return cost;
+    } catch (error: any) {
+      throw new Error("GET_TOTAL_UPGRADE_COST_FAILED");
+    }
   }
 
   // === MÉTHODES UTILITAIRES ===
 
-  /**
-   * Vérifie si un module spécifique est activé
-   */
   isModuleEnabled(moduleName: keyof IForgeMainServiceConfig): boolean {
     const moduleConfig = this.config[moduleName];
     return moduleConfig ? moduleConfig.enabled : false;
   }
 
-  /**
-   * Met à jour la configuration d'un module
-   */
   updateModuleConfig(moduleName: keyof IForgeMainServiceConfig, newConfig: Partial<IForgeModuleConfig>): void {
     if (this.config[moduleName]) {
       Object.assign(this.config[moduleName]!, newConfig);
     }
   }
 
-  /**
-   * Obtient les statistiques de tous les modules
-   */
   async getAllModuleStats(): Promise<{ [moduleName: string]: any }> {
     const stats: { [moduleName: string]: any } = {};
 
-    // Stats du reforge
     if (this.config.reforge.enabled) {
       stats.reforge = this.reforgeService.getStats();
     }
-
-    // TODO: Ajouter les stats des autres modules quand ils seront implémentés
+    if (this.config.enhancement.enabled) {
+      stats.enhancement = this.enhancementService.getStats();
+    }
+    if (this.config.fusion.enabled) {
+      stats.fusion = this.fusionService.getStats();
+    }
+    if (this.config.tierUpgrade.enabled) {
+      stats.tierUpgrade = this.tierUpgradeService.getStats();
+    }
 
     return stats;
   }
 
-  /**
-   * Calcule le coût total estimé pour plusieurs opérations
-   */
   async calculateBatchOperationCost(operations: Array<{
     type: 'reforge' | 'enhancement' | 'fusion' | 'tierUpgrade';
     itemInstanceId: string;
@@ -321,15 +390,23 @@ export class ForgeService extends ForgeCore {
             break;
 
           case 'enhancement':
-            // TODO: Implémenter quand le service sera prêt
+            operationCost = await this.getEnhancementCost(
+              operation.itemInstanceId,
+              operation.parameters?.usePaidGemsToGuarantee
+            );
             break;
 
           case 'fusion':
-            // TODO: Implémenter quand le service sera prêt
+            if (operation.parameters?.itemInstanceIds) {
+              operationCost = await this.getFusionCost(operation.itemInstanceId);
+            }
             break;
 
           case 'tierUpgrade':
-            // TODO: Implémenter quand le service sera prêt
+            operationCost = await this.getTierUpgradeCost(
+              operation.itemInstanceId,
+              operation.parameters?.targetTier
+            );
             break;
         }
 
@@ -355,46 +432,45 @@ export class ForgeService extends ForgeCore {
 
   // === MÉTHODES PRIVÉES ===
 
-  /**
-   * Compte les objets dans l'inventaire par catégorie d'opération
-   */
-  private countInventoryItems(inventory: any): {
+  private async countInventoryItems(inventory: any): Promise<{
     reforgeableItems: number;
     enhanceableItems: number;
     fusableItems: number;
     upgradeableItems: number;
-  } {
+  }> {
     let reforgeableItems = 0;
     let enhanceableItems = 0;
     let fusableItems = 0;
     let upgradeableItems = 0;
 
-    // Catégories d'équipement dans l'inventaire
     const equipmentCategories = ['weapons', 'helmets', 'armors', 'boots', 'gloves', 'accessories'];
     
-    equipmentCategories.forEach(category => {
+    equipmentCategories.forEach((category: string) => {
       const items = inventory.storage[category] || [];
       
       items.forEach((item: any) => {
         // Tous les équipements peuvent être reforged
         reforgeableItems++;
         
-        // Les équipements peuvent être enhanced si pas au max
-        if (item.enhancement < 30) {
+        // Enhancement : items pas au niveau max
+        const currentEnhancement = item.enhancement || 0;
+        if (currentEnhancement < 30) {
           enhanceableItems++;
         }
         
-        // Les équipements de rareté inférieure peuvent être fusés
-        if (['Common', 'Rare', 'Epic'].includes(item.rarity)) {
-          fusableItems++;
-        }
+        // Fusion : compter les groupes d'items identiques (sera calculé plus précisément par le service)
+        fusableItems++;
         
-        // Les équipements peuvent être tier upgraded s'ils ne sont pas au tier max
-        if (item.tier < 10) {
+        // Tier upgrade : items pas au tier max
+        const currentTier = item.tier || 1;
+        if (currentTier < 5) {
           upgradeableItems++;
         }
       });
     });
+
+    // Pour fusion, on divise par 3 car il faut 3 items
+    fusableItems = Math.floor(fusableItems / 3);
 
     return {
       reforgeableItems,
@@ -403,77 +479,10 @@ export class ForgeService extends ForgeCore {
       upgradeableItems
     };
   }
-
-  /**
-   * Valide qu'une opération peut être effectuée sur un objet
-   */
-  private async validateItemForOperation(
-    itemInstanceId: string, 
-    operationType: 'reforge' | 'enhancement' | 'fusion' | 'tierUpgrade'
-  ): Promise<{ valid: boolean; reason?: string; itemData?: any; ownedItem?: any }> {
-    try {
-      const validation = await this.validateItem(itemInstanceId, "Equipment");
-      
-      if (!validation.valid) {
-        return validation;
-      }
-
-      const { itemData, ownedItem } = validation;
-
-      // Validations spécifiques selon le type d'opération
-      switch (operationType) {
-        case 'reforge':
-          // Tous les équipements peuvent être reforged
-          break;
-
-        case 'enhancement':
-          if (ownedItem.enhancement >= 30) {
-            return { valid: false, reason: "Item is already at maximum enhancement level" };
-          }
-          break;
-
-        case 'fusion':
-          if (!['Common', 'Rare', 'Epic'].includes(itemData.rarity)) {
-            return { valid: false, reason: "Item rarity too high for fusion" };
-          }
-          break;
-
-        case 'tierUpgrade':
-          if (ownedItem.tier >= 10) {
-            return { valid: false, reason: "Item is already at maximum tier" };
-          }
-          break;
-      }
-
-      return { valid: true, itemData, ownedItem };
-    } catch (error: any) {
-      return { valid: false, reason: `Validation error: ${error.message}` };
-    }
-  }
-
-  /**
-   * Logs une opération pour les analytics
-   */
-  private async logForgeOperation(
-    operation: string,
-    itemInstanceId: string,
-    cost: IForgeResourceCost,
-    success: boolean,
-    additionalData?: any
-  ): Promise<void> {
-    await this.logOperation(operation, itemInstanceId, cost, success, {
-      timestamp: new Date().toISOString(),
-      playerId: this.playerId,
-      ...additionalData
-    });
-  }
 }
 
 // === FACTORY FUNCTION ===
 
-/**
- * Crée une nouvelle instance du service Forge pour un joueur
- */
 export function createForgeService(playerId: string, config?: Partial<IForgeMainServiceConfig>): ForgeService {
   const finalConfig = config ? 
     { ...DEFAULT_FORGE_SERVICE_CONFIG, ...config } : 
@@ -484,17 +493,15 @@ export function createForgeService(playerId: string, config?: Partial<IForgeMain
 
 // === UTILITAIRES POUR LES ROUTES ===
 
-/**
- * Middleware pour vérifier que le module de forge demandé est activé
- */
 export function validateForgeModule(moduleName: keyof IForgeMainServiceConfig) {
   return (req: any, res: any, next: any) => {
     const forgeService = createForgeService(req.userId);
     
     if (!forgeService.isModuleEnabled(moduleName)) {
       return res.status(403).json({
-        error: `Forge module '${moduleName}' is disabled`,
-        code: "MODULE_DISABLED"
+        error: "FORGE_MODULE_DISABLED",
+        code: "MODULE_DISABLED",
+        module: moduleName
       });
     }
     
@@ -503,23 +510,23 @@ export function validateForgeModule(moduleName: keyof IForgeMainServiceConfig) {
   };
 }
 
-/**
- * Convertit les erreurs de forge en réponses HTTP standardisées
- */
 export function handleForgeError(error: any, operation: string) {
   console.error(`Forge ${operation} error:`, error);
   
-  // Erreurs communes avec codes spécifiques
+  // Labels d'erreur standardisés
   const errorMappings: { [key: string]: { code: string; status: number } } = {
-    "Player not found": { code: "PLAYER_NOT_FOUND", status: 404 },
-    "Inventory not found": { code: "INVENTORY_NOT_FOUND", status: 404 },
-    "Item not found": { code: "ITEM_NOT_FOUND", status: 404 },
-    "Cannot afford": { code: "INSUFFICIENT_RESOURCES", status: 400 },
-    "Insufficient material": { code: "INSUFFICIENT_MATERIALS", status: 400 },
-    "Invalid locked stats": { code: "INVALID_LOCKED_STATS", status: 400 },
-    "Only equipment can be": { code: "INVALID_ITEM_TYPE", status: 400 },
-    "Item is currently equipped": { code: "ITEM_EQUIPPED", status: 400 },
-    "disabled": { code: "MODULE_DISABLED", status: 403 }
+    "PLAYER_NOT_FOUND": { code: "PLAYER_NOT_FOUND", status: 404 },
+    "INVENTORY_NOT_FOUND": { code: "INVENTORY_NOT_FOUND", status: 404 },
+    "ITEM_NOT_FOUND": { code: "ITEM_NOT_FOUND", status: 404 },
+    "INSUFFICIENT_RESOURCES": { code: "INSUFFICIENT_RESOURCES", status: 400 },
+    "INSUFFICIENT_MATERIALS": { code: "INSUFFICIENT_MATERIALS", status: 400 },
+    "INVALID_LOCKED_STATS": { code: "INVALID_LOCKED_STATS", status: 400 },
+    "ONLY_EQUIPMENT_CAN_BE": { code: "INVALID_ITEM_TYPE", status: 400 },
+    "ITEM_EQUIPPED": { code: "ITEM_EQUIPPED", status: 400 },
+    "MODULE_DISABLED": { code: "MODULE_DISABLED", status: 403 },
+    "MAX_ENHANCEMENT_LEVEL": { code: "ITEM_AT_MAX_LEVEL", status: 400 },
+    "MAX_TIER": { code: "ITEM_AT_MAX_TIER", status: 400 },
+    "FUSION_REQUIRES": { code: "INVALID_FUSION_REQUIREMENTS", status: 400 }
   };
 
   // Trouver le mapping d'erreur approprié
@@ -535,7 +542,7 @@ export function handleForgeError(error: any, operation: string) {
   }
 
   return {
-    error: error.message || "An unknown error occurred",
+    error: error.message || "UNKNOWN_ERROR_OCCURRED",
     code: errorCode,
     operation,
     timestamp: new Date().toISOString(),
@@ -543,29 +550,35 @@ export function handleForgeError(error: any, operation: string) {
   };
 }
 
-/**
- * Valide les paramètres de reforge
- */
-export function validateReforgeParams(params: any): { valid: boolean; error?: string } {
+export function validateForgeParams(params: any, operationType: string): { valid: boolean; error?: string } {
   if (!params.itemInstanceId || typeof params.itemInstanceId !== 'string') {
-    return { valid: false, error: "itemInstanceId is required and must be a string" };
+    return { valid: false, error: "ITEM_INSTANCE_ID_REQUIRED" };
   }
 
-  if (params.lockedStats && !Array.isArray(params.lockedStats)) {
-    return { valid: false, error: "lockedStats must be an array" };
-  }
-
-  if (params.lockedStats && params.lockedStats.length > 4) {
-    return { valid: false, error: "Maximum 4 stats can be locked" };
-  }
-
-  // Vérifier que les stats lockées sont des strings valides
-  if (params.lockedStats) {
-    for (const stat of params.lockedStats) {
-      if (typeof stat !== 'string' || stat.length === 0) {
-        return { valid: false, error: "All locked stats must be non-empty strings" };
+  switch (operationType) {
+    case 'reforge':
+      if (params.lockedStats && !Array.isArray(params.lockedStats)) {
+        return { valid: false, error: "LOCKED_STATS_MUST_BE_ARRAY" };
       }
-    }
+      if (params.lockedStats && params.lockedStats.length > 3) {
+        return { valid: false, error: "MAX_LOCKED_STATS_EXCEEDED" };
+      }
+      break;
+
+    case 'fusion':
+      if (!params.itemInstanceIds || !Array.isArray(params.itemInstanceIds)) {
+        return { valid: false, error: "ITEM_INSTANCE_IDS_REQUIRED" };
+      }
+      if (params.itemInstanceIds.length !== 3) {
+        return { valid: false, error: "FUSION_REQUIRES_EXACTLY_THREE_ITEMS" };
+      }
+      break;
+
+    case 'tierUpgrade':
+      if (params.targetTier && (typeof params.targetTier !== 'number' || params.targetTier < 1 || params.targetTier > 5)) {
+        return { valid: false, error: "INVALID_TARGET_TIER" };
+      }
+      break;
   }
 
   return { valid: true };
@@ -575,13 +588,14 @@ export function validateReforgeParams(params: any): { valid: boolean; error?: st
 
 export { ForgeCore } from "./ForgeCore";
 export { ForgeReforgeService, IReforgeResult } from "./ForgeReforge";
+export { default as ForgeEnhancement } from "./ForgeEnhancement";
+export { default as ForgeFusion } from "./ForgeFusion";
+export { default as ForgeTierUpgrade } from "./ForgeTierUpgrade";
 
-// Export des types principaux (sans conflits)
 export type {
   IForgeOperationResult,
   IForgeResourceCost,
   IForgeModuleConfig
 };
 
-// Export du service principal par défaut
 export default ForgeService;
