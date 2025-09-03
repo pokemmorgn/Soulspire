@@ -157,10 +157,10 @@ class CompleteForgeTester {
     log("\n👤 Creating test player...", colors.yellow);
     
     // Supprimer le joueur de test s'il existe
-    await Player.deleteMany({ username: "forge_test_user_complete" });
+    await Player.deleteMany({ username: "forge_test_complete" });
     
     const testPlayer = new Player({
-      username: "forge_test_user_complete",
+      username: "forge_test_complete",
       password: "hashedpassword123",
       gold: 500000,      // Beaucoup d'or pour tous les tests
       gems: 50000,       // Beaucoup de gemmes pour tous les tests  
