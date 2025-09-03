@@ -361,23 +361,22 @@ export class ForgeEnhancement extends ForgeModuleBase {
 
     await this.updateStats(finalCost, success);
 
-    // Message informatif
+    // Message informatif avec labels
     const messageParts = [];
     if (success) {
-      messageParts.push(`Enhancement success: +${newLevel}`);
-      if (guaranteeUsed) messageParts.push("(guaranteed via paid gems)");
-      if (pityGuaranteeTriggered) messageParts.push("(guaranteed by pity protection)");
-      if (this.PITY_RESET_LEVELS.includes(newLevel)) messageParts.push("(pity reset!)");
+      messageParts.push("ENHANCEMENT_SUCCESS");
+      if (guaranteeUsed) messageParts.push("GUARANTEED_VIA_PAID_GEMS");
+      if (pityGuaranteeTriggered) messageParts.push("GUARANTEED_BY_PITY_PROTECTION");
+      if (this.PITY_RESET_LEVELS.includes(newLevel)) messageParts.push("PITY_RESET");
     } else {
-      messageParts.push(`Enhancement failed at +${currentLevel}`);
-      messageParts.push(`Pity: ${owned.enhancementPity || 0}`);
-      if (pityData.nextLevelIsReset) messageParts.push("(next level has pity protection)");
+      messageParts.push("ENHANCEMENT_FAILED");
+      if (pityData.nextLevelIsReset) messageParts.push("NEXT_LEVEL_HAS_PITY_PROTECTION");
     }
 
     return {
       success,
       cost: finalCost,
-      message: messageParts.join(" "),
+      message: messageParts[0], // Message principal pour la localisation
       data: {
         previousLevel: currentLevel,
         newLevel: success ? newLevel : currentLevel,
@@ -385,7 +384,8 @@ export class ForgeEnhancement extends ForgeModuleBase {
         pity: owned.enhancementPity || 0,
         pityData,
         guaranteeUsed,
-        pityGuaranteeTriggered
+        pityGuaranteeTriggered,
+        additionalMessages: messageParts.slice(1) // Messages additionnels
       }
     };
   }
