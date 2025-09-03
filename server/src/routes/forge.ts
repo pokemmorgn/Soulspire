@@ -90,9 +90,9 @@ router.post("/batch/cost", authMiddleware, async (req: Request, res: Response): 
     const forgeService = createForgeService(req.userId!);
 
     // Vérifier que tous les modules requis sont activés
-    const requiredModules = [...new Set(operations.map((op: any) => op.type))];
+    const requiredModules = [...new Set(operations.map((op: any) => op.type))] as string[];
     const disabledModules = requiredModules.filter((module: string) => 
-      !forgeService.isModuleEnabled(module as any)
+      !forgeService.isModuleEnabled(module as 'reforge' | 'enhancement' | 'fusion' | 'tierUpgrade')
     );
 
     if (disabledModules.length > 0) {
