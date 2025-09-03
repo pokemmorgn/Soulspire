@@ -59,12 +59,6 @@ interface IForgeReforgeDocument extends Document {
   getItemReforgePreview(playerId: string, itemInstanceId: string, lockedStats: string[]): Promise<IReforgeResult>;
 }
 
-// === INTERFACE POUR LE MODÈLE AVEC MÉTHODES STATIQUES ===
-interface IForgeReforgeModel extends Model<IForgeReforgeDocument> {
-  getActiveReforge(): Promise<IForgeReforgeDocument | null>;
-  createDefaultReforge(): IForgeReforgeDocument;
-}
-
 // === CONFIGURATION PAR DÉFAUT ===
 
 const DEFAULT_REFORGE_CONFIG: IReforgeConfig = {
@@ -181,12 +175,12 @@ const forgeReforgeSchema = new Schema<IForgeReforgeDocument>({
 forgeReforgeSchema.index({ configId: 1 });
 forgeReforgeSchema.index({ isActive: 1 });
 
-// === MÉTHODES STATIQUES (CORRIGÉES) ===
-forgeReforgeSchema.statics.getActiveReforge = function(this: IForgeReforgeModel) {
+// === MÉTHODES STATIQUES (APPROCHE SIMPLE) ===
+forgeReforgeSchema.statics.getActiveReforge = function() {
   return this.findOne({ isActive: true });
 };
 
-forgeReforgeSchema.statics.createDefaultReforge = function(this: IForgeReforgeModel) {
+forgeReforgeSchema.statics.createDefaultReforge = function() {
   return new this({
     configId: "default_reforge",
     name: "Equipment Reforge",
@@ -195,7 +189,7 @@ forgeReforgeSchema.statics.createDefaultReforge = function(this: IForgeReforgeMo
   });
 };
 
-// === MÉTHODES D'INSTANCE (INCHANGÉES) ===
+// === MÉTHODES D'INSTANCE ===
 
 forgeReforgeSchema.methods.calculateReforgeCost = function(rarity: string, lockedStats: string[], reforgeCount: number = 0): any {
   const baseGold = this.config.baseGoldCost;
@@ -492,7 +486,10 @@ forgeReforgeSchema.pre('save', function(next) {
   next();
 });
 
-// === CLASSE SERVICE POUR LE REFORGE (CORRIGÉE) ===
+// === CRÉATION ET EXPORT DU MODÈLE ===
+const ForgeReforge = mongoose.model<IForgeReforgeDocument>("ForgeReforge", forgeReforgeSchema);
+
+// === CLASSE SERVICE POUR LE REFORGE ===
 
 export class ForgeReforgeService extends ForgeModuleBase {
   private reforgeDocument: IForgeReforgeDocument | null = null;
@@ -506,9 +503,16 @@ export class ForgeReforgeService extends ForgeModuleBase {
   }
 
   async initialize(): Promise<void> {
-    this.reforgeDocument = await ForgeReforge.getActiveReforge();
+    // Utilisation des méthodes statiques via le modèle directement
+    this.reforgeDocument = await ForgeReforge.findOne({ isActive: true });
+    
     if (!this.reforgeDocument) {
-      this.reforgeDocument = ForgeReforge.createDefaultReforge();
+      this.reforgeDocument = new ForgeReforge({
+        configId: "default_reforge",
+        name: "Equipment Reforge",
+        description: "Reforge equipment stats with locked stat system",
+        config: DEFAULT_REFORGE_CONFIG
+      });
       await this.reforgeDocument.save();
     }
   }
@@ -640,9 +644,6 @@ export class ForgeReforgeService extends ForgeModuleBase {
     return result;
   }
 }
-
-// === EXPORT DU MODÈLE MONGOOSE ===
-const ForgeReforge = mongoose.model<IForgeReforgeDocument, IForgeReforgeModel>("ForgeReforge", forgeReforgeSchema);
 
 export { IReforgeResult, IForgeReforgeDocument, DEFAULT_REFORGE_CONFIG };
 export default ForgeReforge;
