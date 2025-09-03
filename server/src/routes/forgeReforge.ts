@@ -1,7 +1,7 @@
 import express, { Request, Response } from "express";
 import Joi from "joi";
 import authMiddleware from "../middleware/authMiddleware";
-import { createForgeService, handleForgeError, validateForgeParams } from "../models/Forge";
+import { createForgeService, handleForgeError, validateForgeParams } from "../models/Forge/index";
 
 const router = express.Router();
 
