@@ -28,19 +28,28 @@ async function main() {
   for (const it of items) {
     try {
       // Utilise la méthode d'instance pour garder la logique existante (catégories, fragments, monnaies...)
-      await inventory.addItem(it.itemId, 1, 1);
-      console.log("Added", it.itemId);
+      const owned = await inventory.addItem(it.itemId, 1, 1);
+      console.log("Added", it.itemId, "->", owned.instanceId);
     } catch (err) {
-      console.error("Error adding", it.itemId, err.message || err);
+      // TS: err peut être unknown — on transforme proprement en message
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("Error adding", it.itemId, msg);
     }
   }
 
-  await inventory.save();
-  console.log("Finished adding items to", username);
-  await mongoose.disconnect();
+  try {
+    await inventory.save();
+    console.log("Finished adding items to", username);
+  } catch (saveErr) {
+    const msg = saveErr instanceof Error ? saveErr.message : String(saveErr);
+    console.error("Error saving inventory:", msg);
+  } finally {
+    await mongoose.disconnect();
+  }
 }
 
-main().catch(err => {
-  console.error(err);
+main().catch((e) => {
+  const msg = e instanceof Error ? e.message : String(e);
+  console.error("Fatal error:", msg);
   process.exit(1);
 });
