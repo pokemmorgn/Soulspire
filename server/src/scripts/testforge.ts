@@ -756,12 +756,34 @@ class ForgeTester {
       if (forge.config.baseCosts.materialCosts) {
         log(`  🧪 Material Requirements:`, colors.blue);
         const materialCosts = forge.config.baseCosts.materialCosts;
-        for (const [rarity, materials] of materialCosts.entries()) {
-          const materialList = [];
-          for (const [materialId, amount] of materials.entries()) {
-            materialList.push(`${materialId}: ${amount}`);
+        
+        // materialCosts est une Map, donc on utilise .entries()
+        if (materialCosts instanceof Map) {
+          for (const [rarity, materials] of materialCosts.entries()) {
+            const materialList = [];
+            if (materials instanceof Map) {
+              for (const [materialId, amount] of materials.entries()) {
+                materialList.push(`${materialId}: ${amount}`);
+              }
+            } else {
+              // Si materials n'est pas une Map, c'est un objet standard
+              for (const [materialId, amount] of Object.entries(materials)) {
+                materialList.push(`${materialId}: ${amount}`);
+              }
+            }
+            log(`    ${rarity}: ${materialList.join(", ")}`, colors.reset);
           }
-          log(`    ${rarity}: ${materialList.join(", ")}`, colors.reset);
+        } else {
+          // Si materialCosts n'est pas une Map, c'est un objet standard
+          for (const [rarity, materials] of Object.entries(materialCosts)) {
+            const materialList = [];
+            if (materials && typeof materials === 'object') {
+              for (const [materialId, amount] of Object.entries(materials)) {
+                materialList.push(`${materialId}: ${amount}`);
+              }
+            }
+            log(`    ${rarity}: ${materialList.join(", ")}`, colors.reset);
+          }
         }
       }
       
