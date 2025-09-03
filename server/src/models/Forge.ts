@@ -133,8 +133,8 @@ const DEFAULT_FORGE_CONFIG: IForgeConfig = {
     gold: 1000,
     gems: 50,
     materialCosts: {
-      "Common": { "iron_ore": 5 },
-      "Rare": { "magic_crystal": 2 },
+      "Common": { "iron_ore": 2 },
+      "Rare": { "magic_crystal": 1 },
       "Epic": { "dragon_scale": 1 },
       "Legendary": { "awakening_stone": 1 }
     }
@@ -348,15 +348,22 @@ forgeSchema.methods.calculateReforgeCost = function(
   };
 };
 
-// Valider que les stats lockées sont valides pour ce slot
+// Valider que les stats lockées sont valides pour ce slot (CORRIGÉ)
 forgeSchema.methods.validateLockedStats = function(equipmentSlot: string, lockedStats: string[]): boolean {
   const slotConfig = this.config.slotConfigs.find((config: IForgeSlotConfig) => config.slot === equipmentSlot);
   if (!slotConfig) return false;
   
-  return lockedStats.every((stat: string) => slotConfig.availableStats.includes(stat));
+  // Filtrer les stats MongoDB internes
+  const validLockedStats = lockedStats.filter(stat => 
+    !stat.startsWith('$') && 
+    !stat.startsWith('_') && 
+    stat !== 'isNew'
+  );
+  
+  return validLockedStats.every((stat: string) => slotConfig.availableStats.includes(stat));
 };
 
-// Générer de nouvelles stats pour le reforge
+// Générer de nouvelles stats pour le reforge (CORRIGÉ)
 forgeSchema.methods.generateNewStats = function(
   equipmentSlot: string, 
   rarity: string, 
@@ -371,9 +378,16 @@ forgeSchema.methods.generateNewStats = function(
   
   const newStats: { [stat: string]: number } = {};
   
-  // Conserver les stats lockées
-  lockedStats.forEach((stat: string) => {
-    if (currentStats[stat] !== undefined) {
+  // Filtrer et conserver les stats lockées valides
+  const validLockedStats = lockedStats.filter(stat => 
+    !stat.startsWith('$') && 
+    !stat.startsWith('_') && 
+    stat !== 'isNew' &&
+    slotConfig.availableStats.includes(stat)
+  );
+  
+  validLockedStats.forEach((stat: string) => {
+    if (typeof currentStats[stat] === 'number' && !isNaN(currentStats[stat])) {
       newStats[stat] = currentStats[stat];
     }
   });
@@ -382,10 +396,10 @@ forgeSchema.methods.generateNewStats = function(
   const totalStats = Math.floor(Math.random() * (slotConfig.maxStats - slotConfig.minStats + 1)) + slotConfig.minStats;
   
   // Stats disponibles (sans les lockées)
-  const availableStats = slotConfig.availableStats.filter((stat: string) => !lockedStats.includes(stat));
+  const availableStats = slotConfig.availableStats.filter((stat: string) => !validLockedStats.includes(stat));
   
   // Calculer combien de nouvelles stats générer
-  const newStatsNeeded = totalStats - lockedStats.length;
+  const newStatsNeeded = totalStats - validLockedStats.length;
   const statsToGenerate = Math.min(newStatsNeeded, availableStats.length);
   
   // Sélectionner aléatoirement les nouvelles stats
@@ -541,22 +555,26 @@ forgeSchema.methods.executeReforge = async function(
   };
 };
 
-// Calculer les stats actuelles d'un objet possédé
+// Calculer les stats actuelles d'un objet possédé (CORRIGÉ)
 forgeSchema.methods.calculateCurrentItemStats = function(baseItem: any, ownedItem: any): any {
   const currentStats: any = {};
   
-  // Stats de base
+  // Stats de base - filtrer les champs MongoDB internes
   if (baseItem.baseStats) {
     for (const [stat, value] of Object.entries(baseItem.baseStats)) {
-      currentStats[stat] = value;
+      if (typeof value === 'number' && !isNaN(value) && !stat.startsWith('$') && !stat.startsWith('_')) {
+        currentStats[stat] = value;
+      }
     }
   }
   
   // Stats par niveau
   if (baseItem.statsPerLevel && ownedItem.level > 1) {
     for (const [stat, increment] of Object.entries(baseItem.statsPerLevel)) {
-      const levelBonus = (increment as number) * (ownedItem.level - 1);
-      currentStats[stat] = (currentStats[stat] || 0) + levelBonus;
+      if (typeof increment === 'number' && !isNaN(increment) && !stat.startsWith('$') && !stat.startsWith('_')) {
+        const levelBonus = increment * (ownedItem.level - 1);
+        currentStats[stat] = (currentStats[stat] || 0) + levelBonus;
+      }
     }
   }
   
@@ -564,16 +582,31 @@ forgeSchema.methods.calculateCurrentItemStats = function(baseItem: any, ownedIte
   if (ownedItem.enhancement > 0) {
     const enhancementMultiplier = 1 + (ownedItem.enhancement * 0.1); // +10% par niveau
     for (const stat in currentStats) {
-      currentStats[stat] = Math.floor(currentStats[stat] * enhancementMultiplier);
+      if (typeof currentStats[stat] === 'number' && !isNaN(currentStats[stat])) {
+        currentStats[stat] = Math.floor(currentStats[stat] * enhancementMultiplier);
+      }
     }
   }
   
   // Stats de reforge précédentes (si elles existent)
-  if ((ownedItem as any).reforgedStats) {
-    return (ownedItem as any).reforgedStats;
+  if (ownedItem.reforgedStats) {
+    // Fusionner avec les stats reforge en filtrant les valeurs invalides
+    for (const [stat, value] of Object.entries(ownedItem.reforgedStats)) {
+      if (typeof value === 'number' && !isNaN(value) && !stat.startsWith('$') && !stat.startsWith('_')) {
+        currentStats[stat] = value;
+      }
+    }
   }
   
-  return currentStats;
+  // Nettoyer et valider le résultat final
+  const cleanStats: any = {};
+  for (const [stat, value] of Object.entries(currentStats)) {
+    if (typeof value === 'number' && !isNaN(value) && value >= 0 && !stat.startsWith('$') && !stat.startsWith('_')) {
+      cleanStats[stat] = Math.floor(value);
+    }
+  }
+  
+  return cleanStats;
 };
 
 // Obtenir l'historique des reforges d'un objet
