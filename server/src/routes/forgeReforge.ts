@@ -272,8 +272,7 @@ router.post("/cost", authMiddleware, async (req: Request, res: Response): Promis
       itemInstanceId,
       lockedStatsCount: lockedStats.length,
       maxLockedStats: 3,
-      cost: preview.cost,
-      multipliers: preview.cost.multipliers || {}
+      cost: preview.cost
     });
 
   } catch (err: any) {
