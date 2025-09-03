@@ -589,9 +589,15 @@ export class ForgeReforgeService extends ForgeModuleBase {
       await this.initialize();
     }
 
-    const ranges = this.reforgeDocument!.config.statRanges.get ? 
-      this.reforgeDocument!.config.statRanges.get(rarity) :
-      this.reforgeDocument!.config.statRanges[rarity];
+    const statRanges = this.reforgeDocument!.config.statRanges;
+    let ranges: any;
+
+    // Gérer les deux cas : Map et objet standard
+    if (statRanges instanceof Map) {
+      ranges = statRanges.get(rarity);
+    } else {
+      ranges = (statRanges as any)[rarity];
+    }
 
     if (!ranges) return {};
 
