@@ -1,16 +1,17 @@
 import { ForgeCore, IForgeModuleConfig, IForgeOperationResult, IForgeResourceCost } from "./ForgeCore";
 import { ForgeReforgeService, IReforgeResult } from "./ForgeReforge";
 
-// === INTERFACE PRINCIPALE DU SERVICE FORGE ===
+// === INTERFACES PRINCIPALES DU SERVICE FORGE ===
+// (Renommées pour éviter les conflits d'export)
 
-export interface IForgeServiceConfig {
+export interface IForgeMainServiceConfig {
   reforge: IForgeModuleConfig;
   enhancement?: IForgeModuleConfig;
   fusion?: IForgeModuleConfig;
   tierUpgrade?: IForgeModuleConfig;
 }
 
-export interface IForgeStatus {
+export interface IForgeMainStatus {
   playerId: string;
   playerResources: {
     gold: number;
@@ -49,7 +50,7 @@ export interface IForgeStatus {
 
 // === CONFIGURATION PAR DÉFAUT ===
 
-export const DEFAULT_FORGE_SERVICE_CONFIG: IForgeServiceConfig = {
+export const DEFAULT_FORGE_SERVICE_CONFIG: IForgeMainServiceConfig = {
   reforge: {
     enabled: true,
     baseGoldCost: 1000,
@@ -110,7 +111,7 @@ export const DEFAULT_FORGE_SERVICE_CONFIG: IForgeServiceConfig = {
 // === SERVICE PRINCIPAL DE LA FORGE ===
 
 export class ForgeService extends ForgeCore {
-  private config: IForgeServiceConfig;
+  private config: IForgeMainServiceConfig;
   private reforgeService: ForgeReforgeService;
   
   // Placeholder pour les autres services (à implémenter)
@@ -118,7 +119,7 @@ export class ForgeService extends ForgeCore {
   // private fusionService: ForgeFusionService;
   // private tierUpgradeService: ForgeTierUpgradeService;
 
-  constructor(playerId: string, config: IForgeServiceConfig = DEFAULT_FORGE_SERVICE_CONFIG) {
+  constructor(playerId: string, config: IForgeMainServiceConfig = DEFAULT_FORGE_SERVICE_CONFIG) {
     super(playerId);
     this.config = config;
     
@@ -136,7 +137,7 @@ export class ForgeService extends ForgeCore {
   /**
    * Récupère le statut complet de la forge pour ce joueur
    */
-  async getForgeStatus(): Promise<IForgeStatus> {
+  async getForgeStatus(): Promise<IForgeMainStatus> {
     try {
       // Récupérer les ressources du joueur
       const [player, inventory] = await Promise.all([
@@ -154,7 +155,7 @@ export class ForgeService extends ForgeCore {
       // Initialiser le service de reforge si nécessaire
       await this.reforgeService.initialize();
 
-      const status: IForgeStatus = {
+      const status: IForgeMainStatus = {
         playerId: this.playerId,
         playerResources: {
           gold: player.gold,
@@ -266,7 +267,7 @@ export class ForgeService extends ForgeCore {
   /**
    * Vérifie si un module spécifique est activé
    */
-  isModuleEnabled(moduleName: keyof IForgeServiceConfig): boolean {
+  isModuleEnabled(moduleName: keyof IForgeMainServiceConfig): boolean {
     const moduleConfig = this.config[moduleName];
     return moduleConfig ? moduleConfig.enabled : false;
   }
@@ -274,7 +275,7 @@ export class ForgeService extends ForgeCore {
   /**
    * Met à jour la configuration d'un module
    */
-  updateModuleConfig(moduleName: keyof IForgeServiceConfig, newConfig: Partial<IForgeModuleConfig>): void {
+  updateModuleConfig(moduleName: keyof IForgeMainServiceConfig, newConfig: Partial<IForgeModuleConfig>): void {
     if (this.config[moduleName]) {
       Object.assign(this.config[moduleName]!, newConfig);
     }
@@ -473,7 +474,7 @@ export class ForgeService extends ForgeCore {
 /**
  * Crée une nouvelle instance du service Forge pour un joueur
  */
-export function createForgeService(playerId: string, config?: Partial<IForgeServiceConfig>): ForgeService {
+export function createForgeService(playerId: string, config?: Partial<IForgeMainServiceConfig>): ForgeService {
   const finalConfig = config ? 
     { ...DEFAULT_FORGE_SERVICE_CONFIG, ...config } : 
     DEFAULT_FORGE_SERVICE_CONFIG;
@@ -486,7 +487,7 @@ export function createForgeService(playerId: string, config?: Partial<IForgeServ
 /**
  * Middleware pour vérifier que le module de forge demandé est activé
  */
-export function validateForgeModule(moduleName: keyof IForgeServiceConfig) {
+export function validateForgeModule(moduleName: keyof IForgeMainServiceConfig) {
   return (req: any, res: any, next: any) => {
     const forgeService = createForgeService(req.userId);
     
@@ -575,10 +576,8 @@ export function validateReforgeParams(params: any): { valid: boolean; error?: st
 export { ForgeCore } from "./ForgeCore";
 export { ForgeReforgeService, IReforgeResult } from "./ForgeReforge";
 
-// Export des types principaux
+// Export des types principaux (sans conflits)
 export type {
-  IForgeServiceConfig,
-  IForgeStatus,
   IForgeOperationResult,
   IForgeResourceCost,
   IForgeModuleConfig
