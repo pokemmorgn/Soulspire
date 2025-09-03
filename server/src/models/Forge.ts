@@ -1,13 +1,4 @@
-// Générer les nouvelles stats
-  const newStats = this.generateNewStats(
-    baseItem.equipmentSlot, 
-    baseItem.rarity, 
-    lockedStats, 
-    currentStats
-  );
-
-  // Effectuer la transaction
-  await player.spendCurrency(cost);import mongoose, { Document, Schema } from "mongoose";
+import mongoose, { Document, Schema } from "mongoose";
 
 // === INTERFACES ===
 
