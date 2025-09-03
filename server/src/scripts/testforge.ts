@@ -397,8 +397,12 @@ class ForgeTester {
         log(`      ${stat}: ${value}`, colors.reset);
       });
       
-      // Exécuter le reforge avec 1 stat lockée
-      const lockedStats = ["hp"];
+      // Exécuter le reforge avec 1 stat lockée valide
+      const validStatsForLock = Object.keys(currentStats).filter(stat => 
+        typeof currentStats[stat] === 'number' && !isNaN(currentStats[stat])
+      );
+      const lockedStats = validStatsForLock.length > 0 ? [validStatsForLock[0]] : [];
+      
       log(`\n  🔄 Executing reforge with locked stats: [${lockedStats.join(", ")}]`, colors.yellow);
       
       const result = await this.forge.executeReforge(
