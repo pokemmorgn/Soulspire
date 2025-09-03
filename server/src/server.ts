@@ -21,6 +21,11 @@ import eventsRoutes from "./routes/events";
 import afkRouter from "./routes/afk";
 import campaignRoutes from "./routes/campaign";
 import itemsRoutes from "./routes/items";
+import forgeRoutes from "./routes/forge";
+import forgeReforgeRoutes from "./routes/forgeReforge";
+import forgeEnhancementRoutes from "./routes/forgeEnhancement";
+import forgeFusionRoutes from "./routes/forgeFusion";
+import forgeTierUpgradeRoutes from "./routes/forgeTierUpgrade";
 
 // Configuration de l'environnement
 dotenv.config();
@@ -181,6 +186,11 @@ app.use("/api/events", eventsRoutes);
 app.use("/api/afk", authMiddleware, touchLastSeen, afkRouter);
 app.use("/api/campaign", campaignRoutes);
 app.use("/api/items", itemsRoutes);
+app.use("/api/forge", forgeRoutes);
+app.use("/api/forge/reforge", forgeReforgeRoutes);
+app.use("/api/forge/enhancement", forgeEnhancementRoutes);
+app.use("/api/forge/fusion", forgeFusionRoutes);
+app.use("/api/forge/tier-upgrade", forgeTierUpgradeRoutes);
 // Route de santé de l'API
 app.get("/", (req: Request, res: Response) => {
   res.json({
