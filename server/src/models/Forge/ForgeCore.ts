@@ -46,6 +46,52 @@ export interface IForgeStats {
   lastOperation?: Date;
 }
 
+// === INTERFACES POUR LE SERVICE PRINCIPAL ===
+
+export interface IForgeServiceConfig {
+  reforge: IForgeModuleConfig;
+  enhancement?: IForgeModuleConfig;
+  fusion?: IForgeModuleConfig;
+  tierUpgrade?: IForgeModuleConfig;
+}
+
+export interface IForgeStatus {
+  playerId: string;
+  playerResources: {
+    gold: number;
+    gems: number;
+    paidGems: number;
+  };
+  modules: {
+    reforge: {
+      enabled: boolean;
+      stats: any;
+      availableOperations: number;
+    };
+    enhancement?: {
+      enabled: boolean;
+      stats: any;
+      maxLevel: number;
+    };
+    fusion?: {
+      enabled: boolean;
+      stats: any;
+      availableRecipes: number;
+    };
+    tierUpgrade?: {
+      enabled: boolean;
+      stats: any;
+      availableUpgrades: number;
+    };
+  };
+  inventory: {
+    reforgeableItems: number;
+    enhanceableItems: number;
+    fusableItems: number;
+    upgradeableItems: number;
+  };
+}
+
 // === CLASSE UTILITAIRE FORGE CORE ===
 
 export class ForgeCore {
