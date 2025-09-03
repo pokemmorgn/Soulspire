@@ -7,31 +7,33 @@ import {
 } from "./ForgeCore";
 
 /**
- * Module d'enchantement (Enhancement) inspiré d'AFK Arena.
- * Ajouts :
- * - possibilité d'utiliser des gems payantes pour garantir le succès
- * - système de "pity" / compensation en cas d'échecs répétés
- *
- * Hypothèses :
- * - ownedItem.enhancementLevel : number
- * - ownedItem.enhancementPity : number (compteur d'échecs consécutifs pour le pity)
- * - inventory.getItem(instanceId) retourne un objet modifiable et inventory.save() persiste les changements
- * - player.spendCurrency(cost) accepte un objet coût qui peut contenir `paidGems` si on veut marquer des gems payantes
+ * Module d'enchantement (Enhancement) fidèle à AFK Arena.
+ * 
+ * Améliorations par rapport à la version précédente :
+ * - Pity reset aux paliers +10, +20, +30 comme AFK Arena
+ * - Garantie automatique aux paliers critiques
+ * - Taux de succès plus fidèles à AFK Arena
+ * - Maximum 3 stats lockées dans le reforge (pas 4)
+ * - Matériaux plus simples (enhancement stones)
  */
 
 export interface IEnhancementOptions {
-  usePaidGemsToGuarantee?: boolean; // si true, on ajoutera un coût en gems pour garantir le succès
-  forceGuaranteed?: boolean; // option interne ou admin pour forcer guarantee (contournement)
+  usePaidGemsToGuarantee?: boolean;
+  forceGuaranteed?: boolean;
 }
 
 export class ForgeEnhancement extends ForgeModuleBase {
-  // Niveau maximum d'enchantement (AFK-like : +30)
+  // Niveau maximum comme AFK Arena
   public static readonly MAX_ENHANCEMENT_LEVEL = 30;
 
-  // Valeurs par défaut de pity / guarantee (peuvent être surchargées via config.materialRequirements ou autre)
-  protected defaultPityThreshold = 7; // après 7 échecs consécutifs on garantit la réussite suivante
-  protected defaultPityIncreasePerFail = 0.04; // +4% de chance par échec (cumulatif)
-  protected defaultMaxPityBonus = 0.5; // max +50% via pity
+  // Paliers critiques où le pity se reset (comme AFK Arena)
+  protected readonly PITY_RESET_LEVELS = [10, 20, 30];
+  protected readonly GUARANTEED_LEVELS = [10, 20, 30]; // Garantie à ces niveaux après échecs
+
+  // Valeurs ajustées pour être plus fidèles à AFK Arena
+  protected defaultPityThreshold = 10; // Plus tolérant qu'AFK Arena réel
+  protected defaultPityIncreasePerFail = 0.05; // +5% par échec
+  protected defaultMaxPityBonus = 0.7; // max +70% via pity
 
   constructor(playerId: string, config: IForgeModuleConfig) {
     super(playerId, config);
@@ -42,8 +44,74 @@ export class ForgeEnhancement extends ForgeModuleBase {
   }
 
   /**
-   * Calcule le coût (gold/gems + matériaux) pour passer de currentLevel -> currentLevel + 1
-   * Si options.usePaidGemsToGuarantee=true, la valeur retournée inclura le coût supplémentaire en gems
+   * Taux de succès de base plus fidèles à AFK Arena
+   */
+  protected getBaseSuccessChance(currentLevel: number): number {
+    // Taux inspirés d'AFK Arena (approximatifs)
+    if (currentLevel <= 5) return 1.0;   // 100% pour +0 à +5
+    if (currentLevel <= 10) return 0.9;  // 90% pour +6 à +10
+    if (currentLevel <= 15) return 0.7;  // 70% pour +11 à +15
+    if (currentLevel <= 20) return 0.5;  // 50% pour +16 à +20
+    if (currentLevel <= 25) return 0.25; // 25% pour +21 à +25
+    if (currentLevel < 30) return 0.1;   // 10% pour +26 à +29
+    return 0.0; // Impossible d'aller au-delà de +30
+  }
+
+  /**
+   * Système de pity avec reset aux paliers comme AFK Arena
+   */
+  protected getEffectiveSuccessChance(currentLevel: number, ownedItem: any): { effectiveChance: number; pityData: any } {
+    const baseChance = this.getBaseSuccessChance(currentLevel);
+    const nextLevel = currentLevel + 1;
+
+    // Trouver le dernier palier de reset passé
+    const lastResetLevel = this.PITY_RESET_LEVELS
+      .filter(level => level <= currentLevel)
+      .pop() || 0;
+
+    // Le pity compte depuis le dernier reset de palier
+    const totalFailures = ownedItem.enhancementPity || 0;
+    const lastResetFailures = ownedItem.lastResetFailures || 0;
+    const pityFailures = totalFailures - lastResetFailures;
+
+    // Récupérer config ou utiliser valeurs par défaut
+    const pityThreshold = (this.config as any)?.pityThreshold ?? this.defaultPityThreshold;
+    const pityIncreasePerFail = (this.config as any)?.pityIncreasePerFail ?? this.defaultPityIncreasePerFail;
+    const maxPityBonus = (this.config as any)?.maxPityBonus ?? this.defaultMaxPityBonus;
+
+    // Bonus de pity cumulatif depuis le dernier reset
+    const bonusFromPity = Math.min(pityFailures * pityIncreasePerFail, maxPityBonus);
+    let effectiveChance = Math.min(1.0, baseChance + bonusFromPity);
+
+    // Garantie automatique aux paliers critiques après suffisamment d'échecs
+    const isGuaranteedLevel = this.GUARANTEED_LEVELS.includes(nextLevel);
+    const willBeGuaranteedByPity = isGuaranteedLevel && pityFailures >= pityThreshold;
+
+    // Si c'est un palier garanti et qu'on a assez d'échecs, garantir
+    if (willBeGuaranteedByPity) {
+      effectiveChance = 1.0;
+    }
+
+    return {
+      effectiveChance,
+      pityData: {
+        pityFailures,
+        totalFailures,
+        lastResetLevel,
+        lastResetFailures,
+        pityThreshold,
+        pityIncreasePerFail,
+        maxPityBonus,
+        bonusFromPity,
+        willBeGuaranteedByPity,
+        isGuaranteedLevel,
+        nextLevelIsReset: this.PITY_RESET_LEVELS.includes(nextLevel)
+      }
+    };
+  }
+
+  /**
+   * Calcule le coût avec matériaux simplifiés (enhancement stones)
    */
   async getEnhancementCost(itemInstanceId: string, options?: IEnhancementOptions): Promise<IForgeResourceCost | null> {
     const validation = await this.validateItem(itemInstanceId, undefined);
@@ -56,14 +124,26 @@ export class ForgeEnhancement extends ForgeModuleBase {
 
     if (currentLevel >= ForgeEnhancement.MAX_ENHANCEMENT_LEVEL) return null;
 
-    // Utiliser calculateExponentialCost pour coûter gold/gems
+    // Coût de base plus agressif pour les hauts niveaux
     const baseGold = this.config.baseGoldCost || 100;
     const baseGems = this.config.baseGemCost || 0;
-    const exponentialFactor = 1.12;
-    const cost = this.calculateExponentialCost(baseGold, baseGems, nextLevel, ForgeEnhancement.MAX_ENHANCEMENT_LEVEL, exponentialFactor);
+    let exponentialFactor = 1.15; // Plus agressif qu'avant
 
-    // Ajouter matériaux selon la rareté
-    const materials = this.getMaterialRequirements(baseItem.rarity || "Common", "enhancement");
+    // Coût encore plus élevé aux paliers critiques
+    if (this.GUARANTEED_LEVELS.includes(nextLevel)) {
+      exponentialFactor = 1.25;
+    }
+
+    const cost = this.calculateExponentialCost(
+      baseGold, 
+      baseGems, 
+      nextLevel, 
+      ForgeEnhancement.MAX_ENHANCEMENT_LEVEL, 
+      exponentialFactor
+    );
+
+    // Matériaux simplifiés comme AFK Arena (enhancement stones principalement)
+    const materials = this.getSimplifiedMaterials(baseItem.rarity || "Common", nextLevel);
 
     const finalCost: any = {
       gold: cost.gold,
@@ -71,12 +151,10 @@ export class ForgeEnhancement extends ForgeModuleBase {
       materials
     };
 
-    // Si l'utilisateur souhaite garantir via gems, ajouter le coût en gems payantes (paidGems)
+    // Option guarantee via paid gems
     if (options?.usePaidGemsToGuarantee) {
       const guaranteeGems = this.calculateGuaranteeGemCost(currentLevel);
-      // Marquer comme paidGems si possible — on ajoute la clé paidGems en complément
       finalCost.paidGems = (finalCost.paidGems || 0) + guaranteeGems;
-      // On peut aussi augmenter gems si le système attend gems comme principale monnaie
       finalCost.gems = (finalCost.gems || 0) + guaranteeGems;
     }
 
@@ -84,69 +162,58 @@ export class ForgeEnhancement extends ForgeModuleBase {
   }
 
   /**
-   * Calcule le coût (en gems payantes) pour garantir le succès à un niveau donné.
-   * Formule : basePaidGemCost * (1 + currentLevel * multiplier) ; arrondi à l'entier supérieur.
-   * Ces valeurs peuvent être adaptées pour équilibrage.
+   * Matériaux simplifiés inspirés d'AFK Arena
+   */
+  protected getSimplifiedMaterials(rarity: string, targetLevel: number): { [materialId: string]: number } {
+    const materials: { [materialId: string]: number } = {};
+
+    // Enhancement stones basiques toujours requis
+    materials["enhancement_stone"] = Math.max(1, Math.floor(targetLevel / 5) + 1);
+
+    // Matériaux spécialisés selon rareté et palier
+    if (targetLevel > 10) {
+      const rarityMaterials: { [key: string]: string } = {
+        "Common": "iron_ore",
+        "Rare": "magic_crystal", 
+        "Epic": "dragon_scale",
+        "Legendary": "phoenix_feather",
+        "Mythic": "celestial_essence",
+        "Ascended": "divine_fragment"
+      };
+
+      const materialId = rarityMaterials[rarity] || "iron_ore";
+      materials[materialId] = Math.floor(targetLevel / 10) + 1;
+    }
+
+    // Matériaux premium aux paliers critiques
+    if (this.GUARANTEED_LEVELS.includes(targetLevel)) {
+      materials["enhancement_catalyst"] = 1;
+      
+      if (targetLevel >= 20) {
+        materials["mythic_essence"] = Math.floor(targetLevel / 20);
+      }
+    }
+
+    return materials;
+  }
+
+  /**
+   * Calcul du coût de garantie ajusté
    */
   protected calculateGuaranteeGemCost(currentLevel: number): number {
-    const basePaidGemCost = Math.max(5, Math.floor((this.config.baseGemCost || 5))); // coût de base
-    const levelMultiplier = 1 + (currentLevel * 0.25); // chaque + augmente le coût garanti de 25%
-    const cost = Math.ceil(basePaidGemCost * levelMultiplier);
-    // cap pour éviter abus extrême
-    const maxCost = 1000;
-    return Math.min(cost, maxCost);
+    const baseCost = 10;
+    
+    // Coût exponentiellement plus élevé aux hauts niveaux
+    if (currentLevel >= 25) return Math.ceil(baseCost * Math.pow(2, currentLevel - 20));
+    if (currentLevel >= 20) return Math.ceil(baseCost * Math.pow(1.8, currentLevel - 15));
+    if (currentLevel >= 15) return Math.ceil(baseCost * Math.pow(1.5, currentLevel - 10));
+    if (currentLevel >= 10) return Math.ceil(baseCost * Math.pow(1.3, currentLevel - 5));
+    
+    return Math.ceil(baseCost * (1 + currentLevel * 0.2));
   }
 
   /**
-   * Retourne la probabilité de succès de base (sans pity) pour tenter l'enchantement au niveau courant.
-   */
-  protected getBaseSuccessChance(currentLevel: number): number {
-    if (currentLevel < 5) return 1.0; // 100% pour +0 -> +5
-    if (currentLevel < 10) return 0.95;
-    if (currentLevel < 15) return 0.85;
-    if (currentLevel < 20) return 0.65;
-    if (currentLevel < 25) return 0.40;
-    if (currentLevel < 30) return 0.18;
-    return 0.0;
-  }
-
-  /**
-   * Calcule la chance de succès effective en appliquant le système de pity.
-   * - owned.enhancementPity est le nombre d'échecs consécutifs
-   * - configuration via valeurs par défaut ou override via this.config.materialRequirements (facultatif)
-   */
-  protected getEffectiveSuccessChance(currentLevel: number, ownedItem: any): { effectiveChance: number; pityData: any } {
-    const baseChance = this.getBaseSuccessChance(currentLevel);
-
-    const pityFailures = ownedItem.enhancementPity || 0;
-    // Récupérer des valeurs de config si présentes (optionnel)
-    const pityThreshold = (this.config as any)?.pityThreshold ?? this.defaultPityThreshold;
-    const pityIncreasePerFail = (this.config as any)?.pityIncreasePerFail ?? this.defaultPityIncreasePerFail;
-    const maxPityBonus = (this.config as any)?.maxPityBonus ?? this.defaultMaxPityBonus;
-
-    // Bonus de pity cumulatif
-    const bonusFromPity = Math.min(pityFailures * pityIncreasePerFail, maxPityBonus);
-    const effectiveChance = Math.min(1, baseChance + bonusFromPity);
-
-    const willBeGuaranteedByPity = pityFailures >= pityThreshold;
-
-    return {
-      effectiveChance,
-      pityData: {
-        pityFailures,
-        pityThreshold,
-        pityIncreasePerFail,
-        maxPityBonus,
-        bonusFromPity,
-        willBeGuaranteedByPity
-      }
-    };
-  }
-
-  /**
-   * Tente d'enchanter l'objet (essayer d'augmenter de +1).
-   * options.usePaidGemsToGuarantee : si true, on ajoute le coût paidGems et la tentative est garantie.
-   * Retourne un IForgeOperationResult avec le résultat.
+   * Tentative d'enhancement avec gestion du pity reset
    */
   async attemptEnhance(itemInstanceId: string, options?: IEnhancementOptions): Promise<IForgeOperationResult> {
     if (!this.isEnabled()) {
@@ -181,13 +248,12 @@ export class ForgeEnhancement extends ForgeModuleBase {
       };
     }
 
-    // Re-calculer coût de base (sans garantie)
+    // Calculer coût
     const baseCost = await this.getEnhancementCost(itemInstanceId, undefined);
     if (!baseCost) {
       return { success: false, cost: { gold: 0, gems: 0 }, message: "Unable to compute cost", data: null };
     }
 
-    // Si option de guarantee via paid gems, obtenir coût complet incluant paidGems
     let finalCost: any = { ...baseCost };
     if (options?.usePaidGemsToGuarantee) {
       const guaranteeGems = this.calculateGuaranteeGemCost(currentLevel);
@@ -195,19 +261,19 @@ export class ForgeEnhancement extends ForgeModuleBase {
       finalCost.gems = (finalCost.gems || 0) + guaranteeGems;
     }
 
-    // Vérifier que le joueur a les ressources
+    // Vérifier ressources
     const canAfford = await this.validatePlayerResources(finalCost);
     if (!canAfford) {
       return { success: false, cost: finalCost, message: "Insufficient resources", data: null };
     }
 
-    // Dépenser les ressources
+    // Dépenser ressources
     const spent = await this.spendResources(finalCost);
     if (!spent) {
       return { success: false, cost: finalCost, message: "Failed to spend resources", data: null };
     }
 
-    // Recharger inventaire et item pour être sûrs
+    // Recharger pour être sûr
     const inventory = await this.getInventory();
     if (!inventory) {
       await this.logOperation("enhancement", itemInstanceId, finalCost, false, { reason: "Inventory missing after spend" });
@@ -225,7 +291,7 @@ export class ForgeEnhancement extends ForgeModuleBase {
     // Calculer chances et appliquer pity
     const { effectiveChance, pityData } = this.getEffectiveSuccessChance(currentLevel, owned);
 
-    // Si option guarantee via gems ou via forceGuaranteed, garantir le succès
+    // Déterminer le résultat
     const guaranteeUsed = !!options?.usePaidGemsToGuarantee || !!options?.forceGuaranteed;
     const pityGuaranteeTriggered = pityData.willBeGuaranteedByPity;
 
@@ -246,32 +312,34 @@ export class ForgeEnhancement extends ForgeModuleBase {
       newLevel = currentLevel + 1;
       owned.enhancementLevel = newLevel;
 
-      // Reset pity on success
-      owned.enhancementPity = 0;
+      // Reset du pity si on atteint un palier de reset
+      if (this.PITY_RESET_LEVELS.includes(newLevel)) {
+        owned.lastResetFailures = owned.enhancementPity || 0;
+        owned.lastResetLevel = newLevel;
+      }
 
-      // Recalculer stats
+      // Reset compteur d'échecs sur succès
+      owned.enhancementPity = owned.lastResetFailures || 0;
+
+      // Recalcul des stats
       try {
         const baseStats = baseItem.baseStats || {};
         const statsPerLevel = baseItem.statsPerLevel || {};
-        const enhancement = newLevel;
-        newStats = this.calculateItemStatsWithEnhancement(baseStats, statsPerLevel, owned.level || 1, enhancement);
+        newStats = this.calculateItemStatsWithEnhancement(baseStats, statsPerLevel, owned.level || 1, newLevel);
         owned.stats = newStats;
       } catch (err) {
-        // Si recalcul des stats échoue, ne pas bloquer l'opération
+        // Ne pas bloquer
       }
 
       try {
         await inventory.save();
       } catch (err) {
-        // Ne pas bloquer ; log plus bas
+        // Log mais ne pas bloquer
       }
     } else {
-      // Échec : incrémenter le compteur de pity
+      // Échec : incrémenter pity
       owned.enhancementPity = (owned.enhancementPity || 0) + 1;
 
-      // Possibilité: comportement additionnel comme "compensation partielle" :
-      // On pourrait rembourser partiellement gold ou matériaux, ou créditer des "pity tokens".
-      // Ici on n'implémente pas de remboursement automatique, seulement le compteur de pity.
       try {
         await inventory.save();
       } catch (err) {
@@ -279,7 +347,7 @@ export class ForgeEnhancement extends ForgeModuleBase {
       }
     }
 
-    // Log détaillé incluant pity et guarantee
+    // Log détaillé
     await this.logOperation("enhancement", itemInstanceId, finalCost, success, {
       roll,
       effectiveChance,
@@ -293,14 +361,17 @@ export class ForgeEnhancement extends ForgeModuleBase {
 
     await this.updateStats(finalCost, success);
 
+    // Message informatif
     const messageParts = [];
     if (success) {
       messageParts.push(`Enhancement success: +${newLevel}`);
       if (guaranteeUsed) messageParts.push("(guaranteed via paid gems)");
-      if (pityGuaranteeTriggered) messageParts.push("(guaranteed by pity)");
+      if (pityGuaranteeTriggered) messageParts.push("(guaranteed by pity protection)");
+      if (this.PITY_RESET_LEVELS.includes(newLevel)) messageParts.push("(pity reset!)");
     } else {
       messageParts.push(`Enhancement failed at +${currentLevel}`);
       messageParts.push(`Pity: ${owned.enhancementPity || 0}`);
+      if (pityData.nextLevelIsReset) messageParts.push("(next level has pity protection)");
     }
 
     return {
@@ -312,6 +383,7 @@ export class ForgeEnhancement extends ForgeModuleBase {
         newLevel: success ? newLevel : currentLevel,
         newStats,
         pity: owned.enhancementPity || 0,
+        pityData,
         guaranteeUsed,
         pityGuaranteeTriggered
       }
