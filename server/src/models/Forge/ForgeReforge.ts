@@ -194,7 +194,9 @@ forgeReforgeSchema.statics.createDefaultReforge = function() {
 forgeReforgeSchema.methods.calculateReforgeCost = function(rarity: string, lockedStats: string[], reforgeCount: number = 0): any {
   const baseGold = this.config.baseGoldCost;
   const baseGems = this.config.baseGemCost;
-  const qualityMultiplier = this.config.qualityMultipliers.get(rarity) || 1;
+  const qualityMultiplier = this.config.qualityMultipliers.get ? 
+    this.config.qualityMultipliers.get(rarity) : 
+    this.config.qualityMultipliers[rarity] || 1;
   const lockCount = lockedStats.length;
   const lockMultiplier = this.config.lockMultipliers[Math.min(lockCount, this.config.lockMultipliers.length - 1)];
   const reforgeMultiplier = 1 + (reforgeCount * 0.1);
@@ -234,7 +236,7 @@ forgeReforgeSchema.methods.validateLockedStats = function(equipmentSlot: string,
   if (!slotConfig) return false;
   
   const validLockedStats = lockedStats.filter(stat => 
-    !stat.startsWith(') && !stat.startsWith('_') && stat !== 'isNew'
+    !stat.startsWith('$') && !stat.startsWith('_') && stat !== 'isNew'
   );
   
   return validLockedStats.every((stat: string) => slotConfig.availableStats.includes(stat));
@@ -252,7 +254,7 @@ forgeReforgeSchema.methods.generateNewStats = function(equipmentSlot: string, ra
   
   const newStats: { [stat: string]: number } = {};
   const validLockedStats = lockedStats.filter(stat => 
-    !stat.startsWith(') && !stat.startsWith('_') && stat !== 'isNew' && slotConfig.availableStats.includes(stat)
+    !stat.startsWith('$') && !stat.startsWith('_') && stat !== 'isNew' && slotConfig.availableStats.includes(stat)
   );
   
   // Conserver les stats lockées
@@ -304,7 +306,7 @@ forgeReforgeSchema.methods.calculateCurrentItemStats = function(baseItem: any, o
   // Stats de base
   if (baseItem.baseStats) {
     for (const [stat, value] of Object.entries(baseItem.baseStats)) {
-      if (typeof value === 'number' && !isNaN(value) && !stat.startsWith(') && !stat.startsWith('_') && value > 0) {
+      if (typeof value === 'number' && !isNaN(value) && !stat.startsWith('$') && !stat.startsWith('_') && value > 0) {
         currentStats[stat] = value;
       }
     }
@@ -313,7 +315,7 @@ forgeReforgeSchema.methods.calculateCurrentItemStats = function(baseItem: any, o
   // Stats par niveau
   if (baseItem.statsPerLevel && ownedItem.level > 1) {
     for (const [stat, increment] of Object.entries(baseItem.statsPerLevel)) {
-      if (typeof increment === 'number' && !isNaN(increment) && !stat.startsWith(') && !stat.startsWith('_') && increment > 0) {
+      if (typeof increment === 'number' && !isNaN(increment) && !stat.startsWith('$') && !stat.startsWith('_') && increment > 0) {
         const levelBonus = increment * (ownedItem.level - 1);
         currentStats[stat] = (currentStats[stat] || 0) + levelBonus;
       }
@@ -334,7 +336,7 @@ forgeReforgeSchema.methods.calculateCurrentItemStats = function(baseItem: any, o
   if (ownedItem.reforgedStats) {
     const reforgedStats: any = {};
     for (const [stat, value] of Object.entries(ownedItem.reforgedStats)) {
-      if (typeof value === 'number' && !isNaN(value) && !stat.startsWith(') && !stat.startsWith('_')) {
+      if (typeof value === 'number' && !isNaN(value) && !stat.startsWith('$') && !stat.startsWith('_')) {
         reforgedStats[stat] = value;
       }
     }
@@ -346,7 +348,7 @@ forgeReforgeSchema.methods.calculateCurrentItemStats = function(baseItem: any, o
   // Nettoyer les stats finales
   const cleanStats: any = {};
   for (const [stat, value] of Object.entries(currentStats)) {
-    if (typeof value === 'number' && !isNaN(value) && value >= 0 && !stat.startsWith(') && !stat.startsWith('_')) {
+    if (typeof value === 'number' && !isNaN(value) && value >= 0 && !stat.startsWith('$') && !stat.startsWith('_')) {
       cleanStats[stat] = Math.floor(value);
     }
   }
