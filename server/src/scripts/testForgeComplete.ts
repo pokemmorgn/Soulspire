@@ -38,11 +38,14 @@ async function testForgeComplete() {
     }
 
     // Créer inventaire avec équipement et matériaux
+    await Inventory.deleteMany({ playerId: (player as any)._id });
     const inventory = new Inventory({ playerId: player._id, gold: 1000000, gems: 100000 });
+    await inventory.save();
     
     // 3 épées pour tous les tests
+    const swordInstances = [];
     for (let i = 0; i < 3; i++) {
-      inventory.storage.weapons.push({
+      const sword = {
         itemId: 'test_sword',
         instanceId: new mongoose.Types.ObjectId().toString(),
         quantity: 1,
@@ -51,7 +54,9 @@ async function testForgeComplete() {
         tier: 1,
         isEquipped: false,
         acquiredDate: new Date()
-      } as any);
+      };
+      swordInstances.push(sword);
+      inventory.storage.weapons.push(sword as any);
     }
 
     // Matériaux pour tous les modules
@@ -78,17 +83,16 @@ async function testForgeComplete() {
     });
 
     await inventory.save();
-    console.log('✅ Setup complete');
+    console.log(`✅ Setup complete - Created ${swordInstances.length} weapons`);
 
     // Tests
     const forgeService = new ForgeService((player as any)._id.toString());
-    const weapons = inventory.storage.weapons;
     let passed = 0, total = 0;
 
     // Test Enhancement
     total++;
     try {
-      const result = await forgeService.executeEnhancement(weapons[0].instanceId);
+      const result = await forgeService.executeEnhancement(swordInstances[0].instanceId);
       if (result.success) {
         console.log('✅ Enhancement PASSED');
         passed++;
@@ -102,7 +106,7 @@ async function testForgeComplete() {
     // Test Reforge
     total++;
     try {
-      const result = await forgeService.executeReforge(weapons[1].instanceId, ['atk']);
+      const result = await forgeService.executeReforge(swordInstances[1].instanceId, ['atk']);
       if (result.success) {
         console.log('✅ Reforge PASSED');
         passed++;
@@ -116,7 +120,7 @@ async function testForgeComplete() {
     // Test Tier Upgrade
     total++;
     try {
-      const result = await forgeService.executeTierUpgrade(weapons[2].instanceId);
+      const result = await forgeService.executeTierUpgrade(swordInstances[2].instanceId);
       if (result.success) {
         console.log('✅ Tier Upgrade PASSED');
         passed++;
@@ -130,13 +134,21 @@ async function testForgeComplete() {
     // Test Fusion
     total++;
     try {
-      const swordIds = weapons.map(w => w.instanceId);
-      const result = await forgeService.executeFusion(swordIds);
-      if (result.success) {
-        console.log('✅ Fusion PASSED');
-        passed++;
+      // Recharger l'inventaire pour fusion
+      const freshInventory = await Inventory.findOne({ playerId: player._id });
+      const allSwords = freshInventory?.storage.weapons.filter((w: any) => w.itemId === 'test_sword') || [];
+      
+      if (allSwords.length >= 3) {
+        const swordIds = allSwords.slice(0, 3).map((w: any) => w.instanceId);
+        const result = await forgeService.executeFusion(swordIds);
+        if (result.success) {
+          console.log('✅ Fusion PASSED');
+          passed++;
+        } else {
+          console.log(`❌ Fusion FAILED: ${result.message}`);
+        }
       } else {
-        console.log(`❌ Fusion FAILED: ${result.message}`);
+        console.log(`❌ Fusion FAILED: Only found ${allSwords.length} swords`);
       }
     } catch (e: any) {
       console.log(`❌ Fusion ERROR: ${e.message}`);
