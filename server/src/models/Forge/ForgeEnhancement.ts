@@ -113,53 +113,55 @@ export class ForgeEnhancement extends ForgeModuleBase {
   /**
    * Calcule le coût avec matériaux simplifiés (enhancement stones)
    */
-  async getEnhancementCost(itemInstanceId: string, options?: IEnhancementOptions): Promise<IForgeResourceCost | null> {
-    const validation = await this.validateItem(itemInstanceId, undefined);
-    if (!validation.valid || !validation.itemData || !validation.ownedItem) return null;
+ async getEnhancementCost(itemInstanceId: string, options?: IEnhancementOptions): Promise<IForgeResourceCost | null> {
+  const validation = await this.validateItem(itemInstanceId, undefined);
+  if (!validation.valid || !validation.itemData || !validation.ownedItem) return null;
 
-    const baseItem: any = validation.itemData;
-    const ownedItem: any = validation.ownedItem;
-    const currentLevel: number = ownedItem.enhancementLevel || 0;
-    const nextLevel = currentLevel + 1;
+  const baseItem: any = validation.itemData;
+  const ownedItem: any = validation.ownedItem;
+  
+  // 🔧 CORRECTION : Utiliser le bon champ pour le niveau d'enhancement
+  const currentLevel: number = ownedItem.enhancement || ownedItem.enhancementLevel || 0;
+  const nextLevel = currentLevel + 1;
 
-    if (currentLevel >= ForgeEnhancement.MAX_ENHANCEMENT_LEVEL) return null;
+  if (currentLevel >= ForgeEnhancement.MAX_ENHANCEMENT_LEVEL) return null;
 
-    // Coût de base plus agressif pour les hauts niveaux
-    const baseGold = this.config.baseGoldCost || 100;
-    const baseGems = this.config.baseGemCost || 0;
-    let exponentialFactor = 1.15; // Plus agressif qu'avant
+  // Coût de base plus agressif pour les hauts niveaux
+  const baseGold = this.config.baseGoldCost || 100;
+  const baseGems = this.config.baseGemCost || 0;
+  let exponentialFactor = 1.15; // Plus agressif qu'avant
 
-    // Coût encore plus élevé aux paliers critiques
-    if (this.GUARANTEED_LEVELS.includes(nextLevel)) {
-      exponentialFactor = 1.25;
-    }
-
-    const cost = this.calculateExponentialCost(
-      baseGold, 
-      baseGems, 
-      nextLevel, 
-      ForgeEnhancement.MAX_ENHANCEMENT_LEVEL, 
-      exponentialFactor
-    );
-
-    // Matériaux simplifiés comme AFK Arena (enhancement stones principalement)
-    const materials = this.getSimplifiedMaterials(baseItem.rarity || "Common", nextLevel);
-
-    const finalCost: any = {
-      gold: cost.gold,
-      gems: cost.gems,
-      materials
-    };
-
-    // Option guarantee via paid gems
-    if (options?.usePaidGemsToGuarantee) {
-      const guaranteeGems = this.calculateGuaranteeGemCost(currentLevel);
-      finalCost.paidGems = (finalCost.paidGems || 0) + guaranteeGems;
-      finalCost.gems = (finalCost.gems || 0) + guaranteeGems;
-    }
-
-    return finalCost;
+  // Coût encore plus élevé aux paliers critiques
+  if (this.GUARANTEED_LEVELS.includes(nextLevel)) {
+    exponentialFactor = 1.25;
   }
+
+  const cost = this.calculateExponentialCost(
+    baseGold, 
+    baseGems, 
+    nextLevel, 
+    ForgeEnhancement.MAX_ENHANCEMENT_LEVEL, 
+    exponentialFactor
+  );
+
+  // Matériaux simplifiés comme AFK Arena (enhancement stones principalement)
+  const materials = this.getSimplifiedMaterials(baseItem.rarity || "Common", nextLevel);
+
+  const finalCost: any = {
+    gold: cost.gold,
+    gems: cost.gems,
+    materials
+  };
+
+  // Option guarantee via paid gems
+  if (options?.usePaidGemsToGuarantee) {
+    const guaranteeGems = this.calculateGuaranteeGemCost(currentLevel);
+    finalCost.paidGems = (finalCost.paidGems || 0) + guaranteeGems;
+    finalCost.gems = (finalCost.gems || 0) + guaranteeGems;
+  }
+
+  return finalCost;
+}
 
   /**
    * Matériaux simplifiés inspirés d'AFK Arena
