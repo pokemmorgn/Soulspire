@@ -4,216 +4,171 @@ import Item from '../models/Item';
 import Inventory from '../models/Inventory';
 import { ForgeService } from '../models/Forge/index';
 
-// Version ultra-simplifiée sans tous les types stricts
-async function quickForgeTest() {
-  console.log('🔧 Quick Forge Test - Starting...');
+async function testForgeComplete() {
+  console.log('🔧 Testing Forge System...');
   
   try {
-    await mongoose.connect('mongodb://localhost:27017/idle_gacha_test');
-    console.log('✅ Connected to MongoDB');
+    await mongoose.connect('mongodb://localhost:27017/forge_test_clean');
 
-    // Créer un joueur de test simple
+    // Créer joueur de test
     const player = new Player({
       username: `test_${Date.now()}`,
-      serverId: 'S1', 
+      serverId: 'S1',
       password: 'test123',
       level: 50,
       gold: 1000000,
-      gems: 100000,
-      paidGems: 50000
-    });
-    await player.save();
-    console.log('✅ Test player created');
-
-    // Créer quelques items de test
-    const testSword = new Item({
-      itemId: 'test_sword',
-      name: 'Test Sword',
-      category: 'Equipment',
-      subCategory: 'Weapon', 
-      rarity: 'Common',
-      equipmentSlot: 'Weapon',
-      baseStats: { atk: 100, hp: 50 },
-      sellPrice: 100
-    });
-    await testSword.save();
-
-    const testStone = new Item({
-      itemId: 'enhancement_stone',
-      name: 'Enhancement Stone',
-      category: 'Material',
-      subCategory: 'Enhancement',
-      materialType: 'Enhancement',
-      rarity: 'Common',
-      sellPrice: 10
-    });
-    await testStone.save();
-    console.log('✅ Test items created');
-
-    // Créer inventaire
-    const inventory = new Inventory({
-      playerId: player._id,
-      gold: 1000000,
       gems: 100000
     });
-    await inventory.save();
-    
-    // Ajouter items manuellement
-    const swordInstance = {
-      itemId: 'test_sword',
-      instanceId: new mongoose.Types.ObjectId().toString(),
-      quantity: 1,
-      level: 1,
-      enhancement: 0,
-      isEquipped: false,
-      acquiredDate: new Date()
-    };
-    inventory.storage.weapons.push(swordInstance as any);
-    
-    const stoneInstance = {
-      itemId: 'enhancement_stone', 
-      instanceId: new mongoose.Types.ObjectId().toString(),
-      quantity: 100,
-      level: 1,
-      enhancement: 0,
-      isEquipped: false,
-      acquiredDate: new Date()
-    };
-    inventory.storage.enhancementMaterials.push(stoneInstance as any);
-    
-    await inventory.save();
-    console.log('✅ Inventory created with test items');
+    await player.save();
 
-    // Test du service forge
+    // Créer items de test (upsert)
+    const itemsData = [
+      { itemId: 'test_sword', name: 'Test Sword', category: 'Equipment', subCategory: 'Weapon', rarity: 'Common', equipmentSlot: 'Weapon', baseStats: { atk: 100 }, sellPrice: 100 },
+      { itemId: 'enhancement_stone', name: 'Enhancement Stone', category: 'Material', materialType: 'Enhancement', rarity: 'Common', sellPrice: 10 },
+      { itemId: 'reforge_stone', name: 'Reforge Stone', category: 'Material', materialType: 'Crafting', rarity: 'Common', sellPrice: 25 },
+      { itemId: 'magic_dust', name: 'Magic Dust', category: 'Material', materialType: 'Crafting', rarity: 'Rare', sellPrice: 100 },
+      { itemId: 'fusion_stone', name: 'Fusion Stone', category: 'Material', materialType: 'Crafting', rarity: 'Common', sellPrice: 20 },
+      { itemId: 'silver_dust', name: 'Silver Dust', category: 'Material', materialType: 'Crafting', rarity: 'Common', sellPrice: 15 },
+      { itemId: 'tier_stone', name: 'Tier Stone', category: 'Material', materialType: 'Evolution', rarity: 'Common', sellPrice: 30 },
+      { itemId: 'enhancement_dust', name: 'Enhancement Dust', category: 'Material', materialType: 'Evolution', rarity: 'Common', sellPrice: 10 }
+    ];
+
+    for (const item of itemsData) {
+      await Item.findOneAndUpdate({ itemId: item.itemId }, item, { upsert: true });
+    }
+
+    // Créer inventaire avec équipement et matériaux
+    const inventory = new Inventory({ playerId: player._id, gold: 1000000, gems: 100000 });
+    
+    // 3 épées pour tous les tests
+    for (let i = 0; i < 3; i++) {
+      inventory.storage.weapons.push({
+        itemId: 'test_sword',
+        instanceId: new mongoose.Types.ObjectId().toString(),
+        quantity: 1,
+        level: 5 - i,
+        enhancement: 0,
+        tier: 1,
+        isEquipped: false,
+        acquiredDate: new Date()
+      } as any);
+    }
+
+    // Matériaux pour tous les modules
+    const materials = [
+      { itemId: 'enhancement_stone', quantity: 50, category: 'enhancementMaterials' },
+      { itemId: 'reforge_stone', quantity: 30, category: 'craftingMaterials' },
+      { itemId: 'magic_dust', quantity: 20, category: 'craftingMaterials' },
+      { itemId: 'fusion_stone', quantity: 25, category: 'craftingMaterials' },
+      { itemId: 'silver_dust', quantity: 50, category: 'craftingMaterials' },
+      { itemId: 'tier_stone', quantity: 30, category: 'evolutionMaterials' },
+      { itemId: 'enhancement_dust', quantity: 50, category: 'evolutionMaterials' }
+    ];
+
+    materials.forEach(mat => {
+      (inventory.storage as any)[mat.category].push({
+        itemId: mat.itemId,
+        instanceId: new mongoose.Types.ObjectId().toString(),
+        quantity: mat.quantity,
+        level: 1,
+        enhancement: 0,
+        isEquipped: false,
+        acquiredDate: new Date()
+      });
+    });
+
+    await inventory.save();
+    console.log('✅ Setup complete');
+
+    // Tests
     const forgeService = new ForgeService((player as any)._id.toString());
-    
-    // Test 1: Status
-    const status = await forgeService.getForgeStatus();
-    console.log(`✅ Forge Status: ${status.playerResources.gold}g available`);
-    
-    let testsPassed = 0;
-    let testsFailed = 0;
+    const weapons = inventory.storage.weapons;
+    let passed = 0, total = 0;
 
-    // Test 2: Enhancement
+    // Test Enhancement
+    total++;
     try {
-      const weapon = inventory.storage.weapons[0];
-      const result = await forgeService.executeEnhancement(weapon.instanceId);
+      const result = await forgeService.executeEnhancement(weapons[0].instanceId);
       if (result.success) {
-        console.log('✅ Enhancement test PASSED');
-        testsPassed++;
+        console.log('✅ Enhancement PASSED');
+        passed++;
       } else {
-        console.log(`❌ Enhancement test FAILED: ${result.message}`);
-        testsFailed++;
+        console.log(`❌ Enhancement FAILED: ${result.message}`);
       }
-    } catch (error: any) {
-      console.log(`❌ Enhancement test ERROR: ${error.message}`);
-      testsFailed++;
+    } catch (e: any) {
+      console.log(`❌ Enhancement ERROR: ${e.message}`);
     }
 
-    // Test 3: Reforge
+    // Test Reforge
+    total++;
     try {
-      const weapons = inventory.storage.weapons.filter((w: any) => w.itemId === 'test_sword');
-      if (weapons.length >= 2) {
-        const weapon = weapons[1];
-        const result = await forgeService.executeReforge(weapon.instanceId, ['atk']);
-        if (result.success) {
-          console.log('✅ Reforge test PASSED');
-          testsPassed++;
-        } else {
-          console.log(`❌ Reforge test FAILED: ${result.message}`);
-          testsFailed++;
-        }
+      const result = await forgeService.executeReforge(weapons[1].instanceId, ['atk']);
+      if (result.success) {
+        console.log('✅ Reforge PASSED');
+        passed++;
       } else {
-        console.log('⚠️ Reforge test SKIPPED: Not enough weapons');
+        console.log(`❌ Reforge FAILED: ${result.message}`);
       }
-    } catch (error: any) {
-      console.log(`❌ Reforge test ERROR: ${error.message}`);
-      testsFailed++;
+    } catch (e: any) {
+      console.log(`❌ Reforge ERROR: ${e.message}`);
     }
 
-    // Test 4: Tier Upgrade
+    // Test Tier Upgrade
+    total++;
     try {
-      const weapons = inventory.storage.weapons.filter((w: any) => w.itemId === 'test_sword');
-      if (weapons.length >= 3) {
-        const weapon = weapons[2];
-        const result = await forgeService.executeTierUpgrade(weapon.instanceId);
-        if (result.success) {
-          console.log('✅ Tier Upgrade test PASSED');
-          testsPassed++;
-        } else {
-          console.log(`❌ Tier Upgrade test FAILED: ${result.message}`);
-          testsFailed++;
-        }
+      const result = await forgeService.executeTierUpgrade(weapons[2].instanceId);
+      if (result.success) {
+        console.log('✅ Tier Upgrade PASSED');
+        passed++;
       } else {
-        console.log('⚠️ Tier Upgrade test SKIPPED: Not enough weapons');
+        console.log(`❌ Tier Upgrade FAILED: ${result.message}`);
       }
-    } catch (error: any) {
-      console.log(`❌ Tier Upgrade test ERROR: ${error.message}`);
-      testsFailed++;
+    } catch (e: any) {
+      console.log(`❌ Tier Upgrade ERROR: ${e.message}`);
     }
 
-    // Test 5: Fusion
+    // Test Fusion
+    total++;
     try {
-      const allSwords = inventory.storage.weapons.filter((w: any) => w.itemId === 'test_sword');
-      console.log(`🔍 Found ${allSwords.length} swords for fusion`);
-      
-      if (allSwords.length >= 3) {
-        const swordIds = allSwords.slice(0, 3).map((w: any) => w.instanceId);
-        const result = await forgeService.executeFusion(swordIds);
-        if (result.success) {
-          console.log('✅ Fusion test PASSED');
-          testsPassed++;
-        } else {
-          console.log(`❌ Fusion test FAILED: ${result.message}`);
-          testsFailed++;
-        }
+      const swordIds = weapons.map(w => w.instanceId);
+      const result = await forgeService.executeFusion(swordIds);
+      if (result.success) {
+        console.log('✅ Fusion PASSED');
+        passed++;
       } else {
-        console.log(`⚠️ Fusion test SKIPPED: Need 3 identical items, found ${allSwords.length}`);
+        console.log(`❌ Fusion FAILED: ${result.message}`);
       }
-    } catch (error: any) {
-      console.log(`❌ Fusion test ERROR: ${error.message}`);
-      testsFailed++;
+    } catch (e: any) {
+      console.log(`❌ Fusion ERROR: ${e.message}`);
     }
 
-    // Résumé
-    const total = testsPassed + testsFailed;
-    const successRate = total > 0 ? ((testsPassed / total) * 100).toFixed(1) : '0';
-    console.log(`\n🎯 RESULTS: ${testsPassed}/${total} tests passed (${successRate}%)`);
+    // Résultats
+    const rate = ((passed / total) * 100).toFixed(1);
+    console.log(`\n🎯 RESULTS: ${passed}/${total} tests passed (${rate}%)`);
     
-    if (testsFailed === 0) {
-      console.log('🎉 ALL FORGE MODULES WORKING PERFECTLY!');
+    if (passed === total) {
+      console.log('🎉 ALL FORGE MODULES WORKING!');
+      return true;
     } else {
       console.log('⚠️ Some modules need attention');
+      return false;
     }
-
-    return testsFailed === 0;
 
   } catch (error: any) {
     console.error('💥 Test failed:', error.message);
     return false;
   } finally {
-    // Nettoyage complet AVANT la déconnexion
-    try {
-      await Player.deleteMany({ username: /^test_/ });
-      await Item.deleteMany({ 
-        itemId: { 
-          $in: ['test_sword', 'enhancement_stone', 'reforge_stone', 'magic_dust', 
-                'fusion_stone', 'silver_dust', 'tier_stone', 'enhancement_dust'] 
-        } 
-      });
-      await Inventory.deleteMany({ playerId: /^68b9/ }); // Clean par pattern d'ObjectId de test
-    } catch (cleanupError) {
-      console.log('⚠️ Cleanup had some issues, but continuing...');
-    }
-    
+    // Nettoyage
+    await Player.deleteMany({ username: /^test_/ });
+    await Item.deleteMany({ itemId: /^(test_|enhancement_|reforge_|magic_|fusion_|silver_|tier_)/ });
+    await Inventory.deleteMany({});
     await mongoose.disconnect();
-    console.log('🧹 Cleaned up and disconnected');
+    console.log('🧹 Cleaned up');
   }
 }
 
-// Exécuter si appelé directement
 if (require.main === module) {
-  quickForgeTest();
+  testForgeComplete();
 }
 
-export default quickForgeTest;
+export default testForgeComplete;
