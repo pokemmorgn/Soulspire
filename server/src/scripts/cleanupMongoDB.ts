@@ -20,20 +20,32 @@ const log = (message: string, color: string = colors.reset) => {
 };
 
 async function cleanupMongoDBIndexes(): Promise<void> {
+  let connection: typeof mongoose | null = null;
+  
   try {
     log("🔗 Connexion à MongoDB...", colors.cyan);
-    await mongoose.connect(MONGO_URI);
+    connection = await mongoose.connect(MONGO_URI);
     log("✅ Connecté à MongoDB", colors.green);
 
     const db = mongoose.connection.db;
-    const collection = db.collection('inventories');
+    if (!db) {
+      throw new Error("Impossible d'établir la connexion à la base de données");
+    }
+
+    const inventoriesCollection = db.collection('inventories');
+    const playersCollection = db.collection('players');
+    const itemsCollection = db.collection('items');
 
     // 1. Afficher les index existants
     log("\n🔍 Index existants sur la collection 'inventories':", colors.yellow);
-    const indexes = await collection.indexes();
-    indexes.forEach((index: any, i: number) => {
-      log(`   ${i + 1}. ${index.name} - ${JSON.stringify(index.key)}`, colors.blue);
-    });
+    try {
+      const indexes = await inventoriesCollection.indexes();
+      indexes.forEach((index: any, i: number) => {
+        log(`   ${i + 1}. ${index.name} - ${JSON.stringify(index.key)}`, colors.blue);
+      });
+    } catch (error: any) {
+      log(`   ⚠️ Erreur lors de la récupération des index: ${error.message}`, colors.yellow);
+    }
 
     // 2. Supprimer les index problématiques
     log("\n🗑️ Suppression des index problématiques...", colors.yellow);
@@ -43,17 +55,18 @@ async function cleanupMongoDBIndexes(): Promise<void> {
       'storage.armors.instanceId_1',
       'storage.boots.instanceId_1',
       'storage.gloves.instanceId_1',
-      'storage.accessories.instanceId_1'
+      'storage.accessories.instanceId_1',
+      'storage.*.instanceId_1'
     ];
 
     let droppedCount = 0;
     for (const indexName of indexesToDrop) {
       try {
-        await collection.dropIndex(indexName);
+        await inventoriesCollection.dropIndex(indexName);
         log(`   ✅ Supprimé: ${indexName}`, colors.green);
         droppedCount++;
       } catch (error: any) {
-        if (error.code === 27 || error.message.includes('not found')) {
+        if (error.code === 27 || error.message.includes('not found') || error.message.includes('does not exist')) {
           log(`   ℹ️ Index '${indexName}' déjà supprimé ou inexistant`, colors.blue);
         } else {
           log(`   ⚠️ Erreur lors de la suppression de '${indexName}': ${error.message}`, colors.yellow);
@@ -64,108 +77,127 @@ async function cleanupMongoDBIndexes(): Promise<void> {
     // 3. Nettoyer les documents avec des valeurs null/undefined dans instanceId
     log("\n🧹 Nettoyage des documents avec instanceId invalides...", colors.yellow);
     
-    const updateResult = await collection.updateMany(
-      {},
-      {
-        $pull: {
-          'storage.weapons': { 
-            $or: [
-              { instanceId: { $in: [null, undefined, ''] } },
-              { instanceId: { $exists: false } }
-            ]
-          },
-          'storage.helmets': { 
-            $or: [
-              { instanceId: { $in: [null, undefined, ''] } },
-              { instanceId: { $exists: false } }
-            ]
-          },
-          'storage.armors': { 
-            $or: [
-              { instanceId: { $in: [null, undefined, ''] } },
-              { instanceId: { $exists: false } }
-            ]
-          },
-          'storage.boots': { 
-            $or: [
-              { instanceId: { $in: [null, undefined, ''] } },
-              { instanceId: { $exists: false } }
-            ]
-          },
-          'storage.gloves': { 
-            $or: [
-              { instanceId: { $in: [null, undefined, ''] } },
-              { instanceId: { $exists: false } }
-            ]
-          },
-          'storage.accessories': { 
-            $or: [
-              { instanceId: { $in: [null, undefined, ''] } },
-              { instanceId: { $exists: false } }
-            ]
+    const categories = ['weapons', 'helmets', 'armors', 'boots', 'gloves', 'accessories'];
+    let totalModified = 0;
+    
+    for (const category of categories) {
+      try {
+        // Utiliser une approche plus simple avec MongoDB natif
+        const result = await inventoriesCollection.updateMany(
+          {},
+          {
+            $pull: {
+              [`storage.${category}`]: {
+                $or: [
+                  { instanceId: null },
+                  { instanceId: "" },
+                  { instanceId: { $exists: false } }
+                ]
+              }
+            }
           }
+        );
+        
+        totalModified += result.modifiedCount;
+        
+        if (result.modifiedCount > 0) {
+          log(`   ✅ ${category}: ${result.modifiedCount} documents nettoyés`, colors.green);
         }
+      } catch (error: any) {
+        log(`   ⚠️ Erreur lors du nettoyage de ${category}: ${error.message}`, colors.yellow);
       }
-    );
-
-    log(`   ✅ ${updateResult.modifiedCount} documents nettoyés`, colors.green);
+    }
+    
+    log(`   ✅ Total: ${totalModified} documents nettoyés`, colors.green);
 
     // 4. Supprimer les documents d'inventaire complètement vides ou corrompus
     log("\n🗑️ Suppression des inventaires corrompus...", colors.yellow);
     
-    const deleteResult = await collection.deleteMany({
-      $or: [
-        { playerId: { $in: [null, undefined, ''] } },
-        { storage: null },
-        { storage: undefined }
-      ]
-    });
+    try {
+      const deleteResult = await inventoriesCollection.deleteMany({
+        $or: [
+          { playerId: null },
+          { playerId: "" },
+          { playerId: { $exists: false } },
+          { storage: null },
+          { storage: { $exists: false } }
+        ]
+      });
 
-    if (deleteResult.deletedCount > 0) {
-      log(`   ✅ ${deleteResult.deletedCount} inventaires corrompus supprimés`, colors.green);
-    } else {
-      log(`   ℹ️ Aucun inventaire corrompu trouvé`, colors.blue);
+      if (deleteResult.deletedCount > 0) {
+        log(`   ✅ ${deleteResult.deletedCount} inventaires corrompus supprimés`, colors.green);
+      } else {
+        log(`   ℹ️ Aucun inventaire corrompu trouvé`, colors.blue);
+      }
+    } catch (error: any) {
+      log(`   ⚠️ Erreur lors de la suppression des inventaires corrompus: ${error.message}`, colors.yellow);
     }
 
     // 5. Nettoyer les données de test existantes
     log("\n🧪 Nettoyage des données de test...", colors.yellow);
     
-    const testCleanupResults = await Promise.all([
-      // Supprimer les joueurs de test
-      db.collection('players').deleteMany({ 
+    let totalTestDataDeleted = 0;
+    
+    // Supprimer les joueurs de test
+    try {
+      const playersResult = await playersCollection.deleteMany({ 
         username: { $regex: /forge_test|test_player/i }
-      }),
-      // Supprimer les inventaires de test
-      db.collection('inventories').deleteMany({ 
+      });
+      totalTestDataDeleted += playersResult.deletedCount;
+      if (playersResult.deletedCount > 0) {
+        log(`   ✅ ${playersResult.deletedCount} joueurs de test supprimés`, colors.green);
+      }
+    } catch (error: any) {
+      log(`   ⚠️ Erreur lors de la suppression des joueurs de test: ${error.message}`, colors.yellow);
+    }
+
+    // Supprimer les inventaires de test
+    try {
+      const inventoriesResult = await inventoriesCollection.deleteMany({ 
         playerId: { $regex: /forge_test/i }
-      }),
-      // Supprimer les items de test
-      db.collection('items').deleteMany({ 
+      });
+      totalTestDataDeleted += inventoriesResult.deletedCount;
+      if (inventoriesResult.deletedCount > 0) {
+        log(`   ✅ ${inventoriesResult.deletedCount} inventaires de test supprimés`, colors.green);
+      }
+    } catch (error: any) {
+      log(`   ⚠️ Erreur lors de la suppression des inventaires de test: ${error.message}`, colors.yellow);
+    }
+
+    // Supprimer les items de test
+    try {
+      const itemsResult = await itemsCollection.deleteMany({ 
         itemId: { 
           $regex: /^(common_|rare_|epic_|legendary_|mythic_|reforge_stone|magic_dust|mystic_scroll|celestial_essence|enhancement_stone|silver_dust|gold_dust|platinum_dust|legendary_essence|fusion_stone|magic_essence|celestial_fragment|tier_stone|enhancement_dust|rare_crystal|epic_essence|legendary_core|silver_thread|golden_thread|mystic_ore|divine_shard)/ 
         }
-      })
-    ]);
+      });
+      totalTestDataDeleted += itemsResult.deletedCount;
+      if (itemsResult.deletedCount > 0) {
+        log(`   ✅ ${itemsResult.deletedCount} items de test supprimés`, colors.green);
+      }
+    } catch (error: any) {
+      log(`   ⚠️ Erreur lors de la suppression des items de test: ${error.message}`, colors.yellow);
+    }
 
-    const totalTestDataDeleted = testCleanupResults.reduce((sum, result) => sum + result.deletedCount, 0);
-    if (totalTestDataDeleted > 0) {
-      log(`   ✅ ${totalTestDataDeleted} documents de test supprimés`, colors.green);
-    } else {
+    if (totalTestDataDeleted === 0) {
       log(`   ℹ️ Aucune donnée de test trouvée`, colors.blue);
     }
 
     // 6. Afficher les index restants
     log("\n📋 Index restants après nettoyage:", colors.yellow);
-    const finalIndexes = await collection.indexes();
-    finalIndexes.forEach((index: any, i: number) => {
-      log(`   ${i + 1}. ${index.name} - ${JSON.stringify(index.key)}`, colors.blue);
-    });
+    try {
+      const finalIndexes = await inventoriesCollection.indexes();
+      finalIndexes.forEach((index: any, i: number) => {
+        log(`   ${i + 1}. ${index.name} - ${JSON.stringify(index.key)}`, colors.blue);
+      });
+    } catch (error: any) {
+      log(`   ⚠️ Erreur lors de la récupération des index finaux: ${error.message}`, colors.yellow);
+    }
 
     // 7. Statistiques finales
     log("\n📊 Statistiques de nettoyage:", colors.bright);
     log(`   🗑️ Index supprimés: ${droppedCount}`, colors.green);
     log(`   🧹 Documents nettoyés: ${totalModified}`, colors.green);
-    log(`   🗂️ Inventaires supprimés: ${deleteResult.deletedCount}`, colors.green);
     log(`   🧪 Données de test supprimées: ${totalTestDataDeleted}`, colors.green);
 
     log("\n✅ Nettoyage terminé avec succès!", colors.green);
@@ -174,12 +206,16 @@ async function cleanupMongoDBIndexes(): Promise<void> {
 
   } catch (error: any) {
     log(`\n💥 Erreur lors du nettoyage: ${error.message}`, colors.red);
-    console.error(error.stack);
+    if (error.stack) {
+      log(`Stack trace: ${error.stack}`, colors.red);
+    }
     throw error;
   } finally {
     try {
-      await mongoose.connection.close();
-      log("\n🔌 Connexion MongoDB fermée", colors.blue);
+      if (connection) {
+        await mongoose.connection.close();
+        log("\n🔌 Connexion MongoDB fermée", colors.blue);
+      }
     } catch (error: any) {
       log(`⚠️ Erreur lors de la fermeture: ${error.message}`, colors.yellow);
     }
@@ -197,6 +233,13 @@ const main = async (): Promise<void> => {
   log("   • Préparer la DB pour les tests de forge", colors.reset);
   log("=".repeat(60), colors.bright);
 
+  // Demander confirmation
+  log("\n⚠️  ATTENTION: Cette opération va modifier votre base de données!", colors.yellow);
+  log("Appuyez sur Ctrl+C pour annuler, ou attendez 3 secondes pour continuer...", colors.yellow);
+  
+  // Attendre 3 secondes pour permettre l'annulation
+  await new Promise(resolve => setTimeout(resolve, 3000));
+
   try {
     await cleanupMongoDBIndexes();
     log("\n🎉 Script terminé avec succès!", colors.green);
@@ -209,7 +252,10 @@ const main = async (): Promise<void> => {
 
 // Point d'entrée
 if (require.main === module) {
-  main();
+  main().catch((error) => {
+    console.error("Erreur fatale:", error);
+    process.exit(1);
+  });
 }
 
 export default cleanupMongoDBIndexes;
