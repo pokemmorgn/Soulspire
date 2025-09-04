@@ -380,8 +380,7 @@ router.get("/admin/stats", authMiddleware, async (req: Request, res: Response): 
     const result = await ShopService.getShopStats(serverId as string);
 
     res.json({
-      ...result,
-      message: "Shop statistics retrieved successfully"
+      ...result
     });
 
   } catch (error: any) {
