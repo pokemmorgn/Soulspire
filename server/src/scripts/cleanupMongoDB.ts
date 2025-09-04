@@ -164,7 +164,7 @@ async function cleanupMongoDBIndexes(): Promise<void> {
     // 7. Statistiques finales
     log("\n📊 Statistiques de nettoyage:", colors.bright);
     log(`   🗑️ Index supprimés: ${droppedCount}`, colors.green);
-    log(`   🧹 Documents nettoyés: ${updateResult.modifiedCount}`, colors.green);
+    log(`   🧹 Documents nettoyés: ${totalModified}`, colors.green);
     log(`   🗂️ Inventaires supprimés: ${deleteResult.deletedCount}`, colors.green);
     log(`   🧪 Données de test supprimées: ${totalTestDataDeleted}`, colors.green);
 
