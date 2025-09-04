@@ -461,40 +461,6 @@ protected getCurrentTierFromOwned(owned: any): number {
  * The issue was that getCurrentTierFromOwned() was returning incorrect values
  * compared to the actual item.tier field, causing calculation failures.
  */
-protected getCurrentTierFromOwned(owned: any): number {
-  // 🔧 FIX: Check multiple possible fields for tier information
-  // Priority order: tier > equipmentData.tier > upgradeHistory.length + 1
-  
-  // First priority: Direct tier field
-  if (owned.tier !== undefined && owned.tier !== null && typeof owned.tier === 'number') {
-    const tier = Math.max(1, Math.min(owned.tier, ForgeTierUpgrade.MAX_TIER));
-    console.log(`🔧 Tier from owned.tier: ${tier}`);
-    return tier;
-  }
-  
-  // Second priority: Equipment data tier
-  if (owned.equipmentData?.tier !== undefined && typeof owned.equipmentData.tier === 'number') {
-    const tier = Math.max(1, Math.min(owned.equipmentData.tier, ForgeTierUpgrade.MAX_TIER));
-    console.log(`🔧 Tier from equipmentData.tier: ${tier}`);
-    return tier;
-  }
-  
-  // Third priority: Upgrade history length + 1 (original fallback logic)
-  try {
-    const upgradeHistory = owned.equipmentData?.upgradeHistory;
-    if (Array.isArray(upgradeHistory)) {
-      const tier = Math.max(1, Math.min(upgradeHistory.length + 1, ForgeTierUpgrade.MAX_TIER));
-      console.log(`🔧 Tier from upgradeHistory (${upgradeHistory.length} upgrades): ${tier}`);
-      return tier;
-    }
-  } catch (err) {
-    console.log(`🔧 Error reading upgradeHistory: ${err}`);
-  }
-  
-  // Default fallback: Tier 1
-  console.log(`🔧 Tier defaulted to 1 (no tier data found)`);
-  return 1;
-}
 
 /**
  * 🔧 UPDATED METHOD - Fix the inconsistency in getTotalUpgradeCostToMax
