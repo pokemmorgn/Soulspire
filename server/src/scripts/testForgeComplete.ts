@@ -1,9 +1,9 @@
 import mongoose from 'mongoose';
-import Player from '../src/models/Player.js';
-import Hero from '../src/models/Hero.js';
-import Item from '../src/models/Item.js';
-import Inventory from '../src/models/Inventory.js';
-import { ForgeService } from '../src/models/Forge/index.js';
+import Player from '../models/Player';
+import Hero from '../models/Hero';
+import Item from '../models/Item';
+import Inventory from '../models/Inventory';
+import { ForgeService } from '../models/Forge/index';
 
 // === CONFIGURATION ===
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/idle_gacha_test';
@@ -14,33 +14,33 @@ function generateTestId() {
   return TEST_PREFIX + new mongoose.Types.ObjectId().toString();
 }
 
-function logSection(title) {
+function logSection(title: string) {
   console.log(`\n${'='.repeat(80)}`);
   console.log(`🔧 ${title}`);
   console.log(`${'='.repeat(80)}`);
 }
 
-function logTest(testName) {
+function logTest(testName: string) {
   console.log(`\n🧪 Testing: ${testName}`);
 }
 
-function logSuccess(message) {
+function logSuccess(message: string) {
   console.log(`✅ PASSED: ${message}`);
 }
 
-function logError(message, error = null) {
+function logError(message: string, error: any = null) {
   console.log(`❌ FAILED: ${message}`);
   if (error) {
     console.log(`   Error: ${error.message}`);
   }
 }
 
-function logInfo(message) {
+function logInfo(message: string) {
   console.log(`   ${message}`);
 }
 
 // === DEBUG INVENTAIRE COMPLET ===
-function debugInventory(inventory, title = "INVENTORY DEBUG") {
+function debugInventory(inventory: any, title = "INVENTORY DEBUG") {
   logSection(title);
   
   console.log(`📦 Player: ${inventory.playerId}`);
@@ -62,7 +62,7 @@ function debugInventory(inventory, title = "INVENTORY DEBUG") {
     const items = inventory.storage[category] || [];
     if (Array.isArray(items) && items.length > 0) {
       console.log(`\n  📁 ${category.toUpperCase()} (${items.length} items):`);
-      items.forEach((item, index) => {
+      items.forEach((item: any, index: number) => {
         console.log(`     [${index}] ${item.itemId} (qty: ${item.quantity || 1}, lvl: ${item.level || 1}, +${item.enhancement || 0}) ${item.isEquipped ? '⚔️' : '📦'}`);
       });
       totalItems += items.length;
@@ -99,6 +99,8 @@ async function createAdvancedTestData() {
   const player = new Player({
     _id: playerId,
     username: `test_forge_${Date.now()}`,
+    serverId: 'S1',
+    password: 'testpass123',
     level: 50,
     gold: 1000000,
     gems: 100000,
@@ -290,7 +292,7 @@ async function createAdvancedTestData() {
   // 3. Créer l'inventaire et le remplir généreusement
   let inventory = await Inventory.findOne({ playerId });
   if (!inventory) {
-    inventory = await Inventory.createForPlayer(playerId);
+    inventory = await (Inventory as any).createForPlayer(playerId);
   }
 
   // Ajouter équipement
@@ -301,7 +303,7 @@ async function createAdvancedTestData() {
   const epicHelmet = await inventory.addItem('debug_helmet_epic', 1, 15);
 
   // REMPLIR GÉNÉREUSEMENT LES MATÉRIAUX
-  const materialQuantities = [
+  const materialQuantities: [string, number][] = [
     ['enhancement_stone_basic', 100],
     ['enhancement_dust_basic', 200],
     ['enhancement_dust_advanced', 50],
@@ -339,7 +341,7 @@ async function testForgeWithDebug() {
     total: 0,
     passed: 0,
     failed: 0,
-    errors: []
+    errors: [] as Array<{test: string; error: string}>
   };
 
   // Test 1: Status Global
@@ -354,7 +356,7 @@ async function testForgeWithDebug() {
     
     logSuccess("Forge Status");
     results.passed++;
-  } catch (error) {
+  } catch (error: any) {
     logError("Forge Status", error);
     results.failed++;
     results.errors.push({ test: "Forge Status", error: error.message });
@@ -366,7 +368,7 @@ async function testForgeWithDebug() {
     logTest("Reforge with Material Debug");
     
     // Trouver un équipement à reforge
-    const weapon = inventory.storage.weapons.find(w => !w.isEquipped);
+    const weapon = inventory.storage.weapons.find((w: any) => !w.isEquipped);
     if (!weapon) throw new Error("No weapon found for reforge");
     
     logInfo(`🗡️ Using weapon: ${weapon.itemId} (${weapon.instanceId})`);
@@ -375,8 +377,8 @@ async function testForgeWithDebug() {
     console.log("\n🔍 MATERIALS BEFORE REFORGE:");
     const materialsBefore = inventory.storage.enhancementMaterials || [];
     const craftingBefore = inventory.storage.craftingMaterials || [];
-    console.log("Enhancement Materials:", materialsBefore.map(m => `${m.itemId}(${m.quantity})`).join(", "));
-    console.log("Crafting Materials:", craftingBefore.map(m => `${m.itemId}(${m.quantity})`).join(", "));
+    console.log("Enhancement Materials:", materialsBefore.map((m: any) => `${m.itemId}(${m.quantity})`).join(", "));
+    console.log("Crafting Materials:", craftingBefore.map((m: any) => `${m.itemId}(${m.quantity})`).join(", "));
     
     const preview = await forgeService.getReforgePreview(weapon.instanceId, ['atk']);
     logInfo(`🔮 Preview: cost ${preview.cost.gold}g, ${preview.cost.gems} gems`);
@@ -392,7 +394,7 @@ async function testForgeWithDebug() {
     } else {
       throw new Error(result.message);
     }
-  } catch (error) {
+  } catch (error: any) {
     logError("Reforge with Material Debug", error);
     results.failed++;
     results.errors.push({ test: "Reforge", error: error.message });
@@ -403,7 +405,7 @@ async function testForgeWithDebug() {
     results.total++;
     logTest("Enhancement with Full Debug");
     
-    const weapon = inventory.storage.weapons.find(w => !w.isEquipped && (w.enhancement || 0) < 5);
+    const weapon = inventory.storage.weapons.find((w: any) => !w.isEquipped && (w.enhancement || 0) < 5);
     if (!weapon) throw new Error("No enhanceable weapon found");
     
     logInfo(`⚔️ Using weapon: ${weapon.itemId} (${weapon.instanceId}), current +${weapon.enhancement || 0}`);
@@ -432,7 +434,7 @@ async function testForgeWithDebug() {
     console.log("\n🔍 AFTER ENHANCEMENT:");
     debugInventory(await Inventory.findOne({ playerId: player._id }), "AFTER ENHANCEMENT");
     
-  } catch (error) {
+  } catch (error: any) {
     logError("Enhancement with Full Debug", error);
     results.failed++;
     results.errors.push({ test: "Enhancement", error: error.message });
@@ -444,7 +446,7 @@ async function testForgeWithDebug() {
     logTest("Fusion with Detailed Material Debug");
     
     // S'assurer qu'on a 3 armes communes
-    const commonWeapons = inventory.storage.weapons.filter(w => 
+    const commonWeapons = inventory.storage.weapons.filter((w: any) => 
       !w.isEquipped && w.itemId === 'debug_sword_common'
     ).slice(0, 3);
     
@@ -452,7 +454,7 @@ async function testForgeWithDebug() {
       throw new Error(`Need 3 common weapons, found ${commonWeapons.length}`);
     }
     
-    const instanceIds = commonWeapons.map(w => w.instanceId);
+    const instanceIds = commonWeapons.map((w: any) => w.instanceId);
     logInfo(`🔥 Fusion items: ${instanceIds.join(', ')}`);
     
     // DEBUG SUPER DÉTAILLÉ des matériaux
@@ -466,10 +468,10 @@ async function testForgeWithDebug() {
     ];
     
     allCategories.forEach(cat => {
-      const items = currentInventory.storage[cat] || [];
+      const items = (currentInventory as any).storage[cat] || [];
       console.log(`\n  📁 ${cat}:`);
       if (items.length > 0) {
-        items.forEach(item => {
+        items.forEach((item: any) => {
           console.log(`    - ${item.itemId}: qty=${item.quantity || 1}`);
         });
       } else {
@@ -499,7 +501,7 @@ async function testForgeWithDebug() {
       throw new Error(result.message);
     }
     
-  } catch (error) {
+  } catch (error: any) {
     logError("Fusion with Detailed Material Debug", error);
     results.failed++;
     results.errors.push({ test: "Fusion", error: error.message });
@@ -510,7 +512,7 @@ async function testForgeWithDebug() {
     results.total++;
     logTest("Tier Upgrade with Ultra Debug");
     
-    const rareSword = inventory.storage.weapons.find(w => 
+    const rareSword = inventory.storage.weapons.find((w: any) => 
       w.itemId === 'debug_sword_rare' && !w.isEquipped
     );
     
@@ -524,7 +526,7 @@ async function testForgeWithDebug() {
     
     // Analyser chaque matériau individuellement
     console.log("\n📊 MATERIAL ANALYSIS:");
-    const materialAnalysis = {
+    const materialAnalysis: Record<string, number> = {
       'tier_essence_basic': 0,
       'tier_essence_advanced': 0, 
       'enhancement_dust_basic': 0,
@@ -534,9 +536,14 @@ async function testForgeWithDebug() {
       'magic_dust': 0
     };
     
+    const allCategories = [
+      'enhancementMaterials', 'evolutionMaterials', 'craftingMaterials', 
+      'awakeningMaterials', 'enhancementItems', 'artifacts', 'scrolls', 'potions'
+    ];
+    
     allCategories.forEach(cat => {
-      const items = preInventory.storage[cat] || [];
-      items.forEach(item => {
+      const items = (preInventory as any).storage[cat] || [];
+      items.forEach((item: any) => {
         if (materialAnalysis.hasOwnProperty(item.itemId)) {
           materialAnalysis[item.itemId] += (item.quantity || 1);
         }
@@ -569,7 +576,7 @@ async function testForgeWithDebug() {
       throw new Error(result.message);
     }
     
-  } catch (error) {
+  } catch (error: any) {
     logError("Tier Upgrade with Ultra Debug", error);
     results.failed++;
     results.errors.push({ test: "Tier Upgrade", error: error.message });
@@ -645,7 +652,7 @@ async function main() {
 }
 
 // Lancer si exécuté directement
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (require.main === module) {
   main().catch(console.error);
 }
 
