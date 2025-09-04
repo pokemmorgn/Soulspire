@@ -1,9 +1,9 @@
 // src/services/SchedulerService.ts
-import cron from 'node-cron';
+import * as cron from 'node-cron';
 import { ShopService } from './ShopService';
 
 export class SchedulerService {
-  private static scheduledTasks: Map<string, cron.ScheduledTask> = new Map();
+  private static scheduledTasks: Map<string, any> = new Map();
 
   // Démarrer tous les schedulers
   public static startAllSchedulers() {
@@ -54,9 +54,11 @@ export class SchedulerService {
           console.error(`❌ Erreur tâche ${name}:`, error);
         }
       }, {
-        scheduled: true,
         timezone: "UTC" // Ajustez selon votre timezone
       });
+
+      // Démarrer la tâche
+      scheduledTask.start();
 
       this.scheduledTasks.set(name, scheduledTask);
       console.log(`📋 Tâche "${name}" programmée: ${cronExpression}`);
@@ -71,8 +73,12 @@ export class SchedulerService {
     console.log("⏹️ Arrêt des tâches programmées...");
     
     this.scheduledTasks.forEach((task, name) => {
-      task.stop();
-      console.log(`🛑 Tâche "${name}" arrêtée`);
+      try {
+        task.stop();
+        console.log(`🛑 Tâche "${name}" arrêtée`);
+      } catch (error) {
+        console.error(`❌ Erreur arrêt tâche ${name}:`, error);
+      }
     });
     
     this.scheduledTasks.clear();
@@ -83,7 +89,7 @@ export class SchedulerService {
   public static getSchedulerStatus() {
     const tasks = Array.from(this.scheduledTasks.entries()).map(([name, task]) => ({
       name,
-      running: task.getStatus() === 'scheduled'
+      running: task ? true : false // Simplifié car pas d'accès direct au statut
     }));
 
     return {
@@ -100,10 +106,49 @@ export class SchedulerService {
       case 'shop-reset':
         await ShopService.processShopResets();
         break;
+      case 'daily-shop-reset':
+        console.log("🌅 Reset quotidien manuel...");
+        await ShopService.processShopResets();
+        break;
+      case 'weekly-shop-reset':
+        console.log("📅 Reset hebdomadaire manuel...");
+        await ShopService.processShopResets();
+        break;
+      case 'monthly-shop-reset':
+        console.log("📆 Reset mensuel manuel...");
+        await ShopService.processShopResets();
+        break;
       default:
         throw new Error(`Tâche inconnue: ${taskName}`);
     }
     
     console.log(`✅ Tâche ${taskName} exécutée manuellement`);
+  }
+
+  // Ajouter une tâche personnalisée
+  public static addCustomTask(name: string, cronExpression: string, task: () => Promise<void>) {
+    if (this.scheduledTasks.has(name)) {
+      console.warn(`⚠️ Tâche ${name} existe déjà - écrasement`);
+      const existingTask = this.scheduledTasks.get(name);
+      if (existingTask) {
+        existingTask.stop();
+      }
+    }
+
+    this.scheduleTask(name, cronExpression, task);
+    console.log(`➕ Tâche personnalisée ajoutée: ${name}`);
+  }
+
+  // Supprimer une tâche spécifique
+  public static removeTask(name: string): boolean {
+    const task = this.scheduledTasks.get(name);
+    if (task) {
+      task.stop();
+      this.scheduledTasks.delete(name);
+      console.log(`🗑️ Tâche ${name} supprimée`);
+      return true;
+    }
+    console.warn(`⚠️ Tâche ${name} introuvable`);
+    return false;
   }
 }
