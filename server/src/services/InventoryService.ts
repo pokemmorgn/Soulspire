@@ -59,13 +59,16 @@ export class InventoryService {
         playerInventory = await (Inventory as any).createForPlayer(playerId);
       }
 
+      // Force TypeScript à comprendre que playerInventory existe maintenant
+      const safeInventory = playerInventory as NonNullable<typeof playerInventory>;
+
       // Convertir les Maps en objets pour la réponse
       const fragmentsObj = this.mapToObject(player.fragments);
       const materialsObj = this.mapToObject(player.materials);
 
       // Calculer les statistiques
-      const stats = playerInventory.getInventoryStats();
-      const enhancedStats = await this.calculateEnhancedStats(playerInventory);
+      const stats = safeInventory.getInventoryStats();
+      const enhancedStats = await this.calculateEnhancedStats(safeInventory);
 
       return {
         success: true,
@@ -78,15 +81,15 @@ export class InventoryService {
           },
           fragments: fragmentsObj,
           materials: materialsObj,
-          storage: playerInventory.storage,
-          specialCurrencies: this.mapToObject(playerInventory.storage.specialCurrencies)
+          storage: safeInventory.storage,
+          specialCurrencies: this.mapToObject(safeInventory.storage.specialCurrencies)
         },
         stats: { ...stats, ...enhancedStats },
         config: {
-          maxCapacity: playerInventory.maxCapacity,
-          autoSell: playerInventory.autoSell,
-          autoSellRarity: playerInventory.autoSellRarity,
-          lastCleanup: playerInventory.lastCleanup
+          maxCapacity: safeInventory.maxCapacity,
+          autoSell: safeInventory.autoSell,
+          autoSellRarity: safeInventory.autoSellRarity,
+          lastCleanup: safeInventory.lastCleanup
         }
       };
 
@@ -119,11 +122,14 @@ export class InventoryService {
         inventory = await (Inventory as any).createForPlayer(playerId);
       }
 
+      // Force TypeScript à comprendre que inventory existe maintenant
+      const safeInventory = inventory as NonNullable<typeof inventory>;
+
       // Vérifier la capacité
-      const currentItems = await this.getTotalItemCount(inventory);
-      if (currentItems >= inventory.maxCapacity) {
+      const currentItems = await this.getTotalItemCount(safeInventory);
+      if (currentItems >= safeInventory.maxCapacity) {
         // Auto-sell si configuré
-        if (inventory.autoSell && this.shouldAutoSell(itemData.rarity, inventory.autoSellRarity)) {
+        if (safeInventory.autoSell && this.shouldAutoSell(itemData.rarity, safeInventory.autoSellRarity)) {
           const sellResult = await this.autoSellItem(playerId, itemData, quantity);
           return {
             success: true,
@@ -140,16 +146,16 @@ export class InventoryService {
       }
 
       // Ajouter l'objet
-      const ownedItem = await inventory.addItem(itemId, quantity, level);
+      const ownedItem = await safeInventory.addItem(itemId, quantity, level);
       
       // Appliquer l'amélioration si spécifiée
       if (enhancement > 0) {
         ownedItem.enhancement = enhancement;
-        await inventory.save();
+        await safeInventory.save();
       }
 
       // Mettre à jour les missions et événements
-      await this.updateProgressTracking(playerId, "collect_items", quantity, {
+      await this.updateProgressTracking(playerId, quantity, {
         itemType: itemData.category,
         rarity: itemData.rarity,
         itemId: itemId
@@ -257,8 +263,6 @@ export class InventoryService {
       // Récupérer l'ancien équipement du même slot (s'il existe)
       const equippedItems = inventory.getEquippedItems(heroId);
       const oldEquipment = equippedItems.find(item => {
-        // Ici, il faudrait comparer les slots d'équipement
-        // Pour simplifier, on assume qu'il n'y a qu'un équipement par catégorie
         return true; // Logique à affiner selon vos besoins
       });
 
@@ -318,80 +322,6 @@ export class InventoryService {
     }
   }
 
-  // === AMÉLIORER UN ÉQUIPEMENT ===
-  public static async upgradeEquipment(
-    playerId: string,
-    instanceId: string,
-    targetLevel?: number,
-    targetEnhancement?: number
-  ): Promise<InventoryItemResult> {
-    try {
-      console.log(`⚡ Amélioration ${instanceId} pour ${playerId}`);
-
-      const [player, inventory] = await Promise.all([
-        Player.findById(playerId),
-        Inventory.findOne({ playerId })
-      ]);
-
-      if (!player || !inventory) {
-        return { success: false, error: "Player or inventory not found", code: "NOT_FOUND" };
-      }
-
-      const item = inventory.getItem(instanceId);
-      if (!item) {
-        return { success: false, error: "Equipment not found", code: "EQUIPMENT_NOT_FOUND" };
-      }
-
-      // Calculer les coûts d'amélioration
-      const upgradeCosts = await this.calculateUpgradeCosts(item, targetLevel, targetEnhancement);
-      
-      // Vérifier les ressources
-      if (upgradeCosts.gold > player.gold) {
-        return { success: false, error: "Insufficient gold", code: "INSUFFICIENT_GOLD" };
-      }
-
-      // Vérifier les matériaux requis
-      for (const [materialId, required] of Object.entries(upgradeCosts.materials)) {
-        const available = player.materials.get(materialId) || 0;
-        if (available < required) {
-          return { 
-            success: false, 
-            error: `Insufficient ${materialId}`, 
-            code: "INSUFFICIENT_MATERIALS" 
-          };
-        }
-      }
-
-      // Effectuer l'amélioration
-      const success = await inventory.upgradeEquipment(instanceId, targetLevel, targetEnhancement);
-      if (!success) {
-        return { success: false, error: "Upgrade failed", code: "UPGRADE_FAILED" };
-      }
-
-      // Déduire les coûts
-      player.gold -= upgradeCosts.gold;
-      for (const [materialId, cost] of Object.entries(upgradeCosts.materials)) {
-        const current = player.materials.get(materialId) || 0;
-        player.materials.set(materialId, current - cost);
-      }
-      await player.save();
-
-      const updatedItem = inventory.getItem(instanceId);
-
-      return {
-        success: true,
-        item: {
-          ...updatedItem,
-          costs: upgradeCosts
-        }
-      };
-
-    } catch (error: any) {
-      console.error("❌ Erreur upgradeEquipment:", error);
-      return { success: false, error: error.message, code: "UPGRADE_EQUIPMENT_FAILED" };
-    }
-  }
-
   // === OUVRIR UN COFFRE ===
   public static async openChest(
     playerId: string,
@@ -431,14 +361,7 @@ export class InventoryService {
             addedItems.push(addResult.item);
           }
         }
-        // TODO: Gérer les autres types de récompenses
       }
-
-      // Mettre à jour les missions/événements
-      await this.updateProgressTracking(playerId, "collect_items", rewards.length, {
-        itemType: "Chest",
-        source: "chest_opening"
-      });
 
       return {
         success: true,
@@ -551,33 +474,6 @@ export class InventoryService {
     };
   }
 
-  // Calculer les coûts d'amélioration
-  private static async calculateUpgradeCosts(
-    item: any,
-    targetLevel?: number,
-    targetEnhancement?: number
-  ) {
-    const costs = {
-      gold: 0,
-      materials: {} as Record<string, number>
-    };
-
-    // Calculs simplifiés - à adapter selon votre système
-    if (targetLevel && targetLevel > item.level) {
-      const levelDiff = targetLevel - item.level;
-      costs.gold += levelDiff * 1000;
-      costs.materials["upgrade_stone"] = levelDiff * 2;
-    }
-
-    if (targetEnhancement && targetEnhancement > item.enhancement) {
-      const enhancementDiff = targetEnhancement - item.enhancement;
-      costs.gold += enhancementDiff * 5000;
-      costs.materials["enhancement_crystal"] = enhancementDiff * 3;
-    }
-
-    return costs;
-  }
-
   // Calculer des statistiques avancées
   private static async calculateEnhancedStats(inventory: any): Promise<Partial<InventoryStats>> {
     const totalValue = inventory.calculateTotalValue();
@@ -602,30 +498,21 @@ export class InventoryService {
   // Mettre à jour les missions et événements
   private static async updateProgressTracking(
     playerId: string,
-    progressType: "collect_items",
     value: number,
     additionalData?: any
   ) {
     try {
-      // Note: collect_items n'est pas encore dans MissionService, on utilise un type générique
       await Promise.all([
-        MissionService.updateProgress(
-          playerId,
-          "", // serverId sera ajouté plus tard
-          "heroes_owned", // Utiliser un type valide pour l'instant
-          value,
-          additionalData
-        ),
         EventService.updatePlayerProgress(
           playerId,
-          "", // serverId sera ajouté plus tard
+          "",
           "collect_items",
           value,
           additionalData
         )
       ]);
 
-      console.log(`📊 Progression missions/événements mise à jour: +${value} ${progressType}`);
+      console.log(`📊 Progression événements mise à jour: +${value} objets collectés`);
     } catch (error) {
       console.error("⚠️ Erreur mise à jour progression inventaire:", error);
     }
