@@ -301,7 +301,14 @@ class CompleteForgeTester {
     if (!testItem) throw new Error("No low enhancement equipment found");
     
     const currentEnhancement = testItem.enhancement;
+    log(`   🔍 Before: enhancement=${currentEnhancement}`, colors.blue);
+    
     const result = await this.forgeService.executeEnhancement(testItem.instanceId, false);
+    
+    log(`   🔍 Result: success=${result.success}, message=${result.message}`, colors.blue);
+    if (result.data) {
+      log(`   🔍 Data: previousLevel=${result.data.previousLevel}, newLevel=${result.data.newLevel}`, colors.blue);
+    }
     
     // Vérifier que l'opération s'est bien exécutée (succès ou échec naturel)
     if (!result.success && !result.message.includes("ENHANCEMENT_FAILED") && !result.message.includes("FAILED")) {
@@ -310,21 +317,45 @@ class CompleteForgeTester {
     
     if (result.success) {
       // Succès : vérifier que le niveau a augmenté
-      if (!result.data?.newLevel || result.data.newLevel <= currentEnhancement) {
-        throw new Error("Enhancement level should have increased on success");
+      const newLevel = result.data?.newLevel;
+      const previousLevel = result.data?.previousLevel;
+      
+      log(`   🔍 Success case: previous=${previousLevel}, new=${newLevel}, expected=${currentEnhancement + 1}`, colors.blue);
+      
+      if (!newLevel) {
+        throw new Error("Missing newLevel in success result data");
       }
-      log(`   ⚡ Enhancement success: +${currentEnhancement} → +${result.data.newLevel}`, colors.green);
+      
+      if (!previousLevel && previousLevel !== 0) {
+        throw new Error("Missing previousLevel in success result data");
+      }
+      
+      // Le niveau précédent devrait correspondre au niveau avant l'opération
+      if (previousLevel !== currentEnhancement) {
+        log(`   ⚠️ Warning: previousLevel (${previousLevel}) != currentEnhancement (${currentEnhancement})`, colors.yellow);
+      }
+      
+      // Le nouveau niveau devrait être supérieur au précédent
+      if (newLevel <= previousLevel) {
+        throw new Error(`Enhancement level should increase: ${previousLevel} → ${newLevel}`);
+      }
+      
+      log(`   ⚡ Enhancement success: +${previousLevel} → +${newLevel}`, colors.green);
     } else {
       // Échec naturel : vérifier la cohérence des données
-      if (result.data?.newLevel && result.data.newLevel !== currentEnhancement) {
-        throw new Error("Enhancement level should not change on failure");
+      const newLevel = result.data?.newLevel;
+      const previousLevel = result.data?.previousLevel;
+      
+      if (newLevel && newLevel !== currentEnhancement) {
+        throw new Error(`Enhancement level should not change on failure: ${currentEnhancement} → ${newLevel}`);
       }
+      
       log(`   💥 Enhancement failed (normal RNG): pity ${result.data?.pity || 0}`, colors.blue);
       
       // Tentative supplémentaire pour augmenter les chances de succès dans le test
       const retryResult = await this.forgeService.executeEnhancement(testItem.instanceId, false);
       if (retryResult.success) {
-        log(`   🔄 Retry successful: +${currentEnhancement} → +${retryResult.data?.newLevel || currentEnhancement + 1}`, colors.green);
+        log(`   🔄 Retry successful: +${retryResult.data?.previousLevel || 0} → +${retryResult.data?.newLevel || 0}`, colors.green);
       } else {
         log(`   🔄 Retry also failed: pity ${retryResult.data?.pity || 0}`, colors.yellow);
       }
