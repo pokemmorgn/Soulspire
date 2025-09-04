@@ -178,7 +178,7 @@ app.use("/api/player", playerRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/heroes", heroesRoutes);
 app.use("/api/gacha", gachaLimiter, gachaRoutes);
-app.use("/api/shop", shopRoutes);
+app.use('/api/shops', shopRoutes); 
 app.use("/api/battle", battleRoutes);
 app.use("/api/servers", serverRoutes);
 app.use("/api/tower", towerRoutes);
