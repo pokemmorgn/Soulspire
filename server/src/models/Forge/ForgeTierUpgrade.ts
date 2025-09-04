@@ -92,6 +92,7 @@ protected getCurrentTierFromOwned(owned: any): number {
   return 1;
 }
 
+
   /**
    * Vérifie si un item peut être upgradé au tier suivant
    */
