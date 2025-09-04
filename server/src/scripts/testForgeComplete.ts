@@ -412,7 +412,7 @@ async function testForgeWithDebug() {
     
     // Debug matériaux AVANT enhancement
     console.log("\n🔍 ENHANCEMENT MATERIALS DEBUG:");
-    debugInventory(await Inventory.findOne({ playerId: player._id }), "BEFORE ENHANCEMENT");
+    debugInventory(await Inventory.findOne({ playerId: player._id.toString() }), "BEFORE ENHANCEMENT");
     
     const cost = await forgeService.getEnhancementCost(weapon.instanceId);
     logInfo(`💰 Enhancement cost: ${cost.gold}g, ${cost.gems} gems`);
@@ -432,7 +432,7 @@ async function testForgeWithDebug() {
     
     // Debug APRÈS enhancement
     console.log("\n🔍 AFTER ENHANCEMENT:");
-    debugInventory(await Inventory.findOne({ playerId: player._id }), "AFTER ENHANCEMENT");
+    debugInventory(await Inventory.findOne({ playerId: player._id.toString() }), "AFTER ENHANCEMENT");
     
   } catch (error: any) {
     logError("Enhancement with Full Debug", error);
@@ -459,7 +459,7 @@ async function testForgeWithDebug() {
     
     // DEBUG SUPER DÉTAILLÉ des matériaux
     console.log("\n🔍 SUPER DETAILED MATERIAL DEBUG BEFORE FUSION:");
-    const currentInventory = await Inventory.findOne({ playerId: player._id });
+    const currentInventory = await Inventory.findOne({ playerId: player._id.toString() });
     
     // Afficher TOUTES les catégories qui pourraient contenir des matériaux
     const allCategories = [
@@ -468,7 +468,7 @@ async function testForgeWithDebug() {
     ];
     
     allCategories.forEach(cat => {
-      const items = (currentInventory as any).storage[cat] || [];
+      const items = (currentInventory as any)?.storage?.[cat] || [];
       console.log(`\n  📁 ${cat}:`);
       if (items.length > 0) {
         items.forEach((item: any) => {
@@ -518,11 +518,11 @@ async function testForgeWithDebug() {
     
     if (!rareSword) throw new Error("No rare sword found for tier upgrade");
     
-    logInfo(`🏆 Using: ${rareSword.itemId} (T${rareSword.tier || 1})`);
+    logInfo(`🏆 Using: ${rareSword.itemId} (T${(rareSword as any).tier || 1})`);
     
     // DEBUG ULTRA-DÉTAILLÉ
     console.log("\n🔍 ULTRA DEBUG BEFORE TIER UPGRADE:");
-    const preInventory = await Inventory.findOne({ playerId: player._id });
+    const preInventory = await Inventory.findOne({ playerId: player._id.toString() });
     
     // Analyser chaque matériau individuellement
     console.log("\n📊 MATERIAL ANALYSIS:");
@@ -542,7 +542,7 @@ async function testForgeWithDebug() {
     ];
     
     allCategories.forEach(cat => {
-      const items = (preInventory as any).storage[cat] || [];
+      const items = (preInventory as any)?.storage?.[cat] || [];
       items.forEach((item: any) => {
         if (materialAnalysis.hasOwnProperty(item.itemId)) {
           materialAnalysis[item.itemId] += (item.quantity || 1);
@@ -586,7 +586,7 @@ async function testForgeWithDebug() {
   logSection("FINAL DEBUG & RESULTS");
   
   // Debug inventaire final
-  const finalInventory = await Inventory.findOne({ playerId: player._id });
+  const finalInventory = await Inventory.findOne({ playerId: player._id.toString() });
   debugInventory(finalInventory, "FINAL INVENTORY STATE");
 
   // Résultats
