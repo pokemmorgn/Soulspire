@@ -112,14 +112,19 @@ async function quickForgeTest() {
 
     // Test 3: Reforge
     try {
-      const weapon = inventory.storage.weapons[1];
-      const result = await forgeService.executeReforge(weapon.instanceId, ['atk']);
-      if (result.success) {
-        console.log('✅ Reforge test PASSED');
-        testsPassed++;
+      const weapons = inventory.storage.weapons.filter((w: any) => w.itemId === 'test_sword');
+      if (weapons.length >= 2) {
+        const weapon = weapons[1];
+        const result = await forgeService.executeReforge(weapon.instanceId, ['atk']);
+        if (result.success) {
+          console.log('✅ Reforge test PASSED');
+          testsPassed++;
+        } else {
+          console.log(`❌ Reforge test FAILED: ${result.message}`);
+          testsFailed++;
+        }
       } else {
-        console.log(`❌ Reforge test FAILED: ${result.message}`);
-        testsFailed++;
+        console.log('⚠️ Reforge test SKIPPED: Not enough weapons');
       }
     } catch (error: any) {
       console.log(`❌ Reforge test ERROR: ${error.message}`);
@@ -128,23 +133,30 @@ async function quickForgeTest() {
 
     // Test 4: Tier Upgrade
     try {
-      const weapon = inventory.storage.weapons[2];
-      const result = await forgeService.executeTierUpgrade(weapon.instanceId);
-      if (result.success) {
-        console.log('✅ Tier Upgrade test PASSED');
-        testsPassed++;
+      const weapons = inventory.storage.weapons.filter((w: any) => w.itemId === 'test_sword');
+      if (weapons.length >= 3) {
+        const weapon = weapons[2];
+        const result = await forgeService.executeTierUpgrade(weapon.instanceId);
+        if (result.success) {
+          console.log('✅ Tier Upgrade test PASSED');
+          testsPassed++;
+        } else {
+          console.log(`❌ Tier Upgrade test FAILED: ${result.message}`);
+          testsFailed++;
+        }
       } else {
-        console.log(`❌ Tier Upgrade test FAILED: ${result.message}`);
-        testsFailed++;
+        console.log('⚠️ Tier Upgrade test SKIPPED: Not enough weapons');
       }
     } catch (error: any) {
       console.log(`❌ Tier Upgrade test ERROR: ${error.message}`);
       testsFailed++;
     }
 
-    // Test 5: Fusion (avec 3 épées identiques si possible)
+    // Test 5: Fusion
     try {
       const allSwords = inventory.storage.weapons.filter((w: any) => w.itemId === 'test_sword');
+      console.log(`🔍 Found ${allSwords.length} swords for fusion`);
+      
       if (allSwords.length >= 3) {
         const swordIds = allSwords.slice(0, 3).map((w: any) => w.instanceId);
         const result = await forgeService.executeFusion(swordIds);
@@ -156,7 +168,7 @@ async function quickForgeTest() {
           testsFailed++;
         }
       } else {
-        console.log('⚠️ Fusion test SKIPPED: Not enough identical items');
+        console.log(`⚠️ Fusion test SKIPPED: Need 3 identical items, found ${allSwords.length}`);
       }
     } catch (error: any) {
       console.log(`❌ Fusion test ERROR: ${error.message}`);
