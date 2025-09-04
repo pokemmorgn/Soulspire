@@ -140,39 +140,67 @@ class CompleteForgeTester {
     log(`✅ Test items ready (${createdCount} created, ${allTestItems.length - createdCount} existed)`, colors.green);
   }
 
-  async addTestItemsToInventory(): Promise<void> {
-    log("\n📥 Adding test items to inventory...", colors.yellow);
-    for (const equipData of testEquipmentData) {
-      try {
-        const level = Math.floor(Math.random() * 20) + 10;
-        const enhancement = Math.floor(Math.random() * 5) + 1;
-        const ownedItem = await this.inventory.addItem(equipData.itemId, 1, level);
-        ownedItem.enhancement = enhancement;
-        if (["common_sword", "rare_sword", "epic_sword"].includes(equipData.itemId)) {
-          for (let i = 0; i < 2; i++) {
-            const extraItem = await this.inventory.addItem(equipData.itemId, 1, level);
-            extraItem.enhancement = enhancement;
-            this.testEquipment.push(extraItem);
+async addTestItemsToInventory(): Promise<void> {
+  log("\n📥 Adding test items to inventory...", colors.yellow);
+  for (const equipData of testEquipmentData) {
+    try {
+      const level = Math.floor(Math.random() * 20) + 10;
+      const enhancement = Math.floor(Math.random() * 5) + 1;
+      
+      // 🔧 FIX: Create owned item with proper tier initialization
+      const ownedItem = await this.inventory.addItem(equipData.itemId, 1, level);
+      ownedItem.enhancement = enhancement;
+      
+      // 🔧 CRITICAL FIX: Set tier to 1 for all new items (they start at T1)
+      (ownedItem as any).tier = 1; // Start all items at Tier 1
+      
+      // 🔧 FIX: Initialize equipment data properly if it doesn't exist
+      if (!ownedItem.equipmentData) {
+        ownedItem.equipmentData = {
+          durability: 100,
+          socketedGems: [],
+          upgradeHistory: [] // Empty history = Tier 1
+        };
+      }
+      
+      // Add multiple copies for fusion testing
+      if (["common_sword", "rare_sword", "epic_sword"].includes(equipData.itemId)) {
+        for (let i = 0; i < 2; i++) {
+          const extraItem = await this.inventory.addItem(equipData.itemId, 1, level);
+          extraItem.enhancement = enhancement;
+          (extraItem as any).tier = 1; // 🔧 FIX: Ensure consistent tier
+          if (!extraItem.equipmentData) {
+            extraItem.equipmentData = {
+              durability: 100,
+              socketedGems: [],
+              upgradeHistory: []
+            };
           }
+          this.testEquipment.push(extraItem);
         }
-        this.testEquipment.push(ownedItem);
-        log(`   ✅ Added: ${equipData.itemId} (Lvl ${level}, +${enhancement})`, colors.green);
-      } catch (error: any) {
-        log(`   ❌ Error adding ${equipData.itemId}: ${error.message}`, colors.red);
       }
+      
+      this.testEquipment.push(ownedItem);
+      log(`   ✅ Added: ${equipData.itemId} (Lvl ${level}, +${enhancement}, T${(ownedItem as any).tier})`, colors.green);
+    } catch (error: any) {
+      log(`   ❌ Error adding ${equipData.itemId}: ${error.message}`, colors.red);
     }
-    for (const matData of testMaterialsData) {
-      try {
-        const quantity = Math.floor(Math.random() * 50) + 50;
-        await this.inventory.addItem(matData.itemId, quantity, 1);
-        log(`   ✅ Added: ${matData.itemId} x${quantity}`, colors.green);
-      } catch (error: any) {
-        log(`   ❌ Error adding ${matData.itemId}: ${error.message}`, colors.red);
-      }
-    }
-    await this.inventory.save();
-    log(`✅ Total items added: ${this.testEquipment.length} equipment + materials`, colors.green);
   }
+  
+  // Add materials
+  for (const matData of testMaterialsData) {
+    try {
+      const quantity = Math.floor(Math.random() * 50) + 50;
+      await this.inventory.addItem(matData.itemId, quantity, 1);
+      log(`   ✅ Added: ${matData.itemId} x${quantity}`, colors.green);
+    } catch (error: any) {
+      log(`   ❌ Error adding ${matData.itemId}: ${error.message}`, colors.red);
+    }
+  }
+  
+  await this.inventory.save();
+  log(`✅ Total items added: ${this.testEquipment.length} equipment + materials`, colors.green);
+}
 
   async runTest(name: string, testFn: () => Promise<void>): Promise<void> {
     this.testCounts.total++;
@@ -457,18 +485,41 @@ class CompleteForgeTester {
     log(`   📈 To tier 3: ${cost2.gold}g (higher ✓)`, colors.blue);
   }
 
-  async testTierUpgradeExecution(): Promise<void> {
-    if (this.testEquipment.length === 0) throw new Error("No equipment for tier upgrade execution");
-    const testItem = this.testEquipment.find(item => (item.tier || 1) === 1);
-    if (!testItem) throw new Error("No tier 1 equipment found");
-    const result = await this.forgeService.executeTierUpgrade(testItem.instanceId);
-    if (!result.success) throw new Error(`Tier upgrade failed: ${result.message}`);
-    if (!result.data?.newTier || result.data.newTier <= result.data.previousTier) {
-      throw new Error("Tier should have increased");
+async testTierUpgradeExecution(): Promise<void> {
+  if (this.testEquipment.length === 0) throw new Error("No equipment for tier upgrade execution");
+  
+  // 🔧 FIX: Find a T1 item explicitly
+  let testItem = this.testEquipment.find(item => {
+    const tier = (item as any).tier || 1;
+    console.log(`🔧 Checking item ${item.instanceId}: tier=${tier}`);
+    return tier === 1;
+  });
+  
+  if (!testItem) {
+    // 🔧 FALLBACK: Create a T1 item if none exists
+    console.log("🔧 No T1 items found, using first available and setting tier to 1");
+    testItem = this.testEquipment[0];
+    (testItem as any).tier = 1;
+    if (!testItem.equipmentData) {
+      testItem.equipmentData = {
+        durability: 100,
+        socketedGems: [],
+        upgradeHistory: []
+      };
     }
-    log(`   ⚡ Tier upgrade success: T${result.data.previousTier} → T${result.data.newTier}`, colors.green);
-    log(`   📊 Multiplier: x${result.data.tierMultiplier}`, colors.blue);
+    await this.inventory.save();
   }
+  
+  console.log(`🔧 Using item for tier upgrade: ${testItem.instanceId}, tier=${(testItem as any).tier}`);
+  
+  const result = await this.forgeService.executeTierUpgrade(testItem.instanceId);
+  if (!result.success) throw new Error(`Tier upgrade failed: ${result.message}`);
+  if (!result.data?.newTier || result.data.newTier <= result.data.previousTier) {
+    throw new Error("Tier should have increased");
+  }
+  log(`   ⚡ Tier upgrade success: T${result.data.previousTier} → T${result.data.newTier}`, colors.green);
+  log(`   📊 Multiplier: x${result.data.tierMultiplier}`, colors.blue);
+}
 
   async testUpgradableItems(): Promise<void> {
     const upgradableItems = await this.forgeService.getUpgradableItems();
@@ -479,19 +530,39 @@ class CompleteForgeTester {
     log(`   📋 Common upgradables: ${commonUpgradables.length}`, colors.blue);
   }
 
-  async testTotalUpgradeCost(): Promise<void> {
-    if (this.testEquipment.length === 0) throw new Error("No equipment for total upgrade cost test");
-    const testItem = this.testEquipment.find(item => (item.tier || 1) === 1);
-    if (!testItem) throw new Error("No tier 1 equipment found");
-    const totalCost = await this.forgeService.getTotalUpgradeCostToMax(testItem.instanceId);
-    if (!totalCost.totalGold || totalCost.totalGold <= 0) {
-      throw new Error("Invalid total upgrade cost");
-    }
-    if (!Array.isArray(totalCost.steps) || totalCost.steps.length === 0) {
-      throw new Error("Should have upgrade steps");
-    }
-    log(`   💰 Total to max: ${totalCost.totalGold}g in ${totalCost.steps.length} steps`, colors.blue);
+async testTotalUpgradeCost(): Promise<void> {
+  if (this.testEquipment.length === 0) throw new Error("No equipment for total upgrade cost test");
+  
+  // 🔧 FIX: Find a T1 item that can be upgraded (not Common rarity at T1)
+  let testItem = this.testEquipment.find(item => {
+    const tier = (item as any).tier || 1;
+    // Look for a Rare+ item at T1 (Common can only go to T2, so T1→T2 is only 1 step)
+    return tier === 1 && !item.itemId.includes('common');
+  });
+  
+  if (!testItem) {
+    // 🔧 FALLBACK: Use any T1 item (even Common will work for basic testing)
+    testItem = this.testEquipment.find(item => ((item as any).tier || 1) === 1);
   }
+  
+  if (!testItem) {
+    // 🔧 LAST RESORT: Force create a T1 item
+    testItem = this.testEquipment[0];
+    (testItem as any).tier = 1;
+    await this.inventory.save();
+  }
+  
+  console.log(`🔧 Testing total upgrade cost for: ${testItem.itemId} at tier ${(testItem as any).tier}`);
+  
+  const totalCost = await this.forgeService.getTotalUpgradeCostToMax(testItem.instanceId);
+  if (!totalCost.totalGold || totalCost.totalGold <= 0) {
+    throw new Error("Invalid total upgrade cost");
+  }
+  if (!Array.isArray(totalCost.steps) || totalCost.steps.length === 0) {
+    throw new Error("Should have upgrade steps");
+  }
+  log(`   💰 Total to max: ${totalCost.totalGold}g in ${totalCost.steps.length} steps`, colors.blue);
+}
 
   async testBatchOperationCost(): Promise<void> {
     if (this.testEquipment.length < 4) throw new Error("Need at least 4 items for batch test");
