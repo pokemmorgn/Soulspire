@@ -85,7 +85,7 @@ async function quickForgeTest() {
     console.log('✅ Inventory created with test items');
 
     // Test du service forge
-    const forgeService = new ForgeService(player._id.toString());
+    const forgeService = new ForgeService((player as any)._id.toString());
     
     // Test 1: Status
     const status = await forgeService.getForgeStatus();
