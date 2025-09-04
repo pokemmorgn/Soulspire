@@ -155,7 +155,6 @@ const ownedItemSchema = new Schema<IOwnedItem>({
   instanceId: { 
     type: String, 
     required: true,
-    unique: true,
     default: () => new mongoose.Types.ObjectId().toString()
   },
   quantity: { 
@@ -329,41 +328,17 @@ const inventorySchema = new Schema<IInventoryDocument>({
   collection: 'inventories'
 });
 
-// === INDEX CORRIGÉS ===
-// ✅ CORRECTION : Suppression des index problématiques et ajout d'index corrects
+// === INDEX SIMPLIFIÉS POUR ÉVITER LES ERREURS ===
 
-inventorySchema.index({ playerId: 1 }); // Index principal
+// ✅ CORRECTION : Index simplifiés et sûrs
+inventorySchema.index({ playerId: 1 }); // Index principal unique
 
-// Index sur itemId pour les recherches (pas sur instanceId pour éviter les conflits)
-inventorySchema.index({ "storage.weapons.itemId": 1 });
-inventorySchema.index({ "storage.helmets.itemId": 1 });
-inventorySchema.index({ "storage.armors.itemId": 1 });
-inventorySchema.index({ "storage.boots.itemId": 1 });
-inventorySchema.index({ "storage.gloves.itemId": 1 });
-inventorySchema.index({ "storage.accessories.itemId": 1 });
+// ✅ Index sélectifs pour les requêtes courantes (sans wildcards)
+inventorySchema.index({ maxCapacity: 1 });
+inventorySchema.index({ lastCleanup: 1 });
 
-// Index pour les objets équipés (utile pour les héros)
-inventorySchema.index({ "storage.weapons.isEquipped": 1 });
-inventorySchema.index({ "storage.helmets.isEquipped": 1 });
-inventorySchema.index({ "storage.armors.isEquipped": 1 });
-inventorySchema.index({ "storage.boots.isEquipped": 1 });
-inventorySchema.index({ "storage.gloves.isEquipped": 1 });
-inventorySchema.index({ "storage.accessories.isEquipped": 1 });
-
-// Index pour les matériaux (pour le système de forge)
-inventorySchema.index({ "storage.enhancementMaterials.itemId": 1 });
-inventorySchema.index({ "storage.craftingMaterials.itemId": 1 });
-
-// ❌ SUPPRIMÉ : L'index problématique qui causait l'erreur
-// inventorySchema.index({ "storage.*.instanceId": 1 }); // ← Cet index était problématique
-
-// ✅ NOUVEAU : Si vous avez absolument besoin d'index sur instanceId, utilisez sparse
-// inventorySchema.index({ "storage.weapons.instanceId": 1 }, { sparse: true });
-// inventorySchema.index({ "storage.helmets.instanceId": 1 }, { sparse: true });
-// inventorySchema.index({ "storage.armors.instanceId": 1 }, { sparse: true });
-// inventorySchema.index({ "storage.boots.instanceId": 1 }, { sparse: true });
-// inventorySchema.index({ "storage.gloves.instanceId": 1 }, { sparse: true });
-// inventorySchema.index({ "storage.accessories.instanceId": 1 }, { sparse: true });
+// ❌ SUPPRIMÉ : Tous les index complexes qui causaient des problèmes
+// Ces index seront recréés manuellement si nécessaire via MongoDB directement
 
 // === MÉTHODES STATIQUES ===
 
@@ -733,6 +708,27 @@ inventorySchema.methods.calculateTotalValue = function(): number {
   // Pour l'instant on retourne juste les monnaies
   
   return totalValue;
+};
+
+// Méthodes stub pour l'upgrade d'équipement
+inventorySchema.methods.upgradeEquipment = async function(
+  instanceId: string, 
+  targetLevel?: number, 
+  targetEnhancement?: number
+): Promise<boolean> {
+  const item = this.getItem(instanceId);
+  if (!item) return false;
+  
+  if (targetLevel && targetLevel > item.level) {
+    item.level = Math.min(targetLevel, 100);
+  }
+  
+  if (targetEnhancement !== undefined && targetEnhancement > item.enhancement) {
+    item.enhancement = Math.min(targetEnhancement, 15);
+  }
+  
+  await this.save();
+  return true;
 };
 
 export default mongoose.model<IInventoryDocument>("Inventory", inventorySchema);
