@@ -12,7 +12,7 @@ async function main() {
   await mongoose.connect(MONGO_URI);
   console.log("Connected to MongoDB");
 
-  const username = process.argv[2] || "test";
+  const username = process.argv[2] || "greg";
   const player = await Player.findOne({ username });
   if (!player) {
     console.error("Player not found:", username);
