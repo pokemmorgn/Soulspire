@@ -26,7 +26,7 @@ const historySchema = Joi.object({
   limit: Joi.number().min(1).max(100).default(20)
 });
 
-// === ROUTES PRINCIPALES ===
+// === ROUTES PUBLIQUES ===
 
 /**
  * GET /api/shops
@@ -42,7 +42,6 @@ router.get("/", authMiddleware, async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    // Validation des paramètres
     const { error, value } = shopFilterSchema.validate(req.query);
     if (error) {
       res.status(400).json({ 
@@ -53,14 +52,7 @@ router.get("/", authMiddleware, async (req: Request, res: Response): Promise<voi
     }
 
     const { shopType, page, limit } = value;
-
-    // Appel du service
-    const result = await ShopService.getAvailableShops(
-      req.userId,
-      shopType,
-      page,
-      limit
-    );
+    const result = await ShopService.getAvailableShops(req.userId, shopType, page, limit);
 
     res.json({
       message: "Available shops retrieved successfully",
@@ -91,8 +83,6 @@ router.get("/:shopType", authMiddleware, async (req: Request, res: Response): Pr
     }
 
     const { shopType } = req.params;
-
-    // Validation du type de boutique
     const validShopTypes = [
       "General", "Arena", "Clan", "Labyrinth", "Event", 
       "VIP", "Daily", "Weekly", "Monthly", "Flash", "Bundle", "Seasonal"
@@ -107,7 +97,6 @@ router.get("/:shopType", authMiddleware, async (req: Request, res: Response): Pr
       return;
     }
 
-    // Appel du service
     const result = await ShopService.getShopDetails(req.userId, shopType);
 
     res.json({
@@ -151,7 +140,6 @@ router.post("/:shopType/purchase", authMiddleware, async (req: Request, res: Res
       return;
     }
 
-    // Validation des données
     const { error, value } = purchaseSchema.validate(req.body);
     if (error) {
       res.status(400).json({ 
@@ -164,17 +152,10 @@ router.post("/:shopType/purchase", authMiddleware, async (req: Request, res: Res
     const { shopType } = req.params;
     const { instanceId, quantity } = value;
 
-    // Appel du service
-    const result = await ShopService.purchaseItem(
-      req.userId,
-      shopType,
-      instanceId,
-      quantity
-    );
+    const result = await ShopService.purchaseItem(req.userId, shopType, instanceId, quantity);
 
     if (!result.success) {
-      // Déterminer le code de statut HTTP selon l'erreur
-      let statusCode = 400; // Bad Request par défaut
+      let statusCode = 400;
       
       if (result.code === "SHOP_NOT_FOUND" || result.code === "SHOP_ITEM_NOT_FOUND") {
         statusCode = 404;
@@ -202,7 +183,7 @@ router.post("/:shopType/purchase", authMiddleware, async (req: Request, res: Res
 
 /**
  * POST /api/shops/:shopType/refresh
- * Actualiser manuellement une boutique
+ * Actualiser manuellement une boutique (coûte des ressources)
  */
 router.post("/:shopType/refresh", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -215,12 +196,10 @@ router.post("/:shopType/refresh", authMiddleware, async (req: Request, res: Resp
     }
 
     const { shopType } = req.params;
-
-    // Appel du service
     const result = await ShopService.refreshShop(req.userId, shopType);
 
     if (!result.success) {
-      let statusCode = 400; // Bad Request par défaut
+      let statusCode = 400;
       
       if (result.code === "SHOP_NOT_FOUND") {
         statusCode = 404;
@@ -260,7 +239,6 @@ router.get("/:shopType/history", authMiddleware, async (req: Request, res: Respo
       return;
     }
 
-    // Validation des paramètres
     const { error, value } = historySchema.validate(req.query);
     if (error) {
       res.status(400).json({ 
@@ -273,13 +251,7 @@ router.get("/:shopType/history", authMiddleware, async (req: Request, res: Respo
     const { shopType } = req.params;
     const { page, limit } = value;
 
-    // Appel du service
-    const result = await ShopService.getPurchaseHistory(
-      req.userId,
-      shopType,
-      page,
-      limit
-    );
+    const result = await ShopService.getPurchaseHistory(req.userId, shopType, page, limit);
 
     res.json({
       message: "Purchase history retrieved successfully",
@@ -303,104 +275,12 @@ router.get("/:shopType/history", authMiddleware, async (req: Request, res: Respo
   }
 });
 
-// === ROUTES D'ADMINISTRATION ===
-
-/**
- * POST /api/shops/admin/create-predefined
- * Créer toutes les boutiques prédéfinies
- * TODO: Ajouter middleware d'authentification admin
- */
-router.post("/admin/create-predefined", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    // TODO: Vérifier les permissions admin
-    // if (!req.userRole || req.userRole !== 'admin') {
-    //   res.status(403).json({ error: "Admin access required", code: "ADMIN_ACCESS_REQUIRED" });
-    //   return;
-    // }
-
-    const result = await ShopService.createPredefinedShops();
-
-    res.status(201).json({
-      message: "Predefined shops created successfully",
-      ...result
-    });
-
-  } catch (error: any) {
-    console.error("Create predefined shops error:", error);
-    res.status(500).json({ 
-      error: "Failed to create predefined shops",
-      code: "CREATE_PREDEFINED_SHOPS_FAILED"
-    });
-  }
-});
-
-/**
- * POST /api/shops/admin/reset-all
- * Forcer le reset de toutes les boutiques éligibles
- * TODO: Ajouter middleware d'authentification admin
- */
-router.post("/admin/reset-all", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    // TODO: Vérifier les permissions admin
-    // if (!req.userRole || req.userRole !== 'admin') {
-    //   res.status(403).json({ error: "Admin access required", code: "ADMIN_ACCESS_REQUIRED" });
-    //   return;
-    // }
-
-    const result = await ShopService.processShopResets();
-
-    res.json({
-      message: "Shop resets completed",
-      ...result
-    });
-
-  } catch (error: any) {
-    console.error("Reset shops error:", error);
-    res.status(500).json({ 
-      error: "Failed to reset shops",
-      code: "RESET_SHOPS_FAILED"
-    });
-  }
-});
-
-/**
- * GET /api/shops/admin/stats
- * Récupérer les statistiques des boutiques
- * TODO: Ajouter middleware d'authentification admin
- */
-router.get("/admin/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    // TODO: Vérifier les permissions admin
-    // if (!req.userRole || req.userRole !== 'admin') {
-    //   res.status(403).json({ error: "Admin access required", code: "ADMIN_ACCESS_REQUIRED" });
-    //   return;
-    // }
-
-    const { serverId } = req.query;
-    const result = await ShopService.getShopStats(serverId as string);
-
-    res.json({
-      ...result
-    });
-
-  } catch (error: any) {
-    console.error("Get shop stats error:", error);
-    res.status(500).json({ 
-      error: "Failed to retrieve shop statistics",
-      code: "GET_SHOP_STATS_FAILED"
-    });
-  }
-});
-
-// === ROUTES DE SANTÉ/DEBUG ===
-
 /**
  * GET /api/shops/health
- * Vérifier la santé du système de boutiques
+ * Vérifier la santé du système de boutiques (endpoint public pour monitoring)
  */
 router.get("/health", async (req: Request, res: Response): Promise<void> => {
   try {
-    // Vérifications basiques
     const Shop = (await import("../models/Shop")).default;
     const totalShops = await Shop.countDocuments({ isActive: true });
     const shopsWithItems = await Shop.countDocuments({ 
