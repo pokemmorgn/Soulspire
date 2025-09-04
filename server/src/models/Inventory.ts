@@ -329,11 +329,41 @@ const inventorySchema = new Schema<IInventoryDocument>({
   collection: 'inventories'
 });
 
-// === INDEX ===
-inventorySchema.index({ playerId: 1 });
+// === INDEX CORRIGÉS ===
+// ✅ CORRECTION : Suppression des index problématiques et ajout d'index corrects
+
+inventorySchema.index({ playerId: 1 }); // Index principal
+
+// Index sur itemId pour les recherches (pas sur instanceId pour éviter les conflits)
 inventorySchema.index({ "storage.weapons.itemId": 1 });
+inventorySchema.index({ "storage.helmets.itemId": 1 });
+inventorySchema.index({ "storage.armors.itemId": 1 });
+inventorySchema.index({ "storage.boots.itemId": 1 });
+inventorySchema.index({ "storage.gloves.itemId": 1 });
+inventorySchema.index({ "storage.accessories.itemId": 1 });
+
+// Index pour les objets équipés (utile pour les héros)
 inventorySchema.index({ "storage.weapons.isEquipped": 1 });
-inventorySchema.index({ "storage.*.instanceId": 1 });
+inventorySchema.index({ "storage.helmets.isEquipped": 1 });
+inventorySchema.index({ "storage.armors.isEquipped": 1 });
+inventorySchema.index({ "storage.boots.isEquipped": 1 });
+inventorySchema.index({ "storage.gloves.isEquipped": 1 });
+inventorySchema.index({ "storage.accessories.isEquipped": 1 });
+
+// Index pour les matériaux (pour le système de forge)
+inventorySchema.index({ "storage.enhancementMaterials.itemId": 1 });
+inventorySchema.index({ "storage.craftingMaterials.itemId": 1 });
+
+// ❌ SUPPRIMÉ : L'index problématique qui causait l'erreur
+// inventorySchema.index({ "storage.*.instanceId": 1 }); // ← Cet index était problématique
+
+// ✅ NOUVEAU : Si vous avez absolument besoin d'index sur instanceId, utilisez sparse
+// inventorySchema.index({ "storage.weapons.instanceId": 1 }, { sparse: true });
+// inventorySchema.index({ "storage.helmets.instanceId": 1 }, { sparse: true });
+// inventorySchema.index({ "storage.armors.instanceId": 1 }, { sparse: true });
+// inventorySchema.index({ "storage.boots.instanceId": 1 }, { sparse: true });
+// inventorySchema.index({ "storage.gloves.instanceId": 1 }, { sparse: true });
+// inventorySchema.index({ "storage.accessories.instanceId": 1 }, { sparse: true });
 
 // === MÉTHODES STATIQUES ===
 
@@ -633,6 +663,7 @@ inventorySchema.methods.unequipItem = async function(instanceId: string): Promis
   
   return false;
 };
+
 inventorySchema.methods.equipItem = async function(
   instanceId: string, 
   heroId: string
