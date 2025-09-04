@@ -434,85 +434,175 @@ export class ForgeTierUpgrade extends ForgeModuleBase {
   /**
    * 🔧 MÉTHODE CORRIGÉE - Obtient le coût total pour upgrader un item au tier maximum
    */
-  async getTotalUpgradeCostToMax(itemInstanceId: string): Promise<{
-    totalGold: number;
-    totalGems: number;
-    totalMaterials: { [materialId: string]: number };
-    steps: Array<{ fromTier: number; toTier: number; cost: IForgeResourceCost }>;
-  } | null> {
-    try {
-      const validation = await this.validateItem(itemInstanceId, undefined);
-      if (!validation.valid || !validation.itemData || !validation.ownedItem) return null;
+async getTotalUpgradeCostToMax(itemInstanceId: string): Promise<{
+  totalGold: number;
+  totalGems: number;
+  totalMaterials: { [materialId: string]: number };
+  steps: Array<{ fromTier: number; toTier: number; cost: IForgeResourceCost }>;
+} | null> {
+  try {
+    // 🔧 STEP 1: Validate the item exists and get basic info
+    const validation = await this.validateItem(itemInstanceId, undefined);
+    if (!validation.valid || !validation.itemData || !validation.ownedItem) {
+      console.error(`Validation failed for item ${itemInstanceId}:`, validation.reason);
+      return null;
+    }
 
-      const baseItem: any = validation.itemData;
-      const owned: any = validation.ownedItem;
-      const rarity = baseItem.rarity || "Common";
+    const baseItem: any = validation.itemData;
+    const owned: any = validation.ownedItem;
+    const rarity = baseItem.rarity || "Common";
 
-      const rarityLimits: { [key: string]: number } = {
-        "Common": 2, "Rare": 3, "Epic": 4, "Legendary": 5, "Mythic": 5, "Ascended": 5
-      };
-      const maxTier = rarityLimits[rarity] || 2;
-      const currentTier = this.getCurrentTierFromOwned(owned);
+    // 🔧 STEP 2: Determine current and max possible tiers
+    const currentTier = this.getCurrentTierFromOwned(owned);
+    
+    // Define tier limits by rarity (AFK Arena style)
+    const rarityLimits: { [key: string]: number } = {
+      "Common": 2, 
+      "Rare": 3, 
+      "Epic": 4, 
+      "Legendary": 5, 
+      "Mythic": 5, 
+      "Ascended": 5
+    };
+    
+    const maxTierForRarity = rarityLimits[rarity] || 2;
+    const absoluteMaxTier = ForgeTierUpgrade.MAX_TIER; // Should be 5
 
-      if (currentTier >= maxTier) return null;
+    console.log(`Item ${itemInstanceId}: currentTier=${currentTier}, maxForRarity=${maxTierForRarity}, rarity=${rarity}`);
 
-      let totalGold = 0;
-      let totalGems = 0;
-      const totalMaterials: { [materialId: string]: number } = {};
-      const steps: any[] = [];
+    // 🔧 STEP 3: Check if upgrade is possible
+    if (currentTier >= maxTierForRarity) {
+      console.log(`Item already at max tier for rarity: ${currentTier}/${maxTierForRarity} (${rarity})`);
+      return null; // Item is already at maximum tier for its rarity
+    }
 
-      // ✅ CORRECTION : Calculer le coût directement pour chaque tier
-      // au lieu de faire appel à calculateTierUpgradeCost de manière répétée
-      const baseGold = this.config.baseGoldCost || 10000;
-      const baseGems = this.config.baseGemCost || 500;
+    if (currentTier >= absoluteMaxTier) {
+      console.log(`Item already at absolute max tier: ${currentTier}/${absoluteMaxTier}`);
+      return null; // Item is already at absolute maximum tier
+    }
 
-      // Multiplicateur de rareté
-      const rarityMultipliers: { [key: string]: number } = {
-        "Common": 1, "Rare": 2, "Epic": 4, "Legendary": 8, "Mythic": 16, "Ascended": 32
-      };
-      const rarityMultiplier = rarityMultipliers[rarity] || 1;
+    // 🔧 STEP 4: Calculate upgrade path and costs
+    let totalGold = 0;
+    let totalGems = 0;
+    const totalMaterials: { [materialId: string]: number } = {};
+    const steps: any[] = [];
 
-      // Calculer coût pour chaque tier
-      for (let tier = currentTier + 1; tier <= maxTier; tier++) {
-        // Calculer le coût pour upgrade vers ce tier
-        const tierMultiplier = this.tierCostMultipliers[tier] || Math.pow(2, tier - 1);
+    // Get base costs from config
+    const baseGold = this.config.baseGoldCost || 10000;
+    const baseGems = this.config.baseGemCost || 500;
+
+    // Rarity multiplier
+    const rarityMultipliers: { [key: string]: number } = {
+      "Common": 1, 
+      "Rare": 2, 
+      "Epic": 4, 
+      "Legendary": 8, 
+      "Mythic": 16, 
+      "Ascended": 32
+    };
+    const rarityMultiplier = rarityMultipliers[rarity] || 1;
+
+    // 🔧 STEP 5: Calculate cost for each upgrade step
+    for (let targetTier = currentTier + 1; targetTier <= maxTierForRarity; targetTier++) {
+      try {
+        // Calculate tier-specific multiplier
+        const tierMultiplier = this.tierCostMultipliers[targetTier] || Math.pow(2, targetTier - 1);
         const finalMultiplier = tierMultiplier * rarityMultiplier;
         
+        // Calculate step cost
         const stepCost: IForgeResourceCost = {
           gold: Math.floor(baseGold * finalMultiplier),
           gems: Math.floor(baseGems * finalMultiplier),
-          materials: this.getTierUpgradeMaterials(rarity, tier)
+          materials: this.getTierUpgradeMaterials(rarity, targetTier)
         };
 
+        // Add to totals
         totalGold += stepCost.gold;
         totalGems += stepCost.gems;
 
-        // Additionner matériaux
+        // Sum materials
         if (stepCost.materials) {
           for (const [materialId, amount] of Object.entries(stepCost.materials)) {
             totalMaterials[materialId] = (totalMaterials[materialId] || 0) + amount;
           }
         }
 
+        // Add to steps
         steps.push({
-          fromTier: tier - 1,
-          toTier: tier,
+          fromTier: targetTier - 1,
+          toTier: targetTier,
           cost: stepCost
         });
+
+        console.log(`Step ${targetTier - 1}→${targetTier}: ${stepCost.gold}g, ${stepCost.gems} gems`);
+        
+      } catch (stepError: any) {
+        console.error(`Error calculating cost for tier ${targetTier}:`, stepError.message);
+        // Don't fail the entire calculation for one step error
+        continue;
       }
+    }
 
-      return {
-        totalGold,
-        totalGems,
-        totalMaterials,
-        steps
-      };
-
-    } catch (error) {
-      console.error('Error in getTotalUpgradeCostToMax:', error);
+    // 🔧 STEP 6: Validate results
+    if (steps.length === 0) {
+      console.error(`No upgrade steps calculated for item ${itemInstanceId}`);
       return null;
     }
+
+    if (totalGold <= 0) {
+      console.error(`Invalid total gold cost: ${totalGold}`);
+      return null;
+    }
+
+    console.log(`Total upgrade cost calculated: ${totalGold}g, ${totalGems} gems, ${steps.length} steps`);
+
+    return {
+      totalGold,
+      totalGems,
+      totalMaterials,
+      steps
+    };
+
+  } catch (error: any) {
+    console.error('Error in getTotalUpgradeCostToMax:', {
+      itemInstanceId,
+      error: error.message,
+      stack: error.stack
+    });
+    
+    // 🔧 STEP 7: Enhanced error handling with diagnostic info
+    try {
+      // Provide diagnostic information for debugging
+      const inventory = await this.getInventory();
+      const ownedItem = inventory?.getItem(itemInstanceId);
+      
+      if (!ownedItem) {
+        console.error('Diagnostic: Item not found in inventory');
+        return null;
+      }
+
+      const Item = mongoose.model('Item');
+      const baseItem = await Item.findOne({ itemId: ownedItem.itemId });
+      
+      if (!baseItem) {
+        console.error('Diagnostic: Base item data not found');
+        return null;
+      }
+
+      console.error('Diagnostic info:', {
+        itemId: ownedItem.itemId,
+        rarity: baseItem.rarity,
+        currentTier: (ownedItem as any).tier || 1,
+        category: baseItem.category
+      });
+
+    } catch (diagnosticError) {
+      console.error('Error during diagnostic:', diagnosticError);
+    }
+    
+    return null;
   }
 }
+}  
 
 export default ForgeTierUpgrade;
