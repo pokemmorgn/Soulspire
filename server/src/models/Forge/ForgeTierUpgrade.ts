@@ -57,21 +57,40 @@ export class ForgeTierUpgrade extends ForgeModuleBase {
    * Dans AFK Arena, cela pourrait être stocké dans equipmentData.tier
    * Ici on utilise upgradeHistory.length + 1 comme fallback
    */
-  protected getCurrentTierFromOwned(owned: any): number {
-    // Priorité au champ tier s'il existe
-    if (owned.tier && typeof owned.tier === 'number') {
-      return Math.max(1, Math.min(owned.tier, ForgeTierUpgrade.MAX_TIER));
-    }
-    
-    // Fallback sur upgradeHistory
-    try {
-      const upgradeHistory = owned.equipmentData?.upgradeHistory;
-      const historyLen = Array.isArray(upgradeHistory) ? upgradeHistory.length : 0;
-      return Math.max(1, Math.min(historyLen + 1, ForgeTierUpgrade.MAX_TIER));
-    } catch (err) {
-      return 1;
-    }
+protected getCurrentTierFromOwned(owned: any): number {
+  // 🔧 FIX: Check multiple possible fields for tier information
+  // Priority order: tier > equipmentData.tier > upgradeHistory.length + 1
+  
+  // First priority: Direct tier field
+  if (owned.tier !== undefined && owned.tier !== null && typeof owned.tier === 'number') {
+    const tier = Math.max(1, Math.min(owned.tier, ForgeTierUpgrade.MAX_TIER));
+    console.log(`🔧 Tier from owned.tier: ${tier}`);
+    return tier;
   }
+  
+  // Second priority: Equipment data tier
+  if (owned.equipmentData?.tier !== undefined && typeof owned.equipmentData.tier === 'number') {
+    const tier = Math.max(1, Math.min(owned.equipmentData.tier, ForgeTierUpgrade.MAX_TIER));
+    console.log(`🔧 Tier from equipmentData.tier: ${tier}`);
+    return tier;
+  }
+  
+  // Third priority: Upgrade history length + 1 (original fallback logic)
+  try {
+    const upgradeHistory = owned.equipmentData?.upgradeHistory;
+    if (Array.isArray(upgradeHistory)) {
+      const tier = Math.max(1, Math.min(upgradeHistory.length + 1, ForgeTierUpgrade.MAX_TIER));
+      console.log(`🔧 Tier from upgradeHistory (${upgradeHistory.length} upgrades): ${tier}`);
+      return tier;
+    }
+  } catch (err) {
+    console.log(`🔧 Error reading upgradeHistory: ${err}`);
+  }
+  
+  // Default fallback: Tier 1
+  console.log(`🔧 Tier defaulted to 1 (no tier data found)`);
+  return 1;
+}
 
   /**
    * Vérifie si un item peut être upgradé au tier suivant
@@ -434,6 +453,52 @@ export class ForgeTierUpgrade extends ForgeModuleBase {
   /**
    * 🔧 MÉTHODE CORRIGÉE - Obtient le coût total pour upgrader un item au tier maximum
    */
+// 🔧 EXACT FIX for ForgeTierUpgrade.ts - getCurrentTierFromOwned method
+
+/**
+ * 🔧 CORRECTED METHOD - Fix data inconsistency in tier detection
+ * 
+ * The issue was that getCurrentTierFromOwned() was returning incorrect values
+ * compared to the actual item.tier field, causing calculation failures.
+ */
+protected getCurrentTierFromOwned(owned: any): number {
+  // 🔧 FIX: Check multiple possible fields for tier information
+  // Priority order: tier > equipmentData.tier > upgradeHistory.length + 1
+  
+  // First priority: Direct tier field
+  if (owned.tier !== undefined && owned.tier !== null && typeof owned.tier === 'number') {
+    const tier = Math.max(1, Math.min(owned.tier, ForgeTierUpgrade.MAX_TIER));
+    console.log(`🔧 Tier from owned.tier: ${tier}`);
+    return tier;
+  }
+  
+  // Second priority: Equipment data tier
+  if (owned.equipmentData?.tier !== undefined && typeof owned.equipmentData.tier === 'number') {
+    const tier = Math.max(1, Math.min(owned.equipmentData.tier, ForgeTierUpgrade.MAX_TIER));
+    console.log(`🔧 Tier from equipmentData.tier: ${tier}`);
+    return tier;
+  }
+  
+  // Third priority: Upgrade history length + 1 (original fallback logic)
+  try {
+    const upgradeHistory = owned.equipmentData?.upgradeHistory;
+    if (Array.isArray(upgradeHistory)) {
+      const tier = Math.max(1, Math.min(upgradeHistory.length + 1, ForgeTierUpgrade.MAX_TIER));
+      console.log(`🔧 Tier from upgradeHistory (${upgradeHistory.length} upgrades): ${tier}`);
+      return tier;
+    }
+  } catch (err) {
+    console.log(`🔧 Error reading upgradeHistory: ${err}`);
+  }
+  
+  // Default fallback: Tier 1
+  console.log(`🔧 Tier defaulted to 1 (no tier data found)`);
+  return 1;
+}
+
+/**
+ * 🔧 UPDATED METHOD - Fix the inconsistency in getTotalUpgradeCostToMax
+ */
 async getTotalUpgradeCostToMax(itemInstanceId: string): Promise<{
   totalGold: number;
   totalGems: number;
@@ -441,7 +506,6 @@ async getTotalUpgradeCostToMax(itemInstanceId: string): Promise<{
   steps: Array<{ fromTier: number; toTier: number; cost: IForgeResourceCost }>;
 } | null> {
   try {
-    // 🔧 STEP 1: Validate the item exists and get basic info
     const validation = await this.validateItem(itemInstanceId, undefined);
     if (!validation.valid || !validation.itemData || !validation.ownedItem) {
       console.error(`Validation failed for item ${itemInstanceId}:`, validation.reason);
@@ -452,10 +516,10 @@ async getTotalUpgradeCostToMax(itemInstanceId: string): Promise<{
     const owned: any = validation.ownedItem;
     const rarity = baseItem.rarity || "Common";
 
-    // 🔧 STEP 2: Determine current and max possible tiers
+    // 🔧 FIX: Use consistent tier detection
     const currentTier = this.getCurrentTierFromOwned(owned);
     
-    // Define tier limits by rarity (AFK Arena style)
+    // Define tier limits by rarity
     const rarityLimits: { [key: string]: number } = {
       "Common": 2, 
       "Rare": 3, 
@@ -466,95 +530,81 @@ async getTotalUpgradeCostToMax(itemInstanceId: string): Promise<{
     };
     
     const maxTierForRarity = rarityLimits[rarity] || 2;
-    const absoluteMaxTier = ForgeTierUpgrade.MAX_TIER; // Should be 5
 
-    console.log(`Item ${itemInstanceId}: currentTier=${currentTier}, maxForRarity=${maxTierForRarity}, rarity=${rarity}`);
+    // 🔧 FIX: Add detailed logging for debugging
+    console.log(`🔧 TIER CALCULATION DEBUG:`, {
+      itemInstanceId,
+      itemId: owned.itemId,
+      rarity,
+      currentTier,
+      maxTierForRarity,
+      canUpgrade: currentTier < maxTierForRarity,
+      ownedTierField: owned.tier,
+      equipmentDataTier: owned.equipmentData?.tier,
+      upgradeHistoryLength: owned.equipmentData?.upgradeHistory?.length || 0
+    });
 
-    // 🔧 STEP 3: Check if upgrade is possible
+    // Check if upgrade is possible
     if (currentTier >= maxTierForRarity) {
-      console.log(`Item already at max tier for rarity: ${currentTier}/${maxTierForRarity} (${rarity})`);
-      return null; // Item is already at maximum tier for its rarity
+      console.log(`🔧 Item already at max tier for rarity: ${currentTier}/${maxTierForRarity} (${rarity})`);
+      return null;
     }
 
-    if (currentTier >= absoluteMaxTier) {
-      console.log(`Item already at absolute max tier: ${currentTier}/${absoluteMaxTier}`);
-      return null; // Item is already at absolute maximum tier
+    if (currentTier >= ForgeTierUpgrade.MAX_TIER) {
+      console.log(`🔧 Item already at absolute max tier: ${currentTier}/${ForgeTierUpgrade.MAX_TIER}`);
+      return null;
     }
 
-    // 🔧 STEP 4: Calculate upgrade path and costs
+    // Calculate upgrade costs
     let totalGold = 0;
     let totalGems = 0;
     const totalMaterials: { [materialId: string]: number } = {};
     const steps: any[] = [];
 
-    // Get base costs from config
     const baseGold = this.config.baseGoldCost || 10000;
     const baseGems = this.config.baseGemCost || 500;
-
-    // Rarity multiplier
+    
     const rarityMultipliers: { [key: string]: number } = {
-      "Common": 1, 
-      "Rare": 2, 
-      "Epic": 4, 
-      "Legendary": 8, 
-      "Mythic": 16, 
-      "Ascended": 32
+      "Common": 1, "Rare": 2, "Epic": 4, "Legendary": 8, "Mythic": 16, "Ascended": 32
     };
     const rarityMultiplier = rarityMultipliers[rarity] || 1;
 
-    // 🔧 STEP 5: Calculate cost for each upgrade step
+    // Calculate cost for each upgrade step
     for (let targetTier = currentTier + 1; targetTier <= maxTierForRarity; targetTier++) {
-      try {
-        // Calculate tier-specific multiplier
-        const tierMultiplier = this.tierCostMultipliers[targetTier] || Math.pow(2, targetTier - 1);
-        const finalMultiplier = tierMultiplier * rarityMultiplier;
-        
-        // Calculate step cost
-        const stepCost: IForgeResourceCost = {
-          gold: Math.floor(baseGold * finalMultiplier),
-          gems: Math.floor(baseGems * finalMultiplier),
-          materials: this.getTierUpgradeMaterials(rarity, targetTier)
-        };
+      const tierMultiplier = this.tierCostMultipliers[targetTier] || Math.pow(2, targetTier - 1);
+      const finalMultiplier = tierMultiplier * rarityMultiplier;
+      
+      const stepCost: IForgeResourceCost = {
+        gold: Math.floor(baseGold * finalMultiplier),
+        gems: Math.floor(baseGems * finalMultiplier),
+        materials: this.getTierUpgradeMaterials(rarity, targetTier)
+      };
 
-        // Add to totals
-        totalGold += stepCost.gold;
-        totalGems += stepCost.gems;
+      totalGold += stepCost.gold;
+      totalGems += stepCost.gems;
 
-        // Sum materials
-        if (stepCost.materials) {
-          for (const [materialId, amount] of Object.entries(stepCost.materials)) {
-            totalMaterials[materialId] = (totalMaterials[materialId] || 0) + amount;
-          }
+      // Sum materials
+      if (stepCost.materials) {
+        for (const [materialId, amount] of Object.entries(stepCost.materials)) {
+          totalMaterials[materialId] = (totalMaterials[materialId] || 0) + amount;
         }
-
-        // Add to steps
-        steps.push({
-          fromTier: targetTier - 1,
-          toTier: targetTier,
-          cost: stepCost
-        });
-
-        console.log(`Step ${targetTier - 1}→${targetTier}: ${stepCost.gold}g, ${stepCost.gems} gems`);
-        
-      } catch (stepError: any) {
-        console.error(`Error calculating cost for tier ${targetTier}:`, stepError.message);
-        // Don't fail the entire calculation for one step error
-        continue;
       }
+
+      steps.push({
+        fromTier: targetTier - 1,
+        toTier: targetTier,
+        cost: stepCost
+      });
+
+      console.log(`🔧 Step T${targetTier - 1}→T${targetTier}: ${stepCost.gold}g, ${stepCost.gems}gems`);
     }
 
-    // 🔧 STEP 6: Validate results
     if (steps.length === 0) {
-      console.error(`No upgrade steps calculated for item ${itemInstanceId}`);
+      console.error(`🔧 No upgrade steps calculated - this shouldn't happen!`);
       return null;
     }
 
-    if (totalGold <= 0) {
-      console.error(`Invalid total gold cost: ${totalGold}`);
-      return null;
-    }
-
-    console.log(`Total upgrade cost calculated: ${totalGold}g, ${totalGems} gems, ${steps.length} steps`);
+    console.log(`🔧 SUCCESS: Total upgrade cost calculated: ${totalGold}g, ${totalGems}gems, ${steps.length} steps`);
 
     return {
       totalGold,
@@ -564,41 +614,11 @@ async getTotalUpgradeCostToMax(itemInstanceId: string): Promise<{
     };
 
   } catch (error: any) {
-    console.error('Error in getTotalUpgradeCostToMax:', {
+    console.error('🔧 Error in getTotalUpgradeCostToMax:', {
       itemInstanceId,
       error: error.message,
-      stack: error.stack
+      stack: process.env.NODE_ENV === 'development' ? error.stack : 'hidden'
     });
-    
-    // 🔧 STEP 7: Enhanced error handling with diagnostic info
-    try {
-      // Provide diagnostic information for debugging
-      const inventory = await this.getInventory();
-      const ownedItem = inventory?.getItem(itemInstanceId);
-      
-      if (!ownedItem) {
-        console.error('Diagnostic: Item not found in inventory');
-        return null;
-      }
-
-      const Item = mongoose.model('Item');
-      const baseItem = await Item.findOne({ itemId: ownedItem.itemId });
-      
-      if (!baseItem) {
-        console.error('Diagnostic: Base item data not found');
-        return null;
-      }
-
-      console.error('Diagnostic info:', {
-        itemId: ownedItem.itemId,
-        rarity: baseItem.rarity,
-        currentTier: (ownedItem as any).tier || 1,
-        category: baseItem.category
-      });
-
-    } catch (diagnosticError) {
-      console.error('Error during diagnostic:', diagnosticError);
-    }
     
     return null;
   }
