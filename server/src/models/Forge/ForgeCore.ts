@@ -221,10 +221,7 @@ export class ForgeCore {
     }
   }
 
-  /**
-   * Dépense les ressources du joueur
-   */
- async spendResources(cost: IForgeResourceCost): Promise<boolean> {
+  async spendResources(cost: IForgeResourceCost): Promise<boolean> {
     try {
       const Player = mongoose.model('Player');
       const Inventory = mongoose.model('Inventory');
