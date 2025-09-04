@@ -155,6 +155,7 @@ const ownedItemSchema = new Schema<IOwnedItem>({
   instanceId: { 
     type: String, 
     required: true,
+    unique: true,
     default: () => new mongoose.Types.ObjectId().toString()
   },
   quantity: { 
@@ -328,17 +329,11 @@ const inventorySchema = new Schema<IInventoryDocument>({
   collection: 'inventories'
 });
 
-// === INDEX SIMPLIFIÉS POUR ÉVITER LES ERREURS ===
-
-// ✅ CORRECTION : Index simplifiés et sûrs
-inventorySchema.index({ playerId: 1 }); // Index principal unique
-
-// ✅ Index sélectifs pour les requêtes courantes (sans wildcards)
-inventorySchema.index({ maxCapacity: 1 });
-inventorySchema.index({ lastCleanup: 1 });
-
-// ❌ SUPPRIMÉ : Tous les index complexes qui causaient des problèmes
-// Ces index seront recréés manuellement si nécessaire via MongoDB directement
+// === INDEX ===
+inventorySchema.index({ playerId: 1 });
+inventorySchema.index({ "storage.weapons.itemId": 1 });
+inventorySchema.index({ "storage.weapons.isEquipped": 1 });
+inventorySchema.index({ "storage.*.instanceId": 1 });
 
 // === MÉTHODES STATIQUES ===
 
@@ -638,7 +633,6 @@ inventorySchema.methods.unequipItem = async function(instanceId: string): Promis
   
   return false;
 };
-
 inventorySchema.methods.equipItem = async function(
   instanceId: string, 
   heroId: string
@@ -708,27 +702,6 @@ inventorySchema.methods.calculateTotalValue = function(): number {
   // Pour l'instant on retourne juste les monnaies
   
   return totalValue;
-};
-
-// Méthodes stub pour l'upgrade d'équipement
-inventorySchema.methods.upgradeEquipment = async function(
-  instanceId: string, 
-  targetLevel?: number, 
-  targetEnhancement?: number
-): Promise<boolean> {
-  const item = this.getItem(instanceId);
-  if (!item) return false;
-  
-  if (targetLevel && targetLevel > item.level) {
-    item.level = Math.min(targetLevel, 100);
-  }
-  
-  if (targetEnhancement !== undefined && targetEnhancement > item.enhancement) {
-    item.enhancement = Math.min(targetEnhancement, 15);
-  }
-  
-  await this.save();
-  return true;
 };
 
 export default mongoose.model<IInventoryDocument>("Inventory", inventorySchema);
