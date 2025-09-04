@@ -324,81 +324,117 @@ export class ForgeService extends ForgeCore {
   }
 
   // 🔧 MÉTHODE CORRIGÉE avec import mongoose
-  async getTotalUpgradeCostToMax(itemInstanceId: string): Promise<{
-    totalGold: number;
-    totalGems: number;
-    totalMaterials: { [materialId: string]: number };
-    steps: Array<{ fromTier: number; toTier: number; cost: IForgeResourceCost }>;
-  }> {
-    try {
-      const cost = await this.tierUpgradeService.getTotalUpgradeCostToMax(itemInstanceId);
-      if (!cost) {
-        // ✅ CORRECTION : Meilleure gestion d'erreur avec diagnostic
-        const validation = await this.validateItem(itemInstanceId, undefined);
-        if (!validation.valid) {
-          throw new Error(`INVALID_ITEM: ${validation.reason}`);
-        }
-
-        // Vérifier si l'item est déjà au tier maximum
-        const inventory = await this.getInventory();
-        if (!inventory) {
-          throw new Error("INVENTORY_NOT_FOUND");
-        }
-
-        const ownedItem = inventory.getItem(itemInstanceId);
-        if (!ownedItem) {
-          throw new Error("ITEM_NOT_FOUND_IN_INVENTORY");
-        }
-
-        // Obtenir les détails de l'item
-        const Item = mongoose.model('Item'); // ✅ mongoose importé maintenant
-        const baseItem = await Item.findOne({ itemId: ownedItem.itemId });
-        if (!baseItem) {
-          throw new Error("BASE_ITEM_NOT_FOUND");
-        }
-
-        const currentTier = (ownedItem as any).tier || 1;
-        const rarity = baseItem.rarity || "Common";
-
-        // Limites de tier par rareté
-        const rarityLimits: { [key: string]: number } = {
-          "Common": 2, "Rare": 3, "Epic": 4, "Legendary": 5, "Mythic": 5, "Ascended": 5
-        };
-        const maxTierForRarity = rarityLimits[rarity] || 2;
-
-        if (currentTier >= maxTierForRarity) {
-          throw new Error(`ITEM_ALREADY_AT_MAX_TIER_FOR_RARITY: T${currentTier}/${maxTierForRarity} (${rarity})`);
-        }
-
-        if (currentTier >= 5) {
-          throw new Error("ITEM_ALREADY_AT_ABSOLUTE_MAX_TIER");
-        }
-
-        throw new Error("UNABLE_TO_COMPUTE_TOTAL_UPGRADE_COST");
-      }
-      return cost;
-    } catch (error: any) {
-      // ✅ CORRECTION : Gestion d'erreur plus spécifique
-      if (error.message.includes("ITEM_ALREADY_AT_MAX_TIER")) {
-        throw error; // Propager l'erreur spécifique
-      }
-      if (error.message.includes("INVALID_ITEM")) {
-        throw error;
-      }
-      if (error.message.includes("INVENTORY_NOT_FOUND")) {
-        throw error;
-      }
-      if (error.message.includes("ITEM_NOT_FOUND")) {
-        throw error;
-      }
-      if (error.message.includes("BASE_ITEM_NOT_FOUND")) {
-        throw error;
-      }
-      
-      console.error('Error in ForgeService.getTotalUpgradeCostToMax:', error);
-      throw new Error("GET_TOTAL_UPGRADE_COST_FAILED");
+async getTotalUpgradeCostToMax(itemInstanceId: string): Promise<{
+  totalGold: number;
+  totalGems: number;
+  totalMaterials: { [materialId: string]: number };
+  steps: Array<{ fromTier: number; toTier: number; cost: IForgeResourceCost }>;
+}> {
+  try {
+    // First, try to get the cost from the tier upgrade service
+    const cost = await this.tierUpgradeService.getTotalUpgradeCostToMax(itemInstanceId);
+    
+    if (cost) {
+      return cost; // Success case
     }
+    
+    // If cost is null, provide detailed diagnostic information
+    console.log('🔧 DIAGNOSTIC: getTotalUpgradeCostToMax returned null, investigating...');
+    
+    // 🔧 Enhanced diagnostics
+    const validation = await this.validateItem(itemInstanceId, undefined);
+    if (!validation.valid) {
+      throw new Error(`INVALID_ITEM: ${validation.reason}`);
+    }
+
+    const inventory = await this.getInventory();
+    if (!inventory) {
+      throw new Error("INVENTORY_NOT_FOUND");
+    }
+
+    const ownedItem = inventory.getItem(itemInstanceId);
+    if (!ownedItem) {
+      throw new Error("ITEM_NOT_FOUND_IN_INVENTORY");
+    }
+
+    // Get base item information
+    const Item = mongoose.model('Item');
+    const baseItem = await Item.findOne({ itemId: ownedItem.itemId });
+    if (!baseItem) {
+      throw new Error("BASE_ITEM_NOT_FOUND");
+    }
+
+    // Check item category
+    if (baseItem.category !== "Equipment") {
+      throw new Error(`ONLY_EQUIPMENT_CAN_BE_UPGRADED: Found ${baseItem.category}`);
+    }
+
+    // Get current tier and rarity info
+    const currentTier = (ownedItem as any).tier || 1;
+    const rarity = baseItem.rarity || "Common";
+
+    // Check tier limits
+    const rarityLimits: { [key: string]: number } = {
+      "Common": 2, "Rare": 3, "Epic": 4, "Legendary": 5, "Mythic": 5, "Ascended": 5
+    };
+    const maxTierForRarity = rarityLimits[rarity] || 2;
+
+    console.log('🔧 DIAGNOSTIC INFO:', {
+      itemId: ownedItem.itemId,
+      itemName: baseItem.name,
+      category: baseItem.category,
+      rarity: rarity,
+      currentTier: currentTier,
+      maxTierForRarity: maxTierForRarity,
+      canUpgrade: currentTier < maxTierForRarity
+    });
+
+    if (currentTier >= maxTierForRarity) {
+      throw new Error(`ITEM_ALREADY_AT_MAX_TIER_FOR_RARITY: T${currentTier}/${maxTierForRarity} (${rarity})`);
+    }
+
+    if (currentTier >= 5) {
+      throw new Error("ITEM_ALREADY_AT_ABSOLUTE_MAX_TIER");
+    }
+
+    // If we reach here, there's an unexpected issue in the tier upgrade service
+    throw new Error("TIER_UPGRADE_SERVICE_CALCULATION_FAILED: Unable to compute upgrade path despite valid item");
+    
+  } catch (error: any) {
+    // 🔧 Enhanced error handling with more specific error types
+    const errorMessage = error.message || "UNKNOWN_ERROR";
+    
+    // Log detailed error information for debugging
+    console.error('🔧 ForgeService.getTotalUpgradeCostToMax ERROR:', {
+      itemInstanceId,
+      errorMessage,
+      errorType: error.constructor.name,
+      timestamp: new Date().toISOString()
+    });
+
+    // Map specific errors to user-friendly messages
+    const errorMappings: { [key: string]: string } = {
+      "INVALID_ITEM": "INVALID_ITEM_FOR_TIER_UPGRADE",
+      "INVENTORY_NOT_FOUND": "PLAYER_INVENTORY_NOT_FOUND", 
+      "ITEM_NOT_FOUND_IN_INVENTORY": "ITEM_NOT_IN_PLAYER_INVENTORY",
+      "BASE_ITEM_NOT_FOUND": "ITEM_DATA_NOT_FOUND",
+      "ONLY_EQUIPMENT_CAN_BE_UPGRADED": "ITEM_TYPE_NOT_UPGRADEABLE",
+      "ITEM_ALREADY_AT_MAX_TIER": "ITEM_ALREADY_MAXIMUM_TIER",
+      "TIER_UPGRADE_SERVICE_CALCULATION_FAILED": "UPGRADE_CALCULATION_ERROR"
+    };
+
+    // Find the appropriate mapped error or use the original
+    let mappedError = errorMessage;
+    for (const [key, value] of Object.entries(errorMappings)) {
+      if (errorMessage.includes(key)) {
+        mappedError = value;
+        break;
+      }
+    }
+
+    throw new Error(mappedError);
   }
+}
 
   // === MÉTHODES UTILITAIRES ===
 
