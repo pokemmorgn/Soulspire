@@ -159,9 +159,61 @@ export class ForgeCore {
   }
 
   /**
-   * Valide qu'un joueur peut se permettre un certain coût
+   * Try to resolve a materialId (used in cost.materials) to an actual itemId present in the player's inventory.
+   * Strategy:
+   * 1. If inventory.hasItem(materialId) => use materialId as-is.
+   * 2. Search material categories for an item whose itemId equals materialId.
+   * 3. If not found, search for an itemId that contains the materialId as substring or that startsWith materialId.
+   * 4. Return null if nothing found.
    */
-// Replace the existing validatePlayerResources and spendResources implementations with these.
+  protected async resolveMaterialId(materialId: string, inventory: any): Promise<string | null> {
+    try {
+      if (!inventory) return null;
+
+      // Quick check: inventory.hasItem (synchronous method) — works across versions
+      try {
+        if (typeof inventory.hasItem === "function" && inventory.hasItem(materialId, 1)) {
+          return materialId;
+        }
+      } catch (e) {
+        // ignore hasItem errors and continue to scanning storage
+      }
+
+      const materialCategories = [
+        "enhancementMaterials",
+        "evolutionMaterials",
+        "craftingMaterials",
+        "awakeningMaterials",
+        "enhancementItems",
+        "artifacts"
+      ];
+
+      // Search for exact matches first
+      for (const cat of materialCategories) {
+        const items = (inventory as any).storage?.[cat] || [];
+        if (Array.isArray(items)) {
+          const found = items.find((it: any) => it.itemId === materialId);
+          if (found) return found.itemId;
+        }
+      }
+
+      // Search for partial match (contains or startsWith) as a compatibility fallback
+      for (const cat of materialCategories) {
+        const items = (inventory as any).storage?.[cat] || [];
+        if (Array.isArray(items)) {
+          const found = items.find((it: any) => typeof it.itemId === "string" && (
+            it.itemId.includes(materialId) || it.itemId.startsWith(materialId) || materialId.startsWith(it.itemId)
+          ));
+          if (found) return found.itemId;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error("[forge] resolveMaterialId error", { materialId, error });
+      return null;
+    }
+  }
 
   /**
    * Valide qu'un joueur peut se permettre un certain coût
@@ -178,7 +230,7 @@ export class ForgeCore {
         return false;
       }
 
-      // Normalize gems field: accept paidGems as gems fallback (safe access - avoids TS error)
+      // Normalize gems field: accept paidGems as gems fallback (safe access)
       const paidGems = (cost as any)?.paidGems;
       if (paidGems !== undefined && cost.gems === undefined) {
         cost.gems = paidGems;
@@ -208,15 +260,25 @@ export class ForgeCore {
           return false;
         }
 
+        // For each material, try to resolve it to an itemId present in inventory
         for (const [materialId, requiredAmount] of Object.entries(cost.materials)) {
-          const has = typeof inventory.hasItem === 'function'
-            ? await inventory.hasItem(materialId, requiredAmount)
-            // fallback: try counting matching itemId in storage if API differs
-            : ((inventory.storage?.craftingMaterials || []).filter((it: any) => it.itemId === materialId)
-                .reduce((s: number, it: any) => s + (it.quantity || 1), 0) >= (requiredAmount as number));
+          const resolvedId = await this.resolveMaterialId(materialId, inventory);
+
+          if (!resolvedId) {
+            console.log('[forge] validatePlayerResources: missing material (no matching itemId)', {
+              materialId,
+              requiredAmount,
+              playerId: this.playerId
+            });
+            return false;
+          }
+
+          const has = typeof inventory.hasItem === "function"
+            ? inventory.hasItem(resolvedId, requiredAmount)
+            : ((inventory as any).storage?.craftingMaterials || []).filter((it: any) => it.itemId === resolvedId).reduce((s: number, it: any) => s + (it.quantity || 1), 0) >= (requiredAmount as number);
 
           if (!has) {
-            console.log('[forge] validatePlayerResources: missing material', { materialId, requiredAmount, playerId: this.playerId });
+            console.log('[forge] validatePlayerResources: missing material', { materialId, resolvedId, requiredAmount, playerId: this.playerId });
             return false;
           }
         }
@@ -267,30 +329,52 @@ export class ForgeCore {
         return false;
       }
 
-      // Dépenser les matériaux
+      // Dépenser les matériaux (use resolved itemIds and remove required quantities across instances)
       if (cost.materials) {
-        for (const [materialId, amount] of Object.entries(cost.materials)) {
-          const materialItem = inventory.storage?.craftingMaterials?.find(
-            (item: any) => item.itemId === materialId
-          );
-          if (materialItem) {
-            const removed = await inventory.removeItem(materialItem.instanceId, amount);
-            if (!removed) {
-              console.error('[forge] spendResources: failed to remove material instance', { materialId, instanceId: materialItem.instanceId, amount });
-              return false;
-            }
-          } else {
-            // fallback: if no single instance found, attempt a remove by itemId if Inventory supports it
-            if (typeof inventory.removeItemByItemId === 'function') {
-              const removed = await inventory.removeItemByItemId(materialId, amount);
+        for (const [materialId, amountRaw] of Object.entries(cost.materials)) {
+          const amountNeeded = Number(amountRaw) || 0;
+          if (amountNeeded <= 0) continue;
+
+          const resolvedId = await this.resolveMaterialId(materialId, inventory);
+          if (!resolvedId) {
+            console.error('[forge] spendResources: resolvedId not found for material', { materialId });
+            return false;
+          }
+
+          // Find all owned items matching resolvedId across material categories
+          const materialCategories = [
+            "enhancementMaterials",
+            "evolutionMaterials",
+            "craftingMaterials",
+            "awakeningMaterials",
+            "enhancementItems",
+            "artifacts"
+          ];
+
+          let remaining = amountNeeded;
+          for (const cat of materialCategories) {
+            if (remaining <= 0) break;
+            const items = (inventory as any).storage?.[cat] || [];
+            if (!Array.isArray(items) || items.length === 0) continue;
+
+            // iterate copy to avoid modification issues
+            for (const owned of [...items]) {
+              if (owned.itemId !== resolvedId) continue;
+              const qty = owned.quantity || 1;
+              const toRemove = Math.min(qty, remaining);
+              const removed = await inventory.removeItem(owned.instanceId, toRemove);
               if (!removed) {
-                console.error('[forge] spendResources: removeItemByItemId failed', { materialId, amount });
+                console.error('[forge] spendResources: failed to remove material instance', { resolvedId, instanceId: owned.instanceId, toRemove });
                 return false;
               }
-            } else {
-              console.error('[forge] spendResources: material instance not found and no fallback available', { materialId });
-              return false;
+              remaining -= toRemove;
+              if (remaining <= 0) break;
             }
+          }
+
+          if (remaining > 0) {
+            console.error('[forge] spendResources: insufficient material quantity after removal attempts', { materialId, resolvedId, requested: amountNeeded, remaining, playerId: this.playerId });
+            return false;
           }
         }
       }
