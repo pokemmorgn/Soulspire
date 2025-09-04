@@ -4,6 +4,9 @@ import cors from "cors";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 
+import { ShopService } from "./services/ShopService";
+import { SchedulerService } from "./services/SchedulerService";
+
 // Import des routes
 import authRoutes from "./routes/auth";
 import playerRoutes from "./routes/player";
@@ -271,20 +274,103 @@ app.use("*", (req: Request, res: Response) => {
 // Application du middleware de gestion d'erreurs
 app.use(errorHandler);
 
-// Fonction de démarrage du serveur
+    // Fonction de démarrage du serveur
 const startServer = async (): Promise<void> => {
   try {
     // Connexion à la base de données
     await connectDB();
     
+    // 🛒 INITIALISATION OPTIONNELLE DES BOUTIQUES
+    console.log("🛒 Vérification des boutiques système...");
+    try {
+      await ShopService.createPredefinedShops();
+      console.log("✅ Boutiques système vérifiées");
+    } catch (error) {
+      console.error("⚠️ Erreur boutiques système:", error);
+      // Continue quand même le démarrage
+    }
+    
+    // ⏰ DÉMARRAGE DES TÂCHES PROGRAMMÉES
+    console.log("⏰ Démarrage des tâches automatiques...");
+    try {
+      SchedulerService.startAllSchedulers();
+      console.log("✅ Tâches programmées actives");
+    } catch (error) {
+      console.error("⚠️ Erreur scheduler:", error);
+      // Continue quand même le démarrage
+    }
+    
     // Démarrage du serveur
-const server = app.listen(PORT, "0.0.0.0", () => {
-  const publicIP = process.env.SERVER_IP || "88.99.61.188";
+    const server = app.listen(PORT, "0.0.0.0", () => {
+      const publicIP = process.env.SERVER_IP || "88.99.61.188";
 
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🌐 Environment: ${NODE_ENV}`);
-  console.log(`📊 API Health: http://${publicIP}:${PORT}/health`);
-});
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`🌐 Environment: ${NODE_ENV}`);
+      console.log(`📊 API Health: http://${publicIP}:${PORT}/health`);
+      
+      // Status des services (optionnel)
+      setTimeout(async () => {
+        try {
+          const schedulerStatus = SchedulerService.getSchedulerStatus();
+          console.log(`⏰ Tâches actives: ${schedulerStatus.totalTasks}`);
+        } catch (error) {
+          // Silencieux si pas disponible
+        }
+      }, 1000);
+    });
+
+    // Gestion gracieuse de l'arrêt
+    const gracefulShutdown = (signal: string) => {
+      console.log(`\n🛑 ${signal} received. Starting graceful shutdown...`);
+      
+      // Arrêt des tâches programmées
+      try {
+        SchedulerService.stopAllSchedulers();
+        console.log("⏹️ Tâches programmées arrêtées");
+      } catch (error) {
+        console.error("⚠️ Erreur arrêt scheduler:", error);
+      }
+      
+      server.close(async () => {
+        console.log("🔌 HTTP server closed");
+        
+        try {
+          await mongoose.connection.close();
+          console.log("🗄️ MongoDB connection closed");
+          console.log("✅ Graceful shutdown completed");
+          process.exit(0);
+        } catch (err) {
+          console.error("❌ Error during shutdown:", err);
+          process.exit(1);
+        }
+      });
+      
+      // Force shutdown after 10 seconds
+      setTimeout(() => {
+        console.error("⚠️ Forcing shutdown after timeout");
+        process.exit(1);
+      }, 10000);
+    };
+
+    // Gestionnaires de signaux pour shutdown gracieux
+    process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+    process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+    
+    // Gestionnaire d'erreurs non capturées
+    process.on("unhandledRejection", (reason, promise) => {
+      console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
+    });
+    
+    process.on("uncaughtException", (error) => {
+      console.error("❌ Uncaught Exception:", error);
+      process.exit(1);
+    });
+    
+  } catch (error) {
+    console.error("❌ Failed to start server:", error);
+    process.exit(1);
+  }
+};
 
 
     // Gestion gracieuse de l'arrêt
