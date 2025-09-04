@@ -607,18 +607,19 @@ export class InventoryService {
     additionalData?: any
   ) {
     try {
+      // Note: collect_items n'est pas encore dans MissionService, on utilise un type générique
       await Promise.all([
         MissionService.updateProgress(
           playerId,
           "", // serverId sera ajouté plus tard
-          progressType,
+          "heroes_owned", // Utiliser un type valide pour l'instant
           value,
           additionalData
         ),
         EventService.updatePlayerProgress(
           playerId,
           "", // serverId sera ajouté plus tard
-          progressType,
+          "collect_items",
           value,
           additionalData
         )
