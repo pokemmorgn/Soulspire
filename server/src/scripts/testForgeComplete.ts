@@ -27,19 +27,19 @@ const log = (message: string, color: string = colors.reset) => {
 
 // Test data - Simplified and consistent
 const testMaterials = [
-  { itemId: "reforge_stone", name: "Reforge Stone", category: "Material", materialType: "Enhancement", rarity: "Common", sellPrice: 25 },
-  { itemId: "magic_dust", name: "Magic Dust", category: "Material", materialType: "Enhancement", rarity: "Rare", sellPrice: 75 },
-  { itemId: "enhancement_stone", name: "Enhancement Stone", category: "Material", materialType: "Enhancement", rarity: "Common", sellPrice: 50 },
-  { itemId: "tier_stone", name: "Tier Stone", category: "Material", materialType: "Crafting", rarity: "Common", sellPrice: 75 },
-  { itemId: "fusion_stone", name: "Fusion Stone", category: "Material", materialType: "Evolution", rarity: "Common", sellPrice: 100 }
+  { itemId: "reforge_stone", name: "Reforge Stone", category: "Material", subCategory: "Enhancement Stone", materialType: "Enhancement", rarity: "Common", sellPrice: 25 },
+  { itemId: "magic_dust", name: "Magic Dust", category: "Material", subCategory: "Magic Material", materialType: "Enhancement", rarity: "Rare", sellPrice: 75 },
+  { itemId: "enhancement_stone", name: "Enhancement Stone", category: "Material", subCategory: "Enhancement Stone", materialType: "Enhancement", rarity: "Common", sellPrice: 50 },
+  { itemId: "tier_stone", name: "Tier Stone", category: "Material", subCategory: "Tier Material", materialType: "Crafting", rarity: "Common", sellPrice: 75 },
+  { itemId: "fusion_stone", name: "Fusion Stone", category: "Material", subCategory: "Fusion Material", materialType: "Evolution", rarity: "Common", sellPrice: 100 }
 ];
 
 const testEquipment = [
-  { itemId: "common_sword", name: "Common Sword", category: "Equipment", equipmentSlot: "Weapon", rarity: "Common", tier: 1, baseStats: { atk: 50 }, sellPrice: 100 },
-  { itemId: "rare_sword", name: "Rare Sword", category: "Equipment", equipmentSlot: "Weapon", rarity: "Rare", tier: 2, baseStats: { atk: 120 }, sellPrice: 500 },
-  { itemId: "epic_sword", name: "Epic Sword", category: "Equipment", equipmentSlot: "Weapon", rarity: "Epic", tier: 3, baseStats: { atk: 200 }, sellPrice: 2000 },
-  { itemId: "legendary_sword", name: "Legendary Sword", category: "Equipment", equipmentSlot: "Weapon", rarity: "Legendary", tier: 4, baseStats: { atk: 350 }, sellPrice: 8000 },
-  { itemId: "common_armor", name: "Common Armor", category: "Equipment", equipmentSlot: "Armor", rarity: "Common", tier: 1, baseStats: { hp: 100, def: 25 }, sellPrice: 120 }
+  { itemId: "common_sword", name: "Common Sword", category: "Equipment", subCategory: "Sword", equipmentSlot: "Weapon", rarity: "Common", tier: 1, baseStats: { atk: 50 }, sellPrice: 100 },
+  { itemId: "rare_sword", name: "Rare Sword", category: "Equipment", subCategory: "Sword", equipmentSlot: "Weapon", rarity: "Rare", tier: 2, baseStats: { atk: 120 }, sellPrice: 500 },
+  { itemId: "epic_sword", name: "Epic Sword", category: "Equipment", subCategory: "Sword", equipmentSlot: "Weapon", rarity: "Epic", tier: 3, baseStats: { atk: 200 }, sellPrice: 2000 },
+  { itemId: "legendary_sword", name: "Legendary Sword", category: "Equipment", subCategory: "Sword", equipmentSlot: "Weapon", rarity: "Legendary", tier: 4, baseStats: { atk: 350 }, sellPrice: 8000 },
+  { itemId: "common_armor", name: "Common Armor", category: "Equipment", subCategory: "Armor", equipmentSlot: "Armor", rarity: "Common", tier: 1, baseStats: { hp: 100, def: 25 }, sellPrice: 120 }
 ];
 
 class ForgeTestSuite {
