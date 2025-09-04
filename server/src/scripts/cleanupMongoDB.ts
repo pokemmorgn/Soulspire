@@ -82,26 +82,31 @@ async function cleanupMongoDBIndexes(): Promise<void> {
     
     for (const category of categories) {
       try {
-        // Utiliser une approche plus simple avec MongoDB natif
-        const result = await inventoriesCollection.updateMany(
-          {},
-          {
-            $pull: {
-              [`storage.${category}`]: {
-                $or: [
-                  { instanceId: null },
-                  { instanceId: "" },
-                  { instanceId: { $exists: false } }
-                ]
-              }
-            }
-          }
+        // ✅ SOLUTION DÉFINITIVE : Utiliser une approche en plusieurs étapes
+        
+        // Étape 1 : Supprimer les items avec instanceId null
+        const result1 = await inventoriesCollection.updateMany(
+          { [`storage.${category}.instanceId`]: null },
+          { $pull: { [`storage.${category}`]: { instanceId: null } } }
         );
         
-        totalModified += result.modifiedCount;
+        // Étape 2 : Supprimer les items avec instanceId vide
+        const result2 = await inventoriesCollection.updateMany(
+          { [`storage.${category}.instanceId`]: "" },
+          { $pull: { [`storage.${category}`]: { instanceId: "" } } }
+        );
         
-        if (result.modifiedCount > 0) {
-          log(`   ✅ ${category}: ${result.modifiedCount} documents nettoyés`, colors.green);
+        // Étape 3 : Supprimer les items sans instanceId
+        const result3 = await inventoriesCollection.updateMany(
+          { [`storage.${category}`]: { $elemMatch: { instanceId: { $exists: false } } } },
+          { $pull: { [`storage.${category}`]: { instanceId: { $exists: false } } } }
+        );
+        
+        const categoryModified = result1.modifiedCount + result2.modifiedCount + result3.modifiedCount;
+        totalModified += categoryModified;
+        
+        if (categoryModified > 0) {
+          log(`   ✅ ${category}: ${categoryModified} documents nettoyés`, colors.green);
         }
       } catch (error: any) {
         log(`   ⚠️ Erreur lors du nettoyage de ${category}: ${error.message}`, colors.yellow);
@@ -113,6 +118,7 @@ async function cleanupMongoDBIndexes(): Promise<void> {
     // 4. Supprimer les documents d'inventaire complètement vides ou corrompus
     log("\n🗑️ Suppression des inventaires corrompus...", colors.yellow);
     
+    let deletedInventoriesCount = 0;
     try {
       const deleteResult = await inventoriesCollection.deleteMany({
         $or: [
@@ -124,6 +130,7 @@ async function cleanupMongoDBIndexes(): Promise<void> {
         ]
       });
 
+      deletedInventoriesCount = deleteResult.deletedCount;
       if (deleteResult.deletedCount > 0) {
         log(`   ✅ ${deleteResult.deletedCount} inventaires corrompus supprimés`, colors.green);
       } else {
@@ -183,7 +190,26 @@ async function cleanupMongoDBIndexes(): Promise<void> {
       log(`   ℹ️ Aucune donnée de test trouvée`, colors.blue);
     }
 
-    // 6. Afficher les index restants
+    // 6. Vérifier et recréer les index de base (optionnel)
+    log("\n🔧 Vérification des index de base...", colors.yellow);
+    try {
+      // S'assurer que l'index principal existe
+      const existingIndexes = await inventoriesCollection.indexes();
+      const hasPlayerIdIndex = existingIndexes.some(idx => 
+        idx.name === 'playerId_1' || JSON.stringify(idx.key).includes('playerId')
+      );
+      
+      if (!hasPlayerIdIndex) {
+        await inventoriesCollection.createIndex({ playerId: 1 }, { unique: true });
+        log(`   ✅ Index playerId recréé`, colors.green);
+      } else {
+        log(`   ℹ️ Index playerId déjà présent`, colors.blue);
+      }
+    } catch (error: any) {
+      log(`   ⚠️ Erreur lors de la vérification des index: ${error.message}`, colors.yellow);
+    }
+
+    // 7. Afficher les index restants
     log("\n📋 Index restants après nettoyage:", colors.yellow);
     try {
       const finalIndexes = await inventoriesCollection.indexes();
@@ -194,10 +220,11 @@ async function cleanupMongoDBIndexes(): Promise<void> {
       log(`   ⚠️ Erreur lors de la récupération des index finaux: ${error.message}`, colors.yellow);
     }
 
-    // 7. Statistiques finales
+    // 8. Statistiques finales
     log("\n📊 Statistiques de nettoyage:", colors.bright);
     log(`   🗑️ Index supprimés: ${droppedCount}`, colors.green);
     log(`   🧹 Documents nettoyés: ${totalModified}`, colors.green);
+    log(`   🗂️ Inventaires supprimés: ${deletedInventoriesCount}`, colors.green);
     log(`   🧪 Données de test supprimées: ${totalTestDataDeleted}`, colors.green);
 
     log("\n✅ Nettoyage terminé avec succès!", colors.green);
@@ -239,6 +266,7 @@ const main = async (): Promise<void> => {
   
   // Attendre 3 secondes pour permettre l'annulation
   await new Promise(resolve => setTimeout(resolve, 3000));
+  log("🚀 Début du nettoyage...", colors.cyan);
 
   try {
     await cleanupMongoDBIndexes();
