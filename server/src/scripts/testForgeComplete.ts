@@ -91,20 +91,90 @@ async function quickForgeTest() {
     const status = await forgeService.getForgeStatus();
     console.log(`✅ Forge Status: ${status.playerResources.gold}g available`);
     
-    // Test 2: Enhancement simple  
+    let testsPassed = 0;
+    let testsFailed = 0;
+
+    // Test 2: Enhancement
     try {
-      const result = await forgeService.executeEnhancement(swordInstance.instanceId);
+      const weapon = inventory.storage.weapons[0];
+      const result = await forgeService.executeEnhancement(weapon.instanceId);
       if (result.success) {
         console.log('✅ Enhancement test PASSED');
+        testsPassed++;
       } else {
         console.log(`❌ Enhancement test FAILED: ${result.message}`);
+        testsFailed++;
       }
     } catch (error: any) {
       console.log(`❌ Enhancement test ERROR: ${error.message}`);
+      testsFailed++;
     }
 
-    console.log('🎉 Quick test completed!');
-    return true;
+    // Test 3: Reforge
+    try {
+      const weapon = inventory.storage.weapons[1];
+      const result = await forgeService.executeReforge(weapon.instanceId, ['atk']);
+      if (result.success) {
+        console.log('✅ Reforge test PASSED');
+        testsPassed++;
+      } else {
+        console.log(`❌ Reforge test FAILED: ${result.message}`);
+        testsFailed++;
+      }
+    } catch (error: any) {
+      console.log(`❌ Reforge test ERROR: ${error.message}`);
+      testsFailed++;
+    }
+
+    // Test 4: Tier Upgrade
+    try {
+      const weapon = inventory.storage.weapons[2];
+      const result = await forgeService.executeTierUpgrade(weapon.instanceId);
+      if (result.success) {
+        console.log('✅ Tier Upgrade test PASSED');
+        testsPassed++;
+      } else {
+        console.log(`❌ Tier Upgrade test FAILED: ${result.message}`);
+        testsFailed++;
+      }
+    } catch (error: any) {
+      console.log(`❌ Tier Upgrade test ERROR: ${error.message}`);
+      testsFailed++;
+    }
+
+    // Test 5: Fusion (avec 3 épées identiques si possible)
+    try {
+      const allSwords = inventory.storage.weapons.filter((w: any) => w.itemId === 'test_sword');
+      if (allSwords.length >= 3) {
+        const swordIds = allSwords.slice(0, 3).map((w: any) => w.instanceId);
+        const result = await forgeService.executeFusion(swordIds);
+        if (result.success) {
+          console.log('✅ Fusion test PASSED');
+          testsPassed++;
+        } else {
+          console.log(`❌ Fusion test FAILED: ${result.message}`);
+          testsFailed++;
+        }
+      } else {
+        console.log('⚠️ Fusion test SKIPPED: Not enough identical items');
+      }
+    } catch (error: any) {
+      console.log(`❌ Fusion test ERROR: ${error.message}`);
+      testsFailed++;
+    }
+
+    // Résumé
+    const total = testsPassed + testsFailed;
+    const successRate = total > 0 ? ((testsPassed / total) * 100).toFixed(1) : '0';
+    console.log(`\n🎯 RESULTS: ${testsPassed}/${total} tests passed (${successRate}%)`);
+    
+    if (testsFailed === 0) {
+      console.log('🎉 ALL FORGE MODULES WORKING PERFECTLY!');
+    } else {
+      console.log('⚠️ Some modules need attention');
+    }
+
+    return testsFailed === 0;
 
   } catch (error: any) {
     console.error('💥 Test failed:', error.message);
