@@ -180,10 +180,15 @@ async function quickForgeTest() {
     console.error('💥 Test failed:', error.message);
     return false;
   } finally {
-    // Nettoyage rapide
+    // Nettoyage complet (inclut tous les items de test)
     await Player.deleteMany({ username: /^test_/ });
-    await Item.deleteMany({ itemId: /^test_/ });
-    await Inventory.deleteMany({});
+    await Item.deleteMany({ 
+      itemId: { 
+        $in: ['test_sword', 'enhancement_stone', 'reforge_stone', 'magic_dust', 
+              'fusion_stone', 'silver_dust', 'tier_stone', 'enhancement_dust'] 
+      } 
+    });
+    await Inventory.deleteMany({ playerId: /^test_/ });
     await mongoose.disconnect();
     console.log('🧹 Cleaned up and disconnected');
   }
