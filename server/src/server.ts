@@ -4,9 +4,6 @@ import cors from "cors";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 
-import { ShopService } from "./services/ShopService";
-import { SchedulerService } from "./services/SchedulerService";
-
 // Import des routes
 import authRoutes from "./routes/auth";
 import playerRoutes from "./routes/player";
@@ -29,6 +26,10 @@ import forgeReforgeRoutes from "./routes/forgeReforge";
 import forgeEnhancementRoutes from "./routes/forgeEnhancement";
 import forgeFusionRoutes from "./routes/forgeFusion";
 import forgeTierUpgradeRoutes from "./routes/forgeTierUpgrade";
+
+// Import des services
+import { ShopService } from "./services/ShopService";
+import { SchedulerService } from "./services/SchedulerService";
 
 // Configuration de l'environnement
 dotenv.config();
@@ -194,6 +195,7 @@ app.use("/api/forge/reforge", forgeReforgeRoutes);
 app.use("/api/forge/enhancement", forgeEnhancementRoutes);
 app.use("/api/forge/fusion", forgeFusionRoutes);
 app.use("/api/forge/tier-upgrade", forgeTierUpgradeRoutes);
+
 // Route de santé de l'API
 app.get("/", (req: Request, res: Response) => {
   res.json({
@@ -274,30 +276,34 @@ app.use("*", (req: Request, res: Response) => {
 // Application du middleware de gestion d'erreurs
 app.use(errorHandler);
 
-    // Fonction de démarrage du serveur
+// Fonction de démarrage du serveur - VERSION COMPLÈTE AVEC INIT
 const startServer = async (): Promise<void> => {
   try {
     // Connexion à la base de données
     await connectDB();
     
-    // 🛒 INITIALISATION OPTIONNELLE DES BOUTIQUES
-    console.log("🛒 Vérification des boutiques système...");
+    // 🛒 INITIALISATION DES BOUTIQUES SYSTÈME
+    console.log("🛒 Initialisation des boutiques système...");
     try {
-      await ShopService.createPredefinedShops();
-      console.log("✅ Boutiques système vérifiées");
+      const shopResult = await ShopService.createPredefinedShops();
+      if (shopResult.createdShops.length > 0) {
+        console.log(`✅ ${shopResult.createdShops.length} boutiques créées: ${shopResult.createdShops.join(", ")}`);
+      } else {
+        console.log("✅ Toutes les boutiques système existent déjà");
+      }
     } catch (error) {
-      console.error("⚠️ Erreur boutiques système:", error);
-      // Continue quand même le démarrage
+      console.error("⚠️ Erreur initialisation boutiques:", error);
+      // Continue quand même le démarrage - les boutiques peuvent être créées manuellement
     }
     
     // ⏰ DÉMARRAGE DES TÂCHES PROGRAMMÉES
     console.log("⏰ Démarrage des tâches automatiques...");
     try {
       SchedulerService.startAllSchedulers();
-      console.log("✅ Tâches programmées actives");
+      console.log("✅ Tâches programmées actives (resets automatiques des boutiques)");
     } catch (error) {
-      console.error("⚠️ Erreur scheduler:", error);
-      // Continue quand même le démarrage
+      console.error("⚠️ Erreur démarrage scheduler:", error);
+      console.log("ℹ️ Les boutiques devront être mises à jour manuellement");
     }
     
     // Démarrage du serveur
@@ -308,74 +314,45 @@ const startServer = async (): Promise<void> => {
       console.log(`🌐 Environment: ${NODE_ENV}`);
       console.log(`📊 API Health: http://${publicIP}:${PORT}/health`);
       
-      // Status des services (optionnel)
+      // Affichage du statut des services après démarrage
       setTimeout(async () => {
         try {
           const schedulerStatus = SchedulerService.getSchedulerStatus();
-          console.log(`⏰ Tâches actives: ${schedulerStatus.totalTasks}`);
+          const shopStats = await ShopService.getShopStats();
+          
+          console.log("📋 === STATUS DES SERVICES ===");
+          console.log(`🛒 Boutiques actives: ${shopStats.stats.length} types`);
+          console.log(`⏰ Tâches programmées: ${schedulerStatus.totalTasks} actives`);
+          
+          // Détail des boutiques
+          shopStats.stats.forEach((stat: any) => {
+            console.log(`   • ${stat.shopType}: ${stat.totalItems} objets`);
+          });
+          
+          // Détail des tâches
+          schedulerStatus.tasks.forEach((task: any) => {
+            console.log(`   • ${task.name}: ${task.running ? "✅" : "❌"}`);
+          });
+          
+          console.log("================================");
         } catch (error) {
-          // Silencieux si pas disponible
+          console.log("📋 Services initialisés (détails non disponibles)");
         }
-      }, 1000);
+      }, 2000);
     });
 
     // Gestion gracieuse de l'arrêt
     const gracefulShutdown = (signal: string) => {
       console.log(`\n🛑 ${signal} received. Starting graceful shutdown...`);
       
-      // Arrêt des tâches programmées
+      // Arrêt des tâches programmées en premier
       try {
+        console.log("⏹️ Arrêt des tâches programmées...");
         SchedulerService.stopAllSchedulers();
-        console.log("⏹️ Tâches programmées arrêtées");
+        console.log("✅ Tâches programmées arrêtées");
       } catch (error) {
         console.error("⚠️ Erreur arrêt scheduler:", error);
       }
-      
-      server.close(async () => {
-        console.log("🔌 HTTP server closed");
-        
-        try {
-          await mongoose.connection.close();
-          console.log("🗄️ MongoDB connection closed");
-          console.log("✅ Graceful shutdown completed");
-          process.exit(0);
-        } catch (err) {
-          console.error("❌ Error during shutdown:", err);
-          process.exit(1);
-        }
-      });
-      
-      // Force shutdown after 10 seconds
-      setTimeout(() => {
-        console.error("⚠️ Forcing shutdown after timeout");
-        process.exit(1);
-      }, 10000);
-    };
-
-    // Gestionnaires de signaux pour shutdown gracieux
-    process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-    process.on("SIGINT", () => gracefulShutdown("SIGINT"));
-    
-    // Gestionnaire d'erreurs non capturées
-    process.on("unhandledRejection", (reason, promise) => {
-      console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
-    });
-    
-    process.on("uncaughtException", (error) => {
-      console.error("❌ Uncaught Exception:", error);
-      process.exit(1);
-    });
-    
-  } catch (error) {
-    console.error("❌ Failed to start server:", error);
-    process.exit(1);
-  }
-};
-
-
-    // Gestion gracieuse de l'arrêt
-    const gracefulShutdown = (signal: string) => {
-      console.log(`\n🛑 ${signal} received. Starting graceful shutdown...`);
       
       server.close(async () => {
         console.log("🔌 HTTP server closed");
