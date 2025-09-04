@@ -397,5 +397,6 @@ async attemptEnhance(itemInstanceId: string, options?: IEnhancementOptions): Pro
     }
   };
 }
+}
 
 export default ForgeEnhancement;
