@@ -162,21 +162,78 @@ export class ForgeCore {
    * Try to resolve a materialId (used in cost.materials) to an actual itemId present in the player's inventory.
    * Strategy:
    * 1. If inventory.hasItem(materialId) => use materialId as-is.
-   * 2. Search material categories for an item whose itemId equals materialId.
-   * 3. If not found, search for an itemId that contains the materialId as substring or that startsWith materialId.
-   * 4. Return null if nothing found.
+   * 2. Check an alias map (common legacy names -> canonical itemIds).
+   * 3. Search material categories for an item whose itemId equals materialId.
+   * 4. Search for a partial match (contains / startsWith) as a fallback.
+   * 5. Return null if nothing found.
    */
   protected async resolveMaterialId(materialId: string, inventory: any): Promise<string | null> {
     try {
       if (!inventory) return null;
 
-      // Quick check: inventory.hasItem (synchronous method) — works across versions
+      // 0) Quick positive check via inventory.hasItem
       try {
         if (typeof inventory.hasItem === "function" && inventory.hasItem(materialId, 1)) {
           return materialId;
         }
       } catch (e) {
         // ignore hasItem errors and continue to scanning storage
+      }
+
+      // 1) Alias map to map module-generated keys to canonical inventory itemIds
+      const aliasMap: { [key: string]: string } = {
+        // Fusion aliases
+        "fusion_stone": "fusion_catalyst_basic",
+        "silver_dust": "fusion_catalyst_basic",
+        "gold_dust": "fusion_catalyst_advanced",
+        "platinum_dust": "fusion_catalyst_master",
+        "mythic_dust": "fusion_catalyst_master",
+
+        // Enhancement aliases
+        "enhancement_stone": "enhancement_stone_basic",
+        "enhancement_dust": "enhancement_stone_basic",
+        "enhancement_stone_basic": "enhancement_stone_basic",
+        "enhancement_stone_advanced": "enhancement_stone_advanced",
+        "enhancement_stone_master": "enhancement_stone_master",
+
+        // Tier aliases
+        "tier_stone": "tier_essence_basic",
+        "rare_crystal": "tier_essence_advanced",
+        "epic_essence": "tier_essence_master",
+        "legendary_core": "tier_essence_legendary",
+        "silver_thread": "tier_essence_basic",
+        "golden_thread": "tier_essence_advanced",
+        "platinum_thread": "tier_essence_master",
+        "mythic_thread": "tier_essence_legendary"
+      };
+
+      if (aliasMap[materialId]) {
+        // check alias presence
+        const alias = aliasMap[materialId];
+        try {
+          if (typeof inventory.hasItem === "function" && inventory.hasItem(alias, 1)) {
+            return alias;
+          }
+        } catch (e) {
+          // continue to scanning storage
+        }
+        // if alias exists anywhere in storage, return it
+        const materialCategories = [
+          "enhancementMaterials",
+          "evolutionMaterials",
+          "craftingMaterials",
+          "awakeningMaterials",
+          "enhancementItems",
+          "artifacts"
+        ];
+        for (const cat of materialCategories) {
+          const items = (inventory as any).storage?.[cat] || [];
+          if (Array.isArray(items)) {
+            const foundAlias = items.find((it: any) => it.itemId === alias);
+            if (foundAlias) return foundAlias.itemId;
+          }
+        }
+        // if alias not present, continue to other heuristics
       }
 
       const materialCategories = [
@@ -188,7 +245,7 @@ export class ForgeCore {
         "artifacts"
       ];
 
-      // Search for exact matches first
+      // 2) Search for exact matches in storage
       for (const cat of materialCategories) {
         const items = (inventory as any).storage?.[cat] || [];
         if (Array.isArray(items)) {
@@ -197,7 +254,7 @@ export class ForgeCore {
         }
       }
 
-      // Search for partial match (contains or startsWith) as a compatibility fallback
+      // 3) Partial match fallback (contains / startsWith)
       for (const cat of materialCategories) {
         const items = (inventory as any).storage?.[cat] || [];
         if (Array.isArray(items)) {
@@ -205,6 +262,18 @@ export class ForgeCore {
             it.itemId.includes(materialId) || it.itemId.startsWith(materialId) || materialId.startsWith(it.itemId)
           ));
           if (found) return found.itemId;
+        }
+      }
+
+      // 4) Failing that, try normalized forms (strip plurals / dashes)
+      const normalized = materialId.replace(/[-\s]/g, "_").replace(/s$/, "");
+      if (normalized !== materialId) {
+        for (const cat of materialCategories) {
+          const items = (inventory as any).storage?.[cat] || [];
+          if (Array.isArray(items)) {
+            const found = items.find((it: any) => it.itemId === normalized || (typeof it.itemId === "string" && it.itemId.includes(normalized)));
+            if (found) return found.itemId;
+          }
         }
       }
 
