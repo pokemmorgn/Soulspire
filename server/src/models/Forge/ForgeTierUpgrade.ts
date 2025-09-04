@@ -432,7 +432,7 @@ export class ForgeTierUpgrade extends ForgeModuleBase {
   }
 
   /**
-   * Obtient le coût total pour upgrader un item au tier maximum
+   * 🔧 MÉTHODE CORRIGÉE - Obtient le coût total pour upgrader un item au tier maximum
    */
   async getTotalUpgradeCostToMax(itemInstanceId: string): Promise<{
     totalGold: number;
@@ -461,17 +461,35 @@ export class ForgeTierUpgrade extends ForgeModuleBase {
       const totalMaterials: { [materialId: string]: number } = {};
       const steps: any[] = [];
 
+      // ✅ CORRECTION : Calculer le coût directement pour chaque tier
+      // au lieu de faire appel à calculateTierUpgradeCost de manière répétée
+      const baseGold = this.config.baseGoldCost || 10000;
+      const baseGems = this.config.baseGemCost || 500;
+
+      // Multiplicateur de rareté
+      const rarityMultipliers: { [key: string]: number } = {
+        "Common": 1, "Rare": 2, "Epic": 4, "Legendary": 8, "Mythic": 16, "Ascended": 32
+      };
+      const rarityMultiplier = rarityMultipliers[rarity] || 1;
+
       // Calculer coût pour chaque tier
       for (let tier = currentTier + 1; tier <= maxTier; tier++) {
-        const cost = await this.calculateTierUpgradeCost(itemInstanceId, { targetTier: tier });
-        if (!cost) break;
+        // Calculer le coût pour upgrade vers ce tier
+        const tierMultiplier = this.tierCostMultipliers[tier] || Math.pow(2, tier - 1);
+        const finalMultiplier = tierMultiplier * rarityMultiplier;
+        
+        const stepCost: IForgeResourceCost = {
+          gold: Math.floor(baseGold * finalMultiplier),
+          gems: Math.floor(baseGems * finalMultiplier),
+          materials: this.getTierUpgradeMaterials(rarity, tier)
+        };
 
-        totalGold += cost.gold;
-        totalGems += cost.gems;
+        totalGold += stepCost.gold;
+        totalGems += stepCost.gems;
 
         // Additionner matériaux
-        if (cost.materials) {
-          for (const [materialId, amount] of Object.entries(cost.materials)) {
+        if (stepCost.materials) {
+          for (const [materialId, amount] of Object.entries(stepCost.materials)) {
             totalMaterials[materialId] = (totalMaterials[materialId] || 0) + amount;
           }
         }
@@ -479,7 +497,7 @@ export class ForgeTierUpgrade extends ForgeModuleBase {
         steps.push({
           fromTier: tier - 1,
           toTier: tier,
-          cost
+          cost: stepCost
         });
       }
 
@@ -491,6 +509,7 @@ export class ForgeTierUpgrade extends ForgeModuleBase {
       };
 
     } catch (error) {
+      console.error('Error in getTotalUpgradeCostToMax:', error);
       return null;
     }
   }
