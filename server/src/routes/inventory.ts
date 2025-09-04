@@ -415,7 +415,8 @@ router.get("/equipped/:heroId", authMiddleware, async (req: Request, res: Respon
 
     // Filtrer les objets équipés pour ce héros
     const equippedItems: any[] = [];
-    const storage = inventoryResult.inventory.storage;
+    // Cast storage to a string-indexed record so we can safely use string keys
+    const storage = inventoryResult.inventory.storage as unknown as Record<string, any[]>;
 
     // Parcourir toutes les catégories d'équipement
     const equipmentCategories = ['weapons', 'helmets', 'armors', 'boots', 'gloves', 'accessories'];
