@@ -263,14 +263,23 @@ class ForgeTestSuite {
 
   async testTierUpgradeExecution(): Promise<void> {
     // Find a T1 item that can be upgraded (prefer non-Common for better testing)
-    const testItem = this.equipment.find(item => 
+    let testItem = this.equipment.find(item => 
       ((item as any).tier || 1) === 1 && 
       !item.itemId.includes('common')
-    ) || this.equipment.find(item => ((item as any).tier || 1) === 1);
+    );
+    
+    if (!testItem) {
+      // Fallback: use any T1 item
+      testItem = this.equipment.find(item => ((item as any).tier || 1) === 1);
+    }
     
     if (!testItem) throw new Error("No T1 equipment found");
     
     log(`   🔧 Using: ${testItem.itemId} (T${(testItem as any).tier || 1})`, colors.blue);
+    
+    // Check upgrade cost first
+    const upgradeCost = await this.forgeService.getTierUpgradeCost(testItem.instanceId);
+    log(`   🔧 Upgrade will cost: ${upgradeCost.gold}g, ${upgradeCost.gems || 0} gems`, colors.blue);
     
     const result = await this.forgeService.executeTierUpgrade(testItem.instanceId);
     if (!result.success) throw new Error(`Tier upgrade failed: ${result.message}`);
