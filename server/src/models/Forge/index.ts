@@ -322,20 +322,81 @@ export class ForgeService extends ForgeCore {
     }
   }
 
-  async getTotalUpgradeCostToMax(itemInstanceId: string): Promise<{
-    totalGold: number;
-    totalGems: number;
-    totalMaterials: { [materialId: string]: number };
-    steps: Array<{ fromTier: number; toTier: number; cost: IForgeResourceCost }>;
-  }> {
-    try {
-      const cost = await this.tierUpgradeService.getTotalUpgradeCostToMax(itemInstanceId);
-      if (!cost) throw new Error("UNABLE_TO_COMPUTE_TOTAL_UPGRADE_COST");
-      return cost;
-    } catch (error: any) {
-      throw new Error("GET_TOTAL_UPGRADE_COST_FAILED");
+async getTotalUpgradeCostToMax(itemInstanceId: string): Promise<{
+  totalGold: number;
+  totalGems: number;
+  totalMaterials: { [materialId: string]: number };
+  steps: Array<{ fromTier: number; toTier: number; cost: IForgeResourceCost }>;
+}> {
+  try {
+    const cost = await this.tierUpgradeService.getTotalUpgradeCostToMax(itemInstanceId);
+    if (!cost) {
+      // ✅ CORRECTION : Meilleure gestion d'erreur avec diagnostic
+      const validation = await this.validateItem(itemInstanceId, undefined);
+      if (!validation.valid) {
+        throw new Error(`INVALID_ITEM: ${validation.reason}`);
+      }
+
+      // Vérifier si l'item est déjà au tier maximum
+      const inventory = await this.getInventory();
+      if (!inventory) {
+        throw new Error("INVENTORY_NOT_FOUND");
+      }
+
+      const ownedItem = inventory.getItem(itemInstanceId);
+      if (!ownedItem) {
+        throw new Error("ITEM_NOT_FOUND_IN_INVENTORY");
+      }
+
+      // Obtenir les détails de l'item
+      const Item = mongoose.model('Item');
+      const baseItem = await Item.findOne({ itemId: ownedItem.itemId });
+      if (!baseItem) {
+        throw new Error("BASE_ITEM_NOT_FOUND");
+      }
+
+      const currentTier = (ownedItem as any).tier || 1;
+      const rarity = baseItem.rarity || "Common";
+
+      // Limites de tier par rareté
+      const rarityLimits: { [key: string]: number } = {
+        "Common": 2, "Rare": 3, "Epic": 4, "Legendary": 5, "Mythic": 5, "Ascended": 5
+      };
+      const maxTierForRarity = rarityLimits[rarity] || 2;
+
+      if (currentTier >= maxTierForRarity) {
+        throw new Error(`ITEM_ALREADY_AT_MAX_TIER_FOR_RARITY: T${currentTier}/${maxTierForRarity} (${rarity})`);
+      }
+
+      if (currentTier >= 5) {
+        throw new Error("ITEM_ALREADY_AT_ABSOLUTE_MAX_TIER");
+      }
+
+      throw new Error("UNABLE_TO_COMPUTE_TOTAL_UPGRADE_COST");
     }
+    return cost;
+  } catch (error: any) {
+    // ✅ CORRECTION : Gestion d'erreur plus spécifique
+    if (error.message.includes("ITEM_ALREADY_AT_MAX_TIER")) {
+      throw error; // Propager l'erreur spécifique
+    }
+    if (error.message.includes("INVALID_ITEM")) {
+      throw error;
+    }
+    if (error.message.includes("INVENTORY_NOT_FOUND")) {
+      throw error;
+    }
+    if (error.message.includes("ITEM_NOT_FOUND")) {
+      throw error;
+    }
+    if (error.message.includes("BASE_ITEM_NOT_FOUND")) {
+      throw error;
+    }
+    
+    console.error('Error in ForgeService.getTotalUpgradeCostToMax:', error);
+    throw new Error("GET_TOTAL_UPGRADE_COST_FAILED");
   }
+}
 
   // === MÉTHODES UTILITAIRES ===
 
