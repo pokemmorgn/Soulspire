@@ -462,10 +462,7 @@ router.post("/cleanup", authMiddleware, async (req: Request, res: Response): Pro
 
     const result = await InventoryService.cleanupExpiredItems(req.userId);
 
-    res.json({
-      message: "Inventory cleanup completed successfully",
-      ...result
-    });
+    res.json(result);
 
   } catch (error: any) {
     console.error("Cleanup inventory error:", error);
