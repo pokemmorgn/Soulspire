@@ -168,18 +168,47 @@ export class ForgeCore {
 
       // Récupérer le joueur
       const player = await Player.findById(this.playerId);
-      if (!player) return false;
+      if (!player) {
+        console.warn(`[forge] validatePlayerResources: player not found for playerId=${this.playerId}`);
+        return false;
+      }
+
+      // Normalize gems field: accept paidGems as gems fallback
+      if (cost && (cost.paidGems !== undefined) && (cost.gems === undefined)) {
+        cost.gems = cost.paidGems;
+      }
+
+      // Log the cost vs player balances for debugging
+      try {
+        console.log(`[forge] validatePlayerResources: playerId=${this.playerId} playerBalance={ gold:${player.gold ?? 'n/a'}, gems:${player.gems ?? 'n/a'} } cost={ gold:${cost.gold ?? 0}, gems:${cost.gems ?? 0}, materials:${JSON.stringify(cost.materials || {})} }`);
+      } catch (e) {
+        // ignore logging errors
+        console.log('[forge] validatePlayerResources: logging error', e);
+      }
 
       // Vérifier les monnaies de base
-      if (!player.canAfford(cost)) return false;
+      const canAffordCurrencies = player.canAfford ? player.canAfford(cost) : false;
+      if (!canAffordCurrencies) {
+        console.log('[forge] validatePlayerResources: player.canAfford returned false', { playerId: this.playerId, cost });
+        return false;
+      }
 
       // Vérifier les matériaux si nécessaire
       if (cost.materials && Object.keys(cost.materials).length > 0) {
         const inventory = await Inventory.findOne({ playerId: this.playerId });
-        if (!inventory) return false;
+        if (!inventory) {
+          console.log('[forge] validatePlayerResources: inventory not found', { playerId: this.playerId });
+          return false;
+        }
 
         for (const [materialId, requiredAmount] of Object.entries(cost.materials)) {
-          if (!inventory.hasItem(materialId, requiredAmount)) {
+          const has = typeof inventory.hasItem === 'function'
+            ? await inventory.hasItem(materialId, requiredAmount)
+            // fallback: try counting matching itemId in storage if API differs
+            : (inventory.storage?.craftingMaterials?.filter((it: any) => it.itemId === materialId).reduce((s: number, it: any) => s + (it.quantity || 1), 0) || 0) >= (requiredAmount as number);
+
+          if (!has) {
+            console.log('[forge] validatePlayerResources: missing material', { materialId, requiredAmount, playerId: this.playerId });
             return false;
           }
         }
@@ -187,6 +216,7 @@ export class ForgeCore {
 
       return true;
     } catch (error) {
+      console.error('[forge] validatePlayerResources: error', error);
       return false;
     }
   }
@@ -194,7 +224,7 @@ export class ForgeCore {
   /**
    * Dépense les ressources du joueur
    */
-  async spendResources(cost: IForgeResourceCost): Promise<boolean> {
+ async spendResources(cost: IForgeResourceCost): Promise<boolean> {
     try {
       const Player = mongoose.model('Player');
       const Inventory = mongoose.model('Inventory');
@@ -204,30 +234,61 @@ export class ForgeCore {
         Inventory.findOne({ playerId: this.playerId })
       ]);
 
-      if (!player || !inventory) return false;
+      if (!player || !inventory) {
+        console.log('[forge] spendResources: missing player or inventory', { playerExists: !!player, inventoryExists: !!inventory, playerId: this.playerId });
+        return false;
+      }
 
-      // Vérifier une dernière fois avant de dépenser
-      if (!await this.validatePlayerResources(cost)) return false;
+      // Verify again before spending (with the same gems normalization)
+      if (cost && (cost.paidGems !== undefined) && (cost.gems === undefined)) {
+        cost.gems = cost.paidGems;
+      }
+      const valid = await this.validatePlayerResources(cost);
+      if (!valid) {
+        console.log('[forge] spendResources: validatePlayerResources failed (aborting spend)', { playerId: this.playerId, cost });
+        return false;
+      }
 
       // Dépenser les monnaies
-      await player.spendCurrency(cost);
+      try {
+        await player.spendCurrency(cost);
+      } catch (e) {
+        console.error('[forge] spendResources: player.spendCurrency failed', e);
+        return false;
+      }
 
-      // Dépenser les matériaux
+      // D\u00e9penser les mat\u00e9riaux
       if (cost.materials) {
         for (const [materialId, amount] of Object.entries(cost.materials)) {
-          const materialItem = inventory.storage.craftingMaterials.find(
+          const materialItem = inventory.storage?.craftingMaterials?.find(
             (item: any) => item.itemId === materialId
           );
           if (materialItem) {
-            await inventory.removeItem(materialItem.instanceId, amount);
+            const removed = await inventory.removeItem(materialItem.instanceId, amount);
+            if (!removed) {
+              console.error('[forge] spendResources: failed to remove material instance', { materialId, instanceId: materialItem.instanceId, amount });
+              return false;
+            }
+          } else {
+            // fallback: if no single instance found, attempt a remove by itemId if Inventory supports it
+            if (typeof inventory.removeItemByItemId === 'function') {
+              const removed = await inventory.removeItemByItemId(materialId, amount);
+              if (!removed) {
+                console.error('[forge] spendResources: removeItemByItemId failed', { materialId, amount });
+                return false;
+              }
+            } else {
+              console.error('[forge] spendResources: material instance not found and no fallback available', { materialId });
+              return false;
+            }
           }
         }
       }
 
-      // Sauvegarder les changements
       await Promise.all([player.save(), inventory.save()]);
       return true;
     } catch (error) {
+      console.error('[forge] spendResources: error', error);
       return false;
     }
   }
