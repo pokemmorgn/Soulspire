@@ -166,7 +166,10 @@ fusionHistorySchema.methods.getTotalMaterialsCost = function(): number {
   const materials = this.cost.materials;
   if (!materials || materials.size === 0) return 0;
   
-  return Array.from(materials.values()).reduce((sum: number, quantity: number) => sum + quantity, 0);
+  return Array.from(materials.values()).reduce((sum: number, quantity: unknown) => {
+    const qty = typeof quantity === 'number' ? quantity : 0;
+    return sum + qty;
+  }, 0);
 };
 
 fusionHistorySchema.methods.getEfficiency = function(): number {
