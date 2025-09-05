@@ -312,7 +312,7 @@ export class MailService {
       
       console.log(`📧 Mail sent to all servers: ${options.title}`);
       
-      return { success: true, mailId: mail._id.toString() };
+     return { success: true, mailId: (mail._id as any).toString() };
 
     } catch (error: any) {
       console.error("❌ Erreur sendToAllServers:", error);
@@ -445,7 +445,7 @@ export class MailService {
       
       console.log(`⏰ Mail scheduled for ${options.scheduledAt}: ${options.title}`);
       
-      return { success: true, mailId: mail._id.toString() };
+      return { success: true, mailId: (mail._id as any).toString() };
 
     } catch (error: any) {
       console.error("❌ Erreur scheduleMail:", error);
