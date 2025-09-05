@@ -903,7 +903,12 @@ export class VipService {
     const newExp = currentExp + purchaseAmount;
     const newLevel = this.calculateVipLevel(newExp);
     
-    let totalRewards = { gold: 0, gems: 0, heroes: [], materials: {} };
+    let totalRewards = { 
+      gold: 0, 
+      gems: 0, 
+      heroes: [] as string[], 
+      materials: {} as Record<string, number> 
+    };
     
     if (newLevel > currentLevel) {
       for (let level = currentLevel + 1; level <= newLevel; level++) {
