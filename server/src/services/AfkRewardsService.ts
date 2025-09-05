@@ -413,4 +413,212 @@ export class AfkRewardsService {
       throw error;
     }
   }
+  // Ajouter ces méthodes à la fin de la classe AfkRewardsService
+
+// === NOUVELLES MÉTHODES UTILITAIRES ===
+
+// Calculer les récompenses pour une durée spécifique (en minutes)
+public static async calculateRewardsForDuration(
+  playerId: string, 
+  durationMinutes: number
+): Promise<AfkReward[]> {
+  try {
+    const calculation = await this.calculatePlayerAfkRewards(playerId);
+    
+    return calculation.rewards.map(reward => ({
+      ...reward,
+      quantity: Math.floor(reward.quantity * durationMinutes),
+      baseQuantity: reward.baseQuantity
+    })).filter(r => r.quantity > 0);
+
+  } catch (error: any) {
+    console.error("❌ Erreur calculateRewardsForDuration:", error);
+    return [];
+  }
+}
+
+// Simuler les gains pour X heures (pour l'UI)
+public static async simulateAfkGains(
+  playerId: string, 
+  hours: number
+): Promise<{
+  rewards: AfkReward[];
+  totalValue: number;
+  cappedAt: number; // En heures si atteint le cap
+}> {
+  try {
+    const calculation = await this.calculatePlayerAfkRewards(playerId);
+    const requestedMinutes = hours * 60;
+    const maxMinutes = calculation.maxAccrualHours * 60;
+    
+    const effectiveMinutes = Math.min(requestedMinutes, maxMinutes);
+    const cappedAt = effectiveMinutes < requestedMinutes ? calculation.maxAccrualHours : hours;
+    
+    const rewards = calculation.rewards.map(reward => ({
+      ...reward,
+      quantity: Math.floor(reward.quantity * effectiveMinutes),
+      baseQuantity: reward.baseQuantity
+    })).filter(r => r.quantity > 0);
+
+    // Calculer valeur totale
+    let totalValue = 0;
+    rewards.forEach(reward => {
+      switch (reward.type) {
+        case "currency":
+          if (reward.currencyType === "gold") totalValue += reward.quantity * 0.001;
+          else if (reward.currencyType === "gems") totalValue += reward.quantity * 1;
+          else if (reward.currencyType === "tickets") totalValue += reward.quantity * 5;
+          break;
+        case "material":
+          totalValue += reward.quantity * 2;
+          break;
+        case "fragment":
+          totalValue += reward.quantity * 10;
+          break;
+      }
+    });
+
+    return {
+      rewards,
+      totalValue: Math.round(totalValue),
+      cappedAt
+    };
+
+  } catch (error: any) {
+    console.error("❌ Erreur simulateAfkGains:", error);
+    return { rewards: [], totalValue: 0, cappedAt: hours };
+  }
+}
+
+// Obtenir les taux actuels d'un joueur (pour l'UI)
+public static async getPlayerCurrentRates(playerId: string): Promise<{
+  ratesPerMinute: {
+    gold: number;
+    gems: number;
+    tickets: number;
+    materials: number;
+  };
+  multipliers: {
+    vip: number;
+    stage: number;
+    heroes: number;
+    total: number;
+  };
+  maxAccrualHours: number;
+  progression: {
+    world: number;
+    level: number;
+    difficulty: string;
+    totalStages: number;
+  };
+}> {
+  try {
+    const player = await Player.findById(playerId)
+      .select("world level difficulty heroes vipLevel serverId");
+    
+    if (!player) {
+      throw new Error("Player not found");
+    }
+
+    const calculation = await this.calculatePlayerAfkRewards(playerId);
+    
+    return {
+      ratesPerMinute: {
+        gold: calculation.ratesPerMinute.gold,
+        gems: calculation.ratesPerMinute.exp,
+        tickets: player.vipLevel >= 2 ? Math.floor(0.5 * calculation.multipliers.vip) : 0,
+        materials: calculation.ratesPerMinute.materials
+      },
+      multipliers: calculation.multipliers,
+      maxAccrualHours: calculation.maxAccrualHours,
+      progression: {
+        world: player.world,
+        level: player.level,
+        difficulty: player.difficulty,
+        totalStages: (player.world - 1) * 30 + player.level
+      }
+    };
+
+  } catch (error: any) {
+    console.error("❌ Erreur getPlayerCurrentRates:", error);
+    throw error;
+  }
+}
+
+// Comparer les gains avant/après upgrade (pour motiver l'upgrade)
+public static async compareUpgradeGains(playerId: string): Promise<{
+  current: any;
+  afterWorldUp: any;
+  afterLevelUp: any;
+  afterVipUp: any;
+  improvement: {
+    worldUp: number; // % d'amélioration
+    levelUp: number;
+    vipUp: number;
+  };
+}> {
+  try {
+    const player = await Player.findById(playerId)
+      .select("world level difficulty heroes vipLevel serverId");
+    
+    if (!player) {
+      throw new Error("Player not found");
+    }
+
+    // Calcul actuel
+    const current = await this.calculatePlayerAfkRewards(playerId);
+    
+    // Simulation world +1
+    const tempWorld = { ...player.toObject(), world: player.world + 1 };
+    const afterWorldUp = this.calculateBaseRates(
+      tempWorld.world, tempWorld.level, tempWorld.difficulty
+    );
+    const worldMultipliers = await this.calculateMultipliers(tempWorld);
+    
+    // Simulation level +5
+    const tempLevel = { ...player.toObject(), level: player.level + 5 };
+    const afterLevelUp = this.calculateBaseRates(
+      tempLevel.world, tempLevel.level, tempLevel.difficulty
+    );
+    const levelMultipliers = await this.calculateMultipliers(tempLevel);
+    
+    // Simulation VIP +1
+    const tempVip = { ...player.toObject(), vipLevel: player.vipLevel + 1 };
+    const vipMultipliers = await this.calculateMultipliers(tempVip);
+    
+    // Calculer améliorations
+    const currentGold = current.ratesPerMinute.gold;
+    const worldGold = afterWorldUp.goldPerMinute * worldMultipliers.total;
+    const levelGold = afterLevelUp.goldPerMinute * levelMultipliers.total;
+    const vipGold = current.ratesPerMinute.gold * (vipMultipliers.total / current.multipliers.total);
+    
+    return {
+      current: {
+        goldPerMinute: currentGold,
+        multipliers: current.multipliers
+      },
+      afterWorldUp: {
+        goldPerMinute: worldGold,
+        multipliers: worldMultipliers
+      },
+      afterLevelUp: {
+        goldPerMinute: levelGold,
+        multipliers: levelMultipliers
+      },
+      afterVipUp: {
+        goldPerMinute: vipGold,
+        multipliers: vipMultipliers
+      },
+      improvement: {
+        worldUp: Math.round(((worldGold / currentGold) - 1) * 100),
+        levelUp: Math.round(((levelGold / currentGold) - 1) * 100),
+        vipUp: Math.round(((vipGold / currentGold) - 1) * 100)
+      }
+    };
+
+  } catch (error: any) {
+    console.error("❌ Erreur compareUpgradeGains:", error);
+    throw error;
+  }
+}
 }
