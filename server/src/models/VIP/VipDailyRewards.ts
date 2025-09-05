@@ -187,7 +187,13 @@ vipDailyRewardsSchema.methods.claim = async function(
   
   if (streakBonus > 1.0) {
     finalRewards = finalRewards.map((reward: IVipRewardItem) => ({
-      ...reward.toObject(),
+    type: reward.type,
+    currencyType: reward.currencyType,
+    materialId: reward.materialId,
+    heroId: reward.heroId,
+    itemId: reward.itemId,
+    quantity: Math.floor(reward.quantity * streakBonus),
+    rarity: reward.rarity
       quantity: Math.floor(reward.quantity * streakBonus)
     }));
   }
@@ -390,7 +396,6 @@ vipDailyRewardsSchema.statics.calculateCurrentStreak = async function(
 
 // Générer les récompenses quotidiennes pour un joueur
 vipDailyRewardsSchema.statics.generateDailyRewards = async function(
-  this: IVipDailyRewardsModel,
   playerId: string,
   serverId: string,
   vipLevel: number,
