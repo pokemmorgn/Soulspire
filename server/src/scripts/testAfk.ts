@@ -320,7 +320,7 @@ async function testCompatibility(): Promise<void> {
     await mongoose.connect(MONGO_URI);
     
     const { basicPlayer } = await getOrCreateTestPlayers();
-    const playerId = basicPlayer._id.toString();
+    const playerId = (basicPlayer._id as any).toString();
 
     // Test avec les ANCIENNES méthodes
     log(colors.blue, "📋 Test méthodes classiques...");
