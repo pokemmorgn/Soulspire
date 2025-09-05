@@ -193,8 +193,8 @@ vipDailyRewardsSchema.methods.claim = async function(
     heroId: reward.heroId,
     itemId: reward.itemId,
     quantity: Math.floor(reward.quantity * streakBonus),
-    rarity: reward.rarity
-      quantity: Math.floor(reward.quantity * streakBonus)
+    rarity: reward.rarity,
+    quantity: Math.floor(reward.quantity * streakBonus)
     }));
   }
   
