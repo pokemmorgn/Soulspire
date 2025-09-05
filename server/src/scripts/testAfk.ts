@@ -4,6 +4,7 @@ import Player from "../models/Player";
 import AfkState from "../models/AfkState";
 import AfkServiceEnhanced from "../services/AfkService";
 import AfkSession from "../models/AfkSession";
+import { AfkRewardsService } from "../services/AfkRewardsService";
 
 dotenv.config();
 
@@ -207,7 +208,6 @@ async function testAfkEnhanced(): Promise<void> {
 
     // Test calculs de taux avancés
     log(colors.cyan, "\n📊 CALCUL TAUX AVANCÉS");
-    import { AfkRewardsService } from "../services/AfkRewardsService";
     const rates = await AfkRewardsService.getPlayerCurrentRates(advancedId);
     console.table({
       goldPerMin: rates.ratesPerMinute.gold,
