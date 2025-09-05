@@ -635,7 +635,7 @@ export class MailService {
         MissionService.updateProgress(
           playerId,
           serverId,
-          "collect_items",
+          "heroes_owned",
           mailCount,
           { itemType: "mail_claim", category: mail?.category }
         ),
