@@ -1002,9 +1002,9 @@ export class HeroFusionService {
   public static async getPlayerFusionAnalytics(playerId: string, serverId: string) {
     try {
       const [stats, trends, topFusions] = await Promise.all([
-        FusionHistory.getPlayerFusionStats(playerId, serverId),
-        FusionHistory.getFusionTrends(playerId, serverId, 30),
-        FusionHistory.getTopFusionsByPower(playerId, serverId, 5)
+        FusionHistoryModel.getPlayerFusionStats(playerId, serverId),
+        FusionHistoryModel.getFusionTrends(playerId, serverId, 30),
+        FusionHistoryModel.getTopFusionsByPower(playerId, serverId, 5)
       ]);
 
       return {
@@ -1027,7 +1027,7 @@ export class HeroFusionService {
     heroId: string
   ) {
     try {
-      const history = await FusionHistory.getHeroFusionHistory(playerId, serverId, heroId, 10);
+      const history = await FusionHistoryModel.getHeroFusionHistory(playerId, serverId, heroId, 10);
       
       return {
         success: true,
@@ -1050,7 +1050,7 @@ export class HeroFusionService {
     limit: number = 50
   ) {
     try {
-      const leaderboard = await FusionHistory.getServerFusionLeaderboard(serverId, limit, timeframe);
+      const leaderboard = await FusionHistoryModel.getServerFusionLeaderboard(serverId, limit, timeframe);
       
       return {
         success: true,
