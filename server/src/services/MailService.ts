@@ -279,7 +279,7 @@ export class MailService {
       
       console.log(`📧 Mail sent to player ${recipientId}: ${options.title}`);
       
-      return { success: true, mailId: mail._id.toString() };
+      return { success: true, mailId: (mail._id as any).toString() };
 
     } catch (error: any) {
       console.error("❌ Erreur sendToPlayer:", error);
