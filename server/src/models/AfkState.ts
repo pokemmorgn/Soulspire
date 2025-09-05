@@ -1,13 +1,12 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
 
 /**
- * AfkState Enhanced - Version complète avec système de récompenses AFK Arena
- * - Supports multiple reward types (gold, materials, fragments, etc.)
- * - VIP bonuses integration
- * - Stage-based progression rewards
- * - Heroes team power influence
+ * AfkState Enhanced - Extension du modèle existant avec nouvelles fonctionnalités
+ * CONSERVE LA COMPATIBILITÉ avec l'ancien système (pendingGold, baseGoldPerMinute)
+ * AJOUTE le support multi-récompenses AFK Arena
  */
 
+// Nouveau type pour les récompenses multi-types
 export interface IPendingReward {
   type: "currency" | "material" | "fragment" | "item";
   currencyType?: "gold" | "gems" | "tickets";
@@ -20,23 +19,28 @@ export interface IPendingReward {
 export interface IAfkState extends Document {
   playerId: Types.ObjectId;
   
-  // Récompenses en attente (format multi-type)
+  // === ANCIEN SYSTÈME (CONSERVÉ) ===
+  pendingGold: number;                 // Or en attente (non réclamé)
+  lastTickAt: Date | null;             // Dernière fois où on a "tick"
+  lastClaimAt: Date | null;            // Dernier claim
+  accumulatedSinceClaimSec: number;    // Temps accumulé depuis le dernier claim (pour cap 12h)
+  baseGoldPerMinute: number;           // OR/min fixe (ex: 5)
+  maxAccrualSeconds: number;           // Cap de durée depuis le dernier claim (ex: 12h)
+  todayAccruedGold: number;
+  todayKey: string;                    // AAAA-MM-JJ pour reset quotidien
+
+  // === NOUVEAU SYSTÈME (AJOUTÉ) ===
+  // Récompenses multi-types (or, gems, matériaux, fragments)
   pendingRewards: IPendingReward[];
   
-  // Timing et accumulation
-  lastTickAt: Date | null;
-  lastClaimAt: Date | null;
-  accumulatedSinceClaimSec: number;
-  
-  // Configuration dynamique (mise à jour selon la progression du joueur)
-  currentRatesPerMinute: {
-    gold: number;
+  // Taux dynamiques selon progression
+  enhancedRatesPerMinute: {
     gems: number;
     tickets: number;
     materials: number;
   };
   
-  // Multiplicateurs actifs
+  // Multiplicateurs VIP/progression/équipe
   activeMultipliers: {
     vip: number;
     stage: number;
@@ -45,29 +49,30 @@ export interface IAfkState extends Document {
     lastUpdated: Date;
   };
   
-  // Limite d'accumulation (en secondes, dépend du VIP)
-  maxAccrualSeconds: number;
-  
-  // Suivi quotidien
+  // Suivi quotidien étendu
   todayClaimedRewards: {
     gold: number;
     gems: number;
     materials: number;
     fragments: number;
   };
-  todayKey: string;
 
-  // Méthodes d'instance
-  tick(now?: Date): Promise<{ rewards: IPendingReward[]; timeElapsed: number }>;
-  claim(): Promise<{ claimedRewards: IPendingReward[]; totalValue: number }>;
-  updatePlayerProgression(): Promise<void>;
+  // Mode de fonctionnement
+  useEnhancedRewards: boolean; // true = nouveau système, false = ancien
+
+  // === MÉTHODES EXISTANTES (CONSERVÉES) ===
+  tick(now?: Date): number;            // retourne le gold ajouté à pendingGold
+  claim(): number;                     // retourne le gold réclamé (et remet à zéro)
   _resetTodayIfNeeded(now: Date): void;
+
+  // === NOUVELLES MÉTHODES ===
+  tickEnhanced(now?: Date): Promise<{ rewards: IPendingReward[]; timeElapsed: number }>;
+  claimEnhanced(): Promise<{ claimedRewards: IPendingReward[]; goldClaimed: number; totalValue: number }>;
+  updatePlayerProgression(): Promise<void>;
   addPendingReward(reward: IPendingReward): void;
-  clearPendingRewards(): void;
   calculateTotalValue(): number;
-  hasRewards(): boolean;
-  getRewardsByType(type: string): IPendingReward[];
-  getMaterialDistribution(): Record<string, number>;
+  hasEnhancedRewards(): boolean;
+  enableEnhancedMode(): Promise<void>;
 }
 
 const pendingRewardSchema = new Schema<IPendingReward>({
@@ -109,26 +114,28 @@ const AfkStateSchema = new Schema<IAfkState>({
     unique: true,
   },
 
-  // Récompenses en attente
+  // === CHAMPS EXISTANTS (CONSERVÉS) ===
+  pendingGold: { type: Number, default: 0, min: 0 },
+  lastTickAt: { type: Date, default: null },
+  lastClaimAt: { type: Date, default: null },
+  accumulatedSinceClaimSec: { type: Number, default: 0, min: 0 },
+  baseGoldPerMinute: { type: Number, default: 5, min: 0 },
+  maxAccrualSeconds: { type: Number, default: 12 * 3600, min: 0 },
+  todayAccruedGold: { type: Number, default: 0, min: 0 },
+  todayKey: { type: String, default: () => new Date().toISOString().slice(0, 10) },
+
+  // === NOUVEAUX CHAMPS ===
   pendingRewards: {
     type: [pendingRewardSchema],
     default: []
   },
-
-  // Timing
-  lastTickAt: { type: Date, default: null },
-  lastClaimAt: { type: Date, default: null },
-  accumulatedSinceClaimSec: { type: Number, default: 0, min: 0 },
-
-  // Taux actuels (mis à jour selon la progression)
-  currentRatesPerMinute: {
-    gold: { type: Number, default: 100, min: 0 },
-    gems: { type: Number, default: 10, min: 0 },
-    tickets: { type: Number, default: 0.5, min: 0 },
-    materials: { type: Number, default: 20, min: 0 }
+  
+  enhancedRatesPerMinute: {
+    gems: { type: Number, default: 1, min: 0 },
+    tickets: { type: Number, default: 0.1, min: 0 },
+    materials: { type: Number, default: 2, min: 0 }
   },
-
-  // Multiplicateurs actifs
+  
   activeMultipliers: {
     vip: { type: Number, default: 1.0, min: 1.0 },
     stage: { type: Number, default: 1.0, min: 1.0 },
@@ -136,39 +143,34 @@ const AfkStateSchema = new Schema<IAfkState>({
     total: { type: Number, default: 1.0, min: 0.5 },
     lastUpdated: { type: Date, default: () => new Date() }
   },
-
-  // Limite d'accumulation (12-24h selon VIP)
-  maxAccrualSeconds: { type: Number, default: 12 * 3600, min: 0 },
-
-  // Suivi quotidien
+  
   todayClaimedRewards: {
     gold: { type: Number, default: 0, min: 0 },
     gems: { type: Number, default: 0, min: 0 },
     materials: { type: Number, default: 0, min: 0 },
     fragments: { type: Number, default: 0, min: 0 }
   },
-  
-  todayKey: { 
-    type: String, 
-    default: () => new Date().toISOString().slice(0, 10) 
-  },
+
+  useEnhancedRewards: { type: Boolean, default: false }
 }, {
   timestamps: true,
   collection: "afk_states",
 });
 
-// Index pour performance
-AfkStateSchema.index({ playerId: 1, lastTickAt: -1 });
+// Index
+AfkStateSchema.index({ playerId: 1, status: 1 });
+AfkStateSchema.index({ status: 1, lastHeartbeatAt: -1 });
 AfkStateSchema.index({ todayKey: 1 });
-AfkStateSchema.index({ "activeMultipliers.lastUpdated": -1 });
+AfkStateSchema.index({ updatedAt: -1 });
 
-// === MÉTHODES D'INSTANCE ===
+// === MÉTHODES EXISTANTES (CONSERVÉES) ===
 
-// Reset quotidien si nécessaire
 AfkStateSchema.methods._resetTodayIfNeeded = function(now: Date) {
   const key = now.toISOString().slice(0, 10);
   if (this.todayKey !== key) {
     this.todayKey = key;
+    this.todayAccruedGold = 0;
+    // Reset aussi les nouvelles stats
     this.todayClaimedRewards = {
       gold: 0,
       gems: 0,
@@ -178,9 +180,57 @@ AfkStateSchema.methods._resetTodayIfNeeded = function(now: Date) {
   }
 };
 
-// Ajouter une récompense en attente
+/**
+ * tick() ORIGINAL - maintient la compatibilité
+ */
+AfkStateSchema.methods.tick = function(now?: Date): number {
+  const current = now ?? new Date();
+  this._resetTodayIfNeeded(current);
+
+  if (!this.lastTickAt) {
+    this.lastTickAt = current;
+    return 0;
+  }
+
+  const deltaSec = Math.max(0, Math.floor((current.getTime() - this.lastTickAt.getTime()) / 1000));
+  if (deltaSec === 0) return 0;
+
+  const remainingSecBeforeCap = Math.max(0, this.maxAccrualSeconds - this.accumulatedSinceClaimSec);
+  if (remainingSecBeforeCap <= 0) {
+    this.lastTickAt = current;
+    return 0;
+  }
+
+  const effectiveSec = Math.min(deltaSec, remainingSecBeforeCap);
+  const goldPerSec = this.baseGoldPerMinute / 60;
+  const gained = Math.floor(effectiveSec * goldPerSec);
+
+  if (gained > 0) {
+    this.pendingGold += gained;
+    this.todayAccruedGold += gained;
+  }
+
+  this.accumulatedSinceClaimSec += effectiveSec;
+  this.lastTickAt = current;
+
+  return gained;
+};
+
+/**
+ * claim() ORIGINAL - maintient la compatibilité
+ */
+AfkStateSchema.methods.claim = function(): number {
+  const claimed = this.pendingGold;
+  this.pendingGold = 0;
+  this.accumulatedSinceClaimSec = 0;
+  this.lastClaimAt = new Date();
+  return claimed;
+};
+
+// === NOUVELLES MÉTHODES (SYSTÈME ENHANCED) ===
+
+// Ajouter une récompense multi-type
 AfkStateSchema.methods.addPendingReward = function(reward: IPendingReward) {
-  // Chercher si une récompense du même type existe déjà
   const existingIndex = this.pendingRewards.findIndex((r: IPendingReward) => {
     if (r.type !== reward.type) return false;
     
@@ -199,39 +249,28 @@ AfkStateSchema.methods.addPendingReward = function(reward: IPendingReward) {
   });
 
   if (existingIndex !== -1) {
-    // Additionner avec la récompense existante
     this.pendingRewards[existingIndex].quantity += reward.quantity;
   } else {
-    // Ajouter nouvelle récompense
     this.pendingRewards.push(reward);
   }
 };
 
-// Obtenir la distribution des matériaux selon la progression
-AfkStateSchema.methods.getMaterialDistribution = function(): Record<string, number> {
-  // Distribution par défaut (sera affinée selon le monde du joueur)
-  return {
-    "fusion_crystal": 0.6,        // 60% des matériaux
-    "elemental_essence": 0.25,    // 25%
-    "ascension_stone": 0.1,       // 10%
-    "divine_crystal": 0.05        // 5%
-  };
-};
-
-// Mettre à jour la progression du joueur (recalcule taux et multiplicateurs)
+// Mettre à jour la progression (calcule nouveaux taux et multiplicateurs)
 AfkStateSchema.methods.updatePlayerProgression = async function(): Promise<void> {
   try {
-    // Import dynamique pour éviter les dépendances circulaires
+    // Import dynamique pour éviter dépendances circulaires
     const { AfkRewardsService } = require("../services/AfkRewardsService");
     
     const calculation = await AfkRewardsService.calculatePlayerAfkRewards(this.playerId.toString());
     
-    // Mettre à jour les taux
-    this.currentRatesPerMinute = {
-      gold: calculation.ratesPerMinute.gold,
-      gems: calculation.ratesPerMinute.exp, // EXP -> gems pour simplifier
-      tickets: 0.5 * calculation.multipliers.vip, // Tickets pour VIP
-      materials: calculation.ratesPerMinute.materials
+    // Mettre à jour baseGoldPerMinute (ancien système)
+    this.baseGoldPerMinute = calculation.ratesPerMinute.gold;
+    
+    // Mettre à jour les nouveaux taux
+    this.enhancedRatesPerMinute = {
+      gems: calculation.ratesPerMinute.exp || 1,
+      tickets: 0.5 * calculation.multipliers.vip,
+      materials: calculation.ratesPerMinute.materials || 2
     };
     
     // Mettre à jour les multiplicateurs
@@ -240,7 +279,7 @@ AfkStateSchema.methods.updatePlayerProgression = async function(): Promise<void>
       lastUpdated: new Date()
     };
     
-    // Mettre à jour la limite d'accumulation
+    // Mettre à jour le cap d'accumulation
     this.maxAccrualSeconds = calculation.maxAccrualHours * 3600;
     
     console.log(`📊 Progression AFK mise à jour pour ${this.playerId}`);
@@ -251,57 +290,38 @@ AfkStateSchema.methods.updatePlayerProgression = async function(): Promise<void>
 };
 
 /**
- * tick(): calcule les récompenses depuis le dernier tick
- * Version améliorée avec support multi-récompenses
+ * tickEnhanced() - Version améliorée avec multi-récompenses
  */
-AfkStateSchema.methods.tick = async function(now?: Date): Promise<{ rewards: IPendingReward[]; timeElapsed: number }> {
+AfkStateSchema.methods.tickEnhanced = async function(now?: Date): Promise<{ rewards: IPendingReward[]; timeElapsed: number }> {
   const current = now ?? new Date();
-  this._resetTodayIfNeeded(current);
-
-  // Premier tick : initialise simplement lastTickAt
-  if (!this.lastTickAt) {
-    this.lastTickAt = current;
-    return { rewards: [], timeElapsed: 0 };
-  }
-
-  // Calcul du delta (en secondes)
-  const deltaSec = Math.max(0, Math.floor((current.getTime() - this.lastTickAt.getTime()) / 1000));
   
-  if (deltaSec === 0) {
+  // D'abord faire le tick normal pour l'or
+  const goldGained = this.tick(current);
+  
+  if (!this.useEnhancedRewards) {
     return { rewards: [], timeElapsed: 0 };
   }
 
-  // Respect du cap d'accumulation depuis le dernier claim
-  const remainingSecBeforeCap = Math.max(0, this.maxAccrualSeconds - this.accumulatedSinceClaimSec);
-  if (remainingSecBeforeCap <= 0) {
-    this.lastTickAt = current;
-    return { rewards: [], timeElapsed: 0 };
-  }
-
-  const effectiveSec = Math.min(deltaSec, remainingSecBeforeCap);
-  const effectiveMin = effectiveSec / 60;
-
-  // Vérifier si les multiplicateurs sont récents (< 1h)
+  // Vérifier si besoin de recalculer la progression
   const multipliersAge = (current.getTime() - this.activeMultipliers.lastUpdated.getTime()) / (1000 * 60 * 60);
   if (multipliersAge > 1) {
     await this.updatePlayerProgression();
   }
 
-  // Générer les récompenses pour la période écoulée
-  const newRewards: IPendingReward[] = [];
-
-  // OR
-  const goldGained = Math.floor(this.currentRatesPerMinute.gold * effectiveMin);
-  if (goldGained > 0) {
-    newRewards.push({
-      type: "currency",
-      currencyType: "gold",
-      quantity: goldGained
-    });
+  const effectiveSec = Math.min(
+    Math.max(0, Math.floor((current.getTime() - (this.lastTickAt?.getTime() || current.getTime())) / 1000)),
+    Math.max(0, this.maxAccrualSeconds - this.accumulatedSinceClaimSec)
+  );
+  
+  if (effectiveSec <= 0) {
+    return { rewards: [], timeElapsed: 0 };
   }
 
-  // GEMS (EXP)
-  const gemsGained = Math.floor(this.currentRatesPerMinute.gems * effectiveMin);
+  const effectiveMin = effectiveSec / 60;
+  const newRewards: IPendingReward[] = [];
+
+  // GEMS
+  const gemsGained = Math.floor(this.enhancedRatesPerMinute.gems * effectiveMin * this.activeMultipliers.total);
   if (gemsGained > 0) {
     newRewards.push({
       type: "currency",
@@ -311,7 +331,7 @@ AfkStateSchema.methods.tick = async function(now?: Date): Promise<{ rewards: IPe
   }
 
   // TICKETS (VIP seulement)
-  const ticketsGained = Math.floor(this.currentRatesPerMinute.tickets * effectiveMin);
+  const ticketsGained = Math.floor(this.enhancedRatesPerMinute.tickets * effectiveMin);
   if (ticketsGained > 0) {
     newRewards.push({
       type: "currency",
@@ -320,40 +340,53 @@ AfkStateSchema.methods.tick = async function(now?: Date): Promise<{ rewards: IPe
     });
   }
 
-  // MATÉRIAUX (logique simplifiée)
-  const materialsGained = Math.floor(this.currentRatesPerMinute.materials * effectiveMin);
+  // MATÉRIAUX
+  const materialsGained = Math.floor(this.enhancedRatesPerMinute.materials * effectiveMin * this.activeMultipliers.total);
   if (materialsGained > 0) {
-    // Distribution des matériaux selon la progression
-    const distributionRates = this.getMaterialDistribution();
-    
-    for (const [materialId, rate] of Object.entries(distributionRates)) {
-      const quantity = Math.floor(materialsGained * (rate as number));
-      if (quantity > 0) {
-        newRewards.push({
-          type: "material",
-          materialId,
-          quantity
-        });
-      }
+    // Distribution simple des matériaux
+    const fusionCrystals = Math.floor(materialsGained * 0.6);
+    const elementalEssence = Math.floor(materialsGained * 0.25);
+    const ascensionStone = Math.floor(materialsGained * 0.15);
+
+    if (fusionCrystals > 0) {
+      newRewards.push({
+        type: "material",
+        materialId: "fusion_crystal",
+        quantity: fusionCrystals
+      });
+    }
+    if (elementalEssence > 0) {
+      newRewards.push({
+        type: "material",
+        materialId: "elemental_essence",
+        quantity: elementalEssence
+      });
+    }
+    if (ascensionStone > 0) {
+      newRewards.push({
+        type: "material",
+        materialId: "ascension_stone",
+        quantity: ascensionStone
+      });
     }
   }
 
-  // Ajouter les nouvelles récompenses aux pending
+  // Ajouter aux pending rewards
   newRewards.forEach(reward => {
     this.addPendingReward(reward);
   });
-
-  // Mettre à jour les compteurs
-  this.accumulatedSinceClaimSec += effectiveSec;
-  this.lastTickAt = current;
 
   return { rewards: newRewards, timeElapsed: effectiveSec };
 };
 
 /**
- * claim(): renvoie toutes les récompenses en attente et remet à zéro
+ * claimEnhanced() - Récupère toutes les récompenses (or + nouvelles)
  */
-AfkStateSchema.methods.claim = async function(): Promise<{ claimedRewards: IPendingReward[]; totalValue: number }> {
+AfkStateSchema.methods.claimEnhanced = async function(): Promise<{ claimedRewards: IPendingReward[]; goldClaimed: number; totalValue: number }> {
+  // Claim l'or traditionnel
+  const goldClaimed = this.claim();
+  
+  // Claim les nouvelles récompenses
   const claimedRewards = [...this.pendingRewards];
   const totalValue = this.calculateTotalValue();
   
@@ -361,9 +394,7 @@ AfkStateSchema.methods.claim = async function(): Promise<{ claimedRewards: IPend
   claimedRewards.forEach((reward: IPendingReward) => {
     switch (reward.type) {
       case "currency":
-        if (reward.currencyType === "gold") {
-          this.todayClaimedRewards.gold += reward.quantity;
-        } else if (reward.currencyType === "gems") {
+        if (reward.currencyType === "gems") {
           this.todayClaimedRewards.gems += reward.quantity;
         }
         break;
@@ -376,42 +407,36 @@ AfkStateSchema.methods.claim = async function(): Promise<{ claimedRewards: IPend
     }
   });
   
-  // Reset
-  this.pendingRewards = [];
-  this.accumulatedSinceClaimSec = 0;
-  this.lastClaimAt = new Date();
+  // Mettre à jour l'or dans les stats
+  this.todayClaimedRewards.gold += goldClaimed;
   
-  return { claimedRewards, totalValue };
-};
-
-// Vider les récompenses en attente
-AfkStateSchema.methods.clearPendingRewards = function() {
+  // Reset les pending rewards
   this.pendingRewards = [];
+  
+  return { claimedRewards, goldClaimed, totalValue };
 };
 
-// Calculer la valeur totale des récompenses en attente
+// Calculer valeur totale des récompenses
 AfkStateSchema.methods.calculateTotalValue = function(): number {
-  let totalValue = 0;
+  let totalValue = this.pendingGold * 0.001; // Or existant
   
   this.pendingRewards.forEach((reward: IPendingReward) => {
     switch (reward.type) {
       case "currency":
-        if (reward.currencyType === "gold") {
-          totalValue += reward.quantity * 0.001; // 1000 gold = 1 point
-        } else if (reward.currencyType === "gems") {
-          totalValue += reward.quantity * 1; // 1 gem = 1 point
+        if (reward.currencyType === "gems") {
+          totalValue += reward.quantity * 1;
         } else if (reward.currencyType === "tickets") {
-          totalValue += reward.quantity * 5; // 1 ticket = 5 points
+          totalValue += reward.quantity * 5;
         }
         break;
       case "material":
-        totalValue += reward.quantity * 2; // Matériaux ont une valeur base
+        totalValue += reward.quantity * 2;
         break;
       case "fragment":
-        totalValue += reward.quantity * 10; // Fragments sont précieux
+        totalValue += reward.quantity * 10;
         break;
       case "item":
-        totalValue += reward.quantity * 25; // Items ont une valeur élevée
+        totalValue += reward.quantity * 25;
         break;
     }
   });
@@ -419,108 +444,19 @@ AfkStateSchema.methods.calculateTotalValue = function(): number {
   return Math.round(totalValue);
 };
 
-// Vérifier s'il y a des récompenses à réclamer
-AfkStateSchema.methods.hasRewards = function(): boolean {
+// Vérifier s'il y a des récompenses améliorées
+AfkStateSchema.methods.hasEnhancedRewards = function(): boolean {
   return this.pendingRewards.length > 0 && 
          this.pendingRewards.some((r: IPendingReward) => r.quantity > 0);
 };
 
-// Obtenir les récompenses par type
-AfkStateSchema.methods.getRewardsByType = function(type: string): IPendingReward[] {
-  return this.pendingRewards.filter((r: IPendingReward) => r.type === type);
-};
-
-// === MÉTHODES STATIQUES ===
-
-// Créer un état AFK pour un nouveau joueur
-AfkStateSchema.statics.createForNewPlayer = async function(playerId: string) {
-  const state = new this({
-    playerId,
-    pendingRewards: [],
-    lastTickAt: null,
-    lastClaimAt: null,
-    accumulatedSinceClaimSec: 0,
-    currentRatesPerMinute: {
-      gold: 100, // Taux de base pour nouveau joueur
-      gems: 10,
-      tickets: 0,
-      materials: 20
-    },
-    activeMultipliers: {
-      vip: 1.0,
-      stage: 1.0,
-      heroes: 0.5, // Pénalité sans équipe
-      total: 0.5,
-      lastUpdated: new Date()
-    },
-    maxAccrualSeconds: 12 * 3600, // 12h de base
-    todayClaimedRewards: {
-      gold: 0,
-      gems: 0,
-      materials: 0,
-      fragments: 0
-    }
-  });
-  
-  return await state.save();
-};
-
-// Obtenir les statistiques AFK du serveur
-AfkStateSchema.statics.getServerAfkStats = async function(serverId?: string) {
-  const matchCondition = serverId ? { serverId } : {};
-  
-  const stats = await this.aggregate([
-    { $match: matchCondition },
-    { $group: {
-      _id: null,
-      totalPlayers: { $sum: 1 },
-      avgGoldPending: { $avg: { $sum: {
-        $map: {
-          input: { $filter: {
-            input: "$pendingRewards",
-            cond: { $and: [
-              { $eq: ["$$this.type", "currency"] },
-              { $eq: ["$$this.currencyType", "gold"] }
-            ]}
-          }},
-          as: "reward",
-          in: "$$reward.quantity"
-        }
-      }}},
-      totalAccumulatedTime: { $sum: "$accumulatedSinceClaimSec" },
-      playersWithRewards: { $sum: { $cond: [
-        { $gt: [{ $size: "$pendingRewards" }, 0] }, 1, 0
-      ]}},
-      avgMultiplier: { $avg: "$activeMultipliers.total" }
-    }}
-  ]);
-  
-  return stats[0] || {
-    totalPlayers: 0,
-    avgGoldPending: 0,
-    totalAccumulatedTime: 0,
-    playersWithRewards: 0,
-    avgMultiplier: 1.0
-  };
-};
-
-// Nettoyer les états obsolètes (maintenance)
-AfkStateSchema.statics.cleanupStaleStates = async function(daysOld: number = 30) {
-  const threshold = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000);
-  
-  const result = await this.deleteMany({
-    $or: [
-      { lastTickAt: { $lt: threshold } },
-      { lastClaimAt: { $lt: threshold } },
-      { updatedAt: { $lt: threshold } }
-    ],
-    "pendingRewards.0": { $exists: false } // Pas de récompenses en attente
-  });
-  
-  return {
-    deletedCount: result.deletedCount || 0,
-    message: `Cleaned up ${result.deletedCount || 0} stale AFK states`
-  };
+// Activer le mode amélioré
+AfkStateSchema.methods.enableEnhancedMode = async function(): Promise<void> {
+  if (!this.useEnhancedRewards) {
+    this.useEnhancedRewards = true;
+    await this.updatePlayerProgression();
+    console.log(`🚀 Mode Enhanced AFK activé pour ${this.playerId}`);
+  }
 };
 
 export default mongoose.model<IAfkState>("AfkState", AfkStateSchema);
