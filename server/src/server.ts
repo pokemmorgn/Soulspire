@@ -27,7 +27,7 @@ import forgeEnhancementRoutes from "./routes/forgeEnhancement";
 import forgeFusionRoutes from "./routes/forgeFusion";
 import forgeTierUpgradeRoutes from "./routes/forgeTierUpgrade";
 import leaderboardRoutes from "./routes/leaderboard";
-import heroFusionRoutes from "./routes/heroFusion";
+import heroFusionRoutes from "./routes/herofusion";
 // Import des services
 import { ShopService } from "./services/ShopService";
 import { SchedulerService } from "./services/SchedulerService";
