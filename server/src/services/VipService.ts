@@ -92,7 +92,7 @@ export class VipService {
       }
 
       // Obtenir ou créer la progression VIP
-      const vipProgress = await VipProgress.getOrCreateProgress(playerId, serverId);
+      const vipProgress = await (VipProgress as any).getOrCreateProgress(playerId, serverId);
       const oldLevel = vipProgress.currentLevel;
 
       // Déduire les gems payantes
@@ -104,7 +104,7 @@ export class VipService {
       const levelResult = await vipProgress.addExp(paidGemsAmount, transactionId);
 
       // Enregistrer l'achat dans l'historique
-      await VipPurchaseHistory.recordPurchase({
+      await (VipPurchaseHistory as any).recordPurchase({
         playerId,
         serverId,
         transactionId,
@@ -147,7 +147,7 @@ export class VipService {
     try {
       const [player, vipProgress] = await Promise.all([
         Player.findOne({ _id: playerId, serverId }),
-        VipProgress.getOrCreateProgress(playerId, serverId)
+        (VipProgress as any).getOrCreateProgress(playerId, serverId)
       ]);
 
       if (!player) {
@@ -155,7 +155,7 @@ export class VipService {
       }
 
       // Récupérer la configuration du niveau actuel
-      const currentLevelConfig = await VipConfiguration.getLevel(vipProgress.currentLevel);
+      const currentLevelConfig = await (VipConfiguration as any).getLevel(vipProgress.currentLevel);
       if (!currentLevelConfig) {
         return { success: false, error: "VIP configuration not found" };
       }
@@ -165,7 +165,7 @@ export class VipService {
 
       // Calculer la progression vers le prochain niveau
       let progressToNext = undefined;
-      const nextLevelConfig = await VipConfiguration.getNextLevelInfo(vipProgress.currentLevel);
+      const nextLevelConfig = await (VipConfiguration as any).getNextLevelInfo(vipProgress.currentLevel);
       if (nextLevelConfig) {
         const expRequired = nextLevelConfig.totalExpRequired - vipProgress.currentExp;
         const progressPercent = Math.max(0, Math.min(100, 
@@ -218,7 +218,7 @@ export class VipService {
 
       const [player, vipProgress] = await Promise.all([
         Player.findOne({ _id: playerId, serverId }),
-        VipProgress.getOrCreateProgress(playerId, serverId)
+        (VipProgress as any).getOrCreateProgress(playerId, serverId)
       ]);
 
       if (!player) {
@@ -231,7 +231,7 @@ export class VipService {
 
       // Générer ou récupérer les récompenses du jour
       const today = new Date().toISOString().split('T')[0];
-      const dailyReward = await VipDailyRewards.generateDailyRewards(
+      const dailyReward = await (VipDailyRewards as any).generateDailyRewards(
         playerId, 
         serverId, 
         vipProgress.currentLevel, 
@@ -297,7 +297,7 @@ export class VipService {
   public static async hasVipBenefit(playerId: string, serverId: string, benefitType: string): Promise<boolean> {
     try {
       const vipLevel = await this.getPlayerVipLevel(playerId, serverId);
-      const config = await VipConfiguration.getLevel(vipLevel);
+      const config = await (VipConfiguration as any).getLevel(vipLevel);
       return config ? config.hasBenefit(benefitType) : false;
     } catch (error) {
       console.error("❌ Erreur hasVipBenefit:", error);
@@ -313,7 +313,7 @@ export class VipService {
   ): Promise<number | boolean | string | null> {
     try {
       const vipLevel = await this.getPlayerVipLevel(playerId, serverId);
-      const config = await VipConfiguration.getLevel(vipLevel);
+      const config = await (VipConfiguration as any).getLevel(vipLevel);
       return config ? config.getBenefitValue(benefitType) : null;
     } catch (error) {
       console.error("❌ Erreur getVipBenefitValue:", error);
@@ -357,14 +357,14 @@ export class VipService {
     reason: string = "Admin Grant"
   ) {
     try {
-      const vipProgress = await VipProgress.getOrCreateProgress(playerId, serverId);
+      const vipProgress = await (VipProgress as any).getOrCreateProgress(playerId, serverId);
       const oldLevel = vipProgress.currentLevel;
 
       const transactionId = `admin_grant_${Date.now()}_${playerId}`;
       const result = await vipProgress.addExp(expAmount, transactionId);
 
       // Enregistrer dans l'historique
-      await VipPurchaseHistory.recordPurchase({
+      await (VipPurchaseHistory as any).recordPurchase({
         playerId,
         serverId,
         transactionId,
@@ -397,9 +397,9 @@ export class VipService {
   public static async getServerVipStats(serverId: string) {
     try {
       const [progressStats, rewardStats, purchaseStats] = await Promise.all([
-        VipProgress.getServerStats(serverId),
-        VipDailyRewards.getServerClaimStats(serverId),
-        VipPurchaseHistory.getServerStats(serverId)
+        (VipProgress as any).getServerStats(serverId),
+        (VipDailyRewards as any).getServerClaimStats(serverId),
+        (VipPurchaseHistory as any).getServerStats(serverId)
       ]);
 
       return {
@@ -439,7 +439,7 @@ export class VipService {
 
     if (!dailyReward) {
       // Générer les récompenses du jour
-      const newReward = await VipDailyRewards.generateDailyRewards(playerId, serverId, vipLevel, today);
+      const newReward = await (VipDailyRewards as any).generateDailyRewards(playerId, serverId, vipLevel, today);
       return {
         canClaim: true,
         rewards: newReward.rewards,
