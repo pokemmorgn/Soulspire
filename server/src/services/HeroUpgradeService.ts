@@ -1,4 +1,45 @@
-import Player from "../models/Player";
+private static getSkillsUpgradeInfo(heroInstance: any, heroData: any, player: any) {
+    const skills = ["spell1", "spell2", "spell3", "ultimate", "passive"];
+    const skillsInfo: any = {};
+
+    if (!(heroInstance as any).skills) {
+      (heroInstance as any).skills = {
+        spell1: { level: 1 },
+        spell2: { level: 1 },
+        spell3: { level: 1 },
+        ultimate: { level: 1 },
+        passive: { level: 1 }
+      };
+    }
+
+    for (const skillSlot of skills) {
+      const currentLevel = (heroInstance as any).skills[skillSlot]?.level || 1;
+      const maxLevel = this.getMaxSkillLevel(heroInstance.level);
+      
+      if (currentLevel < maxLevel) {
+        const cost = this.calculateSkillUpgradeCost(currentLevel, heroData.rarity);
+        const requiredMaterial = `skill_essence_${heroData.element.toLowerCase()}`;
+        
+        skillsInfo[skillSlot] = {
+          available: true,
+          currentLevel,
+          maxLevel,
+          cost,
+          requiredMaterial,
+          playerHasMaterial: (player.materials.get(requiredMaterial) || 0) >= cost.materials
+        };
+      } else {
+        skillsInfo[skillSlot] = {
+          available: false,
+          currentLevel,
+          maxLevel,
+          reason: "Maximum level reached"
+        };
+      }
+    }
+
+    return skillsInfo;
+  }import Player from "../models/Player";
 import Hero from "../models/Hero";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
