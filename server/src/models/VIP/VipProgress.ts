@@ -189,7 +189,7 @@ vipProgressSchema.methods.canClaimDailyReward = function(): boolean {
   if (this.currentLevel === 0) return false;
   
   const today = new Date().toISOString().split('T')[0];
-  const todayReward = this.dailyRewards.find(r => r.date === today);
+  const todayReward = this.dailyRewards.find((r: IVipDailyReward) => r.date === today);
   
   return !todayReward || !todayReward.claimed;
 };
