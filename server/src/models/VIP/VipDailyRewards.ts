@@ -186,16 +186,15 @@ vipDailyRewardsSchema.methods.claim = async function(
   let finalRewards = [...this.rewards];
   
   if (streakBonus > 1.0) {
-    finalRewards = finalRewards.map((reward: IVipRewardItem) => ({
+  finalRewards = finalRewards.map((reward: IVipRewardItem) => ({
     type: reward.type,
     currencyType: reward.currencyType,
     materialId: reward.materialId,
     heroId: reward.heroId,
     itemId: reward.itemId,
     quantity: Math.floor(reward.quantity * streakBonus),
-    rarity: reward.rarity,
-    quantity: Math.floor(reward.quantity * streakBonus)
-    }));
+    rarity: reward.rarity
+  } as IVipRewardItem));
   }
   
   await this.save();
@@ -410,10 +409,10 @@ vipDailyRewardsSchema.statics.generateDailyRewards = async function(
   }
   
   // Calculer le streak actuel
-  const streakInfo = await this.calculateCurrentStreak(playerId, serverId, rewardDate);
+const streakInfo = await (this.schema.statics as any).calculateCurrentStreak.call(this, playerId, serverId, rewardDate);
   
   // Générer les récompenses basées sur le niveau VIP
-  const rewards = this.generateRewardsByLevel(vipLevel);
+const rewards = (this.schema.statics as any).generateRewardsByLevel(vipLevel);
   
   // Créer l'entrée de récompenses
   const dailyRewards = new this({
