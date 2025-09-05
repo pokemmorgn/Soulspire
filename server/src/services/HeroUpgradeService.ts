@@ -807,7 +807,7 @@ export class HeroUpgradeService {
       const unequippedHeroes = player.heroes.filter((h: any) => !h.equipped);
 
       for (const heroInstance of equippedHeroes) {
-        const heroData = heroInstance.heroId;
+        const heroData = heroInstance.heroId as any; // Cast pour accéder aux propriétés après populate
         const priority = this.calculateUpgradePriority(heroInstance, heroData, player, true);
         
         if (priority.score > 0) {
@@ -823,7 +823,7 @@ export class HeroUpgradeService {
       }
 
       for (const heroInstance of unequippedHeroes.slice(0, 10)) {
-        const heroData = heroInstance.heroId;
+        const heroData = heroInstance.heroId as any; // Cast pour accéder aux propriétés après populate
         const priority = this.calculateUpgradePriority(heroInstance, heroData, player, false);
         
         if (priority.score > 0) {
