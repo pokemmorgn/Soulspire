@@ -87,14 +87,12 @@ export class FastRewardsService {
     error?: string;
   }> {
     try {
-      const [player, vipLevel] = await Promise.all([
-        Player.findById(playerId).select("serverId gems"),
-        VipService.getPlayerVipLevel(playerId, player?.serverId || "S1")
-      ]);
-
+      const player = await Player.findById(playerId).select("serverId gems");
       if (!player) {
         return { success: false, options: [], currentVipLevel: 0, error: "Player not found" };
       }
+
+      const vipLevel = await VipService.getPlayerVipLevel(playerId, player.serverId);
 
       const options: FastRewardOption[] = [];
 
@@ -173,7 +171,7 @@ export class FastRewardsService {
         };
       }
 
-      // Récupérer le joueur et vérifier ses ressources
+      // Récupérer le joueur
       const player = await Player.findById(playerId);
       if (!player) {
         return {
@@ -183,6 +181,7 @@ export class FastRewardsService {
         };
       }
 
+      // Récupérer le niveau VIP
       const vipLevel = await VipService.getPlayerVipLevel(playerId, player.serverId);
 
       // Vérifier le niveau VIP requis
