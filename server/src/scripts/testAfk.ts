@@ -4,6 +4,7 @@ import Player from "../models/Player";
 import AfkState from "../models/AfkState";
 import AfkServiceEnhanced from "../services/AfkService";
 import AfkSession from "../models/AfkSession";
+import { AfkRewardsService } from "../services/AfkRewardsService";
 
 dotenv.config();
 
@@ -207,15 +208,18 @@ async function testAfkEnhanced(): Promise<void> {
 
     // Test calculs de taux avancés
     log(colors.cyan, "\n📊 CALCUL TAUX AVANCÉS");
-    const { AfkRewardsService } = require("../services/AfkRewardsService");
-    const rates = await AfkRewardsService.getPlayerCurrentRates(advancedId);
-    console.table({
-      goldPerMin: rates.ratesPerMinute.gold,
-      gemsPerMin: rates.ratesPerMinute.gems,
-      ticketsPerMin: rates.ratesPerMinute.tickets,
-      materialsPerMin: rates.ratesPerMinute.materials,
-      maxAccrualHours: rates.maxAccrualHours
-    });
+    try {
+      const rates = await AfkRewardsService.getPlayerCurrentRates(advancedId);
+      console.table({
+        goldPerMin: rates.ratesPerMinute.gold,
+        gemsPerMin: rates.ratesPerMinute.gems,
+        ticketsPerMin: rates.ratesPerMinute.tickets,
+        materialsPerMin: rates.ratesPerMinute.materials,
+        maxAccrualHours: rates.maxAccrualHours
+      });
+    } catch (error: any) {
+      log(colors.red, `❌ Erreur calcul taux: ${error.message}`);
+    }
 
     // Simulation AFK court avec enhanced
     await simulateAfkMinutesEnhanced(advancedId, 10, "Advanced - 10 min Enhanced");
@@ -260,45 +264,57 @@ async function testAfkEnhanced(): Promise<void> {
     // =============================================
     log(colors.bright, "\n📈 === TEST SIMULATION GAINS ===");
     
-    const simulation1h = await AfkRewardsService.simulateAfkGains(advancedId, 1);
-    const simulation8h = await AfkRewardsService.simulateAfkGains(advancedId, 8);
-    const simulation24h = await AfkRewardsService.simulateAfkGains(advancedId, 24);
-    
-    console.table({
-      "1h_totalValue": simulation1h.totalValue,
-      "1h_rewards": simulation1h.rewards.length,
-      "1h_cappedAt": simulation1h.cappedAt,
-      "8h_totalValue": simulation8h.totalValue,
-      "8h_rewards": simulation8h.rewards.length,
-      "8h_cappedAt": simulation8h.cappedAt,
-      "24h_totalValue": simulation24h.totalValue,
-      "24h_rewards": simulation24h.rewards.length,
-      "24h_cappedAt": simulation24h.cappedAt
-    });
+    try {
+      const simulation1h = await AfkRewardsService.simulateAfkGains(advancedId, 1);
+      const simulation8h = await AfkRewardsService.simulateAfkGains(advancedId, 8);
+      const simulation24h = await AfkRewardsService.simulateAfkGains(advancedId, 24);
+      
+      console.table({
+        "1h_totalValue": simulation1h.totalValue,
+        "1h_rewards": simulation1h.rewards.length,
+        "1h_cappedAt": simulation1h.cappedAt,
+        "8h_totalValue": simulation8h.totalValue,
+        "8h_rewards": simulation8h.rewards.length,
+        "8h_cappedAt": simulation8h.cappedAt,
+        "24h_totalValue": simulation24h.totalValue,
+        "24h_rewards": simulation24h.rewards.length,
+        "24h_cappedAt": simulation24h.cappedAt
+      });
+    } catch (error: any) {
+      log(colors.red, `❌ Erreur simulation gains: ${error.message}`);
+    }
 
     // =============================================
     // TEST 5: Comparaison amélioration
     // =============================================
     log(colors.bright, "\n🆙 === TEST COMPARAISON AMÉLIORATIONS ===");
     
-    const comparison = await AfkRewardsService.compareUpgradeGains(advancedId);
-    console.table({
-      currentGold: comparison.current.goldPerMinute,
-      afterWorldUp: comparison.afterWorldUp.goldPerMinute,
-      afterLevelUp: comparison.afterLevelUp.goldPerMinute,
-      afterVipUp: comparison.afterVipUp.goldPerMinute,
-      worldImprovement: `${comparison.improvement.worldUp}%`,
-      levelImprovement: `${comparison.improvement.levelUp}%`,
-      vipImprovement: `${comparison.improvement.vipUp}%`
-    });
+    try {
+      const comparison = await AfkRewardsService.compareUpgradeGains(advancedId);
+      console.table({
+        currentGold: comparison.current.goldPerMinute,
+        afterWorldUp: comparison.afterWorldUp.goldPerMinute,
+        afterLevelUp: comparison.afterLevelUp.goldPerMinute,
+        afterVipUp: comparison.afterVipUp.goldPerMinute,
+        worldImprovement: `${comparison.improvement.worldUp}%`,
+        levelImprovement: `${comparison.improvement.levelUp}%`,
+        vipImprovement: `${comparison.improvement.vipUp}%`
+      });
+    } catch (error: any) {
+      log(colors.red, `❌ Erreur comparaison améliorations: ${error.message}`);
+    }
 
     // =============================================
     // TEST 6: Statistiques usage
     // =============================================
     log(colors.bright, "\n📊 === STATISTIQUES USAGE ENHANCED ===");
     
-    const usageStats = await AfkServiceEnhanced.getEnhancedUsageStats();
-    console.table(usageStats);
+    try {
+      const usageStats = await AfkServiceEnhanced.getEnhancedUsageStats();
+      console.table(usageStats);
+    } catch (error: any) {
+      log(colors.red, `❌ Erreur statistiques usage: ${error.message}`);
+    }
 
     log(colors.cyan, "\n🎉 === TESTS AFK ENHANCED TERMINÉS ===\n");
 
