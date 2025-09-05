@@ -122,8 +122,7 @@ const vipPurchaseHistorySchema = new Schema<IVipPurchaseHistory>({
     },
     currency: { type: String, default: "USD" },
     amount: { type: Number, min: 0, default: 0 },
-    exchangeRate: { type: Number, min: 0, default: 1 },
-    default: null
+    exchangeRate: { type: Number, min: 0, default: 1 }
   },
   ipAddress: {
     type: String,
