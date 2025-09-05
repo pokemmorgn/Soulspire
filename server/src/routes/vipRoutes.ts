@@ -1,11 +1,43 @@
 // src/routes/vipRoutes.ts
 import { Router, Request, Response } from "express";
 import { VipService } from "../services/VipService";
-import { authMiddleware } from "../middleware/authMiddleware";
-import { validateRequest } from "../middleware/validateRequest";
-import { body, param, query } from "express-validator";
+import authMiddleware from "../middleware/authMiddleware";
+import Joi from "joi";
 
 const router = Router();
+
+// Schémas de validation avec Joi (comme dans vos autres routes)
+const purchaseVipExpSchema = Joi.object({
+  paidGemsAmount: Joi.number().integer().min(1).max(100000).required()
+});
+
+const benefitTypeSchema = Joi.object({
+  benefitType: Joi.string().required()
+});
+
+const shopPriceSchema = Joi.object({
+  originalPrice: Joi.number().integer().min(1).required()
+});
+
+const grantExpSchema = Joi.object({
+  targetPlayerId: Joi.string().required(),
+  expAmount: Joi.number().integer().min(1).max(100000).required(),
+  reason: Joi.string().optional()
+});
+
+// Fonction d'aide pour la validation
+const validateSchema = (schema: Joi.ObjectSchema) => {
+  return (req: Request, res: Response, next: any) => {
+    const { error } = schema.validate(req.body.paidGemsAmount ? req.body : { ...req.body, ...req.params, ...req.query });
+    if (error) {
+      return res.status(400).json({ 
+        error: error.details[0].message,
+        code: "VALIDATION_ERROR"
+      });
+    }
+    next();
+  };
+};
 
 // Middleware d'authentification pour toutes les routes VIP
 router.use(authMiddleware);
@@ -18,16 +50,8 @@ router.use(authMiddleware);
  */
 router.get("/status", async (req: Request, res: Response) => {
   try {
-    const playerId = req.user?.playerId;
-    const serverId = req.user?.serverId || "S1";
-
-    if (!playerId) {
-      return res.status(401).json({
-        success: false,
-        error: "Player ID required",
-        code: "UNAUTHORIZED"
-      });
-    }
+    const playerId = req.userId!; // Utilise req.userId comme dans battle.ts
+    const serverId = req.serverId || "S1"; // Utilise req.serverId comme dans battle.ts
 
     const result = await VipService.getPlayerVipStatus(playerId, serverId);
 
@@ -50,24 +74,11 @@ router.get("/status", async (req: Request, res: Response) => {
  * POST /api/vip/purchase
  * Acheter de l'expérience VIP avec des gems payantes
  */
-router.post("/purchase", [
-  body("paidGemsAmount")
-    .isInt({ min: 1, max: 100000 })
-    .withMessage("Amount must be between 1 and 100000"),
-  validateRequest
-], async (req: Request, res: Response) => {
+router.post("/purchase", validateSchema(purchaseVipExpSchema), async (req: Request, res: Response) => {
   try {
-    const playerId = req.user?.playerId;
-    const serverId = req.user?.serverId || "S1";
+    const playerId = req.userId!;
+    const serverId = req.serverId || "S1";
     const { paidGemsAmount } = req.body;
-
-    if (!playerId) {
-      return res.status(401).json({
-        success: false,
-        error: "Player ID required",
-        code: "UNAUTHORIZED"
-      });
-    }
 
     const result = await VipService.purchaseVipExp(playerId, serverId, paidGemsAmount);
 
@@ -92,16 +103,8 @@ router.post("/purchase", [
  */
 router.post("/daily-rewards/claim", async (req: Request, res: Response) => {
   try {
-    const playerId = req.user?.playerId;
-    const serverId = req.user?.serverId || "S1";
-
-    if (!playerId) {
-      return res.status(401).json({
-        success: false,
-        error: "Player ID required",
-        code: "UNAUTHORIZED"
-      });
-    }
+    const playerId = req.userId!;
+    const serverId = req.serverId || "S1";
 
     const result = await VipService.claimVipDailyRewards(playerId, serverId);
 
@@ -128,16 +131,8 @@ router.post("/daily-rewards/claim", async (req: Request, res: Response) => {
  */
 router.get("/level", async (req: Request, res: Response) => {
   try {
-    const playerId = req.user?.playerId;
-    const serverId = req.user?.serverId || "S1";
-
-    if (!playerId) {
-      return res.status(401).json({
-        success: false,
-        error: "Player ID required",
-        code: "UNAUTHORIZED"
-      });
-    }
+    const playerId = req.userId!;
+    const serverId = req.serverId || "S1";
 
     const vipLevel = await VipService.getPlayerVipLevel(playerId, serverId);
 
@@ -161,20 +156,17 @@ router.get("/level", async (req: Request, res: Response) => {
  * GET /api/vip/benefits/:benefitType
  * Vérifier si le joueur a un bénéfice spécifique
  */
-router.get("/benefits/:benefitType", [
-  param("benefitType").isString().notEmpty(),
-  validateRequest
-], async (req: Request, res: Response) => {
+router.get("/benefits/:benefitType", async (req: Request, res: Response) => {
   try {
-    const playerId = req.user?.playerId;
-    const serverId = req.user?.serverId || "S1";
+    const playerId = req.userId!;
+    const serverId = req.serverId || "S1";
     const { benefitType } = req.params;
 
-    if (!playerId) {
-      return res.status(401).json({
+    if (!benefitType) {
+      return res.status(400).json({
         success: false,
-        error: "Player ID required",
-        code: "UNAUTHORIZED"
+        error: "Benefit type is required",
+        code: "VALIDATION_ERROR"
       });
     }
 
@@ -205,22 +197,17 @@ router.get("/benefits/:benefitType", [
  * GET /api/vip/shop-price
  * Calculer le prix avec remise VIP
  */
-router.get("/shop-price", [
-  query("originalPrice")
-    .isInt({ min: 1 })
-    .withMessage("Original price must be a positive integer"),
-  validateRequest
-], async (req: Request, res: Response) => {
+router.get("/shop-price", async (req: Request, res: Response) => {
   try {
-    const playerId = req.user?.playerId;
-    const serverId = req.user?.serverId || "S1";
+    const playerId = req.userId!;
+    const serverId = req.serverId || "S1";
     const originalPrice = parseInt(req.query.originalPrice as string);
 
-    if (!playerId) {
-      return res.status(401).json({
+    if (!originalPrice || originalPrice < 1) {
+      return res.status(400).json({
         success: false,
-        error: "Player ID required",
-        code: "UNAUTHORIZED"
+        error: "Original price must be a positive integer",
+        code: "VALIDATION_ERROR"
       });
     }
 
@@ -257,16 +244,8 @@ router.get("/shop-price", [
  */
 router.get("/battle-speed", async (req: Request, res: Response) => {
   try {
-    const playerId = req.user?.playerId;
-    const serverId = req.user?.serverId || "S1";
-
-    if (!playerId) {
-      return res.status(401).json({
-        success: false,
-        error: "Player ID required",
-        code: "UNAUTHORIZED"
-      });
-    }
+    const playerId = req.userId!;
+    const serverId = req.serverId || "S1";
 
     const maxSpeed = await VipService.getMaxBattleSpeed(playerId, serverId);
 
@@ -292,16 +271,8 @@ router.get("/battle-speed", async (req: Request, res: Response) => {
  */
 router.get("/afk-multiplier", async (req: Request, res: Response) => {
   try {
-    const playerId = req.user?.playerId;
-    const serverId = req.user?.serverId || "S1";
-
-    if (!playerId) {
-      return res.status(401).json({
-        success: false,
-        error: "Player ID required",
-        code: "UNAUTHORIZED"
-      });
-    }
+    const playerId = req.userId!;
+    const serverId = req.serverId || "S1";
 
     const multiplier = await VipService.getAfkRewardsMultiplier(playerId, serverId);
 
@@ -321,81 +292,6 @@ router.get("/afk-multiplier", async (req: Request, res: Response) => {
   }
 });
 
-// === ROUTES D'ADMINISTRATION ===
-
-/**
- * POST /api/vip/admin/grant-exp
- * Donner de l'EXP VIP gratuitement (admin seulement)
- */
-router.post("/admin/grant-exp", [
-  body("targetPlayerId").isString().notEmpty(),
-  body("expAmount").isInt({ min: 1, max: 100000 }),
-  body("reason").optional().isString(),
-  validateRequest
-], async (req: Request, res: Response) => {
-  try {
-    const adminPlayerId = req.user?.playerId;
-    const isAdmin = req.user?.isAdmin; // TODO: Implémenter la vérification admin
-    const serverId = req.user?.serverId || "S1";
-    const { targetPlayerId, expAmount, reason } = req.body;
-
-    if (!adminPlayerId || !isAdmin) {
-      return res.status(403).json({
-        success: false,
-        error: "Admin access required",
-        code: "FORBIDDEN"
-      });
-    }
-
-    const result = await VipService.grantVipExp(
-      targetPlayerId,
-      serverId,
-      expAmount,
-      reason || `Admin grant by ${adminPlayerId}`
-    );
-
-    res.json(result);
-  } catch (error: any) {
-    console.error("❌ Erreur POST /vip/admin/grant-exp:", error);
-    res.status(500).json({
-      success: false,
-      error: "Internal server error",
-      code: "SERVER_ERROR"
-    });
-  }
-});
-
-/**
- * GET /api/vip/admin/server-stats
- * Obtenir les statistiques VIP du serveur (admin seulement)
- */
-router.get("/admin/server-stats", async (req: Request, res: Response) => {
-  try {
-    const adminPlayerId = req.user?.playerId;
-    const isAdmin = req.user?.isAdmin; // TODO: Implémenter la vérification admin
-    const serverId = req.user?.serverId || "S1";
-
-    if (!adminPlayerId || !isAdmin) {
-      return res.status(403).json({
-        success: false,
-        error: "Admin access required",
-        code: "FORBIDDEN"
-      });
-    }
-
-    const stats = await VipService.getServerVipStats(serverId);
-
-    res.json(stats);
-  } catch (error: any) {
-    console.error("❌ Erreur GET /vip/admin/server-stats:", error);
-    res.status(500).json({
-      success: false,
-      error: "Internal server error",
-      code: "SERVER_ERROR"
-    });
-  }
-});
-
 // === ROUTES DE DEBUG/TEST ===
 
 /**
@@ -404,16 +300,8 @@ router.get("/admin/server-stats", async (req: Request, res: Response) => {
  */
 router.get("/debug/all-benefits", async (req: Request, res: Response) => {
   try {
-    const playerId = req.user?.playerId;
-    const serverId = req.user?.serverId || "S1";
-
-    if (!playerId) {
-      return res.status(401).json({
-        success: false,
-        error: "Player ID required",
-        code: "UNAUTHORIZED"
-      });
-    }
+    const playerId = req.userId!;
+    const serverId = req.serverId || "S1";
 
     const benefitTypes = [
       "battle_speed", "daily_rewards", "shop_discount", "max_stamina", 
