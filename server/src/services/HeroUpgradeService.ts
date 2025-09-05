@@ -618,7 +618,7 @@ export class HeroUpgradeService {
 
           results.push({
             heroInstanceId,
-            heroName: heroData.name,
+            heroName: heroData.name, // heroData est maintenant correctement typé
             success: true,
             oldLevel,
             newLevel: targetLevel,
