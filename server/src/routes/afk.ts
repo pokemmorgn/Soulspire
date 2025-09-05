@@ -1,34 +1,58 @@
 import { Router, type RequestHandler } from "express";
-import AfkService from "../services/AfkService";
+import AfkServiceEnhanced from "../services/AfkService";
 
 /**
- * Augmentation de type pour Express afin d'exposer req.user?.id
+ * Routes AFK Enhanced - MÊMES NOMS DE ROUTES
+ * Compatibilité totale + nouvelles fonctionnalités en arrière-plan
  */
+
 declare module "express-serve-static-core" {
   interface Request {
     user?: { id: string };
   }
 }
 
-// -----------------------------------------------------------------------------
-// Notifier SSE in-memory AMÉLIORÉ
-// -----------------------------------------------------------------------------
+// === NOTIFIER SSE AMÉLIORÉ ===
 type AfkEvent =
   | {
       type: "summary";
       data: {
+        // Format original (compatibilité)
         pendingGold: number;
         baseGoldPerMinute: number;
         accumulatedSinceClaimSec: number;
         maxAccrualSeconds: number;
         lastTickAt: string | null;
         lastClaimAt: string | null;
-        goldPerSecond: number; // NOUVEAU: pour calcul temps réel côté client
-        timeUntilCap: number;  // NOUVEAU: temps restant avant cap (en sec)
+        goldPerSecond: number;
+        timeUntilCap: number;
+        
+        // Nouvelles données (enhanced)
+        pendingRewards?: any[];
+        totalValue?: number;
+        enhancedRatesPerMinute?: any;
+        activeMultipliers?: any;
+        useEnhancedRewards?: boolean;
+        canUpgrade?: boolean;
+        todayClaimedRewards?: any;
       };
     }
-  | { type: "claimed"; data: { claimed: number; totalGold: number } }
-  | { type: "realtime_update"; data: { pendingGold: number; accumulatedSinceClaimSec: number } } // NOUVEAU
+  | { 
+      type: "claimed"; 
+      data: { 
+        // Format original
+        claimed: number; 
+        totalGold: number;
+        
+        // Format enhanced
+        claimedRewards?: any[];
+        goldClaimed?: number;
+        totalValue?: number;
+        playerUpdates?: any;
+      } 
+    }
+  | { type: "realtime_update"; data: { pendingGold: number; accumulatedSinceClaimSec: number; totalValue?: number } }
+  | { type: "upgrade_available"; data: { canUpgrade: boolean; benefits: any } }
   | { type: "ping"; data: { t: number } };
 
 class AfkNotifier {
@@ -44,8 +68,6 @@ class AfkNotifier {
   subscribe(playerId: string, res: import("express").Response) {
     if (!this.clients.has(playerId)) this.clients.set(playerId, new Set());
     this.clients.get(playerId)!.add(res);
-
-    // NOUVEAU: Démarre l'update temps réel pour ce joueur
     this.startRealtimeUpdates(playerId);
   }
 
@@ -55,40 +77,44 @@ class AfkNotifier {
     set.delete(res);
     if (set.size === 0) {
       this.clients.delete(playerId);
-      // NOUVEAU: Arrête l'update temps réel si plus de clients
       this.stopRealtimeUpdates(playerId);
     }
   }
 
-  // NOUVEAU: Démarre les updates temps réel toutes les secondes
   private startRealtimeUpdates(playerId: string) {
-    // Évite les doublons
     if (this.realtimeIntervals.has(playerId)) return;
 
     const interval = setInterval(async () => {
       try {
-        const summary = await AfkService.getSummary(playerId, true); // tick à chaque fois
-        
-        // Calcule le gold en temps réel
-        const goldPerSecond = summary.baseGoldPerMinute / 60;
-        const timeUntilCap = Math.max(0, summary.maxAccrualSeconds - summary.accumulatedSinceClaimSec);
+        const summary = await AfkServiceEnhanced.getSummaryEnhanced(playerId, true);
         
         this.notify(playerId, {
           type: "realtime_update",
           data: {
             pendingGold: summary.pendingGold,
-            accumulatedSinceClaimSec: summary.accumulatedSinceClaimSec
+            accumulatedSinceClaimSec: summary.accumulatedSinceClaimSec,
+            totalValue: summary.totalValue
           }
         });
+
+        // Notifier si upgrade disponible
+        if (summary.canUpgrade) {
+          this.notify(playerId, {
+            type: "upgrade_available",
+            data: { 
+              canUpgrade: true, 
+              benefits: summary.enhancedRatesPerMinute 
+            }
+          });
+        }
       } catch (error) {
         console.error(`Erreur realtime update pour ${playerId}:`, error);
       }
-    }, 1000); // TOUTES LES SECONDES
+    }, 1000);
 
     this.realtimeIntervals.set(playerId, interval);
   }
 
-  // NOUVEAU: Arrête les updates temps réel
   private stopRealtimeUpdates(playerId: string) {
     const interval = this.realtimeIntervals.get(playerId);
     if (interval) {
@@ -120,73 +146,118 @@ const requireAuth: RequestHandler = (req, res, next) => {
   next();
 };
 
-// Anti-spam heartbeat (en mémoire)
+// Anti-spam heartbeat
 const lastHeartbeatByPlayer = new Map<string, number>();
 
-// -----------------------------------------------------------------------------
-// Handlers AMÉLIORÉS
-// -----------------------------------------------------------------------------
+// === ROUTES EXISTANTES (NOMS IDENTIQUES, FONCTIONNALITÉS AMÉLIORÉES) ===
+
+/**
+ * GET /summary - Version Enhanced compatible
+ * Retourne format original + données enhanced si disponibles
+ */
 const getSummary: RequestHandler = async (req, res) => {
   const playerId = req.user!.id;
-  const summary = await AfkService.getSummary(playerId, true);
+  
+  try {
+    const summary = await AfkServiceEnhanced.getSummaryEnhanced(playerId, true);
 
-  // NOUVEAU: Calcul des données temps réel
-  const goldPerSecond = summary.baseGoldPerMinute / 60;
-  const timeUntilCap = Math.max(0, summary.maxAccrualSeconds - summary.accumulatedSinceClaimSec);
+    const goldPerSecond = summary.baseGoldPerMinute / 60;
+    const timeUntilCap = Math.max(0, summary.maxAccrualSeconds - summary.accumulatedSinceClaimSec);
 
-  const responseData = {
-    pendingGold: summary.pendingGold,
-    baseGoldPerMinute: summary.baseGoldPerMinute,
-    accumulatedSinceClaimSec: summary.accumulatedSinceClaimSec,
-    maxAccrualSeconds: summary.maxAccrualSeconds,
-    lastTickAt: summary.lastTickAt ? new Date(summary.lastTickAt).toISOString() : null,
-    lastClaimAt: summary.lastClaimAt ? new Date(summary.lastClaimAt).toISOString() : null,
-    goldPerSecond, // NOUVEAU
-    timeUntilCap,  // NOUVEAU
-  };
+    const responseData = {
+      // Format original (compatibilité garantie)
+      pendingGold: summary.pendingGold,
+      baseGoldPerMinute: summary.baseGoldPerMinute,
+      accumulatedSinceClaimSec: summary.accumulatedSinceClaimSec,
+      maxAccrualSeconds: summary.maxAccrualSeconds,
+      lastTickAt: summary.lastTickAt ? new Date(summary.lastTickAt).toISOString() : null,
+      lastClaimAt: summary.lastClaimAt ? new Date(summary.lastClaimAt).toISOString() : null,
+      goldPerSecond,
+      timeUntilCap,
+      
+      // Nouvelles données (enhanced) - ajoutées sans casser la compatibilité
+      ...(summary.useEnhancedRewards && {
+        pendingRewards: summary.pendingRewards,
+        totalValue: summary.totalValue,
+        enhancedRatesPerMinute: summary.enhancedRatesPerMinute,
+        activeMultipliers: summary.activeMultipliers,
+        todayClaimedRewards: summary.todayClaimedRewards
+      }),
+      
+      // Métadonnées système
+      useEnhancedRewards: summary.useEnhancedRewards,
+      canUpgrade: summary.canUpgrade
+    };
 
-  notifier.notify(playerId, {
-    type: "summary",
-    data: responseData,
-  });
+    notifier.notify(playerId, {
+      type: "summary",
+      data: responseData,
+    });
 
-  res.json({ ok: true, data: responseData });
+    res.json({ ok: true, data: responseData });
+
+  } catch (error: any) {
+    console.error("❌ Erreur getSummary:", error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
 };
 
+/**
+ * POST /start - Compatible enhanced
+ */
 const postStart: RequestHandler = async (req, res) => {
   const playerId = req.user!.id;
   const { deviceId, source } = (req.body || {}) as { deviceId?: string; source?: "idle" | "offline" };
 
-  const session = await AfkService.startSession(playerId, { deviceId, source });
-  const summary = await AfkService.getSummary(playerId, false);
+  try {
+    const session = await AfkServiceEnhanced.startSession(playerId, { deviceId, source });
+    const summary = await AfkServiceEnhanced.getSummaryEnhanced(playerId, false);
 
-  const goldPerSecond = summary.baseGoldPerMinute / 60;
-  const timeUntilCap = Math.max(0, summary.maxAccrualSeconds - summary.accumulatedSinceClaimSec);
+    const goldPerSecond = summary.baseGoldPerMinute / 60;
+    const timeUntilCap = Math.max(0, summary.maxAccrualSeconds - summary.accumulatedSinceClaimSec);
 
-  const responseData = {
-    pendingGold: summary.pendingGold,
-    baseGoldPerMinute: summary.baseGoldPerMinute,
-    accumulatedSinceClaimSec: summary.accumulatedSinceClaimSec,
-    maxAccrualSeconds: summary.maxAccrualSeconds,
-    lastTickAt: summary.lastTickAt ? new Date(summary.lastTickAt).toISOString() : null,
-    lastClaimAt: summary.lastClaimAt ? new Date(summary.lastClaimAt).toISOString() : null,
-    goldPerSecond,
-    timeUntilCap,
-  };
+    const responseData = {
+      pendingGold: summary.pendingGold,
+      baseGoldPerMinute: summary.baseGoldPerMinute,
+      accumulatedSinceClaimSec: summary.accumulatedSinceClaimSec,
+      maxAccrualSeconds: summary.maxAccrualSeconds,
+      lastTickAt: summary.lastTickAt ? new Date(summary.lastTickAt).toISOString() : null,
+      lastClaimAt: summary.lastClaimAt ? new Date(summary.lastClaimAt).toISOString() : null,
+      goldPerSecond,
+      timeUntilCap,
+      
+      // Enhanced data
+      ...(summary.useEnhancedRewards && {
+        pendingRewards: summary.pendingRewards,
+        totalValue: summary.totalValue,
+        enhancedRatesPerMinute: summary.enhancedRatesPerMinute,
+        activeMultipliers: summary.activeMultipliers
+      }),
+      
+      useEnhancedRewards: summary.useEnhancedRewards,
+      canUpgrade: summary.canUpgrade
+    };
 
-  notifier.notify(playerId, {
-    type: "summary",
-    data: responseData,
-  });
+    notifier.notify(playerId, {
+      type: "summary",
+      data: responseData,
+    });
 
-  res.json({ ok: true, sessionId: session.id, data: responseData });
+    res.json({ ok: true, sessionId: session.id, data: responseData });
+
+  } catch (error: any) {
+    console.error("❌ Erreur postStart:", error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
 };
 
-// NOUVEAU: Heartbeat plus fréquent et léger
+/**
+ * POST /heartbeat - Compatible enhanced
+ */
 const postHeartbeat: RequestHandler = async (req, res) => {
   const playerId = req.user!.id;
 
-  // Anti-spam réduit: min 500ms entre heartbeats (au lieu de 2s)
+  // Anti-spam
   const now = Date.now();
   const last = lastHeartbeatByPlayer.get(playerId) || 0;
   if (now - last < 500) {
@@ -194,135 +265,224 @@ const postHeartbeat: RequestHandler = async (req, res) => {
   }
   lastHeartbeatByPlayer.set(playerId, now);
 
-  const { state } = await AfkService.heartbeat(playerId);
+  try {
+    const { state } = await AfkServiceEnhanced.heartbeat(playerId);
+    const summary = await AfkServiceEnhanced.getSummaryEnhanced(playerId, false);
 
-  const goldPerSecond = state.baseGoldPerMinute / 60;
-  const timeUntilCap = Math.max(0, state.maxAccrualSeconds - state.accumulatedSinceClaimSec);
+    const goldPerSecond = summary.baseGoldPerMinute / 60;
+    const timeUntilCap = Math.max(0, summary.maxAccrualSeconds - summary.accumulatedSinceClaimSec);
 
-  const responseData = {
-    pendingGold: state.pendingGold,
-    baseGoldPerMinute: state.baseGoldPerMinute,
-    accumulatedSinceClaimSec: state.accumulatedSinceClaimSec,
-    maxAccrualSeconds: state.maxAccrualSeconds,
-    lastTickAt: state.lastTickAt ? new Date(state.lastTickAt).toISOString() : null,
-    lastClaimAt: state.lastClaimAt ? new Date(state.lastClaimAt).toISOString() : null,
-    goldPerSecond,
-    timeUntilCap,
-  };
-
-  notifier.notify(playerId, {
-    type: "summary",
-    data: responseData,
-  });
-
-  res.json({
-    ok: true,
-    data: {
-      pendingGold: state.pendingGold,
-      accumulatedSinceClaimSec: state.accumulatedSinceClaimSec,
-      maxAccrualSeconds: state.maxAccrualSeconds,
-      goldPerSecond, // NOUVEAU
-      timeUntilCap,  // NOUVEAU
-    },
-  });
-};
-
-const postStop: RequestHandler = async (req, res) => {
-  const playerId = req.user!.id;
-  const session = await AfkService.stopSession(playerId);
-
-  const summary = await AfkService.getSummary(playerId, false);
-  const goldPerSecond = summary.baseGoldPerMinute / 60;
-  const timeUntilCap = Math.max(0, summary.maxAccrualSeconds - summary.accumulatedSinceClaimSec);
-
-  const responseData = {
-    pendingGold: summary.pendingGold,
-    baseGoldPerMinute: summary.baseGoldPerMinute,
-    accumulatedSinceClaimSec: summary.accumulatedSinceClaimSec,
-    maxAccrualSeconds: summary.maxAccrualSeconds,
-    lastTickAt: summary.lastTickAt ? new Date(summary.lastTickAt).toISOString() : null,
-    lastClaimAt: summary.lastClaimAt ? new Date(summary.lastClaimAt).toISOString() : null,
-    goldPerSecond,
-    timeUntilCap,
-  };
-
-  notifier.notify(playerId, {
-    type: "summary",
-    data: responseData,
-  });
-
-  res.json({ ok: true, ended: !!session, data: responseData });
-};
-
-const postClaim: RequestHandler = async (req, res) => {
-  const playerId = req.user!.id;
-  const result = await AfkService.claim(playerId);
-
-  notifier.notify(playerId, { type: "claimed", data: { claimed: result.claimed, totalGold: result.totalGold } });
-
-  const summary = await AfkService.getSummary(playerId, false);
-  const goldPerSecond = summary.baseGoldPerMinute / 60;
-  const timeUntilCap = Math.max(0, summary.maxAccrualSeconds - summary.accumulatedSinceClaimSec);
-
-  const responseData = {
-    pendingGold: summary.pendingGold,
-    baseGoldPerMinute: summary.baseGoldPerMinute,
-    accumulatedSinceClaimSec: summary.accumulatedSinceClaimSec,
-    maxAccrualSeconds: summary.maxAccrualSeconds,
-    lastTickAt: summary.lastTickAt ? new Date(summary.lastTickAt).toISOString() : null,
-    lastClaimAt: summary.lastClaimAt ? new Date(summary.lastClaimAt).toISOString() : null,
-    goldPerSecond,
-    timeUntilCap,
-  };
-
-  notifier.notify(playerId, {
-    type: "summary",
-    data: responseData,
-  });
-
-  res.json({
-    ok: true,
-    claimed: result.claimed,
-    totalGold: result.totalGold,
-    pendingGold: summary.pendingGold,
-  });
-};
-
-// AMÉLIORÉ: Stream avec updates temps réel
-const getStream: RequestHandler = async (req, res) => {
-  const playerId = req.user!.id;
-
-  // Headers SSE
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache, no-transform");
-  res.setHeader("Connection", "keep-alive");
-  // @ts-ignore - certaines implémentations ajoutent flushHeaders
-  res.flushHeaders?.();
-
-  notifier.subscribe(playerId, res);
-
-  // Summary initial AMÉLIORÉ
-  const summary = await AfkService.getSummary(playerId, true);
-  const goldPerSecond = summary.baseGoldPerMinute / 60;
-  const timeUntilCap = Math.max(0, summary.maxAccrualSeconds - summary.accumulatedSinceClaimSec);
-
-  res.write(
-    `event: summary\ndata: ${JSON.stringify({
+    const responseData = {
       pendingGold: summary.pendingGold,
       baseGoldPerMinute: summary.baseGoldPerMinute,
       accumulatedSinceClaimSec: summary.accumulatedSinceClaimSec,
       maxAccrualSeconds: summary.maxAccrualSeconds,
       lastTickAt: summary.lastTickAt ? new Date(summary.lastTickAt).toISOString() : null,
       lastClaimAt: summary.lastClaimAt ? new Date(summary.lastClaimAt).toISOString() : null,
-      goldPerSecond, // NOUVEAU
-      timeUntilCap,  // NOUVEAU
-    })}\n\n`
-  );
+      goldPerSecond,
+      timeUntilCap,
+      
+      // Enhanced data si disponible
+      ...(summary.useEnhancedRewards && {
+        totalValue: summary.totalValue,
+        activeMultipliers: summary.activeMultipliers
+      })
+    };
 
-  // Keepalive ping (moins fréquent car on a les updates temps réel)
+    notifier.notify(playerId, {
+      type: "summary",
+      data: responseData,
+    });
+
+    res.json({
+      ok: true,
+      data: {
+        pendingGold: summary.pendingGold,
+        accumulatedSinceClaimSec: summary.accumulatedSinceClaimSec,
+        maxAccrualSeconds: summary.maxAccrualSeconds,
+        goldPerSecond,
+        timeUntilCap,
+        
+        // Enhanced si disponible
+        ...(summary.useEnhancedRewards && {
+          totalValue: summary.totalValue
+        })
+      },
+    });
+
+  } catch (error: any) {
+    console.error("❌ Erreur postHeartbeat:", error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+};
+
+/**
+ * POST /stop - Compatible enhanced
+ */
+const postStop: RequestHandler = async (req, res) => {
+  const playerId = req.user!.id;
+
+  try {
+    const session = await AfkServiceEnhanced.stopSession(playerId);
+    const summary = await AfkServiceEnhanced.getSummaryEnhanced(playerId, false);
+
+    const goldPerSecond = summary.baseGoldPerMinute / 60;
+    const timeUntilCap = Math.max(0, summary.maxAccrualSeconds - summary.accumulatedSinceClaimSec);
+
+    const responseData = {
+      pendingGold: summary.pendingGold,
+      baseGoldPerMinute: summary.baseGoldPerMinute,
+      accumulatedSinceClaimSec: summary.accumulatedSinceClaimSec,
+      maxAccrualSeconds: summary.maxAccrualSeconds,
+      lastTickAt: summary.lastTickAt ? new Date(summary.lastTickAt).toISOString() : null,
+      lastClaimAt: summary.lastClaimAt ? new Date(summary.lastClaimAt).toISOString() : null,
+      goldPerSecond,
+      timeUntilCap,
+      
+      // Enhanced data
+      ...(summary.useEnhancedRewards && {
+        pendingRewards: summary.pendingRewards,
+        totalValue: summary.totalValue
+      }),
+      
+      useEnhancedRewards: summary.useEnhancedRewards
+    };
+
+    notifier.notify(playerId, {
+      type: "summary",
+      data: responseData,
+    });
+
+    res.json({ ok: true, ended: !!session, data: responseData });
+
+  } catch (error: any) {
+    console.error("❌ Erreur postStop:", error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+};
+
+/**
+ * POST /claim - Version Enhanced (format de retour rétrocompatible)
+ */
+const postClaim: RequestHandler = async (req, res) => {
+  const playerId = req.user!.id;
+
+  try {
+    const result = await AfkServiceEnhanced.claimEnhanced(playerId);
+
+    // Notifier avec format enhanced
+    notifier.notify(playerId, { 
+      type: "claimed", 
+      data: { 
+        // Format original (compatibilité)
+        claimed: result.claimed, 
+        totalGold: result.totalGold,
+        
+        // Format enhanced
+        claimedRewards: result.claimedRewards,
+        goldClaimed: result.goldClaimed,
+        totalValue: result.totalValue,
+        playerUpdates: result.playerUpdates
+      } 
+    });
+
+    const summary = await AfkServiceEnhanced.getSummaryEnhanced(playerId, false);
+
+    const responseData = {
+      pendingGold: summary.pendingGold,
+      baseGoldPerMinute: summary.baseGoldPerMinute,
+      accumulatedSinceClaimSec: summary.accumulatedSinceClaimSec,
+      maxAccrualSeconds: summary.maxAccrualSeconds,
+      lastTickAt: summary.lastTickAt ? new Date(summary.lastTickAt).toISOString() : null,
+      lastClaimAt: summary.lastClaimAt ? new Date(summary.lastClaimAt).toISOString() : null,
+      goldPerSecond: summary.baseGoldPerMinute / 60,
+      timeUntilCap: Math.max(0, summary.maxAccrualSeconds - summary.accumulatedSinceClaimSec),
+      
+      // Enhanced data
+      ...(summary.useEnhancedRewards && {
+        todayClaimedRewards: summary.todayClaimedRewards
+      })
+    };
+
+    notifier.notify(playerId, {
+      type: "summary",
+      data: responseData,
+    });
+
+    res.json({
+      ok: true,
+      // Format original (compatibilité)
+      claimed: result.claimed,
+      totalGold: result.totalGold,
+      pendingGold: summary.pendingGold,
+      
+      // Nouvelles données enhanced
+      ...(result.claimedRewards.length > 0 && {
+        claimedRewards: result.claimedRewards,
+        totalValue: result.totalValue,
+        playerUpdates: result.playerUpdates
+      })
+    });
+
+  } catch (error: any) {
+    console.error("❌ Erreur postClaim:", error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+};
+
+/**
+ * GET /stream - SSE Enhanced
+ */
+const getStream: RequestHandler = async (req, res) => {
+  const playerId = req.user!.id;
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  // @ts-ignore
+  res.flushHeaders?.();
+
+  notifier.subscribe(playerId, res);
+
+  try {
+    const summary = await AfkServiceEnhanced.getSummaryEnhanced(playerId, true);
+    const goldPerSecond = summary.baseGoldPerMinute / 60;
+    const timeUntilCap = Math.max(0, summary.maxAccrualSeconds - summary.accumulatedSinceClaimSec);
+
+    res.write(
+      `event: summary\ndata: ${JSON.stringify({
+        pendingGold: summary.pendingGold,
+        baseGoldPerMinute: summary.baseGoldPerMinute,
+        accumulatedSinceClaimSec: summary.accumulatedSinceClaimSec,
+        maxAccrualSeconds: summary.maxAccrualSeconds,
+        lastTickAt: summary.lastTickAt ? new Date(summary.lastTickAt).toISOString() : null,
+        lastClaimAt: summary.lastClaimAt ? new Date(summary.lastClaimAt).toISOString() : null,
+        goldPerSecond,
+        timeUntilCap,
+        
+        // Enhanced data
+        ...(summary.useEnhancedRewards && {
+          pendingRewards: summary.pendingRewards,
+          totalValue: summary.totalValue,
+          enhancedRatesPerMinute: summary.enhancedRatesPerMinute,
+          activeMultipliers: summary.activeMultipliers,
+          todayClaimedRewards: summary.todayClaimedRewards
+        }),
+        
+        useEnhancedRewards: summary.useEnhancedRewards,
+        canUpgrade: summary.canUpgrade
+      })}\n\n`
+    );
+
+  } catch (error: any) {
+    console.error("❌ Erreur getStream:", error);
+    res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
+  }
+
+  // Keepalive ping
   const ping = setInterval(() => {
     res.write(`event: ping\ndata: ${JSON.stringify({ t: Date.now() })}\n\n`);
-  }, 30000); // 30s au lieu de 20s
+  }, 30000);
 
   const cleanup = () => {
     clearInterval(ping);
@@ -333,14 +493,97 @@ const getStream: RequestHandler = async (req, res) => {
   res.on?.("close", cleanup);
 };
 
-// -----------------------------------------------------------------------------
-// Montage des routes
-// -----------------------------------------------------------------------------
+// === NOUVELLES ROUTES OPTIONNELLES (POUR LES CLIENTS QUI VEULENT PLUS DE DÉTAILS) ===
+
+/**
+ * POST /upgrade - Migrer vers le système enhanced (nouvelle route optionnelle)
+ */
+const postUpgrade: RequestHandler = async (req, res) => {
+  const playerId = req.user!.id;
+
+  try {
+    const result = await AfkServiceEnhanced.upgradeToEnhanced(playerId);
+
+    if (result.success) {
+      // Notifier du succès de l'upgrade
+      notifier.notify(playerId, {
+        type: "upgrade_available",
+        data: { 
+          canUpgrade: false, 
+          benefits: result.newRates 
+        }
+      });
+    }
+
+    res.json({
+      ok: result.success,
+      message: result.message,
+      ...(result.success && {
+        newRates: result.newRates,
+        multipliers: result.multipliers
+      })
+    });
+
+  } catch (error: any) {
+    console.error("❌ Erreur postUpgrade:", error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+};
+
+/**
+ * GET /rates - Obtenir les taux détaillés (nouvelle route optionnelle)
+ */
+const getRates: RequestHandler = async (req, res) => {
+  const playerId = req.user!.id;
+
+  try {
+    const { AfkRewardsService } = require("../services/AfkRewardsService");
+    const rates = await AfkRewardsService.getPlayerCurrentRates(playerId);
+
+    res.json({ ok: true, data: rates });
+
+  } catch (error: any) {
+    console.error("❌ Erreur getRates:", error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+};
+
+/**
+ * GET /simulate/:hours - Simuler gains pour X heures (nouvelle route optionnelle)
+ */
+const getSimulate: RequestHandler = async (req, res) => {
+  const playerId = req.user!.id;
+  const hours = parseInt(req.params.hours) || 1;
+
+  if (hours < 0 || hours > 48) {
+    return res.status(400).json({ ok: false, error: "Hours must be between 0 and 48" });
+  }
+
+  try {
+    const { AfkRewardsService } = require("../services/AfkRewardsService");
+    const simulation = await AfkRewardsService.simulateAfkGains(playerId, hours);
+
+    res.json({ ok: true, data: simulation });
+
+  } catch (error: any) {
+    console.error("❌ Erreur getSimulate:", error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+};
+
+// === MONTAGE DES ROUTES ===
+
+// Routes existantes (noms identiques)
 router.get("/summary", requireAuth, getSummary);
 router.post("/start", requireAuth, postStart);
 router.post("/heartbeat", requireAuth, postHeartbeat);
 router.post("/stop", requireAuth, postStop);
 router.post("/claim", requireAuth, postClaim);
 router.get("/stream", requireAuth, getStream);
+
+// Nouvelles routes optionnelles (pour clients enhanced)
+router.post("/upgrade", requireAuth, postUpgrade);
+router.get("/rates", requireAuth, getRates);
+router.get("/simulate/:hours", requireAuth, getSimulate);
 
 export default router;
