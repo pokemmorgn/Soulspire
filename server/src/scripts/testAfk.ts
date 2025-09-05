@@ -207,7 +207,7 @@ async function testAfkEnhanced(): Promise<void> {
 
     // Test calculs de taux avancés
     log(colors.cyan, "\n📊 CALCUL TAUX AVANCÉS");
-    import { AfkRewardsService } from "../services/AfkRewardsService";
+    const { AfkRewardsService } = require("../services/AfkRewardsService");
     const rates = await AfkRewardsService.getPlayerCurrentRates(advancedId);
     console.table({
       goldPerMin: rates.ratesPerMinute.gold,
