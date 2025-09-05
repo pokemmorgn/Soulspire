@@ -1,5 +1,4 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
-import { AfkReward } from "../services/AfkRewardsService";
 
 /**
  * AfkState Enhanced - Version complète avec système de récompenses AFK Arena
@@ -49,13 +48,6 @@ export interface IAfkState extends Document {
   // Limite d'accumulation (en secondes, dépend du VIP)
   maxAccrualSeconds: number;
   
-  // Cache des récompenses (pour éviter les recalculs constants)
-  rewardsCache: {
-    rewards: IPendingReward[];
-    calculatedAt: Date;
-    validUntil: Date;
-  } | null;
-  
   // Suivi quotidien
   todayClaimedRewards: {
     gold: number;
@@ -75,8 +67,7 @@ export interface IAfkState extends Document {
   calculateTotalValue(): number;
   hasRewards(): boolean;
   getRewardsByType(type: string): IPendingReward[];
-  isRewardsCacheValid(): boolean;
-  invalidateCache(): void;
+  getMaterialDistribution(): Record<string, number>;
 }
 
 const pendingRewardSchema = new Schema<IPendingReward>({
@@ -149,14 +140,6 @@ const AfkStateSchema = new Schema<IAfkState>({
   // Limite d'accumulation (12-24h selon VIP)
   maxAccrualSeconds: { type: Number, default: 12 * 3600, min: 0 },
 
-  // Cache des récompenses
-  rewardsCache: {
-    rewards: { type: [pendingRewardSchema], default: [] },
-    calculatedAt: { type: Date, default: null },
-    validUntil: { type: Date, default: null },
-    default: null
-  },
-
   // Suivi quotidien
   todayClaimedRewards: {
     gold: { type: Number, default: 0, min: 0 },
@@ -224,15 +207,15 @@ AfkStateSchema.methods.addPendingReward = function(reward: IPendingReward) {
   }
 };
 
-// Vérifier si le cache des récompenses est valide
-AfkStateSchema.methods.isRewardsCacheValid = function(): boolean {
-  if (!this.rewardsCache || !this.rewardsCache.validUntil) return false;
-  return new Date() < this.rewardsCache.validUntil;
-};
-
-// Invalider le cache des récompenses
-AfkStateSchema.methods.invalidateCache = function() {
-  this.rewardsCache = null;
+// Obtenir la distribution des matériaux selon la progression
+AfkStateSchema.methods.getMaterialDistribution = function(): Record<string, number> {
+  // Distribution par défaut (sera affinée selon le monde du joueur)
+  return {
+    "fusion_crystal": 0.6,        // 60% des matériaux
+    "elemental_essence": 0.25,    // 25%
+    "ascension_stone": 0.1,       // 10%
+    "divine_crystal": 0.05        // 5%
+  };
 };
 
 // Mettre à jour la progression du joueur (recalcule taux et multiplicateurs)
@@ -243,266 +226,7 @@ AfkStateSchema.methods.updatePlayerProgression = async function(): Promise<void>
     
     const calculation = await AfkRewardsService.calculatePlayerAfkRewards(this.playerId.toString());
     
-    // Mettre à jour les compteurs
-  this.accumulatedSinceClaimSec += effectiveSec;
-  this.lastTickAt = current;
-
-  return { rewards: newRewards, timeElapsed: effectiveSec };
-};
-
-// Obtenir la distribution des matériaux selon la progression
-AfkStateSchema.methods.getMaterialDistribution = function(): Record<string, number> {
-  // Import dynamique pour éviter les dépendances circulaires
-  const Player = require("../models/Player").default;
-  
-  // Distribution par défaut (sera affinée selon le monde du joueur)
-  return {
-    "fusion_crystal": 0.6,        // 60% des matériaux
-    "elemental_essence": 0.25,    // 25%
-    "ascension_stone": 0.1,       // 10%
-    "divine_crystal": 0.05        // 5%
-  };
-};
-
-/**
- * claim(): renvoie toutes les récompenses en attente et remet à zéro
- */
-AfkStateSchema.methods.claim = async function(): Promise<{ claimedRewards: IPendingReward[]; totalValue: number }> {
-  const claimedRewards = [...this.pendingRewards];
-  const totalValue = this.calculateTotalValue();
-  
-  // Mettre à jour les stats quotidiennes
-  claimedRewards.forEach((reward: IPendingReward) => {
-    switch (reward.type) {
-      case "currency":
-        if (reward.currencyType === "gold") {
-          this.todayClaimedRewards.gold += reward.quantity;
-        } else if (reward.currencyType === "gems") {
-          this.todayClaimedRewards.gems += reward.quantity;
-        }
-        break;
-      case "material":
-        this.todayClaimedRewards.materials += reward.quantity;
-        break;
-      case "fragment":
-        this.todayClaimedRewards.fragments += reward.quantity;
-        break;
-    }
-  });
-  
-  // Reset
-  this.pendingRewards = [];
-  this.accumulatedSinceClaimSec = 0;
-  this.lastClaimAt = new Date();
-  
-  return { claimedRewards, totalValue };
-};
-
-// Vider les récompenses en attente
-AfkStateSchema.methods.clearPendingRewards = function() {
-  this.pendingRewards = [];
-};
-
-// Calculer la valeur totale des récompenses en attente
-AfkStateSchema.methods.calculateTotalValue = function(): number {
-  let totalValue = 0;
-  
-  this.pendingRewards.forEach((reward: IPendingReward) => {
-    switch (reward.type) {
-      case "currency":
-        if (reward.currencyType === "gold") {
-          totalValue += reward.quantity * 0.001; // 1000 gold = 1 point
-        } else if (reward.currencyType === "gems") {
-          totalValue += reward.quantity * 1; // 1 gem = 1 point
-        } else if (reward.currencyType === "tickets") {
-          totalValue += reward.quantity * 5; // 1 ticket = 5 points
-        }
-        break;
-      case "material":
-        totalValue += reward.quantity * 2; // Matériaux ont une valeur base
-        break;
-      case "fragment":
-        totalValue += reward.quantity * 10; // Fragments sont précieux
-        break;
-      case "item":
-        totalValue += reward.quantity * 25; // Items ont une valeur élevée
-        break;
-    }
-  });
-  
-  return Math.round(totalValue);
-};
-
-// Vérifier s'il y a des récompenses à réclamer
-AfkStateSchema.methods.hasRewards = function(): boolean {
-  return this.pendingRewards.length > 0 && 
-         this.pendingRewards.some((r: IPendingReward) => r.quantity > 0);
-};
-
-// Obtenir les récompenses par type
-AfkStateSchema.methods.getRewardsByType = function(type: string): IPendingReward[] {
-  return this.pendingRewards.filter((r: IPendingReward) => r.type === type);
-};
-
-// === MÉTHODES STATIQUES ===
-
-// Créer un état AFK pour un nouveau joueur
-AfkStateSchema.statics.createForNewPlayer = async function(playerId: string) {
-  const state = new this({
-    playerId,
-    pendingRewards: [],
-    lastTickAt: null,
-    lastClaimAt: null,
-    accumulatedSinceClaimSec: 0,
-    currentRatesPerMinute: {
-      gold: 100, // Taux de base pour nouveau joueur
-      gems: 10,
-      tickets: 0,
-      materials: 20
-    },
-    activeMultipliers: {
-      vip: 1.0,
-      stage: 1.0,
-      heroes: 0.5, // Pénalité sans équipe
-      total: 0.5,
-      lastUpdated: new Date()
-    },
-    maxAccrualSeconds: 12 * 3600, // 12h de base
-    rewardsCache: null,
-    todayClaimedRewards: {
-      gold: 0,
-      gems: 0,
-      materials: 0,
-      fragments: 0
-    }
-  });
-  
-  return await state.save();
-};
-
-// Obtenir les statistiques AFK du serveur
-AfkStateSchema.statics.getServerAfkStats = async function(serverId?: string) {
-  const matchCondition = serverId ? { serverId } : {};
-  
-  const stats = await this.aggregate([
-    { $match: matchCondition },
-    { $group: {
-      _id: null,
-      totalPlayers: { $sum: 1 },
-      avgGoldPending: { $avg: { $sum: {
-        $map: {
-          input: { $filter: {
-            input: "$pendingRewards",
-            cond: { $and: [
-              { $eq: ["$this.type", "currency"] },
-              { $eq: ["$this.currencyType", "gold"] }
-            ]}
-          }},
-          as: "reward",
-          in: "$reward.quantity"
-        }
-      }}},
-      totalAccumulatedTime: { $sum: "$accumulatedSinceClaimSec" },
-      playersWithRewards: { $sum: { $cond: [
-        { $gt: [{ $size: "$pendingRewards" }, 0] }, 1, 0
-      ]}},
-      avgMultiplier: { $avg: "$activeMultipliers.total" }
-    }}
-  ]);
-  
-  return stats[0] || {
-    totalPlayers: 0,
-    avgGoldPending: 0,
-    totalAccumulatedTime: 0,
-    playersWithRewards: 0,
-    avgMultiplier: 1.0
-  };
-};
-
-// Nettoyer les états obsolètes (maintenance)
-AfkStateSchema.statics.cleanupStaleStates = async function(daysOld: number = 30) {
-  const threshold = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000);
-  
-  const result = await this.deleteMany({
-    $or: [
-      { lastTickAt: { $lt: threshold } },
-      { lastClaimAt: { $lt: threshold } },
-      { updatedAt: { $lt: threshold } }
-    ],
-    "pendingRewards.0": { $exists: false } // Pas de récompenses en attente
-  });
-  
-  return {
-    deletedCount: result.deletedCount || 0,
-    message: `Cleaned up ${result.deletedCount || 0} stale AFK states`
-  };
-};
-
-// Recalculer les multiplicateurs pour tous les joueurs (maintenance)
-AfkStateSchema.statics.recalculateAllMultipliers = async function() {
-  const states = await this.find({
-    "activeMultipliers.lastUpdated": { 
-      $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) // Plus de 24h
-    }
-  }).limit(100); // Traiter par batches
-  
-  let updated = 0;
-  for (const state of states) {
-    try {
-      await state.updatePlayerProgression();
-      await state.save();
-      updated++;
-    } catch (error) {
-      console.error(`❌ Erreur recalcul multiplicateurs ${state.playerId}:`, error);
-    }
-  }
-  
-  return {
-    processed: states.length,
-    updated,
-    message: `Recalculated multipliers for ${updated}/${states.length} players`
-  };
-};
-
-// Obtenir le leaderboard des gains AFK quotidiens
-AfkStateSchema.statics.getDailyAfkLeaderboard = async function(serverId?: string, limit: number = 50) {
-  const today = new Date().toISOString().slice(0, 10);
-  const matchCondition = serverId ? { serverId, todayKey: today } : { todayKey: today };
-  
-  return this.aggregate([
-    { $match: matchCondition },
-    { $addFields: {
-      totalDailyValue: {
-        $add: [
-          { $multiply: ["$todayClaimedRewards.gold", 0.001] },
-          "$todayClaimedRewards.gems",
-          { $multiply: ["$todayClaimedRewards.materials", 2] },
-          { $multiply: ["$todayClaimedRewards.fragments", 10] }
-        ]
-      }
-    }},
-    { $sort: { totalDailyValue: -1 } },
-    { $limit: limit },
-    { $lookup: {
-      from: "players",
-      localField: "playerId",
-      foreignField: "_id",
-      as: "playerInfo"
-    }},
-    { $addFields: {
-      playerName: { $arrayElemAt: ["$playerInfo.username", 0] }
-    }},
-    { $project: {
-      playerId: 1,
-      playerName: 1,
-      todayClaimedRewards: 1,
-      totalDailyValue: 1,
-      activeMultipliers: 1
-    }}
-  ]);
-};
-
-export default mongoose.model<IAfkState>("AfkState", AfkStateSchema); jour les taux
+    // Mettre à jour les taux
     this.currentRatesPerMinute = {
       gold: calculation.ratesPerMinute.gold,
       gems: calculation.ratesPerMinute.exp, // EXP -> gems pour simplifier
@@ -619,4 +343,184 @@ AfkStateSchema.methods.tick = async function(now?: Date): Promise<{ rewards: IPe
     this.addPendingReward(reward);
   });
 
-  // Mettre à
+  // Mettre à jour les compteurs
+  this.accumulatedSinceClaimSec += effectiveSec;
+  this.lastTickAt = current;
+
+  return { rewards: newRewards, timeElapsed: effectiveSec };
+};
+
+/**
+ * claim(): renvoie toutes les récompenses en attente et remet à zéro
+ */
+AfkStateSchema.methods.claim = async function(): Promise<{ claimedRewards: IPendingReward[]; totalValue: number }> {
+  const claimedRewards = [...this.pendingRewards];
+  const totalValue = this.calculateTotalValue();
+  
+  // Mettre à jour les stats quotidiennes
+  claimedRewards.forEach((reward: IPendingReward) => {
+    switch (reward.type) {
+      case "currency":
+        if (reward.currencyType === "gold") {
+          this.todayClaimedRewards.gold += reward.quantity;
+        } else if (reward.currencyType === "gems") {
+          this.todayClaimedRewards.gems += reward.quantity;
+        }
+        break;
+      case "material":
+        this.todayClaimedRewards.materials += reward.quantity;
+        break;
+      case "fragment":
+        this.todayClaimedRewards.fragments += reward.quantity;
+        break;
+    }
+  });
+  
+  // Reset
+  this.pendingRewards = [];
+  this.accumulatedSinceClaimSec = 0;
+  this.lastClaimAt = new Date();
+  
+  return { claimedRewards, totalValue };
+};
+
+// Vider les récompenses en attente
+AfkStateSchema.methods.clearPendingRewards = function() {
+  this.pendingRewards = [];
+};
+
+// Calculer la valeur totale des récompenses en attente
+AfkStateSchema.methods.calculateTotalValue = function(): number {
+  let totalValue = 0;
+  
+  this.pendingRewards.forEach((reward: IPendingReward) => {
+    switch (reward.type) {
+      case "currency":
+        if (reward.currencyType === "gold") {
+          totalValue += reward.quantity * 0.001; // 1000 gold = 1 point
+        } else if (reward.currencyType === "gems") {
+          totalValue += reward.quantity * 1; // 1 gem = 1 point
+        } else if (reward.currencyType === "tickets") {
+          totalValue += reward.quantity * 5; // 1 ticket = 5 points
+        }
+        break;
+      case "material":
+        totalValue += reward.quantity * 2; // Matériaux ont une valeur base
+        break;
+      case "fragment":
+        totalValue += reward.quantity * 10; // Fragments sont précieux
+        break;
+      case "item":
+        totalValue += reward.quantity * 25; // Items ont une valeur élevée
+        break;
+    }
+  });
+  
+  return Math.round(totalValue);
+};
+
+// Vérifier s'il y a des récompenses à réclamer
+AfkStateSchema.methods.hasRewards = function(): boolean {
+  return this.pendingRewards.length > 0 && 
+         this.pendingRewards.some((r: IPendingReward) => r.quantity > 0);
+};
+
+// Obtenir les récompenses par type
+AfkStateSchema.methods.getRewardsByType = function(type: string): IPendingReward[] {
+  return this.pendingRewards.filter((r: IPendingReward) => r.type === type);
+};
+
+// === MÉTHODES STATIQUES ===
+
+// Créer un état AFK pour un nouveau joueur
+AfkStateSchema.statics.createForNewPlayer = async function(playerId: string) {
+  const state = new this({
+    playerId,
+    pendingRewards: [],
+    lastTickAt: null,
+    lastClaimAt: null,
+    accumulatedSinceClaimSec: 0,
+    currentRatesPerMinute: {
+      gold: 100, // Taux de base pour nouveau joueur
+      gems: 10,
+      tickets: 0,
+      materials: 20
+    },
+    activeMultipliers: {
+      vip: 1.0,
+      stage: 1.0,
+      heroes: 0.5, // Pénalité sans équipe
+      total: 0.5,
+      lastUpdated: new Date()
+    },
+    maxAccrualSeconds: 12 * 3600, // 12h de base
+    todayClaimedRewards: {
+      gold: 0,
+      gems: 0,
+      materials: 0,
+      fragments: 0
+    }
+  });
+  
+  return await state.save();
+};
+
+// Obtenir les statistiques AFK du serveur
+AfkStateSchema.statics.getServerAfkStats = async function(serverId?: string) {
+  const matchCondition = serverId ? { serverId } : {};
+  
+  const stats = await this.aggregate([
+    { $match: matchCondition },
+    { $group: {
+      _id: null,
+      totalPlayers: { $sum: 1 },
+      avgGoldPending: { $avg: { $sum: {
+        $map: {
+          input: { $filter: {
+            input: "$pendingRewards",
+            cond: { $and: [
+              { $eq: ["$$this.type", "currency"] },
+              { $eq: ["$$this.currencyType", "gold"] }
+            ]}
+          }},
+          as: "reward",
+          in: "$$reward.quantity"
+        }
+      }}},
+      totalAccumulatedTime: { $sum: "$accumulatedSinceClaimSec" },
+      playersWithRewards: { $sum: { $cond: [
+        { $gt: [{ $size: "$pendingRewards" }, 0] }, 1, 0
+      ]}},
+      avgMultiplier: { $avg: "$activeMultipliers.total" }
+    }}
+  ]);
+  
+  return stats[0] || {
+    totalPlayers: 0,
+    avgGoldPending: 0,
+    totalAccumulatedTime: 0,
+    playersWithRewards: 0,
+    avgMultiplier: 1.0
+  };
+};
+
+// Nettoyer les états obsolètes (maintenance)
+AfkStateSchema.statics.cleanupStaleStates = async function(daysOld: number = 30) {
+  const threshold = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000);
+  
+  const result = await this.deleteMany({
+    $or: [
+      { lastTickAt: { $lt: threshold } },
+      { lastClaimAt: { $lt: threshold } },
+      { updatedAt: { $lt: threshold } }
+    ],
+    "pendingRewards.0": { $exists: false } // Pas de récompenses en attente
+  });
+  
+  return {
+    deletedCount: result.deletedCount || 0,
+    message: `Cleaned up ${result.deletedCount || 0} stale AFK states`
+  };
+};
+
+export default mongoose.model<IAfkState>("AfkState", AfkStateSchema);
