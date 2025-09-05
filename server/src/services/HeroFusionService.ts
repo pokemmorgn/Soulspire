@@ -1,5 +1,6 @@
 import Player from "../models/Player";
 import Hero from "../models/Hero";
+import FusionHistoryModel from "../models/FusionHistory";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
 import { IPlayerHero } from "../types/index";
@@ -309,7 +310,7 @@ export class HeroFusionService {
           materials: requirements.materials
         },
         timestamp: new Date()
-      });
+      }, serverId, powerGained, heroData.name);
 
       await this.updateProgressTracking(playerId, serverId, nextLevel.rarity, nextLevel.stars);
 
@@ -411,7 +412,7 @@ export class HeroFusionService {
 
   public static async getFusionHistory(playerId: string, serverId: string, limit: number = 20) {
     try {
-      const history = await this.loadFusionHistory(playerId, limit);
+      const history = await this.loadFusionHistory(playerId, serverId, limit);
 
       return {
         success: true,
@@ -681,6 +682,75 @@ export class HeroFusionService {
     return totalCost;
   }
 
+  public static async getPlayerFusionAnalytics(playerId: string, serverId: string) {
+    try {
+      const [stats, trends, topFusions] = await Promise.all([
+        (FusionHistoryModel as any).getPlayerFusionStats(playerId, serverId),
+        (FusionHistoryModel as any).getFusionTrends(playerId, serverId, 30),
+        (FusionHistoryModel as any).getTopFusionsByPower(playerId, serverId, 5)
+      ]);
+
+      return {
+        success: true,
+        analytics: {
+          fusionsByRarity: stats,
+          last30DaysTrends: trends,
+          topPowerGainFusions: topFusions
+        }
+      };
+    } catch (error: any) {
+      console.error("❌ Erreur getPlayerFusionAnalytics:", error);
+      throw error;
+    }
+  }
+
+  public static async getHeroSpecificHistory(
+    playerId: string, 
+    serverId: string, 
+    heroId: string
+  ) {
+    try {
+      const history = await (FusionHistoryModel as any).getHeroFusionHistory(playerId, serverId, heroId, 10);
+      
+      return {
+        success: true,
+        heroHistory: history,
+        summary: {
+          totalFusions: history.length,
+          totalPowerGained: history.reduce((sum: number, h: any) => sum + h.powerGained, 0),
+          currentLevel: history.length > 0 ? `${history[0].toRarity} ${history[0].toStars}★` : "Unknown"
+        }
+      };
+    } catch (error: any) {
+      console.error("❌ Erreur getHeroSpecificHistory:", error);
+      throw error;
+    }
+  }
+
+  public static async getServerFusionLeaderboard(
+    serverId: string,
+    timeframe: "daily" | "weekly" | "monthly" | "all" = "weekly",
+    limit: number = 50
+  ) {
+    try {
+      const leaderboard = await (FusionHistoryModel as any).getServerFusionLeaderboard(serverId, limit, timeframe);
+      
+      return {
+        success: true,
+        leaderboard,
+        timeframe,
+        summary: {
+          totalPlayers: leaderboard.length,
+          topPowerGain: leaderboard[0]?.totalPowerGained || 0,
+          averageFusions: Math.round(leaderboard.reduce((sum: number, p: any) => sum + p.totalFusions, 0) / leaderboard.length)
+        }
+      };
+    } catch (error: any) {
+      console.error("❌ Erreur getServerFusionLeaderboard:", error);
+      throw error;
+    }
+  }
+
   private static getNextAscensionLevel(currentRarity: string, currentStars: number): { rarity: string; stars: number } | null {
     const currentRarityIndex = this.RARITY_PROGRESSION.indexOf(currentRarity);
     
@@ -908,28 +978,62 @@ export class HeroFusionService {
     return true;
   }
 
-  private static async saveFusionHistory(historyEntry: FusionHistory): Promise<void> {
-    console.log(`📖 Fusion history saved: ${historyEntry.fromRarity}${historyEntry.fromStars}★ → ${historyEntry.toRarity}${historyEntry.toStars}★`);
+  private static async saveFusionHistory(
+    historyEntry: FusionHistory, 
+    serverId: string, 
+    powerGained: number, 
+    mainHeroName: string
+  ): Promise<void> {
+    try {
+      const fusionHistory = new FusionHistoryModel({
+        playerId: historyEntry.playerId,
+        serverId,
+        mainHeroId: historyEntry.mainHeroId,
+        mainHeroName,
+        fromRarity: historyEntry.fromRarity,
+        fromStars: historyEntry.fromStars,
+        toRarity: historyEntry.toRarity,
+        toStars: historyEntry.toStars,
+        consumedHeroes: historyEntry.consumedHeroes,
+        cost: {
+          gold: historyEntry.cost.gold,
+          materials: new Map(Object.entries(historyEntry.cost.materials))
+        },
+        powerGained,
+        fusionType: historyEntry.fromRarity !== historyEntry.toRarity ? "rarity_upgrade" : "star_upgrade",
+        success: true,
+        timestamp: historyEntry.timestamp
+      });
+
+      await fusionHistory.save();
+      console.log(`📖 Fusion history saved to MongoDB: ${historyEntry.fromRarity}${historyEntry.fromStars}★ → ${historyEntry.toRarity}${historyEntry.toStars}★`);
+    } catch (error) {
+      console.error("❌ Erreur sauvegarde fusion history:", error);
+    }
   }
 
-  private static async loadFusionHistory(playerId: string, limit: number): Promise<FusionHistory[]> {
-    return [
-      {
-        _id: "fusion_001",
-        playerId,
-        mainHeroId: "hero_001",
-        fromRarity: "Epic",
-        fromStars: 0,
-        toRarity: "Legendary",
-        toStars: 0,
-        consumedHeroes: [
-          { heroId: "hero_002", heroName: "Fire Knight Copy", rarity: "Epic", role: "copy" },
-          { heroId: "hero_003", heroName: "Wind Warrior", rarity: "Epic", role: "food" }
-        ],
-        cost: { gold: 4000, materials: { "fusion_crystal": 20, "elemental_essence": 8 } },
-        timestamp: new Date(Date.now() - 86400000)
-      }
-    ];
+  private static async loadFusionHistory(playerId: string, serverId: string, limit: number): Promise<FusionHistory[]> {
+    try {
+      const history = await (FusionHistoryModel as any).getPlayerFusionHistory(playerId, serverId, limit);
+      return history.map((entry: any) => ({
+        _id: entry._id.toString(),
+        playerId: entry.playerId,
+        mainHeroId: entry.mainHeroId,
+        fromRarity: entry.fromRarity,
+        fromStars: entry.fromStars,
+        toRarity: entry.toRarity,
+        toStars: entry.toStars,
+        consumedHeroes: entry.consumedHeroes,
+        cost: {
+          gold: entry.cost.gold,
+          materials: Object.fromEntries(entry.cost.materials || new Map())
+        },
+        timestamp: entry.timestamp
+      }));
+    } catch (error) {
+      console.error("❌ Erreur chargement fusion history:", error);
+      return [];
+    }
   }
 
   private static calculateRarityAchievements(history: FusionHistory[]) {
@@ -997,74 +1101,5 @@ export class HeroFusionService {
     }
 
     return recommendations;
-  }
-
-  public static async getPlayerFusionAnalytics(playerId: string, serverId: string) {
-    try {
-      const [stats, trends, topFusions] = await Promise.all([
-        FusionHistoryModel.getPlayerFusionStats(playerId, serverId),
-        FusionHistoryModel.getFusionTrends(playerId, serverId, 30),
-        FusionHistoryModel.getTopFusionsByPower(playerId, serverId, 5)
-      ]);
-
-      return {
-        success: true,
-        analytics: {
-          fusionsByRarity: stats,
-          last30DaysTrends: trends,
-          topPowerGainFusions: topFusions
-        }
-      };
-    } catch (error: any) {
-      console.error("❌ Erreur getPlayerFusionAnalytics:", error);
-      throw error;
-    }
-  }
-
-  public static async getHeroSpecificHistory(
-    playerId: string, 
-    serverId: string, 
-    heroId: string
-  ) {
-    try {
-      const history = await FusionHistoryModel.getHeroFusionHistory(playerId, serverId, heroId, 10);
-      
-      return {
-        success: true,
-        heroHistory: history,
-        summary: {
-          totalFusions: history.length,
-          totalPowerGained: history.reduce((sum: number, h: any) => sum + h.powerGained, 0),
-          currentLevel: history.length > 0 ? `${history[0].toRarity} ${history[0].toStars}★` : "Unknown"
-        }
-      };
-    } catch (error: any) {
-      console.error("❌ Erreur getHeroSpecificHistory:", error);
-      throw error;
-    }
-  }
-
-  public static async getServerFusionLeaderboard(
-    serverId: string,
-    timeframe: "daily" | "weekly" | "monthly" | "all" = "weekly",
-    limit: number = 50
-  ) {
-    try {
-      const leaderboard = await FusionHistoryModel.getServerFusionLeaderboard(serverId, limit, timeframe);
-      
-      return {
-        success: true,
-        leaderboard,
-        timeframe,
-        summary: {
-          totalPlayers: leaderboard.length,
-          topPowerGain: leaderboard[0]?.totalPowerGained || 0,
-          averageFusions: Math.round(leaderboard.reduce((sum: number, p: any) => sum + p.totalFusions, 0) / leaderboard.length)
-        }
-      };
-    } catch (error: any) {
-      console.error("❌ Erreur getServerFusionLeaderboard:", error);
-      throw error;
-    }
   }
 }
