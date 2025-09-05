@@ -174,11 +174,7 @@ export class FastRewardsService {
       }
 
       // Récupérer le joueur et vérifier ses ressources
-      const [player, vipLevel] = await Promise.all([
-        Player.findById(playerId),
-        VipService.getPlayerVipLevel(playerId, "S1") // TODO: Récupérer vrai serverId
-      ]);
-
+      const player = await Player.findById(playerId);
       if (!player) {
         return {
           success: false,
@@ -186,6 +182,8 @@ export class FastRewardsService {
           code: "PLAYER_NOT_FOUND"
         };
       }
+
+      const vipLevel = await VipService.getPlayerVipLevel(playerId, player.serverId);
 
       // Vérifier le niveau VIP requis
       if (vipLevel < config.vipRequired) {
