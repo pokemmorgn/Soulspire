@@ -998,4 +998,73 @@ export class HeroFusionService {
 
     return recommendations;
   }
+
+  public static async getPlayerFusionAnalytics(playerId: string, serverId: string) {
+    try {
+      const [stats, trends, topFusions] = await Promise.all([
+        FusionHistory.getPlayerFusionStats(playerId, serverId),
+        FusionHistory.getFusionTrends(playerId, serverId, 30),
+        FusionHistory.getTopFusionsByPower(playerId, serverId, 5)
+      ]);
+
+      return {
+        success: true,
+        analytics: {
+          fusionsByRarity: stats,
+          last30DaysTrends: trends,
+          topPowerGainFusions: topFusions
+        }
+      };
+    } catch (error: any) {
+      console.error("❌ Erreur getPlayerFusionAnalytics:", error);
+      throw error;
+    }
+  }
+
+  public static async getHeroSpecificHistory(
+    playerId: string, 
+    serverId: string, 
+    heroId: string
+  ) {
+    try {
+      const history = await FusionHistory.getHeroFusionHistory(playerId, serverId, heroId, 10);
+      
+      return {
+        success: true,
+        heroHistory: history,
+        summary: {
+          totalFusions: history.length,
+          totalPowerGained: history.reduce((sum: number, h: any) => sum + h.powerGained, 0),
+          currentLevel: history.length > 0 ? `${history[0].toRarity} ${history[0].toStars}★` : "Unknown"
+        }
+      };
+    } catch (error: any) {
+      console.error("❌ Erreur getHeroSpecificHistory:", error);
+      throw error;
+    }
+  }
+
+  public static async getServerFusionLeaderboard(
+    serverId: string,
+    timeframe: "daily" | "weekly" | "monthly" | "all" = "weekly",
+    limit: number = 50
+  ) {
+    try {
+      const leaderboard = await FusionHistory.getServerFusionLeaderboard(serverId, limit, timeframe);
+      
+      return {
+        success: true,
+        leaderboard,
+        timeframe,
+        summary: {
+          totalPlayers: leaderboard.length,
+          topPowerGain: leaderboard[0]?.totalPowerGained || 0,
+          averageFusions: Math.round(leaderboard.reduce((sum: number, p: any) => sum + p.totalFusions, 0) / leaderboard.length)
+        }
+      };
+    } catch (error: any) {
+      console.error("❌ Erreur getServerFusionLeaderboard:", error);
+      throw error;
+    }
+  }
 }
