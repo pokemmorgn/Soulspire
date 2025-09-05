@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from "mongoose";
+import mongoose, { Document, Schema, Model } from "mongoose";
 
 export interface IVipRewardItem {
   type: "currency" | "material" | "hero" | "item";
@@ -30,12 +30,23 @@ export interface IVipDailyRewards extends Document {
   createdAt: Date;
   updatedAt: Date;
   
-  // Méthodes
+  // Méthodes d'instance
   claim(deviceInfo?: any): Promise<{ success: boolean; rewards: IVipRewardItem[]; streakBonus?: number }>;
   calculateRewardValue(): number;
   isExpired(): boolean;
   getDaysUntilExpiry(): number;
   getStreakBonus(): number;
+}
+
+export interface IVipDailyRewardsModel extends Model<IVipDailyRewards> {
+  generateDailyRewards(playerId: string, serverId: string, vipLevel: number, date?: string): Promise<IVipDailyRewards>;
+  calculateCurrentStreak(playerId: string, serverId: string, currentDate: string): Promise<{ currentStreak: number; missedThisMonth: number }>;
+  generateRewardsByLevel(vipLevel: number): IVipRewardItem[];
+  getClaimableRewards(playerId: string, serverId: string, maxDays?: number): Promise<IVipDailyRewards[]>;
+  getPlayerClaimStats(playerId: string, serverId: string, days?: number): Promise<any>;
+  getServerClaimStats(serverId: string, days?: number): Promise<any>;
+  cleanupExpiredRewards(): Promise<{ deletedCount: number; message: string }>;
+  getTopStreakPlayers(serverId: string, limit?: number): Promise<any[]>;
 }
 
 const vipRewardItemSchema = new Schema<IVipRewardItem>({
@@ -149,7 +160,7 @@ vipDailyRewardsSchema.index({ vipLevel: 1 });
 vipDailyRewardsSchema.index({ claimStreak: -1 });
 vipDailyRewardsSchema.index({ totalValue: -1 });
 
-// === MÉTHODES DU MODÈLE ===
+// === MÉTHODES D'INSTANCE ===
 
 // Réclamer les récompenses
 vipDailyRewardsSchema.methods.claim = async function(
@@ -175,7 +186,7 @@ vipDailyRewardsSchema.methods.claim = async function(
   let finalRewards = [...this.rewards];
   
   if (streakBonus > 1.0) {
-    finalRewards = finalRewards.map(reward => ({
+    finalRewards = finalRewards.map((reward: IVipRewardItem) => ({
       ...reward.toObject(),
       quantity: Math.floor(reward.quantity * streakBonus)
     }));
@@ -242,90 +253,6 @@ vipDailyRewardsSchema.methods.getStreakBonus = function(): number {
 };
 
 // === MÉTHODES STATIQUES ===
-
-// Générer les récompenses quotidiennes pour un joueur
-vipDailyRewardsSchema.statics.generateDailyRewards = async function(
-  playerId: string,
-  serverId: string,
-  vipLevel: number,
-  date?: string
-) {
-  const rewardDate = date || new Date().toISOString().split('T')[0];
-  
-  // Vérifier si les récompenses existent déjà
-  const existing = await this.findOne({ playerId, serverId, rewardDate });
-  if (existing) {
-    return existing;
-  }
-  
-  // Calculer le streak actuel
-  const streakInfo = await this.calculateCurrentStreak(playerId, serverId, rewardDate);
-  
-  // Générer les récompenses basées sur le niveau VIP
-  const rewards = this.generateRewardsByLevel(vipLevel);
-  
-  // Créer l'entrée de récompenses
-  const dailyRewards = new this({
-    playerId,
-    serverId,
-    vipLevel,
-    rewardDate,
-    rewards,
-    totalValue: 0, // Sera calculé automatiquement
-    claimStreak: streakInfo.currentStreak,
-    missedDays: streakInfo.missedThisMonth,
-    bonusMultiplier: 1.0
-  });
-  
-  // Calculer la valeur totale
-  dailyRewards.totalValue = dailyRewards.calculateRewardValue();
-  
-  await dailyRewards.save();
-  return dailyRewards;
-};
-
-// Calculer le streak actuel d'un joueur
-vipDailyRewardsSchema.statics.calculateCurrentStreak = async function(
-  playerId: string,
-  serverId: string,
-  currentDate: string
-) {
-  const recentRewards = await this.find({
-    playerId,
-    serverId,
-    rewardDate: { $lte: currentDate }
-  }).sort({ rewardDate: -1 }).limit(60); // Derniers 60 jours
-  
-  let currentStreak = 0;
-  let missedThisMonth = 0;
-  const currentMonth = currentDate.substring(0, 7); // YYYY-MM
-  
-  // Calculer le streak en partant de la date actuelle
-  const currentDateObj = new Date(currentDate);
-  for (let i = 0; i < 30; i++) { // Vérifier jusqu'à 30 jours en arrière
-    const checkDate = new Date(currentDateObj.getTime() - (i * 24 * 60 * 60 * 1000));
-    const checkDateStr = checkDate.toISOString().split('T')[0];
-    
-    if (checkDateStr >= currentDate) continue; // Ne pas compter le jour actuel
-    
-    const dayReward = recentRewards.find(r => r.rewardDate === checkDateStr);
-    
-    if (dayReward && dayReward.isClaimed) {
-      currentStreak++;
-    } else {
-      break; // Streak cassé
-    }
-  }
-  
-  // Compter les jours manqués ce mois-ci
-  recentRewards.forEach(reward => {
-    if (reward.rewardDate.startsWith(currentMonth) && !reward.isClaimed) {
-      missedThisMonth++;
-    }
-  });
-  
-  return { currentStreak, missedThisMonth };
-};
 
 // Générer les récompenses par niveau VIP
 vipDailyRewardsSchema.statics.generateRewardsByLevel = function(vipLevel: number): IVipRewardItem[] {
@@ -418,12 +345,96 @@ vipDailyRewardsSchema.statics.generateRewardsByLevel = function(vipLevel: number
   return rewards;
 };
 
+// Calculer le streak actuel d'un joueur
+vipDailyRewardsSchema.statics.calculateCurrentStreak = async function(
+  playerId: string,
+  serverId: string,
+  currentDate: string
+): Promise<{ currentStreak: number; missedThisMonth: number }> {
+  const recentRewards = await this.find({
+    playerId,
+    serverId,
+    rewardDate: { $lte: currentDate }
+  }).sort({ rewardDate: -1 }).limit(60); // Derniers 60 jours
+  
+  let currentStreak = 0;
+  let missedThisMonth = 0;
+  const currentMonth = currentDate.substring(0, 7); // YYYY-MM
+  
+  // Calculer le streak en partant de la date actuelle
+  const currentDateObj = new Date(currentDate);
+  for (let i = 0; i < 30; i++) { // Vérifier jusqu'à 30 jours en arrière
+    const checkDate = new Date(currentDateObj.getTime() - (i * 24 * 60 * 60 * 1000));
+    const checkDateStr = checkDate.toISOString().split('T')[0];
+    
+    if (checkDateStr >= currentDate) continue; // Ne pas compter le jour actuel
+    
+    const dayReward = recentRewards.find((r: IVipDailyRewards) => r.rewardDate === checkDateStr);
+    
+    if (dayReward && dayReward.isClaimed) {
+      currentStreak++;
+    } else {
+      break; // Streak cassé
+    }
+  }
+  
+  // Compter les jours manqués ce mois-ci
+  recentRewards.forEach((reward: IVipDailyRewards) => {
+    if (reward.rewardDate.startsWith(currentMonth) && !reward.isClaimed) {
+      missedThisMonth++;
+    }
+  });
+  
+  return { currentStreak, missedThisMonth };
+};
+
+// Générer les récompenses quotidiennes pour un joueur
+vipDailyRewardsSchema.statics.generateDailyRewards = async function(
+  playerId: string,
+  serverId: string,
+  vipLevel: number,
+  date?: string
+): Promise<IVipDailyRewards> {
+  const rewardDate = date || new Date().toISOString().split('T')[0];
+  
+  // Vérifier si les récompenses existent déjà
+  const existing = await this.findOne({ playerId, serverId, rewardDate });
+  if (existing) {
+    return existing;
+  }
+  
+  // Calculer le streak actuel
+  const streakInfo = await this.calculateCurrentStreak(playerId, serverId, rewardDate);
+  
+  // Générer les récompenses basées sur le niveau VIP
+  const rewards = this.generateRewardsByLevel(vipLevel);
+  
+  // Créer l'entrée de récompenses
+  const dailyRewards = new this({
+    playerId,
+    serverId,
+    vipLevel,
+    rewardDate,
+    rewards,
+    totalValue: 0, // Sera calculé automatiquement
+    claimStreak: streakInfo.currentStreak,
+    missedDays: streakInfo.missedThisMonth,
+    bonusMultiplier: 1.0
+  });
+  
+  // Calculer la valeur totale
+  dailyRewards.totalValue = dailyRewards.calculateRewardValue();
+  
+  await dailyRewards.save();
+  return dailyRewards;
+};
+
 // Obtenir les récompenses réclamables pour un joueur
 vipDailyRewardsSchema.statics.getClaimableRewards = async function(
   playerId: string,
   serverId: string,
   maxDays: number = 7
-) {
+): Promise<IVipDailyRewards[]> {
   const startDate = new Date(Date.now() - (maxDays * 24 * 60 * 60 * 1000));
   const startDateStr = startDate.toISOString().split('T')[0];
   
@@ -527,8 +538,8 @@ vipDailyRewardsSchema.statics.cleanupExpiredRewards = async function() {
   });
   
   return {
-    deletedCount: result.deletedCount,
-    message: `Cleaned up ${result.deletedCount} expired unclaimed rewards`
+    deletedCount: result.deletedCount || 0,
+    message: `Cleaned up ${result.deletedCount || 0} expired unclaimed rewards`
   };
 };
 
@@ -568,4 +579,4 @@ vipDailyRewardsSchema.statics.getTopStreakPlayers = async function(
   ]);
 };
 
-export default mongoose.model<IVipDailyRewards>("VipDailyRewards", vipDailyRewardsSchema);
+export default mongoose.model<IVipDailyRewards, IVipDailyRewardsModel>("VipDailyRewards", vipDailyRewardsSchema);
