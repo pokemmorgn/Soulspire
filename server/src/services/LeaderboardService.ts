@@ -748,7 +748,35 @@ export class LeaderboardService {
     };
   }
 
-  // === MÉTHODES D'ADMINISTRATION ===
+  // Nettoyage des anciens leaderboards (appelé par le cron)
+  public static async cleanupOldSeasonalLeaderboards(cutoffDate: Date) {
+    try {
+      console.log(`🧹 Nettoyage leaderboards antérieurs à ${cutoffDate.toISOString()}`);
+
+      const deleteResult = await SeasonalLeaderboardModel.deleteMany({
+        status: "rewards_distributed",
+        endTime: { $lt: cutoffDate }
+      });
+
+      const cleanupStats = await SeasonalLeaderboardModel.deleteMany({
+        status: "ended",
+        endTime: { $lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // 30 jours pour les "ended"
+      });
+
+      console.log(`✅ ${deleteResult.deletedCount || 0} leaderboards distribués supprimés`);
+      console.log(`✅ ${cleanupStats.deletedCount || 0} leaderboards terminés supprimés`);
+
+      return {
+        deleted: (deleteResult.deletedCount || 0) + (cleanupStats.deletedCount || 0),
+        distributedDeleted: deleteResult.deletedCount || 0,
+        endedDeleted: cleanupStats.deletedCount || 0
+      };
+
+    } catch (error: any) {
+      console.error("❌ Erreur cleanupOldSeasonalLeaderboards:", error);
+      throw error;
+    }
+  }
 
   // Précomputer les classements (pour optimisation)
   public static async precomputeLeaderboards(serverId: string) {
