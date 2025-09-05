@@ -3,10 +3,10 @@ import Joi from "joi";
 import Hero from "../models/Hero";
 import Player from "../models/Player";
 import authMiddleware, { optionalAuthMiddleware } from "../middleware/authMiddleware";
+import { HeroUpgradeService } from "../services/HeroUpgradeService";
 
 const router = express.Router();
 
-// -------------------- Utils --------------------
 function slugify(s: string): string {
   return (s || "")
     .toLowerCase()
@@ -15,10 +15,9 @@ function slugify(s: string): string {
 }
 
 function getHeroKeyId(hero: any): string {
-  // Préférence au champ heroId stocké, sinon fallback slug(name)
   if (hero.heroId && typeof hero.heroId === "string" && hero.heroId.trim()) return hero.heroId;
   if (hero.name && typeof hero.name === "string" && hero.name.trim()) return slugify(hero.name);
-  return ""; // dernier recours (évitons de casser la réponse)
+  return "";
 }
 
 function buildGenericKeys(hero: any) {
@@ -35,7 +34,8 @@ function buildGenericKeys(hero: any) {
   };
 }
 
-// -------------------- Validation --------------------
+// === VALIDATION SCHEMAS ===
+
 const heroFilterSchema = Joi.object({
   role: Joi.string().valid("Tank", "DPS Melee", "DPS Ranged", "Support").optional(),
   element: Joi.string().valid("Fire", "Water", "Wind", "Electric", "Light", "Dark").optional(),
@@ -44,20 +44,42 @@ const heroFilterSchema = Joi.object({
   limit: Joi.number().min(1).max(100).default(20),
 });
 
-const heroUpgradeSchema = Joi.object({
-  heroId: Joi.string().required(),            // <- ATTENTION: ici c'est l'_id Mongo côté Player.heroes[]
+const levelUpSchema = Joi.object({
+  heroInstanceId: Joi.string().required(),
   targetLevel: Joi.number().min(1).max(100).optional(),
-  targetStars: Joi.number().min(1).max(6).optional(),
+});
+
+const starUpgradeSchema = Joi.object({
+  heroInstanceId: Joi.string().required(),
+});
+
+const skillUpgradeSchema = Joi.object({
+  heroInstanceId: Joi.string().required(),
+  skillSlot: Joi.string().valid("spell1", "spell2", "spell3", "ultimate", "passive").required(),
+});
+
+const evolutionSchema = Joi.object({
+  heroInstanceId: Joi.string().required(),
+});
+
+const autoUpgradeSchema = Joi.object({
+  heroInstanceId: Joi.string().required(),
+  maxGoldToSpend: Joi.number().min(0).optional(),
+  upgradeStars: Joi.boolean().default(false),
+});
+
+const bulkLevelUpSchema = Joi.object({
+  heroInstanceIds: Joi.array().items(Joi.string()).min(1).max(20).required(),
+  maxGoldToSpend: Joi.number().min(0).optional(),
 });
 
 const equipHeroSchema = Joi.object({
-  heroId: Joi.string().required(),            // <- idem: _id Mongo du Hero
+  heroId: Joi.string().required(),
   equipped: Joi.boolean().required(),
 });
 
-// -------------------- Routes --------------------
+// === CATALOG ROUTES ===
 
-// === GET ALL HEROES (CATALOG) ===
 router.get("/catalog", optionalAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = heroFilterSchema.validate(req.query);
@@ -85,14 +107,12 @@ router.get("/catalog", optionalAuthMiddleware, async (req: Request, res: Respons
       Hero.countDocuments(filter),
     ]);
 
-    // Injecte les clés génériques
     const payload = heroes.map(h => {
       const obj = h.toObject();
       const keys = buildGenericKeys(obj);
       return {
         _id: obj._id,
-        heroId: keys.heroId, // stable pour assets/traductions
-        // Clés génériques pour le client (textes + assets)
+        heroId: keys.heroId,
         name: keys.name,
         description: keys.description,
         icon: keys.icon,
@@ -100,7 +120,6 @@ router.get("/catalog", optionalAuthMiddleware, async (req: Request, res: Respons
         splashArt: keys.splashArt,
         strengths: keys.strengths,
         weaknesses: keys.weaknesses,
-        // Données gameplay
         role: obj.role,
         element: obj.element,
         rarity: obj.rarity,
@@ -120,12 +139,10 @@ router.get("/catalog", optionalAuthMiddleware, async (req: Request, res: Respons
   }
 });
 
-// === GET SPECIFIC HERO DETAILS ===
 router.get("/catalog/:heroId", async (req: Request, res: Response): Promise<void> => {
   try {
     const { heroId } = req.params;
 
-    // Ici heroId est l'_id MongoDB du document Hero (si tu veux supporter aussi heroId slug, ajoute une recherche alternative)
     const hero = await Hero.findById(heroId).select("_id heroId name role element rarity baseStats spells");
     if (!hero) {
       res.status(404).json({ error: "Hero not found", code: "HERO_NOT_FOUND" });
@@ -135,7 +152,6 @@ router.get("/catalog/:heroId", async (req: Request, res: Response): Promise<void
     const obj = hero.toObject();
     const keys = buildGenericKeys(obj);
 
-    // Paliers de stats
     const levels = [1, 25, 50, 75, 100];
     const starsList = [1, 3, 6];
     const statsByLevel = levels.map(level => {
@@ -149,7 +165,6 @@ router.get("/catalog/:heroId", async (req: Request, res: Response): Promise<void
       hero: {
         _id: obj._id,
         heroId: keys.heroId,
-        // clés génériques
         name: keys.name,
         description: keys.description,
         icon: keys.icon,
@@ -157,7 +172,6 @@ router.get("/catalog/:heroId", async (req: Request, res: Response): Promise<void
         splashArt: keys.splashArt,
         strengths: keys.strengths,
         weaknesses: keys.weaknesses,
-        // gameplay
         role: obj.role,
         element: obj.element,
         rarity: obj.rarity,
@@ -173,7 +187,8 @@ router.get("/catalog/:heroId", async (req: Request, res: Response): Promise<void
   }
 });
 
-// === GET PLAYER'S HEROES ===
+// === PLAYER HEROES ROUTES ===
+
 router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = heroFilterSchema.validate(req.query);
@@ -214,7 +229,6 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
 
       return {
         playerHeroId: ph._id,
-        // renvoyer aussi l'_id du hero + heroId (slug)
         hero: {
           _id: obj._id,
           heroId: keys.heroId,
@@ -255,85 +269,241 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
   }
 });
 
-// === UPGRADE HERO ===
-router.post("/upgrade", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.get("/my/overview", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { error } = heroUpgradeSchema.validate(req.body);
+    const serverId = req.headers['x-server-id'] as string || "S1";
+    const result = await HeroUpgradeService.getPlayerHeroesUpgradeOverview(req.userId!, serverId);
+    
+    res.json({
+      message: "Heroes upgrade overview retrieved successfully",
+      ...result
+    });
+  } catch (err) {
+    console.error("Get heroes overview error:", err);
+    res.status(500).json({ error: "Internal server error", code: "GET_OVERVIEW_FAILED" });
+  }
+});
+
+router.get("/my/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const serverId = req.headers['x-server-id'] as string || "S1";
+    const result = await HeroUpgradeService.getHeroUpgradeStats(req.userId!, serverId);
+    
+    res.json({
+      message: "Hero upgrade stats retrieved successfully",
+      ...result
+    });
+  } catch (err) {
+    console.error("Get hero stats error:", err);
+    res.status(500).json({ error: "Internal server error", code: "GET_STATS_FAILED" });
+  }
+});
+
+// === UPGRADE ROUTES ===
+
+router.get("/upgrade/:heroInstanceId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { heroInstanceId } = req.params;
+    const serverId = req.headers['x-server-id'] as string || "S1";
+    
+    const result = await HeroUpgradeService.getHeroUpgradeInfo(req.userId!, serverId, heroInstanceId);
+    
+    res.json({
+      message: "Hero upgrade info retrieved successfully",
+      ...result
+    });
+  } catch (err) {
+    console.error("Get upgrade info error:", err);
+    res.status(500).json({ error: "Internal server error", code: "GET_UPGRADE_INFO_FAILED" });
+  }
+});
+
+router.post("/upgrade/level", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { error } = levelUpSchema.validate(req.body);
     if (error) {
       res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
       return;
     }
 
-    const { heroId, targetLevel, targetStars } = req.body; // heroId = _id Mongo du Hero dans l'inventaire
-
-    const player = await Player.findById(req.userId);
-    if (!player) {
-      res.status(404).json({ error: "Player not found", code: "PLAYER_NOT_FOUND" });
+    const { heroInstanceId, targetLevel } = req.body;
+    const serverId = req.headers['x-server-id'] as string || "S1";
+    
+    const result = await HeroUpgradeService.levelUpHero(req.userId!, serverId, heroInstanceId, targetLevel);
+    
+    if (!result.success) {
+      res.status(400).json({ error: result.error, code: result.code });
       return;
     }
-
-    const playerHero = player.heroes.find((h: any) => h.heroId.toString() === heroId);
-    if (!playerHero) {
-      res.status(404).json({ error: "Hero not owned by player", code: "HERO_NOT_OWNED" });
-      return;
-    }
-
-    let goldCost = 0;
-    let materialCost = 0;
-
-    if (targetLevel && targetLevel > playerHero.level) {
-      const levelDiff = targetLevel - playerHero.level;
-      goldCost = levelDiff * playerHero.level * 100;
-    }
-
-    if (targetStars && targetStars > playerHero.stars) {
-      const starDiff = targetStars - playerHero.stars;
-      materialCost = starDiff * 10;
-    }
-
-    if (goldCost > 0 && player.gold < goldCost) {
-      res.status(400).json({
-        error: `Insufficient gold. Required: ${goldCost}, Available: ${player.gold}`,
-        code: "INSUFFICIENT_GOLD",
-      });
-      return;
-    }
-
-    if (materialCost > 0) {
-      const currentFragments = player.fragments.get(heroId) || 0;
-      if (currentFragments < materialCost) {
-        res.status(400).json({
-          error: `Insufficient fragments. Required: ${materialCost}, Available: ${currentFragments}`,
-          code: "INSUFFICIENT_FRAGMENTS",
-        });
-        return;
-      }
-    }
-
-    if (targetLevel) playerHero.level = targetLevel;
-    if (targetStars) playerHero.stars = targetStars;
-
-    if (goldCost > 0) player.gold -= goldCost;
-    if (materialCost > 0) {
-      const currentFragments = player.fragments.get(heroId) || 0;
-      player.fragments.set(heroId, currentFragments - materialCost);
-    }
-
-    await player.save();
 
     res.json({
-      message: "Hero upgraded successfully",
-      hero: { heroId, level: playerHero.level, stars: playerHero.stars },
-      cost: { gold: goldCost, fragments: materialCost },
-      remaining: { gold: player.gold, fragments: player.fragments.get(heroId) || 0 },
+      message: "Hero level upgraded successfully",
+      ...result
     });
   } catch (err) {
-    console.error("Upgrade hero error:", err);
-    res.status(500).json({ error: "Internal server error", code: "UPGRADE_HERO_FAILED" });
+    console.error("Level up hero error:", err);
+    res.status(500).json({ error: "Internal server error", code: "LEVEL_UP_FAILED" });
   }
 });
 
-// === EQUIP/UNEQUIP HERO ===
+router.post("/upgrade/stars", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { error } = starUpgradeSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const { heroInstanceId } = req.body;
+    const serverId = req.headers['x-server-id'] as string || "S1";
+    
+    const result = await HeroUpgradeService.upgradeHeroStars(req.userId!, serverId, heroInstanceId);
+    
+    if (!result.success) {
+      res.status(400).json({ error: result.error, code: result.code });
+      return;
+    }
+
+    res.json({
+      message: "Hero stars upgraded successfully",
+      ...result
+    });
+  } catch (err) {
+    console.error("Star upgrade hero error:", err);
+    res.status(500).json({ error: "Internal server error", code: "STAR_UPGRADE_FAILED" });
+  }
+});
+
+router.post("/upgrade/skill", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { error } = skillUpgradeSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const { heroInstanceId, skillSlot } = req.body;
+    const serverId = req.headers['x-server-id'] as string || "S1";
+    
+    const result = await HeroUpgradeService.upgradeHeroSkill(req.userId!, serverId, heroInstanceId, skillSlot);
+    
+    if (!result.success) {
+      res.status(400).json({ error: result.error, code: "SKILL_UPGRADE_FAILED" });
+      return;
+    }
+
+    res.json({
+      message: "Hero skill upgraded successfully",
+      ...result
+    });
+  } catch (err) {
+    console.error("Skill upgrade hero error:", err);
+    res.status(500).json({ error: "Internal server error", code: "SKILL_UPGRADE_FAILED" });
+  }
+});
+
+router.post("/upgrade/evolve", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { error } = evolutionSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const { heroInstanceId } = req.body;
+    const serverId = req.headers['x-server-id'] as string || "S1";
+    
+    const result = await HeroUpgradeService.evolveHero(req.userId!, serverId, heroInstanceId);
+    
+    if (!result.success) {
+      res.status(400).json({ error: result.error, code: "EVOLUTION_FAILED" });
+      return;
+    }
+
+    res.json({
+      message: "Hero evolved successfully",
+      ...result
+    });
+  } catch (err) {
+    console.error("Evolution hero error:", err);
+    res.status(500).json({ error: "Internal server error", code: "EVOLUTION_FAILED" });
+  }
+});
+
+router.post("/upgrade/auto", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { error } = autoUpgradeSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const { heroInstanceId, maxGoldToSpend, upgradeStars } = req.body;
+    const serverId = req.headers['x-server-id'] as string || "S1";
+    
+    const result = await HeroUpgradeService.autoUpgradeHero(
+      req.userId!, 
+      serverId, 
+      heroInstanceId, 
+      maxGoldToSpend, 
+      upgradeStars
+    );
+    
+    res.json({
+      message: "Hero auto-upgraded successfully",
+      ...result
+    });
+  } catch (err) {
+    console.error("Auto upgrade hero error:", err);
+    res.status(500).json({ error: "Internal server error", code: "AUTO_UPGRADE_FAILED" });
+  }
+});
+
+router.post("/upgrade/bulk-level", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { error } = bulkLevelUpSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const { heroInstanceIds, maxGoldToSpend } = req.body;
+    const serverId = req.headers['x-server-id'] as string || "S1";
+    
+    const result = await HeroUpgradeService.bulkLevelUpHeroes(
+      req.userId!, 
+      serverId, 
+      heroInstanceIds, 
+      maxGoldToSpend
+    );
+    
+    res.json({
+      message: "Heroes bulk level up completed successfully",
+      ...result
+    });
+  } catch (err) {
+    console.error("Bulk level up error:", err);
+    res.status(500).json({ error: "Internal server error", code: "BULK_LEVEL_UP_FAILED" });
+  }
+});
+
+router.get("/upgrade/recommendations", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const serverId = req.headers['x-server-id'] as string || "S1";
+    const result = await HeroUpgradeService.getUpgradeRecommendations(req.userId!, serverId);
+    
+    res.json({
+      message: "Upgrade recommendations retrieved successfully",
+      ...result
+    });
+  } catch (err) {
+    console.error("Get recommendations error:", err);
+    res.status(500).json({ error: "Internal server error", code: "GET_RECOMMENDATIONS_FAILED" });
+  }
+});
+
+// === EQUIP/UNEQUIP ROUTE (Legacy) ===
+
 router.post("/equip", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = equipHeroSchema.validate(req.body);
@@ -342,7 +512,7 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
       return;
     }
 
-    const { heroId, equipped } = req.body; // heroId = _id Mongo du Hero
+    const { heroId, equipped } = req.body;
 
     const player = await Player.findById(req.userId);
     if (!player) {
