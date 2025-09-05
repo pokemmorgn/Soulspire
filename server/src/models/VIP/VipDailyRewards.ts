@@ -390,6 +390,7 @@ vipDailyRewardsSchema.statics.calculateCurrentStreak = async function(
 
 // Générer les récompenses quotidiennes pour un joueur
 vipDailyRewardsSchema.statics.generateDailyRewards = async function(
+  this: IVipDailyRewardsModel,
   playerId: string,
   serverId: string,
   vipLevel: number,
