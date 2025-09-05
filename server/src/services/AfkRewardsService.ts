@@ -257,42 +257,54 @@ export class AfkRewardsService {
     return materials;
   }
 
-  // === FRAGMENTS DE HÉROS ===
+  // === FRAGMENTS DE HÉROS (VERSION DÉTERMINISTE) ===
   private static getFragmentRewards(world: number, level: number, totalMultiplier: number): AfkReward[] {
     const fragments: AfkReward[] = [];
 
-    // Chance de fragments selon la progression
-    const fragmentChance = Math.min(0.3, world * 0.02 + level * 0.001); // Max 30% de chance
+    // Chance de fragments selon la progression (déterministe pour éviter l'aléatoire côté serveur)
+    const fragmentBaseRate = Math.min(0.3, world * 0.02 + level * 0.001); // Max 30%
     
-    if (Math.random() < fragmentChance) {
-      // Héros communs (monde 1+)
+    // Utiliser un système de "points" au lieu du random pour plus de prévisibilité
+    const fragmentPoints = Math.floor(fragmentBaseRate * 100); // 0-30 points
+    
+    if (fragmentPoints > 0) {
+      // Héros communs (monde 1+) - toujours disponibles
       if (world >= 1) {
-        fragments.push({
-          type: "fragment",
-          fragmentId: "common_hero_fragments",
-          quantity: Math.floor(2 * totalMultiplier),
-          baseQuantity: 2
-        });
+        const commonQuantity = Math.floor((fragmentPoints * 0.6) * totalMultiplier / 10); // 60% des points
+        if (commonQuantity > 0) {
+          fragments.push({
+            type: "fragment",
+            fragmentId: "common_hero_fragments",
+            quantity: commonQuantity,
+            baseQuantity: Math.floor(fragmentPoints * 0.6 / 10)
+          });
+        }
       }
 
-      // Héros rares (monde 3+)
-      if (world >= 3 && Math.random() < 0.7) {
-        fragments.push({
-          type: "fragment",
-          fragmentId: "rare_hero_fragments",
-          quantity: Math.floor(1 * totalMultiplier),
-          baseQuantity: 1
-        });
+      // Héros rares (monde 3+) - 70% de chance si éligible
+      if (world >= 3 && fragmentPoints >= 15) {
+        const rareQuantity = Math.floor((fragmentPoints * 0.3) * totalMultiplier / 15); // 30% des points
+        if (rareQuantity > 0) {
+          fragments.push({
+            type: "fragment",
+            fragmentId: "rare_hero_fragments",
+            quantity: rareQuantity,
+            baseQuantity: Math.floor(fragmentPoints * 0.3 / 15)
+          });
+        }
       }
 
-      // Héros épiques (monde 6+)
-      if (world >= 6 && Math.random() < 0.3) {
-        fragments.push({
-          type: "fragment",
-          fragmentId: "epic_hero_fragments",
-          quantity: Math.floor(0.5 * totalMultiplier),
-          baseQuantity: 0.5
-        });
+      // Héros épiques (monde 6+) - 30% de chance si éligible
+      if (world >= 6 && fragmentPoints >= 25) {
+        const epicQuantity = Math.floor((fragmentPoints * 0.1) * totalMultiplier / 25); // 10% des points
+        if (epicQuantity > 0) {
+          fragments.push({
+            type: "fragment",
+            fragmentId: "epic_hero_fragments",
+            quantity: epicQuantity,
+            baseQuantity: Math.floor(fragmentPoints * 0.1 / 25)
+          });
+        }
       }
     }
 
