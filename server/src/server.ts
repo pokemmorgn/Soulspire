@@ -26,6 +26,7 @@ import forgeReforgeRoutes from "./routes/forgeReforge";
 import forgeEnhancementRoutes from "./routes/forgeEnhancement";
 import forgeFusionRoutes from "./routes/forgeFusion";
 import forgeTierUpgradeRoutes from "./routes/forgeTierUpgrade";
+import leaderboardRoutes from "./routes/leaderboard";
 
 // Import des services
 import { ShopService } from "./services/ShopService";
@@ -195,7 +196,7 @@ app.use("/api/forge/reforge", forgeReforgeRoutes);
 app.use("/api/forge/enhancement", forgeEnhancementRoutes);
 app.use("/api/forge/fusion", forgeFusionRoutes);
 app.use("/api/forge/tier-upgrade", forgeTierUpgradeRoutes);
-
+app.use("/api/leaderboard", leaderboardRoutes);
 // Route de santé de l'API
 app.get("/", (req: Request, res: Response) => {
   res.json({
