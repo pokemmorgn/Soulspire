@@ -414,3 +414,5 @@ export class AfkRewardsService {
     }
   }
 }
+
+export default AfkRewardsService;
