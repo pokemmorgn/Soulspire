@@ -235,29 +235,6 @@ vipProgressSchema.methods.getRecentPurchases = function(limit: number = 10): IVi
     .slice(0, limit);
 };
 
-// Calculer les récompenses quotidiennes basées sur le niveau
-vipProgressSchema.methods.calculateDailyRewards = function() {
-  const level = this.currentLevel;
-  const baseRewards = {
-    gold: 1000 + (level * 500),
-    gems: 10 + (level * 5),
-    tickets: Math.floor(level / 2),
-    materials: new Map()
-  };
-  
-  // Matériaux basés sur le niveau VIP
-  if (level >= 2) baseRewards.materials.set("fusion_crystal", 5 + level);
-  if (level >= 4) baseRewards.materials.set("elemental_essence", 2 + Math.floor(level / 2));
-  if (level >= 6) baseRewards.materials.set("ascension_stone", 1 + Math.floor(level / 3));
-  if (level >= 8) baseRewards.materials.set("divine_crystal", Math.floor(level / 4));
-  if (level >= 10) baseRewards.materials.set("stellar_essence", Math.floor(level / 5));
-  if (level >= 12) baseRewards.materials.set("cosmic_shard", Math.floor(level / 6));
-  
-  return baseRewards;
-};
-
-// === MÉTHODES STATIQUES ===
-
 // Créer ou récupérer la progression VIP d'un joueur
 vipProgressSchema.statics.getOrCreateProgress = async function(playerId: string, serverId: string) {
   let progress = await this.findOne({ playerId, serverId });
@@ -269,9 +246,7 @@ vipProgressSchema.statics.getOrCreateProgress = async function(playerId: string,
       currentLevel: 0,
       currentExp: 0,
       totalExpSpent: 0,
-      purchaseHistory: [],
-      dailyRewards: [],
-      lastDailyRewardDate: null
+      purchaseHistory: []
     });
     await progress.save();
   }
