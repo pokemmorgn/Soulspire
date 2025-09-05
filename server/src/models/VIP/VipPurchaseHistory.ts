@@ -103,8 +103,7 @@ const vipPurchaseHistorySchema = new Schema<IVipPurchaseHistory>({
       type: { type: String, required: true },
       itemId: { type: String, default: null },
       quantity: { type: Number, required: true, min: 1 }
-    }],
-    default: null
+    }]
   },
   deviceInfo: {
     platform: { 
@@ -113,8 +112,7 @@ const vipPurchaseHistorySchema = new Schema<IVipPurchaseHistory>({
       default: "web"
     },
     deviceId: { type: String, default: null },
-    userAgent: { type: String, default: null },
-    default: null
+    userAgent: { type: String, default: null }
   },
   paymentInfo: {
     method: {
