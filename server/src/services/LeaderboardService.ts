@@ -756,9 +756,7 @@ export class LeaderboardService {
       level: player.level,
       additionalData: {
         world: player.world
-      },
-      avatar: player.avatarUrl,
-      title: player.titleId
+      }
     }));
 
     return {
