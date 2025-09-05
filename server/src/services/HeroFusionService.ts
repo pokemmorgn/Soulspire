@@ -867,16 +867,16 @@ export class HeroFusionService {
         MissionService.updateProgress(
           playerId,
           serverId,
-          "hero_fusion",
+          "heroes_owned",
           1,
           { rarity: newRarity, stars: newStars }
         ),
         EventService.updatePlayerProgress(
           playerId,
           serverId,
-          "hero_ascension",
+          "collect_items",
           1,
-          { rarity: newRarity, stars: newStars }
+          { itemType: "hero_fusion", rarity: newRarity, stars: newStars }
         )
       ]);
 
