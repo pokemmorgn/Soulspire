@@ -1,7 +1,7 @@
 import Player from "../models/Player";
 import Hero from "../models/Hero";
 import { TowerProgress } from "../models/Tower";
-import { CampaignProgress } from "../models/CampaignProgress";
+import CampaignProgress from "../models/CampaignProgress";
 import AfkState from "../models/AfkState";
 
 export interface LeaderboardEntry {
@@ -12,8 +12,6 @@ export interface LeaderboardEntry {
   value: number;
   additionalData?: any;
   lastUpdated?: Date;
-  avatar?: string;
-  title?: string;
   level: number;
 }
 
@@ -61,7 +59,7 @@ export class LeaderboardService {
       // Récupérer tous les joueurs avec leurs héros
       const players = await Player.find({ serverId })
         .populate("heroes.heroId")
-        .select("username level avatarUrl titleId heroes lastSeenAt")
+        .select("username level heroes lastSeenAt")
         .lean();
 
       if (players.length === 0) {
@@ -78,8 +76,6 @@ export class LeaderboardService {
             power: powerCalc.totalPower,
             breakdown: powerCalc.breakdown,
             level: player.level,
-            avatar: player.avatarUrl,
-            title: player.titleId,
             lastSeen: player.lastSeenAt
           };
         })
@@ -101,9 +97,7 @@ export class LeaderboardService {
           additionalData: {
             breakdown: player.breakdown,
             lastSeen: player.lastSeen
-          },
-          avatar: player.avatar,
-          title: player.title
+          }
         }));
 
       // Trouver le rang du joueur spécifique si demandé
@@ -151,7 +145,7 @@ export class LeaderboardService {
 
       // Récupérer les progressions tour avec infos joueur
       const towerProgresses = await TowerProgress.find({ serverId })
-        .populate("playerId", "username level avatarUrl titleId")
+        .populate("playerId", "username level")
         .sort({ highestFloor: -1, totalClears: -1 })
         .limit(limit * 2) // Prendre plus pour gérer les joueurs supprimés
         .lean();
@@ -180,8 +174,6 @@ export class LeaderboardService {
             totalTimeSpent: progress.stats?.totalTimeSpent || 0,
             isActiveRun: progress.currentRun?.isActive || false
           },
-          avatar: player.avatarUrl,
-          title: player.titleId,
           lastUpdated: (progress as any).updatedAt
         };
       });
@@ -232,7 +224,7 @@ export class LeaderboardService {
 
       // Récupérer les joueurs avec leur progression campagne
       const players = await Player.find({ serverId })
-        .select("username level world avatarUrl titleId lastSeenAt")
+        .select("username level world lastSeenAt")
         .sort({ world: -1, level: -1 })
         .limit(limit * 2)
         .lean();
@@ -250,7 +242,7 @@ export class LeaderboardService {
 
       // Créer une map pour accès rapide
       const progressMap = new Map();
-      campaignProgresses.forEach(progress => {
+      campaignProgresses.forEach((progress: any) => {
         progressMap.set(progress.playerId, progress);
       });
 
@@ -272,8 +264,6 @@ export class LeaderboardService {
           level: player.level,
           stars: starScore,
           playerLevel: player.level,
-          avatar: player.avatarUrl,
-          title: player.titleId,
           lastSeen: player.lastSeenAt,
           progressData: progress
         };
@@ -299,9 +289,7 @@ export class LeaderboardService {
             lastSeen: player.lastSeen,
             completedWorlds: player.progressData ? 
               player.progressData.progressByDifficulty?.filter((d: any) => d.isCompleted).length || 0 : 0
-          },
-          avatar: player.avatar,
-          title: player.title
+          }
         }));
 
       // Rang du joueur spécifique
@@ -348,7 +336,7 @@ export class LeaderboardService {
 
       // Récupérer les états AFK avec infos joueur
       const afkStates = await AfkState.find({})
-        .populate("playerId", "username level serverId avatarUrl titleId")
+        .populate("playerId", "username level serverId")
         .lean();
 
       // Filtrer par serveur et calculer le score selon la période
@@ -370,8 +358,8 @@ export class LeaderboardService {
               score = (state.todayAccruedGold || 0) * 7;
               break;
             case "total":
-              // Utiliser l'or total du joueur comme approximation
-              score = state.totalGoldAccrued || 0;
+              // Utiliser approximation mensuelle
+              score = (state.todayAccruedGold || 0) * 30;
               break;
           }
 
@@ -382,8 +370,6 @@ export class LeaderboardService {
             goldPerMinute: state.baseGoldPerMinute,
             todayGold: state.todayAccruedGold || 0,
             level: player.level,
-            avatar: player.avatarUrl,
-            title: player.titleId,
             lastTick: state.lastTickAt
           };
         });
@@ -406,9 +392,7 @@ export class LeaderboardService {
             todayGold: player.todayGold,
             period,
             lastTick: player.lastTick
-          },
-          avatar: player.avatar,
-          title: player.title
+          }
         }));
 
       // Rang du joueur spécifique
@@ -451,7 +435,7 @@ export class LeaderboardService {
   ): Promise<LeaderboardResponse> {
     try {
       const players = await Player.find({ serverId })
-        .select("username level world avatarUrl titleId lastSeenAt createdAt")
+        .select("username level world lastSeenAt createdAt")
         .sort({ level: -1, world: -1 })
         .limit(limit)
         .lean();
@@ -471,16 +455,14 @@ export class LeaderboardService {
           world: player.world,
           accountAge: Math.floor((Date.now() - (player.createdAt?.getTime() || Date.now())) / (1000 * 60 * 60 * 24)),
           lastSeen: player.lastSeenAt
-        },
-        avatar: player.avatarUrl,
-        title: player.titleId
+        }
       }));
 
       // Rang du joueur spécifique
       let playerRank = undefined;
       if (playerId) {
         const allPlayers = await Player.find({ serverId }).sort({ level: -1, world: -1 });
-        const playerIndex = allPlayers.findIndex(p => p._id.toString() === playerId);
+        const playerIndex = allPlayers.findIndex((p: any) => p._id.toString() === playerId);
         if (playerIndex !== -1) {
           playerRank = {
             rank: playerIndex + 1,
@@ -653,7 +635,7 @@ export class LeaderboardService {
   private static async getGlobalPowerLeaderboard(limit: number): Promise<LeaderboardResponse> {
     const players = await Player.find({})
       .populate("heroes.heroId")
-      .select("username level serverId avatarUrl titleId heroes")
+      .select("username level serverId heroes")
       .lean();
 
     const playerPowers = await Promise.all(
@@ -664,9 +646,7 @@ export class LeaderboardService {
           playerName: player.username,
           serverId: player.serverId,
           power: powerCalc.totalPower,
-          level: player.level,
-          avatar: player.avatarUrl,
-          title: player.titleId
+          level: player.level
         };
       })
     );
@@ -681,9 +661,7 @@ export class LeaderboardService {
         playerName: player.playerName,
         serverId: player.serverId,
         value: player.power,
-        level: player.level,
-        avatar: player.avatar,
-        title: player.title
+        level: player.level
       }));
 
     return {
@@ -702,7 +680,7 @@ export class LeaderboardService {
   // Classement global tour
   private static async getGlobalTowerLeaderboard(limit: number): Promise<LeaderboardResponse> {
     const towerProgresses = await TowerProgress.find({})
-      .populate("playerId", "username level serverId avatarUrl titleId")
+      .populate("playerId", "username level serverId")
       .sort({ highestFloor: -1, totalClears: -1 })
       .limit(limit)
       .lean();
@@ -720,9 +698,7 @@ export class LeaderboardService {
           level: player.level,
           additionalData: {
             totalClears: progress.totalClears
-          },
-          avatar: player.avatarUrl,
-          title: player.titleId
+          }
         };
       });
 
@@ -742,7 +718,7 @@ export class LeaderboardService {
   // Classement global niveau
   private static async getGlobalLevelLeaderboard(limit: number): Promise<LeaderboardResponse> {
     const players = await Player.find({})
-      .select("username level serverId world avatarUrl titleId")
+      .select("username level serverId world")
       .sort({ level: -1, world: -1 })
       .limit(limit)
       .lean();
