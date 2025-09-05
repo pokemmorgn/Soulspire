@@ -144,8 +144,7 @@ const vipDailyRewardsSchema = new Schema<IVipDailyRewards>({
       default: "web"
     },
     deviceId: { type: String, default: null },
-    ipAddress: { type: String, default: null },
-    default: null
+    ipAddress: { type: String, default: null }
   }
 }, {
   timestamps: true,
