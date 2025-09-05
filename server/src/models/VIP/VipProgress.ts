@@ -225,13 +225,13 @@ vipProgressSchema.methods.getNextLevelInfo = function(): { level: number; expReq
 
 // Obtenir le total des achats
 vipProgressSchema.methods.getTotalPurchases = function(): number {
-  return this.purchaseHistory.reduce((sum, purchase) => sum + purchase.amount, 0);
+  return this.purchaseHistory.reduce((sum: number, purchase: IVipPurchase) => sum + purchase.amount, 0);
 };
 
 // Obtenir les achats récents
 vipProgressSchema.methods.getRecentPurchases = function(limit: number = 10): IVipPurchase[] {
   return this.purchaseHistory
-    .sort((a, b) => b.purchaseDate.getTime() - a.purchaseDate.getTime())
+    .sort((a: IVipPurchase, b: IVipPurchase) => b.purchaseDate.getTime() - a.purchaseDate.getTime())
     .slice(0, limit);
 };
 
