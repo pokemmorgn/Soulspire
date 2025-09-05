@@ -20,6 +20,16 @@ const fusionExecuteSchema = Joi.object({
   }).required(),
 });
 
+const fusionHistorySchema = Joi.object({
+  limit: Joi.number().min(1).max(100).default(20),
+  fusionType: Joi.string().valid("rarity_upgrade", "star_upgrade").optional(),
+});
+
+const leaderboardSchema = Joi.object({
+  timeframe: Joi.string().valid("daily", "weekly", "monthly", "all").default("weekly"),
+  limit: Joi.number().min(1).max(100).default(50),
+});
+
 router.get("/preview/:heroInstanceId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = fusionPreviewSchema.validate(req.params);
@@ -102,6 +112,33 @@ router.get("/fusable", authMiddleware, async (req: Request, res: Response): Prom
   }
 });
 
+router.get("/history", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { error } = fusionHistorySchema.validate(req.query);
+    if (error) {
+      res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const { limit } = req.query as any;
+    const serverId = req.headers['x-server-id'] as string || "S1";
+
+    const result = await HeroFusionService.getFusionHistory(
+      req.userId!,
+      serverId,
+      parseInt(limit) || 20
+    );
+
+    res.json({
+      message: "Fusion history retrieved successfully",
+      ...result
+    });
+  } catch (err) {
+    console.error("Get fusion history error:", err);
+    res.status(500).json({ error: "Internal server error", code: "GET_FUSION_HISTORY_FAILED" });
+  }
+});
+
 router.get("/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const serverId = req.headers['x-server-id'] as string || "S1";
@@ -139,6 +176,167 @@ router.get("/path/:targetHeroId", authMiddleware, async (req: Request, res: Resp
   } catch (err) {
     console.error("Get fusion path error:", err);
     res.status(500).json({ error: "Internal server error", code: "GET_FUSION_PATH_FAILED" });
+  }
+});
+
+router.get("/analytics", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const serverId = req.headers['x-server-id'] as string || "S1";
+
+    const result = await HeroFusionService.getPlayerFusionAnalytics(
+      req.userId!,
+      serverId
+    );
+
+    res.json({
+      message: "Fusion analytics retrieved successfully",
+      ...result
+    });
+  } catch (err) {
+    console.error("Get fusion analytics error:", err);
+    res.status(500).json({ error: "Internal server error", code: "GET_FUSION_ANALYTICS_FAILED" });
+  }
+});
+
+router.get("/hero-history/:heroId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { heroId } = req.params;
+    const serverId = req.headers['x-server-id'] as string || "S1";
+
+    const result = await HeroFusionService.getHeroSpecificHistory(
+      req.userId!,
+      serverId,
+      heroId
+    );
+
+    res.json({
+      message: "Hero fusion history retrieved successfully",
+      ...result
+    });
+  } catch (err) {
+    console.error("Get hero fusion history error:", err);
+    res.status(500).json({ error: "Internal server error", code: "GET_HERO_HISTORY_FAILED" });
+  }
+});
+
+router.get("/leaderboard", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { error } = leaderboardSchema.validate(req.query);
+    if (error) {
+      res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const serverId = req.headers['x-server-id'] as string || "S1";
+    const { timeframe, limit } = req.query as any;
+
+    const result = await HeroFusionService.getServerFusionLeaderboard(
+      serverId,
+      timeframe || "weekly",
+      parseInt(limit) || 50
+    );
+
+    res.json({
+      message: "Fusion leaderboard retrieved successfully",
+      ...result
+    });
+  } catch (err) {
+    console.error("Get fusion leaderboard error:", err);
+    res.status(500).json({ error: "Internal server error", code: "GET_FUSION_LEADERBOARD_FAILED" });
+  }
+});
+
+router.post("/simulate", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const simulationSchema = Joi.object({
+      heroBaseStats: Joi.object({
+        hp: Joi.number().required(),
+        atk: Joi.number().required(),
+        def: Joi.number().required(),
+        crit: Joi.number().default(5),
+        critDamage: Joi.number().default(50),
+        vitesse: Joi.number().default(80),
+        moral: Joi.number().default(60),
+      }).required(),
+      currentLevel: Joi.number().min(1).max(100).required(),
+      fromRarity: Joi.string().valid("Common", "Rare", "Epic", "Legendary", "Ascended").required(),
+      fromStars: Joi.number().min(0).max(5).required(),
+      toRarity: Joi.string().valid("Common", "Rare", "Epic", "Legendary", "Ascended").required(),
+      toStars: Joi.number().min(0).max(5).required(),
+    });
+
+    const { error } = simulationSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const { 
+      heroBaseStats, 
+      currentLevel, 
+      fromRarity, 
+      fromStars, 
+      toRarity, 
+      toStars 
+    } = req.body;
+
+    const simulation = HeroFusionService.simulateFusion(
+      heroBaseStats,
+      currentLevel,
+      fromRarity,
+      fromStars,
+      toRarity,
+      toStars
+    );
+
+    res.json({
+      message: "Fusion simulation completed successfully",
+      simulation
+    });
+  } catch (err) {
+    console.error("Fusion simulation error:", err);
+    res.status(500).json({ error: "Internal server error", code: "FUSION_SIMULATION_FAILED" });
+  }
+});
+
+router.post("/cost-calculator", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const costSchema = Joi.object({
+      fromRarity: Joi.string().valid("Common", "Rare", "Epic", "Legendary", "Ascended").required(),
+      fromStars: Joi.number().min(0).max(5).required(),
+      toRarity: Joi.string().valid("Common", "Rare", "Epic", "Legendary", "Ascended").required(),
+      toStars: Joi.number().min(0).max(5).required(),
+    });
+
+    const { error } = costSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const { fromRarity, fromStars, toRarity, toStars } = req.body;
+
+    const totalCost = HeroFusionService.calculateFullAscensionCost(
+      fromRarity,
+      fromStars,
+      toRarity,
+      toStars
+    );
+
+    res.json({
+      message: "Ascension cost calculated successfully",
+      from: `${fromRarity} ${fromStars}★`,
+      to: `${toRarity} ${toStars}★`,
+      totalCost,
+      breakdown: {
+        goldPerStep: Math.floor(totalCost.gold / Math.max(1, Object.keys(totalCost.materials).length)),
+        materialsRequired: Object.keys(totalCost.materials).length,
+        totalHeroesNeeded: totalCost.heroesNeeded.copies + totalCost.heroesNeeded.food
+      }
+    });
+  } catch (err) {
+    console.error("Cost calculation error:", err);
+    res.status(500).json({ error: "Internal server error", code: "COST_CALCULATION_FAILED" });
   }
 });
 
