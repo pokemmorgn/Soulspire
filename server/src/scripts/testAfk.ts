@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose, { Types } from "mongoose";
 import dotenv from "dotenv";
 import Player from "../models/Player";
 import AfkState from "../models/AfkState";
@@ -164,8 +164,8 @@ async function testAfkEnhanced(): Promise<void> {
     log(colors.green, "✅ Connecté à MongoDB");
 
     const { basicPlayer, advancedPlayer } = await getOrCreateTestPlayers();
-    const basicId = basicPlayer._id.toString();
-    const advancedId = advancedPlayer._id.toString();
+    const basicId = (basicPlayer._id as Types.ObjectId).toString();
+    const advancedId = (advancedPlayer._id as Types.ObjectId).toString();
 
     // =============================================
     // TEST 1: Joueur basique (système classique)
