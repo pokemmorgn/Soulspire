@@ -375,7 +375,7 @@ export class HeroFusionService {
           const missingRequirements = await this.validateRequirements(player, requirements);
 
           fusableHeroes.push({
-            instanceId: heroInstance._id?.toString() || "",
+            instanceId: (heroInstance as any)._id?.toString() || "",
             heroName: heroData.name,
             currentRarity,
             currentStars,
