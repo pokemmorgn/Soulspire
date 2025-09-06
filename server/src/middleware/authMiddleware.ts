@@ -95,10 +95,6 @@ const authMiddleware = (req: Request, res: Response, next: NextFunction): void =
       req.playerId = decoded.playerId;
       req.serverId = decoded.serverId;
       req.userId = decoded.playerId; // Pour compatibilité
-      const previousLevel = req.headers['x-previous-level'];
-      if (decoded.level > previousLevel) {
-        NotificationService.checkAndNotifyNewUnlocks(playerId, serverId, previousLevel, previousWorld);
-      }
       req.user = decoded;
     }
     // Format hybride (pendant la migration)
