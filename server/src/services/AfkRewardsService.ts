@@ -25,11 +25,20 @@ export interface AfkRewardsCalculation {
     materials: number;
   };
   maxAccrualHours: number;
+  
+  // Nouvelles métadonnées pour le stage selection
+  farmingMeta?: {
+    isCustomFarming: boolean;
+    farmingStage: string;
+    effectiveWorld: number;
+    effectiveLevel: number;
+    effectiveDifficulty: string;
+  };
 }
 
 export class AfkRewardsService {
   
-  // === CALCUL DES RÉCOMPENSES BASÉ SUR LA PROGRESSION ===
+  // === MÉTHODE PRINCIPALE (ENHANCED AVEC STAGE SELECTION) ===
   public static async calculatePlayerAfkRewards(playerId: string): Promise<AfkRewardsCalculation> {
     try {
       const player = await Player.findById(playerId)
@@ -39,16 +48,29 @@ export class AfkRewardsService {
         throw new Error("Player not found");
       }
 
-      // 1. Calculer les taux de base selon le monde/niveau
-      const baseRates = this.calculateBaseRates(player.world, player.level, player.difficulty);
+      // 🆕 VÉRIFIER S'IL Y A UN STAGE DE FARM CUSTOM
+      const effectiveStage = await this.getEffectiveFarmingStage(playerId);
       
-      // 2. Calculer les multiplicateurs
+      // Utiliser le stage effectif (custom ou progression) pour les calculs
+      const targetWorld = effectiveStage.world;
+      const targetLevel = effectiveStage.level;
+      const targetDifficulty = effectiveStage.difficulty;
+
+      // 1. Calculer les taux de base selon le stage effectif
+      const baseRates = this.calculateBaseRates(targetWorld, targetLevel, targetDifficulty);
+      
+      // 2. Calculer les multiplicateurs (inchangé)
       const multipliers = await this.calculateMultipliers(player);
       
-      // 3. Générer les récompenses finales
-      const rewards = this.generateRewardsList(baseRates, multipliers, player);
+      // 3. Générer les récompenses finales avec le stage effectif
+      const rewards = this.generateRewardsList(baseRates, multipliers, {
+        ...player.toObject(),
+        world: targetWorld,
+        level: targetLevel,
+        difficulty: targetDifficulty
+      });
       
-      return {
+      const calculation: AfkRewardsCalculation = {
         rewards,
         multipliers,
         ratesPerMinute: {
@@ -56,12 +78,79 @@ export class AfkRewardsService {
           exp: baseRates.expPerMinute * multipliers.total,
           materials: baseRates.materialsPerMinute * multipliers.total
         },
-        maxAccrualHours: this.calculateMaxAccrualHours(player.vipLevel)
+        maxAccrualHours: this.calculateMaxAccrualHours(player.vipLevel),
+        
+        // 🆕 MÉTADONNÉES DU STAGE SELECTION
+        farmingMeta: {
+          isCustomFarming: effectiveStage.isCustom,
+          farmingStage: `${targetWorld}-${targetLevel} (${targetDifficulty})`,
+          effectiveWorld: targetWorld,
+          effectiveLevel: targetLevel,
+          effectiveDifficulty: targetDifficulty
+        }
       };
+
+      if (effectiveStage.isCustom) {
+        console.log(`🎯 Récompenses AFK calculées avec stage custom: ${calculation.farmingMeta!.farmingStage}`);
+      }
+      
+      return calculation;
 
     } catch (error: any) {
       console.error("❌ Erreur calculatePlayerAfkRewards:", error);
       throw error;
+    }
+  }
+
+  // === NOUVELLE MÉTHODE: OBTENIR LE STAGE EFFECTIF ===
+  private static async getEffectiveFarmingStage(playerId: string): Promise<{
+    world: number;
+    level: number;
+    difficulty: string;
+    isCustom: boolean;
+  }> {
+    try {
+      // Import dynamique pour éviter dépendances circulaires
+      const { getOrCreateForPlayer } = require("../models/AfkFarmingTarget");
+      
+      const [player, farmingTarget] = await Promise.all([
+        Player.findById(playerId).select("world level difficulty"),
+        getOrCreateForPlayer(playerId)
+      ]);
+
+      if (!player) {
+        throw new Error("Player not found");
+      }
+
+      // Si le farm custom est actif ET valide, l'utiliser
+      if (farmingTarget && farmingTarget.isActive && farmingTarget.isValidStage) {
+        return {
+          world: farmingTarget.selectedWorld,
+          level: farmingTarget.selectedLevel,
+          difficulty: farmingTarget.selectedDifficulty,
+          isCustom: true
+        };
+      }
+
+      // Sinon, utiliser le stage de progression
+      return {
+        world: player.world,
+        level: player.level,
+        difficulty: player.difficulty,
+        isCustom: false
+      };
+
+    } catch (error) {
+      console.error("❌ Erreur getEffectiveFarmingStage:", error);
+      
+      // Fallback sécurisé
+      const player = await Player.findById(playerId).select("world level difficulty");
+      return {
+        world: player?.world || 1,
+        level: player?.level || 1,
+        difficulty: player?.difficulty || "Normal",
+        isCustom: false
+      };
     }
   }
 
@@ -72,23 +161,24 @@ export class AfkRewardsService {
     const levelMultiplier = Math.pow(1.05, level - 1);  // +5% par niveau
     
     // Bonus de difficulté
-    const difficultyMultiplier = {
+    const difficultyMultiplier: Record<string, number> = {
       "Normal": 1.0,
       "Hard": 1.5,
       "Nightmare": 2.0
-    }[difficulty] || 1.0;
+    };
+    const diffMult = difficultyMultiplier[difficulty] || 1.0;
 
     const baseGold = 100; // Gold de base monde 1 niveau 1
     const baseExp = 50;   // EXP de base
     const baseMaterials = 10; // Matériaux de base
 
     return {
-      goldPerMinute: Math.floor(baseGold * worldMultiplier * levelMultiplier * difficultyMultiplier),
-      expPerMinute: Math.floor(baseExp * worldMultiplier * levelMultiplier * difficultyMultiplier),
-      materialsPerMinute: Math.floor(baseMaterials * worldMultiplier * levelMultiplier * difficultyMultiplier),
+      goldPerMinute: Math.floor(baseGold * worldMultiplier * levelMultiplier * diffMult),
+      expPerMinute: Math.floor(baseExp * worldMultiplier * levelMultiplier * diffMult),
+      materialsPerMinute: Math.floor(baseMaterials * worldMultiplier * levelMultiplier * diffMult),
       worldMultiplier,
       levelMultiplier,
-      difficultyMultiplier
+      difficultyMultiplier: diffMult
     };
   }
 
@@ -391,6 +481,7 @@ export class AfkRewardsService {
     maxAccrualTime: number;
     multipliers: any;
     nextRewardIn: number;
+    farmingMeta?: any;
   }> {
     try {
       const calculation = await this.calculatePlayerAfkRewards(playerId);
@@ -405,7 +496,8 @@ export class AfkRewardsService {
         timeAccumulated,
         maxAccrualTime,
         multipliers: calculation.multipliers,
-        nextRewardIn: 60 // 1 minute pour le prochain tick
+        nextRewardIn: 60, // 1 minute pour le prochain tick
+        farmingMeta: calculation.farmingMeta // 🆕 Métadonnées du stage selection
       };
 
     } catch (error: any) {
@@ -413,212 +505,269 @@ export class AfkRewardsService {
       throw error;
     }
   }
-  // Ajouter ces méthodes à la fin de la classe AfkRewardsService
 
-// === NOUVELLES MÉTHODES UTILITAIRES ===
+  // === NOUVELLES MÉTHODES UTILITAIRES ===
 
-// Calculer les récompenses pour une durée spécifique (en minutes)
-public static async calculateRewardsForDuration(
-  playerId: string, 
-  durationMinutes: number
-): Promise<AfkReward[]> {
-  try {
-    const calculation = await this.calculatePlayerAfkRewards(playerId);
-    
-    return calculation.rewards.map(reward => ({
-      ...reward,
-      quantity: Math.floor(reward.quantity * durationMinutes),
-      baseQuantity: reward.baseQuantity
-    })).filter(r => r.quantity > 0);
+  // Calculer les récompenses pour une durée spécifique (en minutes)
+  public static async calculateRewardsForDuration(
+    playerId: string, 
+    durationMinutes: number
+  ): Promise<AfkReward[]> {
+    try {
+      const calculation = await this.calculatePlayerAfkRewards(playerId);
+      
+      return calculation.rewards.map(reward => ({
+        ...reward,
+        quantity: Math.floor(reward.quantity * durationMinutes),
+        baseQuantity: reward.baseQuantity
+      })).filter(r => r.quantity > 0);
 
-  } catch (error: any) {
-    console.error("❌ Erreur calculateRewardsForDuration:", error);
-    return [];
-  }
-}
-
-// Simuler les gains pour X heures (pour l'UI)
-public static async simulateAfkGains(
-  playerId: string, 
-  hours: number
-): Promise<{
-  rewards: AfkReward[];
-  totalValue: number;
-  cappedAt: number; // En heures si atteint le cap
-}> {
-  try {
-    const calculation = await this.calculatePlayerAfkRewards(playerId);
-    const requestedMinutes = hours * 60;
-    const maxMinutes = calculation.maxAccrualHours * 60;
-    
-    const effectiveMinutes = Math.min(requestedMinutes, maxMinutes);
-    const cappedAt = effectiveMinutes < requestedMinutes ? calculation.maxAccrualHours : hours;
-    
-    const rewards = calculation.rewards.map(reward => ({
-      ...reward,
-      quantity: Math.floor(reward.quantity * effectiveMinutes),
-      baseQuantity: reward.baseQuantity
-    })).filter(r => r.quantity > 0);
-
-    // Calculer valeur totale
-    let totalValue = 0;
-    rewards.forEach(reward => {
-      switch (reward.type) {
-        case "currency":
-          if (reward.currencyType === "gold") totalValue += reward.quantity * 0.001;
-          else if (reward.currencyType === "gems") totalValue += reward.quantity * 1;
-          else if (reward.currencyType === "tickets") totalValue += reward.quantity * 5;
-          break;
-        case "material":
-          totalValue += reward.quantity * 2;
-          break;
-        case "fragment":
-          totalValue += reward.quantity * 10;
-          break;
-      }
-    });
-
-    return {
-      rewards,
-      totalValue: Math.round(totalValue),
-      cappedAt
-    };
-
-  } catch (error: any) {
-    console.error("❌ Erreur simulateAfkGains:", error);
-    return { rewards: [], totalValue: 0, cappedAt: hours };
-  }
-}
-
-// Obtenir les taux actuels d'un joueur (pour l'UI)
-public static async getPlayerCurrentRates(playerId: string): Promise<{
-  ratesPerMinute: {
-    gold: number;
-    gems: number;
-    tickets: number;
-    materials: number;
-  };
-  multipliers: {
-    vip: number;
-    stage: number;
-    heroes: number;
-    total: number;
-  };
-  maxAccrualHours: number;
-  progression: {
-    world: number;
-    level: number;
-    difficulty: string;
-    totalStages: number;
-  };
-}> {
-  try {
-    const player = await Player.findById(playerId)
-      .select("world level difficulty heroes vipLevel serverId");
-    
-    if (!player) {
-      throw new Error("Player not found");
+    } catch (error: any) {
+      console.error("❌ Erreur calculateRewardsForDuration:", error);
+      return [];
     }
-
-    const calculation = await this.calculatePlayerAfkRewards(playerId);
-    
-    return {
-      ratesPerMinute: {
-        gold: calculation.ratesPerMinute.gold,
-        gems: calculation.ratesPerMinute.exp,
-        tickets: player.vipLevel >= 2 ? Math.floor(0.5 * calculation.multipliers.vip) : 0,
-        materials: calculation.ratesPerMinute.materials
-      },
-      multipliers: calculation.multipliers,
-      maxAccrualHours: calculation.maxAccrualHours,
-      progression: {
-        world: player.world,
-        level: player.level,
-        difficulty: player.difficulty,
-        totalStages: (player.world - 1) * 30 + player.level
-      }
-    };
-
-  } catch (error: any) {
-    console.error("❌ Erreur getPlayerCurrentRates:", error);
-    throw error;
   }
-}
 
-// Comparer les gains avant/après upgrade (pour motiver l'upgrade)
-public static async compareUpgradeGains(playerId: string): Promise<{
-  current: any;
-  afterWorldUp: any;
-  afterLevelUp: any;
-  afterVipUp: any;
-  improvement: {
-    worldUp: number; // % d'amélioration
-    levelUp: number;
-    vipUp: number;
-  };
-}> {
-  try {
-    const player = await Player.findById(playerId)
-      .select("world level difficulty heroes vipLevel serverId");
-    
-    if (!player) {
-      throw new Error("Player not found");
+  // Simuler les gains pour X heures (pour l'UI)
+  public static async simulateAfkGains(
+    playerId: string, 
+    hours: number
+  ): Promise<{
+    rewards: AfkReward[];
+    totalValue: number;
+    cappedAt: number; // En heures si atteint le cap
+    farmingMeta?: any;
+  }> {
+    try {
+      const calculation = await this.calculatePlayerAfkRewards(playerId);
+      const requestedMinutes = hours * 60;
+      const maxMinutes = calculation.maxAccrualHours * 60;
+      
+      const effectiveMinutes = Math.min(requestedMinutes, maxMinutes);
+      const cappedAt = effectiveMinutes < requestedMinutes ? calculation.maxAccrualHours : hours;
+      
+      const rewards = calculation.rewards.map(reward => ({
+        ...reward,
+        quantity: Math.floor(reward.quantity * effectiveMinutes),
+        baseQuantity: reward.baseQuantity
+      })).filter(r => r.quantity > 0);
+
+      // Calculer valeur totale
+      let totalValue = 0;
+      rewards.forEach(reward => {
+        switch (reward.type) {
+          case "currency":
+            if (reward.currencyType === "gold") totalValue += reward.quantity * 0.001;
+            else if (reward.currencyType === "gems") totalValue += reward.quantity * 1;
+            else if (reward.currencyType === "tickets") totalValue += reward.quantity * 5;
+            break;
+          case "material":
+            totalValue += reward.quantity * 2;
+            break;
+          case "fragment":
+            totalValue += reward.quantity * 10;
+            break;
+        }
+      });
+
+      return {
+        rewards,
+        totalValue: Math.round(totalValue),
+        cappedAt,
+        farmingMeta: calculation.farmingMeta // 🆕 Inclure les métadonnées du stage
+      };
+
+    } catch (error: any) {
+      console.error("❌ Erreur simulateAfkGains:", error);
+      return { rewards: [], totalValue: 0, cappedAt: hours };
     }
-
-    // Calcul actuel
-    const current = await this.calculatePlayerAfkRewards(playerId);
-    
-    // Simulation world +1
-    const tempWorld = { ...player.toObject(), world: player.world + 1 };
-    const afterWorldUp = this.calculateBaseRates(
-      tempWorld.world, tempWorld.level, tempWorld.difficulty
-    );
-    const worldMultipliers = await this.calculateMultipliers(tempWorld);
-    
-    // Simulation level +5
-    const tempLevel = { ...player.toObject(), level: player.level + 5 };
-    const afterLevelUp = this.calculateBaseRates(
-      tempLevel.world, tempLevel.level, tempLevel.difficulty
-    );
-    const levelMultipliers = await this.calculateMultipliers(tempLevel);
-    
-    // Simulation VIP +1
-    const tempVip = { ...player.toObject(), vipLevel: player.vipLevel + 1 };
-    const vipMultipliers = await this.calculateMultipliers(tempVip);
-    
-    // Calculer améliorations
-    const currentGold = current.ratesPerMinute.gold;
-    const worldGold = afterWorldUp.goldPerMinute * worldMultipliers.total;
-    const levelGold = afterLevelUp.goldPerMinute * levelMultipliers.total;
-    const vipGold = current.ratesPerMinute.gold * (vipMultipliers.total / current.multipliers.total);
-    
-    return {
-      current: {
-        goldPerMinute: currentGold,
-        multipliers: current.multipliers
-      },
-      afterWorldUp: {
-        goldPerMinute: worldGold,
-        multipliers: worldMultipliers
-      },
-      afterLevelUp: {
-        goldPerMinute: levelGold,
-        multipliers: levelMultipliers
-      },
-      afterVipUp: {
-        goldPerMinute: vipGold,
-        multipliers: vipMultipliers
-      },
-      improvement: {
-        worldUp: Math.round(((worldGold / currentGold) - 1) * 100),
-        levelUp: Math.round(((levelGold / currentGold) - 1) * 100),
-        vipUp: Math.round(((vipGold / currentGold) - 1) * 100)
-      }
-    };
-
-  } catch (error: any) {
-    console.error("❌ Erreur compareUpgradeGains:", error);
-    throw error;
   }
-}
+
+  // Obtenir les taux actuels d'un joueur (pour l'UI)
+  public static async getPlayerCurrentRates(playerId: string): Promise<{
+    ratesPerMinute: {
+      gold: number;
+      gems: number;
+      tickets: number;
+      materials: number;
+    };
+    multipliers: {
+      vip: number;
+      stage: number;
+      heroes: number;
+      total: number;
+    };
+    maxAccrualHours: number;
+    progression: {
+      world: number;
+      level: number;
+      difficulty: string;
+      totalStages: number;
+    };
+    farmingMeta?: any;
+  }> {
+    try {
+      const player = await Player.findById(playerId)
+        .select("world level difficulty heroes vipLevel serverId");
+      
+      if (!player) {
+        throw new Error("Player not found");
+      }
+
+      const calculation = await this.calculatePlayerAfkRewards(playerId);
+      
+      return {
+        ratesPerMinute: {
+          gold: calculation.ratesPerMinute.gold,
+          gems: calculation.ratesPerMinute.exp,
+          tickets: player.vipLevel >= 2 ? Math.floor(0.5 * calculation.multipliers.vip) : 0,
+          materials: calculation.ratesPerMinute.materials
+        },
+        multipliers: calculation.multipliers,
+        maxAccrualHours: calculation.maxAccrualHours,
+        progression: {
+          world: player.world,
+          level: player.level,
+          difficulty: player.difficulty,
+          totalStages: (player.world - 1) * 30 + player.level
+        },
+        farmingMeta: calculation.farmingMeta // 🆕 Métadonnées du stage selection
+      };
+
+    } catch (error: any) {
+      console.error("❌ Erreur getPlayerCurrentRates:", error);
+      throw error;
+    }
+  }
+
+  // Comparer les gains avant/après upgrade (pour motiver l'upgrade)
+  public static async compareUpgradeGains(playerId: string): Promise<{
+    current: any;
+    afterWorldUp: any;
+    afterLevelUp: any;
+    afterVipUp: any;
+    improvement: {
+      worldUp: number; // % d'amélioration
+      levelUp: number;
+      vipUp: number;
+    };
+    farmingMeta?: any;
+  }> {
+    try {
+      const player = await Player.findById(playerId)
+        .select("world level difficulty heroes vipLevel serverId");
+      
+      if (!player) {
+        throw new Error("Player not found");
+      }
+
+      // Calcul actuel
+      const current = await this.calculatePlayerAfkRewards(playerId);
+      
+      // Simulation world +1
+      const tempWorld = { ...player.toObject(), world: player.world + 1 };
+      const afterWorldUp = this.calculateBaseRates(
+        tempWorld.world, tempWorld.level, tempWorld.difficulty
+      );
+      const worldMultipliers = await this.calculateMultipliers(tempWorld);
+      
+      // Simulation level +5
+      const tempLevel = { ...player.toObject(), level: player.level + 5 };
+      const afterLevelUp = this.calculateBaseRates(
+        tempLevel.world, tempLevel.level, tempLevel.difficulty
+      );
+      const levelMultipliers = await this.calculateMultipliers(tempLevel);
+      
+      // Simulation VIP +1
+      const tempVip = { ...player.toObject(), vipLevel: player.vipLevel + 1 };
+      const vipMultipliers = await this.calculateMultipliers(tempVip);
+      
+      // Calculer améliorations
+      const currentGold = current.ratesPerMinute.gold;
+      const worldGold = afterWorldUp.goldPerMinute * worldMultipliers.total;
+      const levelGold = afterLevelUp.goldPerMinute * levelMultipliers.total;
+      const vipGold = current.ratesPerMinute.gold * (vipMultipliers.total / current.multipliers.total);
+      
+      return {
+        current: {
+          goldPerMinute: currentGold,
+          multipliers: current.multipliers
+        },
+        afterWorldUp: {
+          goldPerMinute: worldGold,
+          multipliers: worldMultipliers
+        },
+        afterLevelUp: {
+          goldPerMinute: levelGold,
+          multipliers: levelMultipliers
+        },
+        afterVipUp: {
+          goldPerMinute: vipGold,
+          multipliers: vipMultipliers
+        },
+        improvement: {
+          worldUp: Math.round(((worldGold / currentGold) - 1) * 100),
+          levelUp: Math.round(((levelGold / currentGold) - 1) * 100),
+          vipUp: Math.round(((vipGold / currentGold) - 1) * 100)
+        },
+        farmingMeta: current.farmingMeta // 🆕 Métadonnées du stage selection
+      };
+
+    } catch (error: any) {
+      console.error("❌ Erreur compareUpgradeGains:", error);
+      throw error;
+    }
+  }
+
+  // === NOUVELLE MÉTHODE: FORCER RECALCUL AVEC STAGE SPÉCIFIQUE ===
+  public static async calculateRewardsForSpecificStage(
+    playerId: string,
+    world: number,
+    level: number,
+    difficulty: string
+  ): Promise<AfkRewardsCalculation> {
+    try {
+      const player = await Player.findById(playerId)
+        .select("heroes vipLevel serverId");
+      
+      if (!player) {
+        throw new Error("Player not found");
+      }
+
+      // Calculer directement pour le stage spécifié
+      const baseRates = this.calculateBaseRates(world, level, difficulty);
+      const multipliers = await this.calculateMultipliers(player);
+      
+      const tempPlayer = {
+        ...player.toObject(),
+        world,
+        level,
+        difficulty
+      };
+      
+      const rewards = this.generateRewardsList(baseRates, multipliers, tempPlayer);
+      
+      return {
+        rewards,
+        multipliers,
+        ratesPerMinute: {
+          gold: baseRates.goldPerMinute * multipliers.total,
+          exp: baseRates.expPerMinute * multipliers.total,
+          materials: baseRates.materialsPerMinute * multipliers.total
+        },
+        maxAccrualHours: this.calculateMaxAccrualHours(player.vipLevel),
+        farmingMeta: {
+          isCustomFarming: true,
+          farmingStage: `${world}-${level} (${difficulty})`,
+          effectiveWorld: world,
+          effectiveLevel: level,
+          effectiveDifficulty: difficulty
+        }
+      };
+
+    } catch (error: any) {
+      console.error("❌ Erreur calculateRewardsForSpecificStage:", error);
+      throw error;
+    }
+  }
 }
