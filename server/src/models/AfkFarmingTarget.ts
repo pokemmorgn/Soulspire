@@ -356,4 +356,4 @@ AfkFarmingTargetSchema.statics.validateAllTargets = async function(): Promise<{
   return { validated, invalidated, errors };
 };
 
-export default mongoose.model<IAfkFarmingTarget>("AfkFarmingTarget", AfkFarmingTargetSchema);
+export default mongoose.model<IAfkFarmingTarget, IAfkFarmingTargetModel>("AfkFarmingTarget", AfkFarmingTargetSchema);
