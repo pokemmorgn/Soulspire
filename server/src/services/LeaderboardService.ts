@@ -164,7 +164,7 @@ export class LeaderboardService {
         return {
           rank: index + 1,
           playerId: player._id.toString(),
-          playerName: player.username,
+          playerName: player.displayName,
           serverId,
           value: progress.highestFloor,
           level: player.level,
@@ -258,7 +258,7 @@ export class LeaderboardService {
 
         return {
           playerId: player._id.toString(),
-          playerName: player.username,
+          playerName: player.displayName,
           totalScore,
           world: player.world,
           level: player.level,
@@ -365,7 +365,7 @@ export class LeaderboardService {
 
           return {
             playerId: player._id.toString(),
-            playerName: player.username,
+            playerName: player.displayName,
             score,
             goldPerMinute: state.baseGoldPerMinute,
             todayGold: state.todayAccruedGold || 0,
@@ -447,7 +447,7 @@ export class LeaderboardService {
       const leaderboard: LeaderboardEntry[] = players.map((player, index) => ({
         rank: index + 1,
         playerId: player._id.toString(),
-        playerName: player.username,
+        playerName: player.displayName,
         serverId,
         value: player.level,
         level: player.level,
@@ -726,7 +726,7 @@ export class LeaderboardService {
     const leaderboard: LeaderboardEntry[] = players.map((player, index) => ({
       rank: index + 1,
       playerId: player._id.toString(),
-      playerName: player.username,
+      playerName: player.displayName,
       serverId: player.serverId,
       value: player.level,
       level: player.level,
