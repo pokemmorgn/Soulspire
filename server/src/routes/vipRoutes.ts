@@ -2,6 +2,7 @@
 import { Router, Request, Response } from "express";
 import { VipService } from "../services/VipService";
 import authMiddleware from "../middleware/authMiddleware";
+import { requireFeature } from "../middleware/featureMiddleware";
 import Joi from "joi";
 
 const router = Router();
@@ -74,7 +75,7 @@ router.get("/status", async (req: Request, res: Response) => {
  * POST /api/vip/purchase
  * Acheter de l'expérience VIP avec des gems payantes
  */
-router.post("/purchase", validateSchema(purchaseVipExpSchema), async (req: Request, res: Response) => {
+router.post("/purchase", validateSchema(purchaseVipExpSchema), authMiddleware, requireFeature("vip_rewards"), async (req: Request, res: Response) => {
   try {
     const playerId = req.userId!;
     const serverId = req.serverId || "S1";
@@ -101,7 +102,7 @@ router.post("/purchase", validateSchema(purchaseVipExpSchema), async (req: Reque
  * POST /api/vip/daily-rewards/claim
  * Réclamer les récompenses quotidiennes VIP
  */
-router.post("/daily-rewards/claim", async (req: Request, res: Response) => {
+router.post("/daily-rewards/claim", authMiddleware, requireFeature("vip_rewards"), async (req: Request, res: Response) => {
   try {
     const playerId = req.userId!;
     const serverId = req.serverId || "S1";
