@@ -7,7 +7,7 @@ import mongoose, { Document, Schema, Types } from "mongoose";
  */
 
 export interface IAfkFarmingTarget extends Document {
-  playerId: Types.ObjectId;
+  playerId: string; // ← CHANGÉ de Types.ObjectId à string
   
   // Stage sélectionné pour le farm AFK
   selectedWorld: number;
