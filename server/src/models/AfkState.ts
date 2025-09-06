@@ -106,13 +106,12 @@ const pendingRewardSchema = new Schema<IPendingReward>({
 }, { _id: false });
 
 const AfkStateSchema = new Schema<IAfkState>({
-  playerId: {
-    type: Schema.Types.ObjectId,
-    ref: "Player",
-    required: true,
-    index: true,
-    unique: true,
-  },
+playerId: {
+  type: String,
+  required: true,
+  index: true,
+  unique: true,
+},
 
   // === CHAMPS EXISTANTS (CONSERVÉS) ===
   pendingGold: { type: Number, default: 0, min: 0 },
