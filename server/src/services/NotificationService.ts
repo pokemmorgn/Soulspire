@@ -1,6 +1,7 @@
 // src/services/NotificationService.ts
 import Player from "../models/Player";
 import { FeatureUnlockService, FeatureUnlock } from "./FeatureUnlockService";
+import { TutorialService } from "./TutorialService";
 
 export interface Notification {
   id: string;
@@ -30,42 +31,59 @@ export class NotificationService {
   /**
    * Notifier le déblocage d'une feature
    */
-  public static async notifyFeatureUnlock(
-    playerId: string, 
-    serverId: string, 
-    featureId: string
-  ): Promise<void> {
-    try {
-      const feature = FeatureUnlockService.getFeatureConfig(featureId);
-      if (!feature) {
-        console.warn(`Feature ${featureId} not found for notification`);
-        return;
-      }
-
-      const notification: Notification = {
-        id: `feature_${featureId}_${Date.now()}`,
-        type: "feature_unlock",
-        title: "🎉 Nouvelle fonctionnalité débloquée !",
-        message: `${feature.name} est maintenant disponible ! ${feature.description}`,
-        iconUrl: feature.iconUrl || this.getFeatureIcon(featureId),
-        actionUrl: this.getFeatureActionUrl(featureId),
-        priority: feature.isCore ? "high" : "normal",
-        timestamp: new Date(),
-        isRead: false,
-        metadata: {
-          featureId,
-          category: feature.category,
-          condition: feature.condition
-        }
-      };
-
-      await this.saveNotification(playerId, serverId, notification);
-      console.log(`🔔 Feature unlock notification sent: ${featureId} to ${playerId}`);
-      
-    } catch (error) {
-      console.error("Error sending feature unlock notification:", error);
+public static async notifyFeatureUnlock(
+  playerId: string, 
+  serverId: string, 
+  featureId: string
+): Promise<void> {
+  try {
+    const feature = FeatureUnlockService.getFeatureConfig(featureId);
+    if (!feature) {
+      console.warn(`Feature ${featureId} not found for notification`);
+      return;
     }
+
+    // 1. Notification in-app
+    const notification: Notification = {
+      id: `feature_${featureId}_${Date.now()}`,
+      type: "feature_unlock",
+      title: "🎉 Nouvelle fonctionnalité débloquée !",
+      message: `${feature.name} est maintenant disponible ! ${feature.description}`,
+      iconUrl: feature.iconUrl || this.getFeatureIcon(featureId),
+      actionUrl: this.getFeatureActionUrl(featureId),
+      priority: feature.isCore ? "high" : "normal",
+      timestamp: new Date(),
+      isRead: false,
+      metadata: {
+        featureId,
+        category: feature.category,
+        condition: feature.condition
+      }
+    };
+
+    await this.saveNotification(playerId, serverId, notification);
+
+    // 2. Push notification
+    await this.savePushRequest(playerId, serverId, {
+      title: "🎉 Nouveau débloqué !",
+      message: `${feature.name} disponible !`,
+      data: {
+        type: "feature_unlock",
+        featureId,
+        actionUrl: this.getFeatureActionUrl(featureId)
+      },
+      priority: feature.isCore ? "high" : "normal"
+    });
+
+    // 3. 🔥 NOUVEAU : Déclencher le tutoriel automatiquement
+    await TutorialService.triggerFeatureTutorial(playerId, serverId, featureId);
+
+    console.log(`🔔 Feature unlock notification + push + tutorial sent: ${featureId} to ${playerId}`);
+    
+  } catch (error) {
+    console.error("Error sending feature unlock notification:", error);
   }
+}
 
   /**
    * Vérifier et notifier tous les nouveaux déblocages
