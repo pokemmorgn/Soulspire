@@ -1,6 +1,7 @@
 import express, { Request, Response } from "express";
 import Joi from "joi";
 import authMiddleware from "../middleware/authMiddleware";
+import { requireFeature } from "../middleware/featureMiddleware";
 import { GachaService } from "../services/GachaService";
 
 const router = express.Router();
@@ -82,7 +83,7 @@ router.get("/banner/rates", authMiddleware, async (req: Request, res: Response):
 });
 
 // === PULL ON SPECIFIC BANNER ===
-router.post("/pull", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/pull", authMiddleware, requireFeature("gacha"), async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = bannerPullSchema.validate(req.body);
     if (error) {
@@ -232,7 +233,7 @@ router.get("/stats", authMiddleware, async (req: Request, res: Response): Promis
 });
 
 // === ROUTE DE TEST (développement uniquement) ===
-router.post("/test", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/test", authMiddleware, requireFeature("gacha"), async (req: Request, res: Response): Promise<void> => {
   try {
     if (process.env.NODE_ENV === "production") {
       res.status(404).json({ error: "Not available in production" });
@@ -379,3 +380,4 @@ router.get("/info", async (req: Request, res: Response): Promise<void> => {
 });
 
 export default router;
+
