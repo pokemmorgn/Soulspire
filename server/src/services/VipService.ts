@@ -119,7 +119,7 @@ export class VipService {
       await this.updateProgressTracking(playerId, serverId, paidGemsAmount, levelResult.leveledUp);
 
       if (levelResult.leveledUp) {
-        console.log(`🎉 ${player.username} atteint VIP ${levelResult.newLevel}!`);
+        console.log(`🎉 ${player.displayName} atteint VIP ${levelResult.newLevel}!`);
       }
 
       return {
@@ -260,7 +260,7 @@ export class VipService {
 
       await player.save();
 
-      console.log(`✅ Récompenses VIP ${vipProgress.currentLevel} réclamées pour ${player.username}`);
+      console.log(`✅ Récompenses VIP ${vipProgress.currentLevel} réclamées pour ${player.displayName}`);
 
       return {
         success: true,
