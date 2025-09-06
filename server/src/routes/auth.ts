@@ -265,7 +265,7 @@ router.post("/refresh", async (req: Request, res: Response): Promise<void> => {
     
     // Vérifier que le compte existe toujours
     const account = await Account.findOne({ accountId: decoded.accountId });
-    if (!account) {
+    if (!account || !decoded.accountId) {
       res.status(404).json({ 
         error: "Account not found",
         code: "ACCOUNT_NOT_FOUND"
