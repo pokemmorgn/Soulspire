@@ -25,7 +25,7 @@ const formationSchema = Joi.object({
 // === GET PLAYER INFO ===
 router.get("/me", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-const player = await Player.findOne({ playerId: req.playerId }); // ✅ Utilise playerId custom
+    const player = await Player.findOne({ playerId: req.playerId })
       .select("-password")
       .populate("heroes.heroId", "name role element rarity baseStats skill");
 
@@ -59,7 +59,6 @@ const player = await Player.findOne({ playerId: req.playerId }); // ✅ Utilise 
     });
   }
 });
-
 // === UPDATE PLAYER PROGRESS ===
 router.put("/progress", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -340,6 +339,7 @@ router.delete("/account", authMiddleware, async (req: Request, res: Response): P
 });
 
 export default router;
+
 
 
 
