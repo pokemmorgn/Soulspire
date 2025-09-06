@@ -9,7 +9,7 @@ import mongoose, { Document, Schema, Types } from "mongoose";
 export type AfkSessionStatus = "running" | "ended";
 
 export interface IAfkSession extends Document {
-  playerId: Types.ObjectId;
+  playerId: string; // ← CHANGÉ de Types.ObjectId à string
   deviceId?: string | null;
   source: "idle" | "offline";     // "idle": app ouverte mais inactif ; "offline": app fermée
   status: AfkSessionStatus;
