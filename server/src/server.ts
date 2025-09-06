@@ -31,6 +31,7 @@ import heroFusionRoutes from "./routes/herofusion";
 import mailRoutes from "./routes/mail";
 import afkFarmingRoutes from "./routes/afkFarming";
 import notificationRoutes from "./routes/notifications";
+import tutorialRoutes from "./routes/tutorials";
 
 // Import des services
 import { ShopService } from "./services/ShopService";
@@ -205,6 +206,7 @@ app.use("/api/hero-fusion", heroFusionRoutes);
 app.use("/api/mail", mailRoutes);
 app.use("/api/afk-farming", afkFarmingRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/tutorials", tutorialRoutes);
 // Route de santé de l'API
 app.get("/", (req: Request, res: Response) => {
   res.json({
