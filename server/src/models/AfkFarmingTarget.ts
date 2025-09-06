@@ -12,7 +12,7 @@ export interface IAfkFarmingTarget extends Document {
   // Stage sélectionné pour le farm AFK
   selectedWorld: number;
   selectedLevel: number;
-  selectedDifficulty: "Normal" | "Hard" | "Nightmare";
+  selectedDifficulty: string; // "Normal" | "Hard" | "Nightmare"
   
   // Métadonnées
   isActive: boolean;                    // Si false, utilise le stage actuel du joueur
@@ -20,7 +20,7 @@ export interface IAfkFarmingTarget extends Document {
   lastValidatedAt: Date;                // Dernière vérification que le stage est débloqué
   
   // Raisons du choix (optionnel, pour analytics)
-  reason?: "fragments" | "materials" | "progression" | "other";
+  reason?: string; // "fragments" | "materials" | "progression" | "other"
   targetHeroFragments?: string;         // ID du héros ciblé si reason = "fragments"
   
   // Validation
@@ -185,7 +185,7 @@ AfkFarmingTargetSchema.methods.checkStageCompleted = function(
 ): boolean {
   if (!completedStages || !Array.isArray(completedStages)) return false;
   
-  return completedStages.some(stage => 
+  return completedStages.some((stage: any) => 
     stage.world === world && 
     stage.level === level && 
     stage.difficulty === difficulty && 
@@ -236,30 +236,34 @@ AfkFarmingTargetSchema.methods.getExpectedRewards = async function(): Promise<{
   }
 
   // Multiplicateur de récompenses selon la difficulté
-  const difficultyMultipliers = {
-    "Normal": 1.0,
-    "Hard": 1.5,
-    "Nightmare": 2.0
-  };
+  let rewardMultiplier = 1.0;
+  if (this.selectedDifficulty === "Hard") {
+    rewardMultiplier = 1.5;
+  } else if (this.selectedDifficulty === "Nightmare") {
+    rewardMultiplier = 2.0;
+  }
 
   // Réduction pour les anciens stages (encourager la progression)
   const worldDifference = Math.max(0, this.selectedWorld - 1);
   const progressionPenalty = Math.max(0.5, 1 - (worldDifference * 0.05)); // -5% par monde d'écart
+  rewardMultiplier = rewardMultiplier * progressionPenalty;
 
   return {
     specialDrops,
-    rewardMultiplier: difficultyMultipliers[this.selectedDifficulty] * progressionPenalty,
+    rewardMultiplier,
     recommendedFor
   };
 };
 
-// === MÉTHODES STATIQUES ===
+const AfkFarmingTarget = mongoose.model<IAfkFarmingTarget>("AfkFarmingTarget", AfkFarmingTargetSchema);
+
+// === MÉTHODES STATIQUES (comme fonctions séparées pour éviter les problèmes TypeScript) ===
 
 /**
  * Obtenir ou créer le choix de farm d'un joueur
  */
-AfkFarmingTargetSchema.statics.getOrCreateForPlayer = async function(playerId: string) {
-  let target = await this.findOne({ playerId });
+export async function getOrCreateForPlayer(playerId: string): Promise<IAfkFarmingTarget> {
+  let target = await AfkFarmingTarget.findOne({ playerId });
   
   if (!target) {
     // Créer avec le stage actuel du joueur par défaut
@@ -268,7 +272,7 @@ AfkFarmingTargetSchema.statics.getOrCreateForPlayer = async function(playerId: s
     
     if (!player) throw new Error("Player not found");
     
-    target = await this.create({
+    target = await AfkFarmingTarget.create({
       playerId,
       selectedWorld: player.world,
       selectedLevel: player.level,
@@ -279,12 +283,12 @@ AfkFarmingTargetSchema.statics.getOrCreateForPlayer = async function(playerId: s
   }
   
   return target;
-};
+}
 
 /**
  * Définir un nouveau choix de farm pour un joueur
  */
-AfkFarmingTargetSchema.statics.setFarmingTarget = async function(
+export async function setFarmingTarget(
   playerId: string,
   world: number,
   level: number,
@@ -293,8 +297,8 @@ AfkFarmingTargetSchema.statics.setFarmingTarget = async function(
     reason?: string;
     targetHeroFragments?: string;
   }
-) {
-  const target = await this.getOrCreateForPlayer(playerId);
+): Promise<IAfkFarmingTarget> {
+  const target = await getOrCreateForPlayer(playerId);
   
   target.selectedWorld = world;
   target.selectedLevel = level;
@@ -309,27 +313,27 @@ AfkFarmingTargetSchema.statics.setFarmingTarget = async function(
   await target.save();
   
   return target;
-};
+}
 
 /**
  * Désactiver le farm personnalisé (retour au stage actuel)
  */
-AfkFarmingTargetSchema.statics.resetToCurrentStage = async function(playerId: string) {
-  const target = await this.getOrCreateForPlayer(playerId);
+export async function resetToCurrentStage(playerId: string): Promise<IAfkFarmingTarget> {
+  const target = await getOrCreateForPlayer(playerId);
   target.isActive = false;
   await target.save();
   return target;
-};
+}
 
 /**
  * Valider tous les choix de farm (tâche de maintenance)
  */
-AfkFarmingTargetSchema.statics.validateAllTargets = async function(): Promise<{
+export async function validateAllTargets(): Promise<{
   validated: number;
   invalidated: number;
   errors: number;
 }> {
-  const targets = await this.find({ isActive: true });
+  const targets = await AfkFarmingTarget.find({ isActive: true });
   let validated = 0;
   let invalidated = 0;
   let errors = 0;
@@ -354,6 +358,6 @@ AfkFarmingTargetSchema.statics.validateAllTargets = async function(): Promise<{
   }
   
   return { validated, invalidated, errors };
-};
+}
 
-export default mongoose.model<IAfkFarmingTarget, IAfkFarmingTargetModel>("AfkFarmingTarget", AfkFarmingTargetSchema);
+export default AfkFarmingTarget;
