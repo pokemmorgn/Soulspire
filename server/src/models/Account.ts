@@ -424,7 +424,7 @@ accountSchema.methods.getAccountStats = function() {
     serversPlayed: this.serverList.length,
     isSpender: this.totalPurchasesUSD > 0,
     isWhale: this.totalPurchasesUSD > 100,
-    vipStatus: this.globalVipLevel > 0 ? "VIP" : "F2P"
+    accountType: this.totalPurchasesUSD > 100 ? "Whale" : this.totalPurchasesUSD > 0 ? "Spender" : "F2P"
   };
 };
 
