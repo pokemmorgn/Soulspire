@@ -3,6 +3,7 @@ import Joi from "joi";
 import Hero from "../models/Hero";
 import Player from "../models/Player";
 import authMiddleware, { optionalAuthMiddleware } from "../middleware/authMiddleware";
+import { requireFeature } from "../middleware/featureMiddleware";
 import { HeroUpgradeService } from "../services/HeroUpgradeService";
 
 const router = express.Router();
@@ -318,7 +319,7 @@ router.get("/upgrade/:heroInstanceId", authMiddleware, async (req: Request, res:
   }
 });
 
-router.post("/upgrade/level", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/upgrade/level", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = levelUpSchema.validate(req.body);
     if (error) {
@@ -346,7 +347,7 @@ router.post("/upgrade/level", authMiddleware, async (req: Request, res: Response
   }
 });
 
-router.post("/upgrade/stars", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/upgrade/stars", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = starUpgradeSchema.validate(req.body);
     if (error) {
@@ -374,7 +375,7 @@ router.post("/upgrade/stars", authMiddleware, async (req: Request, res: Response
   }
 });
 
-router.post("/upgrade/skill", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/upgrade/skill", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = skillUpgradeSchema.validate(req.body);
     if (error) {
@@ -402,7 +403,7 @@ router.post("/upgrade/skill", authMiddleware, async (req: Request, res: Response
   }
 });
 
-router.post("/upgrade/evolve", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/upgrade/evolve", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = evolutionSchema.validate(req.body);
     if (error) {
@@ -430,7 +431,7 @@ router.post("/upgrade/evolve", authMiddleware, async (req: Request, res: Respons
   }
 });
 
-router.post("/upgrade/auto", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/upgrade/auto", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = autoUpgradeSchema.validate(req.body);
     if (error) {
@@ -459,7 +460,7 @@ router.post("/upgrade/auto", authMiddleware, async (req: Request, res: Response)
   }
 });
 
-router.post("/upgrade/bulk-level", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/upgrade/bulk-level", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = bulkLevelUpSchema.validate(req.body);
     if (error) {
@@ -550,3 +551,4 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
 });
 
 export default router;
+
