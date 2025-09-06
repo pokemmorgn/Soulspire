@@ -8,6 +8,9 @@ import AfkFarmingTarget, {
   getStageDescription
 } from "../models/AfkFarmingTarget";
 import Player from "../models/Player";
+import CampaignProgress from "../models/CampaignProgress";
+import CampaignWorld from "../models/CampaignWorld";
+import { CampaignService } from "./CampaignService";
 import { AfkRewardsService, AfkReward, AfkRewardsCalculation } from "./AfkRewardsService";
 
 /**
@@ -286,9 +289,6 @@ export class AfkFarmingService {
     player: any
   ): Promise<AfkRewardsCalculation> {
     try {
-      // Import dynamique pour accéder aux méthodes privées d'AfkRewardsService
-      const { AfkRewardsService } = require("./AfkRewardsService");
-      
       // Utiliser les méthodes internes d'AfkRewardsService
       // (on simule un player temporaire avec le stage de farm)
       const tempPlayer = {
@@ -436,7 +436,7 @@ export class AfkFarmingService {
       console.log(`📋 Récupération stages disponibles pour ${playerId}`);
 
       const player = await Player.findById(playerId)
-        .select("world level difficulty completedStages");
+        .select("world level difficulty serverId");
       
       if (!player) {
         return {
@@ -448,44 +448,64 @@ export class AfkFarmingService {
       const farmingTarget = await getOrCreateForPlayer(playerId);
       const stages: AvailableStage[] = [];
       
+      // Récupérer la progression complète du joueur
+      const playerProgress = await CampaignProgress.find({ 
+        playerId, 
+        serverId: player.serverId 
+      });
+      
+      // Récupérer tous les mondes disponibles
+      const allWorlds = await CampaignWorld.find({}).sort({ worldId: 1 });
+      
+      // Obtenir les difficultés disponibles pour ce joueur
+      const availableDifficulties = await this.getPlayerAvailableDifficulties(
+        playerId, 
+        player.serverId
+      );
+      
       // Générer la liste des stages disponibles
-      for (let w = 1; w <= player.world; w++) {
-        const maxLevel = w === player.world ? player.level : 30; // Assumons 30 niveaux par monde
+      for (const world of allWorlds) {
+        // Vérifier si le monde est débloqué
+        const isWorldUnlocked = player.level >= world.minPlayerLevel;
+        if (!isWorldUnlocked) continue;
         
-        for (let l = 1; l <= maxLevel; l++) {
-          const difficulties = ["Normal"];
-          
-          // Ajouter Hard si Normal complété
-          if (this.isStageCompleted(player.completedStages, w, l, "Normal")) {
-            difficulties.push("Hard");
-          }
-          
-          // Ajouter Nightmare si Hard complété
-          if (this.isStageCompleted(player.completedStages, w, l, "Hard")) {
-            difficulties.push("Nightmare");
-          }
+        const worldProgress = playerProgress.find(p => p.worldId === world.worldId);
+        
+        for (let l = 1; l <= world.levelCount; l++) {
+          for (const difficulty of availableDifficulties) {
+            // Vérifier si ce niveau est accessible sur cette difficulté
+            const canPlay = await CampaignService.canPlayerPlayLevel(
+              playerId,
+              player.serverId,
+              world.worldId,
+              l,
+              difficulty
+            );
+            
+            if (!canPlay.allowed) continue;
 
-          for (const diff of difficulties) {
             const expectedRewards = await getExpectedRewards({
-              selectedWorld: w,
+              selectedWorld: world.worldId,
               selectedLevel: l,
-              selectedDifficulty: diff
+              selectedDifficulty: difficulty
             } as any);
 
             stages.push({
-              world: w,
+              world: world.worldId,
               level: l,
-              difficulty: diff,
-              description: `${w}-${l} (${diff})`,
+              difficulty,
+              description: `${world.worldId}-${l} (${difficulty})`,
               isUnlocked: true,
               specialDrops: expectedRewards.specialDrops,
               rewardMultiplier: expectedRewards.rewardMultiplier,
               recommendedFor: expectedRewards.recommendedFor,
               isCurrentlyFarming: farmingTarget.isActive && 
-                farmingTarget.selectedWorld === w && 
+                farmingTarget.selectedWorld === world.worldId && 
                 farmingTarget.selectedLevel === l && 
-                farmingTarget.selectedDifficulty === diff,
-              isPlayerProgression: player.world === w && player.level === l && player.difficulty === diff
+                farmingTarget.selectedDifficulty === difficulty,
+              isPlayerProgression: player.world === world.worldId && 
+                player.level === this.calculatePlayerLevelFromProgress(world.worldId, l) && 
+                player.difficulty === difficulty
             });
           }
         }
@@ -568,20 +588,50 @@ export class AfkFarmingService {
   }
 
   /**
-   * Vérifier si un stage est complété (version simplifiée)
-   * TODO: Intégrer avec votre système de progression réel
+   * Obtenir les difficultés disponibles pour un joueur (basé sur CampaignService)
    */
-  private static isStageCompleted(
-    world: number,
-    level: number,
-    difficulty: string,
-    playerWorld: number,
-    playerLevel: number
-  ): boolean {
-    // Logique simplifiée : un stage est "complété" s'il est avant la progression actuelle
-    if (world < playerWorld) return true;
-    if (world === playerWorld && level < playerLevel) return true;
-    return false;
+  private static async getPlayerAvailableDifficulties(
+    playerId: string,
+    serverId: string
+  ): Promise<("Normal" | "Hard" | "Nightmare")[]> {
+    try {
+      const difficulties: ("Normal" | "Hard" | "Nightmare")[] = ["Normal"];
+      
+      // Vérifier si le joueur a complété toute la campagne en Normal
+      const hasCompletedNormal = await CampaignService.hasPlayerCompletedCampaign(
+        playerId, 
+        serverId, 
+        "Normal"
+      );
+      if (hasCompletedNormal) {
+        difficulties.push("Hard");
+      }
+      
+      // Vérifier si le joueur a complété toute la campagne en Hard
+      const hasCompletedHard = await CampaignService.hasPlayerCompletedCampaign(
+        playerId, 
+        serverId, 
+        "Hard"
+      );
+      if (hasCompletedHard) {
+        difficulties.push("Nightmare");
+      }
+      
+      return difficulties;
+      
+    } catch (error) {
+      console.error("❌ Erreur getPlayerAvailableDifficulties:", error);
+      return ["Normal"];
+    }
+  }
+
+  /**
+   * Calculer le niveau du joueur basé sur la progression du monde/niveau
+   * (estimation inverse de votre logique de niveau)
+   */
+  private static calculatePlayerLevelFromProgress(world: number, level: number): number {
+    // Basé sur votre logique : newPlayerLevel = (worldId - 1) * 10 + levelIndex + 5
+    return (world - 1) * 10 + level + 5;
   }
 
   /**
