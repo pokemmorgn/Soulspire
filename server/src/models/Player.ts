@@ -52,7 +52,7 @@ export interface IPlayer {
   playerId: string;
   accountId: string;
   serverId: string;
-  username: string; // Alias pour displayName pour compatibilité
+  username: string;
   displayName: string;
   avatarId?: string;
   backgroundId?: string;
@@ -113,7 +113,6 @@ interface IPlayerDocument extends Document {
   playerId: string;
   accountId: string;
   serverId: string;
-  username: string;
   displayName: string;
   avatarId?: string;
   backgroundId?: string;
@@ -240,7 +239,6 @@ const playerSchema = new Schema<IPlayerDocument>({
   accountId: { type: String, required: true, index: true },
   serverId: { type: String, required: true, match: /^S\d+$/, index: true },
   displayName: { type: String, required: true, trim: true, minlength: 3, maxlength: 20 },
-  password: { type: String, required: true, minlength: 6 },
   avatarId: { type: String, default: "default_avatar" },
   backgroundId: { type: String, default: "default_bg" },
   level: { type: Number, default: 1, min: 1, max: 500 },
@@ -547,7 +545,7 @@ playerSchema.methods.getPlayerStats = function() {
       totalBattles: this.totalBattlesFought,
       winRate: this.totalBattlesFought > 0 ? (this.totalBattlesWon / this.totalBattlesFought * 100).toFixed(1) : "0",
       lastLogin: this.lastSeenAt,
-      accountAge: player.createdAt ? Math.floor((Date.now() - new Date(player.createdAt).getTime()) / (1000 * 60 * 60 * 24)) : 0
+      accountAge: this.createdAt ? Math.floor((Date.now() - this.createdAt.getTime()) / (1000 * 60 * 60 * 24)) : 0
     }
   };
 };
@@ -568,4 +566,3 @@ playerSchema.methods.performDailyReset = function() {
 };
 
 export default mongoose.model<IPlayerDocument>("Player", playerSchema);
-
