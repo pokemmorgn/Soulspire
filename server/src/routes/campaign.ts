@@ -2,7 +2,8 @@ import express, { Request, Response } from "express";
 import Joi from "joi";
 import { CampaignService } from "../services/CampaignService";
 import authMiddleware from "../middleware/authMiddleware";
-
+import { requireFeature } from "../middleware/featureMiddleware";
+import { FeatureUnlockService } from "../services/FeatureUnlockService";
 const router = express.Router();
 
 // Schémas de validation
@@ -189,6 +190,33 @@ router.post("/battle", authMiddleware, async (req: Request, res: Response): Prom
     }
 
     const { worldId, levelIndex, difficulty } = req.body;
+    
+    // Protection pour les difficultés avancées
+    if (difficulty === "Hard") {
+      try {
+        await FeatureUnlockService.validateFeatureAccess(req.userId!, req.serverId!, "campaign_hard");
+      } catch (error: any) {
+        res.status(403).json({
+          error: error.message,
+          code: "FEATURE_LOCKED",
+          featureId: "campaign_hard"
+        });
+        return;
+      }
+    }
+    
+    if (difficulty === "Nightmare") {
+      try {
+        await FeatureUnlockService.validateFeatureAccess(req.userId!, req.serverId!, "campaign_nightmare");
+      } catch (error: any) {
+        res.status(403).json({
+          error: error.message,
+          code: "FEATURE_LOCKED",
+          featureId: "campaign_nightmare"
+        });
+        return;
+      }
+    }
     
     console.log(`⚔️ ${req.userId} démarre combat: Monde ${worldId}, Niveau ${levelIndex}, ${difficulty}`);
 
