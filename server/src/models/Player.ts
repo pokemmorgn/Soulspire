@@ -1,6 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
 
-// Interface pour les héros du joueur
 export interface IPlayerHero {
   heroId: string;
   level: number;
@@ -8,12 +7,11 @@ export interface IPlayerHero {
   equipped: boolean;
   slot: number | null;
   experience: number;
-  ascensionLevel: number; // 0=Normal, 1=Elite, 2=Elite+, 3=Legendary, 4=Legendary+, 5=Mythic, etc.
-  awakenLevel: number; // Awakening level (0-5)
+  ascensionLevel: number;
+  awakenLevel: number;
   acquisitionDate: Date;
 }
 
-// Interface pour les formations
 interface IFormationSlot {
   slot: number;
   heroId: string;
@@ -27,7 +25,6 @@ interface IFormation {
   lastUsed?: Date;
 }
 
-// Interface pour les achats spécifiques au serveur
 interface IServerPurchase {
   transactionId: string;
   productId: string;
@@ -40,113 +37,26 @@ interface IServerPurchase {
   status: "completed" | "pending" | "refunded" | "failed";
 }
 
-// Interface pour l'historique VIP du serveur
 interface IVipTransaction {
   transactionId: string;
   expGained: number;
   source: "purchase" | "event" | "admin_grant";
-  cost: number; // Gems payantes dépensées
+  cost: number;
   timestamp: Date;
   levelBefore: number;
   levelAfter: number;
 }
 
-// Interface principale du joueur (spécifique à un serveur)
 export interface IPlayer {
   _id?: string;
-  playerId: string; // UUID unique pour ce joueur sur ce serveur
-  accountId: string; // Référence vers Account global
-  serverId: string; // "S1", "S2", etc.
-  
-  // IDENTITÉ SUR LE SERVEUR
-  displayName: string; // Nom affiché (peut différer du username Account)
-  avatarId?: string;
-  backgroundId?: string;
-  
-  // PROGRESSION SPÉCIFIQUE AU SERVEUR
-  playerLevel: number; // Niveau du joueur
-  experience: number; // EXP du joueur
-  world: number; // Monde campagne
-  stage: number; // Stage dans le monde
-  difficulty: "Normal" | "Hard" | "Nightmare";
-  
-  // MONNAIES SPÉCIFIQUES AU SERVEUR
-  gold: number; // Or farmé sur ce serveur
-  gems: number; // Gems farmées sur ce serveur
-  paidGems: number; // Gems ACHETÉES sur ce serveur (isolées)
-  tickets: number; // Tickets d'invocation
-  
-  // VIP SPÉCIFIQUE AU SERVEUR
-  vipLevel: number; // VIP de ce serveur uniquement
-  vipExperience: number; // EXP VIP de ce serveur
-  vipTransactions: IVipTransaction[]; // Historique VIP serveur
-  
-  // COLLECTION ET PROGRESSION
-  heroes: IPlayerHero[];
-  formations: IFormation[];
-  activeFormationId?: string;
-  
-  // INVENTAIRE SERVEUR
-  fragments: Map<string, number>; // Fragments de héros
-  materials: Map<string, number>; // Matériaux d'évolution
-  items: Map<string, number>; // Objets et équipements
-  
-  // PROGRESSION MODES DE JEU
-  campaignProgress: {
-    highestWorld: number;
-    highestStage: number;
-    starsEarned: number;
-  };
-  towerProgress: {
-    highestFloor: number;
-    lastResetDate: Date;
-  };
-  arenaProgress: {
-    currentRank: number;
-    highestRank: number;
-    seasonWins: number;
-    seasonLosses: number;
-  };
-  
-  // DONNÉES TEMPORELLES SERVEUR
-  lastLoginAt: Date;
-  lastAfkCollectAt: Date;
-  lastDailyResetAt: Date;
-  playtimeMinutes: number; // Temps de jeu sur ce serveur
-  
-  // ÉVÉNEMENTS ET MISSIONS SERVEUR
-  dailyMissionsCompleted: number;
-  weeklyMissionsCompleted: number;
-  eventParticipations: string[]; // IDs des événements auxquels il a participé
-  
-  // SOCIAL SERVEUR
-  guildId?: string;
-  friendsList: string[]; // IDs des amis sur ce serveur
-  
-  // ACHATS SERVEUR
-  serverPurchases: IServerPurchase[]; // Achats faits sur ce serveur
-  totalSpentUSDOnServer: number; // Total dépensé sur ce serveur
-  
-  // MÉTA-DONNÉES
-  createdAt: Date;
-  isNewPlayer: boolean; // Premier jour sur le serveur
-  tutorialCompleted: boolean;
-  
-  // DONNÉES DE JEU
-  totalBattlesFought: number;
-  totalBattlesWon: number;
-  totalDamageDealt: number;
-  totalHeroesCollected: number;
-}
-
-interface IPlayerDocument extends Document {
   playerId: string;
   accountId: string;
   serverId: string;
+  username: string; // Alias pour displayName pour compatibilité
   displayName: string;
   avatarId?: string;
   backgroundId?: string;
-  playerLevel: number;
+  level: number;
   experience: number;
   world: number;
   stage: number;
@@ -179,7 +89,68 @@ interface IPlayerDocument extends Document {
     seasonWins: number;
     seasonLosses: number;
   };
-  lastLoginAt: Date;
+  lastSeenAt: Date;
+  lastAfkCollectAt: Date;
+  lastDailyResetAt: Date;
+  playtimeMinutes: number;
+  dailyMissionsCompleted: number;
+  weeklyMissionsCompleted: number;
+  eventParticipations: string[];
+  guildId?: string;
+  friendsList: string[];
+  serverPurchases: IServerPurchase[];
+  totalSpentUSDOnServer: number;
+  createdAt?: Date;
+  isNewPlayer: boolean;
+  tutorialCompleted: boolean;
+  totalBattlesFought: number;
+  totalBattlesWon: number;
+  totalDamageDealt: number;
+  totalHeroesCollected: number;
+}
+
+interface IPlayerDocument extends Document {
+  playerId: string;
+  accountId: string;
+  serverId: string;
+  username: string;
+  displayName: string;
+  avatarId?: string;
+  backgroundId?: string;
+  level: number;
+  experience: number;
+  world: number;
+  stage: number;
+  difficulty: "Normal" | "Hard" | "Nightmare";
+  gold: number;
+  gems: number;
+  paidGems: number;
+  tickets: number;
+  vipLevel: number;
+  vipExperience: number;
+  vipTransactions: IVipTransaction[];
+  heroes: IPlayerHero[];
+  formations: IFormation[];
+  activeFormationId?: string;
+  fragments: Map<string, number>;
+  materials: Map<string, number>;
+  items: Map<string, number>;
+  campaignProgress: {
+    highestWorld: number;
+    highestStage: number;
+    starsEarned: number;
+  };
+  towerProgress: {
+    highestFloor: number;
+    lastResetDate: Date;
+  };
+  arenaProgress: {
+    currentRank: number;
+    highestRank: number;
+    seasonWins: number;
+    seasonLosses: number;
+  };
+  lastSeenAt: Date;
   lastAfkCollectAt: Date;
   lastDailyResetAt: Date;
   playtimeMinutes: number;
@@ -197,7 +168,6 @@ interface IPlayerDocument extends Document {
   totalDamageDealt: number;
   totalHeroesCollected: number;
   
-  // Méthodes d'instance
   addHero(heroId: string, level?: number, stars?: number): Promise<IPlayerDocument>;
   removeHero(heroId: string): Promise<IPlayerDocument>;
   upgradeHero(heroId: string, newLevel: number, newStars?: number): Promise<IPlayerDocument>;
@@ -216,56 +186,17 @@ interface IPlayerDocument extends Document {
   performDailyReset(): Promise<IPlayerDocument>;
 }
 
-// Schémas secondaires
 const playerHeroSchema = new Schema<IPlayerHero>({
-  heroId: { 
-    type: String,
-    required: true 
-  },
-  level: { 
-    type: Number, 
-    default: 1,
-    min: 1,
-    max: 100
-  },
-  stars: { 
-    type: Number, 
-    default: 1,
-    min: 1,
-    max: 6
-  },
-  equipped: { 
-    type: Boolean, 
-    default: false 
-  },
-  slot: {
-    type: Number,
-    min: 1,
-    max: 9,
-    default: null
-  },
-  experience: {
-    type: Number,
-    default: 0,
-    min: 0
-  },
-  ascensionLevel: {
-    type: Number,
-    default: 0,
-    min: 0,
-    max: 8
-  },
-  awakenLevel: {
-    type: Number,
-    default: 0,
-    min: 0,
-    max: 5
-  },
-  acquisitionDate: {
-    type: Date,
-    default: Date.now
-  }
-});
+  heroId: { type: String, required: true },
+  level: { type: Number, default: 1, min: 1, max: 100 },
+  stars: { type: Number, default: 1, min: 1, max: 6 },
+  equipped: { type: Boolean, default: false },
+  slot: { type: Number, min: 1, max: 9, default: null },
+  experience: { type: Number, default: 0, min: 0 },
+  ascensionLevel: { type: Number, default: 0, min: 0, max: 8 },
+  awakenLevel: { type: Number, default: 0, min: 0, max: 5 },
+  acquisitionDate: { type: Date, default: Date.now }
+}, { _id: true });
 
 const formationSchema = new Schema<IFormation>({
   name: { type: String, required: true },
@@ -285,33 +216,20 @@ const serverPurchaseSchema = new Schema<IServerPurchase>({
   gemsReceived: { type: Number, required: true, min: 0 },
   bonusGems: { type: Number, default: 0, min: 0 },
   purchaseDate: { type: Date, default: Date.now },
-  platform: { 
-    type: String, 
-    enum: ["android", "ios", "web", "steam"], 
-    required: true 
-  },
-  status: { 
-    type: String, 
-    enum: ["completed", "pending", "refunded", "failed"],
-    default: "completed"
-  }
+  platform: { type: String, enum: ["android", "ios", "web", "steam"], required: true },
+  status: { type: String, enum: ["completed", "pending", "refunded", "failed"], default: "completed" }
 }, { _id: false });
 
 const vipTransactionSchema = new Schema<IVipTransaction>({
   transactionId: { type: String, required: true },
   expGained: { type: Number, required: true, min: 0 },
-  source: { 
-    type: String, 
-    enum: ["purchase", "event", "admin_grant"],
-    required: true 
-  },
+  source: { type: String, enum: ["purchase", "event", "admin_grant"], required: true },
   cost: { type: Number, default: 0, min: 0 },
   timestamp: { type: Date, default: Date.now },
   levelBefore: { type: Number, required: true, min: 0 },
   levelAfter: { type: Number, required: true, min: 0 }
 }, { _id: false });
 
-// Schéma principal Player
 const playerSchema = new Schema<IPlayerDocument>({
   playerId: { 
     type: String, 
@@ -319,132 +237,29 @@ const playerSchema = new Schema<IPlayerDocument>({
     unique: true,
     default: () => `PLAYER_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
   },
-  accountId: { 
-    type: String,
-    required: true,
-    index: true
-  },
-  serverId: { 
-    type: String,
-    required: true,
-    match: /^S\d+$/,
-    index: true
-  },
-  
-  // IDENTITÉ
-  displayName: { 
-    type: String, 
-    required: true,
-    trim: true,
-    minlength: 3,
-    maxlength: 20
-  },
-  avatarId: { 
-    type: String,
-    default: "default_avatar"
-  },
-  backgroundId: { 
-    type: String,
-    default: "default_bg"
-  },
-  
-  // PROGRESSION
-  playerLevel: { 
-    type: Number, 
-    default: 1,
-    min: 1,
-    max: 500
-  },
-  experience: { 
-    type: Number, 
-    default: 0,
-    min: 0
-  },
-  world: { 
-    type: Number, 
-    default: 1,
-    min: 1,
-    max: 20
-  },
-  stage: { 
-    type: Number, 
-    default: 1,
-    min: 1
-  },
-  difficulty: { 
-    type: String, 
-    enum: ["Normal", "Hard", "Nightmare"],
-    default: "Normal"
-  },
-  
-  // MONNAIES SERVEUR
-  gold: { 
-    type: Number, 
-    default: 1000,
-    min: 0
-  },
-  gems: { 
-    type: Number, 
-    default: 100,
-    min: 0
-  },
-  paidGems: { 
-    type: Number, 
-    default: 0,
-    min: 0
-  },
-  tickets: { 
-    type: Number, 
-    default: 5,
-    min: 0
-  },
-  
-  // VIP SERVEUR
-  vipLevel: { 
-    type: Number, 
-    default: 0,
-    min: 0,
-    max: 15
-  },
-  vipExperience: { 
-    type: Number, 
-    default: 0,
-    min: 0
-  },
-  vipTransactions: { 
-    type: [vipTransactionSchema],
-    default: []
-  },
-  
-  // COLLECTION
+  accountId: { type: String, required: true, index: true },
+  serverId: { type: String, required: true, match: /^S\d+$/, index: true },
+  displayName: { type: String, required: true, trim: true, minlength: 3, maxlength: 20 },
+  avatarId: { type: String, default: "default_avatar" },
+  backgroundId: { type: String, default: "default_bg" },
+  level: { type: Number, default: 1, min: 1, max: 500 },
+  experience: { type: Number, default: 0, min: 0 },
+  world: { type: Number, default: 1, min: 1, max: 20 },
+  stage: { type: Number, default: 1, min: 1 },
+  difficulty: { type: String, enum: ["Normal", "Hard", "Nightmare"], default: "Normal" },
+  gold: { type: Number, default: 1000, min: 0 },
+  gems: { type: Number, default: 100, min: 0 },
+  paidGems: { type: Number, default: 0, min: 0 },
+  tickets: { type: Number, default: 5, min: 0 },
+  vipLevel: { type: Number, default: 0, min: 0, max: 15 },
+  vipExperience: { type: Number, default: 0, min: 0 },
+  vipTransactions: { type: [vipTransactionSchema], default: [] },
   heroes: [playerHeroSchema],
-  formations: { 
-    type: [formationSchema],
-    default: []
-  },
-  activeFormationId: { 
-    type: String,
-    default: null
-  },
-  
-  // INVENTAIRE
-  fragments: { 
-    type: Map, 
-    of: Number, 
-    default: new Map()
-  },
-  materials: { 
-    type: Map, 
-    of: Number, 
-    default: new Map()
-  },
-  items: { 
-    type: Map, 
-    of: Number, 
-    default: new Map()
-  },
-  
-  // PROGRESSION MODES
+  formations: { type: [formationSchema], default: [] },
+  activeFormationId: { type: String, default: null },
+  fragments: { type: Map, of: Number, default: new Map() },
+  materials: { type: Map, of: Number, default: new Map() },
+  items: { type: Map, of: Number, default: new Map() },
   campaignProgress: {
     highestWorld: { type: Number, default: 1 },
     highestStage: { type: Number, default: 1 },
@@ -460,105 +275,49 @@ const playerSchema = new Schema<IPlayerDocument>({
     seasonWins: { type: Number, default: 0 },
     seasonLosses: { type: Number, default: 0 }
   },
-  
-  // TEMPOREL
-  lastLoginAt: { 
-    type: Date, 
-    default: Date.now 
-  },
-  lastAfkCollectAt: { 
-    type: Date, 
-    default: Date.now 
-  },
-  lastDailyResetAt: { 
-    type: Date, 
-    default: Date.now 
-  },
-  playtimeMinutes: { 
-    type: Number, 
-    default: 0,
-    min: 0
-  },
-  
-  // MISSIONS ET ÉVÉNEMENTS
-  dailyMissionsCompleted: { 
-    type: Number, 
-    default: 0,
-    min: 0
-  },
-  weeklyMissionsCompleted: { 
-    type: Number, 
-    default: 0,
-    min: 0
-  },
-  eventParticipations: [{ 
-    type: String 
-  }],
-  
-  // SOCIAL
+  lastSeenAt: { type: Date, default: Date.now },
+  lastAfkCollectAt: { type: Date, default: Date.now },
+  lastDailyResetAt: { type: Date, default: Date.now },
+  playtimeMinutes: { type: Number, default: 0, min: 0 },
+  dailyMissionsCompleted: { type: Number, default: 0, min: 0 },
+  weeklyMissionsCompleted: { type: Number, default: 0, min: 0 },
+  eventParticipations: [{ type: String }],
   guildId: { type: String },
   friendsList: [{ type: String }],
-  
-  // ACHATS SERVEUR
-  serverPurchases: { 
-    type: [serverPurchaseSchema],
-    default: []
-  },
-  totalSpentUSDOnServer: { 
-    type: Number, 
-    default: 0,
-    min: 0
-  },
-  
-  // MÉTA
-  isNewPlayer: { 
-    type: Boolean, 
-    default: true
-  },
-  tutorialCompleted: { 
-    type: Boolean, 
-    default: false
-  },
-  
-  // STATS
-  totalBattlesFought: { 
-    type: Number, 
-    default: 0,
-    min: 0
-  },
-  totalBattlesWon: { 
-    type: Number, 
-    default: 0,
-    min: 0
-  },
-  totalDamageDealt: { 
-    type: Number, 
-    default: 0,
-    min: 0
-  },
-  totalHeroesCollected: { 
-    type: Number, 
-    default: 0,
-    min: 0
-  }
+  serverPurchases: { type: [serverPurchaseSchema], default: [] },
+  totalSpentUSDOnServer: { type: Number, default: 0, min: 0 },
+  isNewPlayer: { type: Boolean, default: true },
+  tutorialCompleted: { type: Boolean, default: false },
+  totalBattlesFought: { type: Number, default: 0, min: 0 },
+  totalBattlesWon: { type: Number, default: 0, min: 0 },
+  totalDamageDealt: { type: Number, default: 0, min: 0 },
+  totalHeroesCollected: { type: Number, default: 0, min: 0 }
 }, {
   timestamps: true,
   collection: 'players'
 });
 
-// Index composites pour optimiser les requêtes
-playerSchema.index({ accountId: 1, serverId: 1 }); // Un account peut avoir plusieurs players
-playerSchema.index({ serverId: 1, playerLevel: -1 }); // Classements par serveur
-playerSchema.index({ serverId: 1, vipLevel: -1 }); // Classements VIP par serveur
-playerSchema.index({ serverId: 1, "campaignProgress.highestWorld": -1 }); // Progression campagne
-playerSchema.index({ serverId: 1, "towerProgress.highestFloor": -1 }); // Classement tour
-playerSchema.index({ serverId: 1, "arenaProgress.currentRank": 1 }); // Classement arène
-playerSchema.index({ serverId: 1, totalSpentUSDOnServer: -1 }); // Spenders par serveur
-playerSchema.index({ serverId: 1, lastLoginAt: -1 }); // Activité par serveur
-playerSchema.index({ guildId: 1 }); // Membres de guilde
-playerSchema.index({ isNewPlayer: 1, createdAt: -1 }); // Nouveaux joueurs
+// Virtual pour compatibilité avec l'ancien code
+playerSchema.virtual('username').get(function() {
+  return this.displayName;
+}).set(function(value: string) {
+  this.displayName = value;
+});
 
-// Méthodes statiques
+playerSchema.set('toJSON', { virtuals: true });
+playerSchema.set('toObject', { virtuals: true });
+
+playerSchema.index({ accountId: 1, serverId: 1 });
+playerSchema.index({ serverId: 1, level: -1 });
+playerSchema.index({ serverId: 1, vipLevel: -1 });
+playerSchema.index({ serverId: 1, "campaignProgress.highestWorld": -1 });
+playerSchema.index({ serverId: 1, "towerProgress.highestFloor": -1 });
+playerSchema.index({ serverId: 1, "arenaProgress.currentRank": 1 });
+playerSchema.index({ serverId: 1, totalSpentUSDOnServer: -1 });
+playerSchema.index({ serverId: 1, lastSeenAt: -1 });
+playerSchema.index({ guildId: 1 });
+playerSchema.index({ isNewPlayer: 1, createdAt: -1 });
+
 playerSchema.statics.findByAccount = function(accountId: string, serverId?: string) {
   const query: any = { accountId };
   if (serverId) query.serverId = serverId;
@@ -570,30 +329,25 @@ playerSchema.statics.findByServer = function(serverId: string) {
 };
 
 playerSchema.statics.getServerLeaderboard = function(serverId: string, type: string = "level", limit: number = 100) {
-  const sortField = type === "level" ? "playerLevel" : 
+  const sortField = type === "level" ? "level" : 
                    type === "vip" ? "vipLevel" :
                    type === "tower" ? "towerProgress.highestFloor" :
-                   type === "spending" ? "totalSpentUSDOnServer" : "playerLevel";
+                   type === "spending" ? "totalSpentUSDOnServer" : "level";
   
   return this.find({ serverId })
     .sort({ [sortField]: -1 })
     .limit(limit)
-    .select('displayName playerLevel vipLevel towerProgress.highestFloor totalSpentUSDOnServer');
+    .select('displayName level vipLevel towerProgress.highestFloor totalSpentUSDOnServer');
 };
 
 playerSchema.statics.getActivePlayersOnServer = function(serverId: string, hoursAgo: number = 24) {
   const cutoff = new Date(Date.now() - hoursAgo * 60 * 60 * 1000);
-  return this.find({ 
-    serverId, 
-    lastLoginAt: { $gte: cutoff } 
-  });
+  return this.find({ serverId, lastSeenAt: { $gte: cutoff } });
 };
 
-// Méthodes d'instance
 playerSchema.methods.addHero = function(heroId: string, level: number = 1, stars: number = 1) {
   const existingHero = this.heroes.find((h: IPlayerHero) => h.heroId === heroId);
   if (existingHero) {
-    // Si le héros existe déjà, on peut augmenter ses étoiles ou le convertir en fragments
     return this.save();
   }
   
@@ -635,13 +389,11 @@ playerSchema.methods.getEquippedHeroes = function() {
 playerSchema.methods.setFormation = function(formationId: string, slots: { slot: number, heroId: string }[]) {
   this.activeFormationId = formationId;
   
-  // Désactiver tous les héros
   this.heroes.forEach((h: IPlayerHero) => {
     h.slot = null;
     h.equipped = false;
   });
   
-  // Activer les héros de la formation
   slots.forEach(({ slot, heroId }) => {
     const hero = this.heroes.find((h: IPlayerHero) => h.heroId === heroId);
     if (hero) {
@@ -687,12 +439,10 @@ playerSchema.methods.addVipExp = function(amount: number, source: string = "purc
   const oldLevel = this.vipLevel;
   this.vipExperience += amount;
   
-  // Calcul simple du niveau VIP (à adapter selon vos règles)
   const newLevel = Math.min(15, Math.floor(this.vipExperience / 1000));
   const leveledUp = newLevel > oldLevel;
   this.vipLevel = newLevel;
   
-  // Ajouter la transaction VIP
   this.vipTransactions.push({
     transactionId: `vip_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
     expGained: amount,
@@ -710,7 +460,6 @@ playerSchema.methods.addServerPurchase = function(purchase: IServerPurchase) {
   this.serverPurchases.push(purchase);
   this.totalSpentUSDOnServer += purchase.priceUSD;
   
-  // Ajouter les gems au joueur
   if (purchase.status === "completed") {
     this.paidGems += purchase.gemsReceived + purchase.bonusGems;
   }
@@ -745,21 +494,19 @@ playerSchema.methods.updateProgress = function(type: string, value: number) {
 };
 
 playerSchema.methods.isEligibleForEvent = function(eventType: string) {
-  // Logique d'éligibilité pour différents événements
   switch (eventType) {
     case "newbie_event":
       return this.isNewPlayer;
     case "vip_event":
       return this.vipLevel >= 5;
     case "endgame_event":
-      return this.playerLevel >= 100;
+      return this.level >= 100;
     default:
       return true;
   }
 };
 
 playerSchema.methods.calculatePowerScore = function() {
-  // Calcul simplifié du power score basé sur les héros équipés
   const equippedHeroes = this.getEquippedHeroes();
   return equippedHeroes.reduce((total: number, hero: IPlayerHero) => {
     const baseScore = hero.level * 100 + hero.stars * 500;
@@ -773,7 +520,7 @@ playerSchema.methods.getPlayerStats = function() {
   return {
     basicInfo: {
       displayName: this.displayName,
-      playerLevel: this.playerLevel,
+      level: this.level,
       vipLevel: this.vipLevel,
       serverId: this.serverId
     },
@@ -798,7 +545,7 @@ playerSchema.methods.getPlayerStats = function() {
       playtimeHours: Math.round(this.playtimeMinutes / 60),
       totalBattles: this.totalBattlesFought,
       winRate: this.totalBattlesFought > 0 ? (this.totalBattlesWon / this.totalBattlesFought * 100).toFixed(1) : "0",
-      lastLogin: this.lastLoginAt,
+      lastLogin: this.lastSeenAt,
       accountAge: this.createdAt ? Math.floor((Date.now() - this.createdAt.getTime()) / (1000 * 60 * 60 * 24)) : 0
     }
   };
@@ -808,7 +555,6 @@ playerSchema.methods.needsDailyReset = function() {
   const now = new Date();
   const lastReset = new Date(this.lastDailyResetAt);
   
-  // Check if it's a new day (can be customized for server timezone)
   return now.getDate() !== lastReset.getDate() || 
          now.getMonth() !== lastReset.getMonth() || 
          now.getFullYear() !== lastReset.getFullYear();
@@ -817,10 +563,6 @@ playerSchema.methods.needsDailyReset = function() {
 playerSchema.methods.performDailyReset = function() {
   this.dailyMissionsCompleted = 0;
   this.lastDailyResetAt = new Date();
-  
-  // Réinitialiser d'autres données quotidiennes si nécessaire
-  // Ex: tentatives de donjon, énergie, etc.
-  
   return this.save();
 };
 
