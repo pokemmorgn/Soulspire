@@ -3,16 +3,15 @@ import { FastRewardsService } from "../services/FastRewardsService";
 import { VipService } from "../services/VipService";
 import AfkServiceEnhanced from "../services/AfkService";
 
-declare module "express-serve-static-core" {
-  interface Request {
-    user?: { id: string; serverId: string };
-  }
+// Extend the Request interface localement pour ce fichier
+interface AuthenticatedRequest extends Request {
+  user?: { id: string; serverId: string };
 }
 
 const router = Router();
 
 /** Auth middleware */
-const requireAuth = (req: Request, res: Response, next: any) => {
+const requireAuth = (req: AuthenticatedRequest, res: Response, next: any) => {
   if (!req.user?.id) return res.status(401).json({ success: false, error: "Unauthenticated" });
   next();
 };
@@ -20,7 +19,7 @@ const requireAuth = (req: Request, res: Response, next: any) => {
 /**
  * GET /fast-rewards - Obtenir les options Fast Rewards disponibles
  */
-router.get("/", requireAuth, async (req: Request, res: Response) => {
+router.get("/", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id: playerId } = req.user!;
 
@@ -75,7 +74,7 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
 /**
  * POST /fast-rewards/use - Utiliser Fast Rewards
  */
-router.post("/use", requireAuth, async (req: Request, res: Response) => {
+router.post("/use", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id: playerId } = req.user!;
     const { duration } = req.body;
@@ -135,7 +134,7 @@ router.post("/use", requireAuth, async (req: Request, res: Response) => {
 /**
  * GET /fast-rewards/efficiency/:duration - Calculer l'efficacité d'un Fast Reward
  */
-router.get("/efficiency/:duration", requireAuth, async (req: Request, res: Response) => {
+router.get("/efficiency/:duration", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id: playerId } = req.user!;
     const { duration } = req.params;
@@ -165,7 +164,7 @@ router.get("/efficiency/:duration", requireAuth, async (req: Request, res: Respo
           // Contexte d'évaluation
           evaluation: {
             isWorthIt: efficiency.efficiency.recommendation === "excellent" || efficiency.efficiency.recommendation === "good",
-            description: this.getEfficiencyDescription(efficiency.efficiency.recommendation),
+            description: getEfficiencyDescription(efficiency.efficiency.recommendation),
             compareToOtherOptions: "Check other durations for better value"
           }
         }
@@ -181,7 +180,7 @@ router.get("/efficiency/:duration", requireAuth, async (req: Request, res: Respo
 /**
  * GET /fast-rewards/simulate/:duration - Simuler les gains d'un Fast Reward
  */
-router.get("/simulate/:duration", requireAuth, async (req: Request, res: Response) => {
+router.get("/simulate/:duration", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id: playerId } = req.user!;
     const { duration } = req.params;
@@ -224,7 +223,7 @@ router.get("/simulate/:duration", requireAuth, async (req: Request, res: Respons
           // Comparaison avec attente naturelle
           comparison: {
             fastRewardValue: option.totalValue,
-            timeToGetNaturally: this.calculateNaturalTimeNeeded(option.totalValue, currentAfkState),
+            timeToGetNaturally: calculateNaturalTimeNeeded(option.totalValue, currentAfkState),
             timeSaved: duration
           },
           
@@ -233,10 +232,10 @@ router.get("/simulate/:duration", requireAuth, async (req: Request, res: Respons
             currentAccumulated: currentAfkState.accumulatedSinceClaimSec,
             afterFastReward: Math.min(
               currentAfkState.maxAccrualSeconds,
-              currentAfkState.accumulatedSinceClaimSec + this.durationToSeconds(duration)
+              currentAfkState.accumulatedSinceClaimSec + durationToSeconds(duration)
             ),
             remainingCapacity: Math.max(0, 
-              currentAfkState.maxAccrualSeconds - currentAfkState.accumulatedSinceClaimSec - this.durationToSeconds(duration)
+              currentAfkState.maxAccrualSeconds - currentAfkState.accumulatedSinceClaimSec - durationToSeconds(duration)
             )
           }
         }
@@ -252,7 +251,7 @@ router.get("/simulate/:duration", requireAuth, async (req: Request, res: Respons
 /**
  * GET /fast-rewards/stats - Statistiques d'utilisation Fast Rewards
  */
-router.get("/stats", requireAuth, async (req: Request, res: Response) => {
+router.get("/stats", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { serverId } = req.user!;
 
@@ -289,7 +288,7 @@ router.get("/stats", requireAuth, async (req: Request, res: Response) => {
 /**
  * GET /fast-rewards/vip-benefits - Bénéfices VIP pour Fast Rewards
  */
-router.get("/vip-benefits", requireAuth, async (req: Request, res: Response) => {
+router.get("/vip-benefits", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id: playerId, serverId } = req.user!;
 
@@ -306,7 +305,7 @@ router.get("/vip-benefits", requireAuth, async (req: Request, res: Response) => 
       
       // Simuler le coût avec ce niveau VIP
       const originalCost = 90; // Coût de base 4h
-      const discountedCost = await this.calculateVipPrice(originalCost, vipLevel);
+      const discountedCost = await calculateVipPrice(originalCost, vipLevel);
       const discount = Math.round(((originalCost - discountedCost) / originalCost) * 100);
 
       vipBenefits.push({
@@ -316,8 +315,8 @@ router.get("/vip-benefits", requireAuth, async (req: Request, res: Response) => 
           costReduction: discount,
           originalCost,
           discountedCost,
-          maxDuration: this.getMaxDurationForVip(vipLevel),
-          specialFeatures: this.getVipSpecialFeatures(vipLevel)
+          maxDuration: getMaxDurationForVip(vipLevel),
+          specialFeatures: getVipSpecialFeatures(vipLevel)
         }
       });
     }
@@ -329,8 +328,8 @@ router.get("/vip-benefits", requireAuth, async (req: Request, res: Response) => 
         vipBenefits,
         recommendations: {
           nextVipTarget: currentVipLevel < 15 ? currentVipLevel + 1 : null,
-          nextBenefit: this.getNextVipBenefit(currentVipLevel),
-          costSavingsAtNextLevel: this.calculateNextLevelSavings(currentVipLevel)
+          nextBenefit: getNextVipBenefit(currentVipLevel),
+          costSavingsAtNextLevel: calculateNextLevelSavings(currentVipLevel)
         }
       }
     });
@@ -341,7 +340,7 @@ router.get("/vip-benefits", requireAuth, async (req: Request, res: Response) => 
   }
 });
 
-// === MÉTHODES UTILITAIRES ===
+// === MÉTHODES UTILITAIRES (maintenant en dehors de la classe) ===
 
 function getEfficiencyDescription(recommendation: string): string {
   switch (recommendation) {
