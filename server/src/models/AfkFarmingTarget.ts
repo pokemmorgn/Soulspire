@@ -48,7 +48,7 @@ const AfkFarmingTargetSchema = new Schema<IAfkFarmingTarget>({
     type: Number,
     required: true,
     min: 1,
-    max: 50, // Limite par monde
+    max: 100, // Limite par monde
   },
   
   selectedDifficulty: {
