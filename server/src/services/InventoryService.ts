@@ -45,7 +45,7 @@ export class InventoryService {
 
       // Récupérer le joueur et son inventaire
       const [player, inventory] = await Promise.all([
-        Player.findById(playerId).select("gold gems paidGems tickets fragments materials"),
+Player.findOne({ playerId }).select("gold gems paidGems tickets fragments materials"),
         Inventory.findOne({ playerId })
       ]);
 
@@ -230,7 +230,7 @@ export class InventoryService {
       console.log(`⚔️ Équipement ${instanceId} sur héros ${heroId} pour ${playerId}`);
 
       const [player, inventory] = await Promise.all([
-        Player.findById(playerId),
+Player.findOne({ playerId }),
         Inventory.findOne({ playerId })
       ]);
 
@@ -463,7 +463,7 @@ export class InventoryService {
   private static async autoSellItem(playerId: string, itemData: any, quantity: number) {
     const sellPrice = Math.floor((itemData.sellPrice || 10) * quantity * 0.8); // 80% du prix de vente
     
-    const player = await Player.findById(playerId);
+const player = await Player.findOne({ playerId });
     if (player) {
       player.gold += sellPrice;
       await player.save();
