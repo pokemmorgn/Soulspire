@@ -459,7 +459,7 @@ async function testAfkUnlocks(): Promise<void> {
     const playerResults = [];
     for (const { player, description } of testPlayers) {
       const playerId = (player._id as any).toString();
-      const result = await testUnlocksForPlayer(playerId, player.username, description);
+      const result = await testUnlocksForPlayer(playerId, player.displayName, description);
       if (result) {
         playerResults.push({ ...result, player, description });
       }
