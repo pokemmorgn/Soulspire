@@ -17,7 +17,7 @@ export interface IPendingReward {
 }
 
 export interface IAfkState extends Document {
-  playerId: Types.ObjectId;
+  playerId: string; // ← CHANGÉ de Types.ObjectId à string
   
   // === ANCIEN SYSTÈME (CONSERVÉ) ===
   pendingGold: number;                 // Or en attente (non réclamé)
