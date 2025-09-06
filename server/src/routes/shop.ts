@@ -3,6 +3,7 @@ import Joi from "joi";
 import { ShopService } from "../services/ShopService";
 import authMiddleware from "../middleware/authMiddleware";
 import { requireFeature } from "../middleware/featureMiddleware";
+import { FeatureUnlockService } from "../services/FeatureUnlockService";
 const router = express.Router();
 
 // === SCHÉMAS DE VALIDATION ===
@@ -130,7 +131,7 @@ router.get("/:shopType", authMiddleware, async (req: Request, res: Response): Pr
  * POST /api/shops/:shopType/purchase
  * Acheter un objet dans une boutique
  */
-router.post("/:shopType/purchase", authMiddleware, requireFeature("shop_basic"), async (req: Request, res: Response): Promise<void> => {
+router.post("/:shopType/purchase", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.userId) {
       res.status(401).json({ 
@@ -138,6 +139,34 @@ router.post("/:shopType/purchase", authMiddleware, requireFeature("shop_basic"),
         code: "USER_NOT_AUTHENTICATED"
       });
       return;
+    }
+
+    // Protection shop_basic (niveau 3)
+    try {
+      await FeatureUnlockService.validateFeatureAccess(req.userId, req.serverId!, "shop_basic");
+    } catch (error: any) {
+      res.status(403).json({
+        error: error.message,
+        code: "FEATURE_LOCKED",
+        featureId: "shop_basic"
+      });
+      return;
+    }
+
+    const { shopType } = req.params;
+    
+    // Protection shop_premium (niveau 20) pour certaines boutiques
+    if (["VIP", "Bundle", "Monthly", "Premium"].includes(shopType)) {
+      try {
+        await FeatureUnlockService.validateFeatureAccess(req.userId, req.serverId!, "shop_premium");
+      } catch (error: any) {
+        res.status(403).json({
+          error: error.message,
+          code: "FEATURE_LOCKED",
+          featureId: "shop_premium"
+        });
+        return;
+      }
     }
 
     const { error, value } = purchaseSchema.validate(req.body);
@@ -149,7 +178,6 @@ router.post("/:shopType/purchase", authMiddleware, requireFeature("shop_basic"),
       return;
     }
 
-    const { shopType } = req.params;
     const { instanceId, quantity } = value;
 
     const result = await ShopService.purchaseItem(req.userId, shopType, instanceId, quantity);
