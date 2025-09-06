@@ -40,7 +40,7 @@ const categorySchema = Joi.object({
  */
 router.get("/", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.userId) {
+    if (!req.playerId) {
       res.status(401).json({ 
         error: "User not authenticated",
         code: "USER_NOT_AUTHENTICATED"
@@ -48,7 +48,7 @@ router.get("/", authMiddleware, async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const result = await InventoryService.getPlayerInventory(req.userId);
+    const result = await InventoryService.getPlayerInventory(req.playerId);
 
     res.json({
       message: "Inventory retrieved successfully",
@@ -78,7 +78,7 @@ router.get("/", authMiddleware, async (req: Request, res: Response): Promise<voi
  */
 router.get("/category/:category", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.userId) {
+    if (!req.playerId) {
       res.status(401).json({ 
         error: "User not authenticated",
         code: "USER_NOT_AUTHENTICATED"
@@ -101,7 +101,7 @@ router.get("/category/:category", authMiddleware, async (req: Request, res: Resp
     }
 
     const result = await InventoryService.getItemsByCategory(
-      req.userId,
+      req.playerId,
       category,
       subCategory as string
     );
@@ -134,7 +134,7 @@ router.get("/category/:category", authMiddleware, async (req: Request, res: Resp
  */
 router.post("/add", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.userId) {
+    if (!req.playerId) {
       res.status(401).json({ 
         error: "User not authenticated",
         code: "USER_NOT_AUTHENTICATED"
@@ -154,7 +154,7 @@ router.post("/add", authMiddleware, async (req: Request, res: Response): Promise
     const { itemId, quantity, level, enhancement } = value;
 
     const result = await InventoryService.addItem(
-      req.userId,
+      req.playerId,
       itemId,
       quantity,
       level,
@@ -190,7 +190,7 @@ router.post("/add", authMiddleware, async (req: Request, res: Response): Promise
  */
 router.delete("/item/:instanceId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.userId) {
+    if (!req.playerId) {
       res.status(401).json({ 
         error: "User not authenticated",
         code: "USER_NOT_AUTHENTICATED"
@@ -211,7 +211,7 @@ router.delete("/item/:instanceId", authMiddleware, async (req: Request, res: Res
 
     const { quantity } = value;
 
-    const result = await InventoryService.removeItem(req.userId, instanceId, quantity);
+    const result = await InventoryService.removeItem(req.playerId, instanceId, quantity);
 
     if (!result.success) {
       let statusCode = 400;
@@ -243,7 +243,7 @@ router.delete("/item/:instanceId", authMiddleware, async (req: Request, res: Res
  */
 router.post("/equip", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.userId) {
+    if (!req.playerId) {
       res.status(401).json({ 
         error: "User not authenticated",
         code: "USER_NOT_AUTHENTICATED"
@@ -262,7 +262,7 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
 
     const { instanceId, heroId } = value;
 
-    const result = await InventoryService.equipItem(req.userId, instanceId, heroId);
+    const result = await InventoryService.equipItem(req.playerId, instanceId, heroId);
 
     if (!result.success) {
       let statusCode = 400;
@@ -296,7 +296,7 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
  */
 router.post("/unequip/:instanceId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.userId) {
+    if (!req.playerId) {
       res.status(401).json({ 
         error: "User not authenticated",
         code: "USER_NOT_AUTHENTICATED"
@@ -306,7 +306,7 @@ router.post("/unequip/:instanceId", authMiddleware, async (req: Request, res: Re
 
     const { instanceId } = req.params;
 
-    const result = await InventoryService.unequipItem(req.userId, instanceId);
+    const result = await InventoryService.unequipItem(req.playerId, instanceId);
 
     if (!result.success) {
       let statusCode = 400;
@@ -339,7 +339,7 @@ router.post("/unequip/:instanceId", authMiddleware, async (req: Request, res: Re
  */
 router.post("/chest/open", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.userId) {
+    if (!req.playerId) {
       res.status(401).json({ 
         error: "User not authenticated",
         code: "USER_NOT_AUTHENTICATED"
@@ -358,7 +358,7 @@ router.post("/chest/open", authMiddleware, async (req: Request, res: Response): 
 
     const { instanceId } = value;
 
-    const result = await InventoryService.openChest(req.userId, instanceId);
+    const result = await InventoryService.openChest(req.playerId, instanceId);
 
     if (!result.success) {
       let statusCode = 400;
@@ -391,7 +391,7 @@ router.post("/chest/open", authMiddleware, async (req: Request, res: Response): 
  */
 router.get("/equipped/:heroId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.userId) {
+    if (!req.playerId) {
       res.status(401).json({ 
         error: "User not authenticated",
         code: "USER_NOT_AUTHENTICATED"
@@ -403,7 +403,7 @@ router.get("/equipped/:heroId", authMiddleware, async (req: Request, res: Respon
 
     // On utilise la méthode du service pour récupérer l'inventaire complet
     // puis on filtre les objets équipés
-    const inventoryResult = await InventoryService.getPlayerInventory(req.userId);
+    const inventoryResult = await InventoryService.getPlayerInventory(req.playerId);
     
     if (!inventoryResult.success) {
       res.status(404).json({
@@ -453,7 +453,7 @@ router.get("/equipped/:heroId", authMiddleware, async (req: Request, res: Respon
  */
 router.post("/cleanup", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.userId) {
+    if (!req.playerId) {
       res.status(401).json({ 
         error: "User not authenticated",
         code: "USER_NOT_AUTHENTICATED"
@@ -461,7 +461,7 @@ router.post("/cleanup", authMiddleware, async (req: Request, res: Response): Pro
       return;
     }
 
-    const result = await InventoryService.cleanupExpiredItems(req.userId);
+    const result = await InventoryService.cleanupExpiredItems(req.playerId);
 
     res.json(result);
 
@@ -488,7 +488,7 @@ router.post("/cleanup", authMiddleware, async (req: Request, res: Response): Pro
  */
 router.get("/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.userId) {
+    if (!req.playerId) {
       res.status(401).json({ 
         error: "User not authenticated",
         code: "USER_NOT_AUTHENTICATED"
@@ -496,7 +496,7 @@ router.get("/stats", authMiddleware, async (req: Request, res: Response): Promis
       return;
     }
 
-    const inventoryResult = await InventoryService.getPlayerInventory(req.userId);
+    const inventoryResult = await InventoryService.getPlayerInventory(req.playerId);
     
     if (!inventoryResult.success) {
       res.status(404).json({
@@ -550,3 +550,4 @@ router.get("/health", async (req: Request, res: Response): Promise<void> => {
 });
 
 export default router;
+
