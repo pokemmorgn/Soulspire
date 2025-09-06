@@ -95,7 +95,7 @@ const AfkFarmingTargetSchema = new Schema<IAfkFarmingTarget>({
   
   validationMessage: {
     type: String,
-    default: null,
+    default: undefined,
   },
 }, {
   timestamps: true,
