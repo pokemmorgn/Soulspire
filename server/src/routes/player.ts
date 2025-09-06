@@ -2,7 +2,7 @@ import express, { Request, Response } from "express";
 import Joi from "joi";
 import Player from "../models/Player";
 import authMiddleware from "../middleware/authMiddleware";
-
+import { requireFeature } from "../middleware/featureMiddleware";
 const router = express.Router();
 
 // Schémas de validation
@@ -168,7 +168,7 @@ router.put("/currency", authMiddleware, async (req: Request, res: Response): Pro
 });
 
 // === UPDATE FORMATION ===
-router.put("/formation", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.put("/formation", authMiddleware, requireFeature("formations"), async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = formationSchema.validate(req.body);
     if (error) {
@@ -320,4 +320,5 @@ router.delete("/account", authMiddleware, async (req: Request, res: Response): P
 });
 
 export default router;
+
 
