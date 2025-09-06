@@ -50,7 +50,7 @@ export class MissionService {
       // Générer les premières missions
       await this.generateInitialMissions(playerMissions, player.level);
 
-      console.log(`✅ Missions initialisées pour ${player.username}`);
+      console.log(`✅ Missions initialisées pour ${player.displayName}`);
 
       return {
         success: true,
@@ -287,7 +287,7 @@ export class MissionService {
 
       await player.save();
 
-      console.log(`✅ ${appliedRewards.length} récompenses appliquées à ${player.username}`);
+      console.log(`✅ ${appliedRewards.length} récompenses appliquées à ${player.displayName}`);
 
       return {
         success: true,
