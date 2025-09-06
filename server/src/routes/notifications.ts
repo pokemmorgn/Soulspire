@@ -292,4 +292,55 @@ router.post("/admin/milestone", authMiddleware, async (req: Request, res: Respon
   }
 });
 
+/**
+ * GET /api/notifications/push-queue/:playerId
+ * Récupérer les push notifications en attente pour Unity
+ */
+router.get("/push-queue/:playerId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { playerId } = req.params;
+    
+    // Vérifier que c'est bien le joueur connecté
+    if (req.userId !== playerId) {
+      res.status(403).json({
+        error: "Access denied",
+        code: "UNAUTHORIZED_ACCESS"
+      });
+      return;
+    }
+
+    const player = await Player.findOne({ _id: playerId, serverId: req.serverId! });
+    if (!player) {
+      res.status(404).json({
+        error: "Player not found",
+        code: "PLAYER_NOT_FOUND"
+      });
+      return;
+    }
+
+    const pushQueue = (player as any).pushQueue || [];
+    const pendingPush = pushQueue.filter((p: any) => !p.sent);
+
+    // Marquer comme envoyés
+    pushQueue.forEach((p: any) => {
+      if (!p.sent) p.sent = true;
+    });
+    (player as any).pushQueue = pushQueue;
+    await player.save();
+
+    res.json({
+      message: "Push queue retrieved successfully",
+      pushNotifications: pendingPush,
+      count: pendingPush.length
+    });
+
+  } catch (err) {
+    console.error("Get push queue error:", err);
+    res.status(500).json({ 
+      error: "Internal server error",
+      code: "GET_PUSH_QUEUE_FAILED"
+    });
+  }
+});
+
 export default router;
