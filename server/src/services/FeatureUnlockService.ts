@@ -404,10 +404,44 @@ export class FeatureUnlockService {
     }
   }
   
-  /**
-   * Obtenir la liste complète des features configurées
-   */
-  public static getAllFeatures(): FeatureUnlock[] {
-    return [...FEATURE_UNLOCKS];
+    /**
+     * Obtenir la liste complète des features configurées
+     */
+    public static getAllFeatures(): FeatureUnlock[] {
+      return [...FEATURE_UNLOCKS];
+    }
+    public static async checkAndNotifyProgressionUnlocks(
+    playerId: string, 
+    serverId: string, 
+    oldLevel: number, 
+    newLevel: number,
+    oldWorld: number = 0, 
+    newWorld: number = 0
+  ): Promise<void> {
+    try {
+      const { NotificationService } = await import("./NotificationService");
+      
+      const allFeatures = this.getAllFeatures();
+      
+      for (const feature of allFeatures) {
+        const wasUnlocked = this.checkConditionWithValues(feature.condition, oldLevel, oldWorld);
+        const isNowUnlocked = this.checkConditionWithValues(feature.condition, newLevel, newWorld);
+        
+        if (!wasUnlocked && isNowUnlocked) {
+          await NotificationService.notifyFeatureUnlock(playerId, serverId, feature.featureId);
+          console.log(`🔔 Auto-unlocked: ${feature.name} for player ${playerId}`);
+        }
+      }
+    } catch (error) {
+      console.error("Error checking progression unlocks:", error);
+    }
+  }
+  
+  private static checkConditionWithValues(condition: UnlockCondition, level: number, world: number): boolean {
+    switch (condition.type) {
+      case "level": return level >= condition.value;
+      case "world": return world >= condition.value;
+      default: return false;
+    }
   }
 }
