@@ -2,7 +2,7 @@ import express, { Request, Response } from "express";
 import Joi from "joi";
 import { TowerService } from "../services/TowerService";
 import authMiddleware from "../middleware/authMiddleware";
-
+import { requireFeature } from "../middleware/featureMiddleware";
 const router = express.Router();
 
 // Schémas de validation
@@ -24,7 +24,8 @@ const leaderboardSchema = Joi.object({
 });
 
 // === DÉMARRER UN RUN DE TOUR ===
-router.post("/start", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/start", authMiddleware, requireFeature("tower"), async (req: Request, res: Response): Promise<void> => {
+
   try {
     const { error } = startRunSchema.validate(req.body);
     if (error) {
@@ -96,7 +97,8 @@ router.post("/start", authMiddleware, async (req: Request, res: Response): Promi
 });
 
 // === COMBATTRE L'ÉTAGE ACTUEL ===
-router.post("/fight", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/fight", authMiddleware, requireFeature("tower"), async (req: Request, res: Response): Promise<void> => {
+
   try {
     console.log(`⚔️ ${req.userId} combat d'étage tour`);
 
@@ -149,7 +151,7 @@ router.post("/fight", authMiddleware, async (req: Request, res: Response): Promi
 });
 
 // === ABANDONNER LE RUN ACTUEL ===
-router.post("/abandon", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/abandon", authMiddleware, requireFeature("tower"), async (req: Request, res: Response): Promise<void> => {
   try {
     console.log(`🚪 ${req.userId} abandonne son run tour`);
 
