@@ -2,7 +2,7 @@ import express, { Request, Response } from "express";
 import Joi from "joi";
 import { MissionService } from "../services/MissionService";
 import authMiddleware from "../middleware/authMiddleware";
-
+import { requireFeature } from "../middleware/featureMiddleware";
 const router = express.Router();
 
 // Schémas de validation
@@ -98,7 +98,7 @@ router.get("/", authMiddleware, async (req: Request, res: Response): Promise<voi
 });
 
 // === INITIALISER LES MISSIONS D'UN JOUEUR ===
-router.post("/initialize", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/initialize", authMiddleware, requireFeature("bounty_board"), async (req: Request, res: Response): Promise<void> => {
   try {
     console.log(`🎯 Initialisation missions pour ${req.userId}`);
 
@@ -145,7 +145,7 @@ router.post("/initialize", authMiddleware, async (req: Request, res: Response): 
 });
 
 // === RÉCLAMER LES RÉCOMPENSES D'UNE MISSION ===
-router.post("/claim", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/claim", authMiddleware, requireFeature("bounty_board"), async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = claimRewardsSchema.validate(req.body);
     if (error) {
@@ -212,7 +212,8 @@ router.post("/claim", authMiddleware, async (req: Request, res: Response): Promi
 });
 
 // === RÉCLAMER TOUTES LES RÉCOMPENSES DISPONIBLES ===
-router.post("/claim-all", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/claim-all", authMiddleware, requireFeature("bounty_board"), async (req: Request, res: Response): Promise<void> => {
+
   try {
     console.log(`🎁 ${req.userId} réclame toutes les récompenses disponibles`);
 
