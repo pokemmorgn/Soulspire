@@ -299,9 +299,9 @@ const playerSchema = new Schema<IPlayerDocument>({
 });
 
 // Virtual pour compatibilité avec l'ancien code
-playerSchema.virtual('username').get(function() {
+playerSchema.virtual('username').get(function(this: IPlayerDocument) {
   return this.displayName;
-}).set(function(value: string) {
+}).set(function(this: IPlayerDocument, value: string) {
   this.displayName = value;
 });
 
