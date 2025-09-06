@@ -547,7 +547,7 @@ playerSchema.methods.getPlayerStats = function() {
       totalBattles: this.totalBattlesFought,
       winRate: this.totalBattlesFought > 0 ? (this.totalBattlesWon / this.totalBattlesFought * 100).toFixed(1) : "0",
       lastLogin: this.lastSeenAt,
-      accountAge: this.createdAt ? Math.floor((Date.now() - this.createdAt.getTime()) / (1000 * 60 * 60 * 24)) : 0
+      accountAge: player.createdAt ? Math.floor((Date.now() - new Date(player.createdAt).getTime()) / (1000 * 60 * 60 * 24)) : 0
     }
   };
 };
@@ -568,3 +568,4 @@ playerSchema.methods.performDailyReset = function() {
 };
 
 export default mongoose.model<IPlayerDocument>("Player", playerSchema);
+
