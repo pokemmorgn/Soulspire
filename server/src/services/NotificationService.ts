@@ -364,7 +364,7 @@ export class NotificationService {
     try {
       const filter = serverId === "ALL" ? {} : { serverId };
       const players = await Player.find(filter).select('_id serverId');
-
+  
       const notification: Notification = {
         id: `system_${Date.now()}`,
         type: "system",
@@ -375,12 +375,13 @@ export class NotificationService {
         isRead: false,
         metadata: { isSystem: true, scope: serverId }
       };
-
+  
       // Envoyer à tous les joueurs concernés
       for (const player of players) {
-        await this.saveNotification(player._id.toString(), player.serverId, notification);
+        const playerIdStr = String(player._id); // ✅ Fix TypeScript
+        await this.saveNotification(playerIdStr, player.serverId, notification);
       }
-
+  
       console.log(`📢 System notification sent to ${players.length} players on ${serverId}`);
       
     } catch (error) {
