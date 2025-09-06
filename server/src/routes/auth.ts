@@ -43,7 +43,7 @@ function generateTokens(accountId: string, playerId: string, serverId: string): 
       accountId, 
       playerId, 
       serverId,
-      id: playerId // Pour compatibilité avec l'ancien système
+      id: playerId
     },
     jwtSecret,
     { expiresIn: "15m" }
@@ -54,7 +54,7 @@ function generateTokens(accountId: string, playerId: string, serverId: string): 
       accountId, 
       playerId, 
       serverId,
-      id: playerId // Pour compatibilité
+      id: playerId
     },
     jwtRefreshSecret,
     { expiresIn: "7d" }
@@ -77,7 +77,6 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
 
     const { username, password, serverId }: LoginRequest & { serverId: string } = req.body;
 
-    // Vérifier si le compte existe déjà
     const existingAccount = await Account.findOne({ username });
     if (existingAccount) {
       res.status(400).json({ 
@@ -87,26 +86,22 @@ router.post("/register", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Hash du mot de passe
     const saltRounds = 12;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
     
-    // Créer le compte global
     const account = new Account({ 
       username, 
       password: hashedPassword 
     });
     await account.save();
 
-    // Créer le premier player sur le serveur spécifié
     const player = new Player({
       accountId: account.accountId,
       serverId: serverId,
-      displayName: username // Par défaut, même nom que le compte
+      displayName: username
     });
     await player.save();
 
-    // Ajouter le serveur à la liste du compte
     await account.addServerToList(serverId);
 
     res.status(201).json({ 
@@ -138,7 +133,6 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
 
     const { username, password, serverId }: LoginRequest & { serverId: string } = req.body;
 
-    // Trouver le compte
     const account = await Account.findOne({ username });
     if (!account) {
       res.status(404).json({ 
@@ -148,7 +142,6 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Vérifier si le compte est suspendu/banni
     if (account.accountStatus === "banned") {
       res.status(403).json({ 
         error: "Account is banned",
@@ -166,7 +159,6 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Vérifier le mot de passe
     const isPasswordValid = await bcrypt.compare(password, account.password);
     if (!isPasswordValid) {
       res.status(400).json({ 
@@ -176,37 +168,30 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Trouver ou créer le player sur ce serveur
     let player = await Player.findOne({ accountId: account.accountId, serverId });
     
     if (!player) {
-      // Créer un nouveau player sur ce serveur
       player = new Player({
         accountId: account.accountId,
         serverId: serverId,
-        displayName: account.username // Par défaut
+        displayName: account.username
       });
       await player.save();
       
-      // Ajouter le serveur à la liste du compte
       await account.addServerToList(serverId);
-      
       console.log(`🎮 Nouveau player créé pour ${account.username} sur ${serverId}`);
     }
 
-    // Mettre à jour les informations de connexion
     await account.addLoginRecord(
       serverId, 
-      "web", // TODO: Détecter la vraie plateforme
+      "web",
       req.headers['user-agent'],
       req.ip
     );
 
-    // Mettre à jour le player
     player.lastSeenAt = new Date();
     await player.save();
 
-    // Générer les tokens
     const tokens = generateTokens(account.accountId, player.playerId, serverId);
 
     const response: LoginResponse = {
@@ -257,13 +242,8 @@ router.post("/refresh", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const decoded = jwt.verify(token, jwtRefreshSecret) as JWTPayload & { 
-      accountId: string, 
-      playerId: string, 
-      serverId: string 
-    };
+    const decoded = jwt.verify(token, jwtRefreshSecret) as any;
     
-    // Vérifier que le compte existe toujours
     const account = await Account.findOne({ accountId: decoded.accountId });
     if (!account || !decoded.accountId) {
       res.status(404).json({ 
@@ -273,12 +253,11 @@ router.post("/refresh", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Vérifier que le player existe toujours
     const player = await Player.findOne({ 
       playerId: decoded.playerId, 
       serverId: decoded.serverId 
     });
-    if (!player) {
+    if (!player || !decoded.playerId || !decoded.serverId) {
       res.status(404).json({ 
         error: "Player not found",
         code: "PLAYER_NOT_FOUND"
@@ -286,7 +265,6 @@ router.post("/refresh", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Vérifier le statut du compte
     if (account.accountStatus === "banned" || account.isSuspended()) {
       res.status(403).json({ 
         error: "Account access denied",
@@ -342,14 +320,12 @@ router.get("/account", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const decoded = jwt.verify(token, jwtSecret) as JWTPayload & { 
-      accountId: string 
-    };
+    const decoded = jwt.verify(token, jwtSecret) as any;
 
     const account = await Account.findOne({ accountId: decoded.accountId })
       .select('-password');
 
-    if (!account) {
+    if (!account || !decoded.accountId) {
       res.status(404).json({ 
         error: "Account not found",
         code: "ACCOUNT_NOT_FOUND"
@@ -357,7 +333,6 @@ router.get("/account", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Récupérer tous les players de ce compte
     const players = await Player.find({ accountId: account.accountId })
       .select('serverId displayName level vipLevel lastSeenAt createdAt');
 
@@ -372,8 +347,8 @@ router.get("/account", async (req: Request, res: Response): Promise<void> => {
         totalPurchasesUSD: account.totalPurchasesUSD,
         serverList: account.serverList,
         favoriteServerId: account.favoriteServerId,
-        createdAt: account.createdAt,
-        lastLoginAt: account.lastLoginAt
+        createdAt: (account as any).createdAt || new Date(),
+        lastLoginAt: (account as any).lastLoginAt || new Date()
       },
       players: players.map(player => ({
         serverId: player.serverId,
@@ -418,12 +393,18 @@ router.post("/switch-server", async (req: Request, res: Response): Promise<void>
     const token = authHeader.split(" ")[1];
     const jwtSecret = process.env.JWT_SECRET;
     
-    const decoded = jwt.verify(token, jwtSecret) as JWTPayload & { 
-      accountId: string 
-    };
+    if (!jwtSecret) {
+      res.status(500).json({ 
+        error: "Server configuration error",
+        code: "SERVER_CONFIG_ERROR"
+      });
+      return;
+    }
+    
+    const decoded = jwt.verify(token, jwtSecret) as any;
 
     const account = await Account.findOne({ accountId: decoded.accountId });
-    if (!account) {
+    if (!account || !decoded.accountId) {
       res.status(404).json({ 
         error: "Account not found",
         code: "ACCOUNT_NOT_FOUND"
@@ -431,7 +412,6 @@ router.post("/switch-server", async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Trouver ou créer le player sur le nouveau serveur
     let player = await Player.findOne({ accountId: account.accountId, serverId });
     
     if (!player) {
@@ -446,7 +426,6 @@ router.post("/switch-server", async (req: Request, res: Response): Promise<void>
       console.log(`🎮 Nouveau player créé pour ${account.username} sur ${serverId}`);
     }
 
-    // Générer de nouveaux tokens pour ce serveur
     const tokens = generateTokens(account.accountId, player.playerId, serverId);
 
     res.json({
