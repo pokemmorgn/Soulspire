@@ -195,7 +195,7 @@ export class TowerService {
         await towerProgress.endRun("defeated");
 
         // Mettre à jour le classement si nécessaire
-        await this.updatePlayerRanking(playerId, serverId, player.username, towerProgress);
+        await this.updatePlayerRanking(playerId, serverId, player.displayName, towerProgress);
 
         console.log(`💀 Défaite étage ${currentFloor}. Run terminé.`);
 
