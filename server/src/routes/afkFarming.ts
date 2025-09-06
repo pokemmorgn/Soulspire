@@ -371,7 +371,7 @@ router.get("/validate/:world/:level/:difficulty", requireAuth, async (req: Reque
     const { CampaignService } = require("../services/CampaignService");
     const validation = await CampaignService.canPlayerPlayLevel(
       playerId,
-      player.serverId,
+      serverId,
       worldNum,
       levelNum,
       difficulty as "Normal" | "Hard" | "Nightmare"
