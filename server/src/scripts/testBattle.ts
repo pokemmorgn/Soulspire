@@ -33,7 +33,7 @@ const testBattle = async (): Promise<void> => {
     colorLog(colors.green, "✅ Connecté à MongoDB");
 
     const testPlayer = await getOrCreateTestPlayer();
-    colorLog(colors.blue, `👤 Joueur de test: ${testPlayer.username} (VIP ${testPlayer.vipLevel})`);
+   colorLog(colors.blue, `👤 Joueur de test: ${testPlayer.displayName} (VIP ${testPlayer.vipLevel})`);
 
     await equipTestHeroes(testPlayer);
     colorLog(colors.blue, `⚔️ Héros équipés: ${testPlayer.heroes.filter((h: any) => h.equipped).length}`);
