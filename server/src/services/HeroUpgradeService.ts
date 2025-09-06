@@ -812,7 +812,7 @@ export class HeroUpgradeService {
         
         if (priority.score > 0) {
           recommendations.push({
-            heroInstanceId: heroInstance._id?.toString() || "",
+            heroInstanceId: (heroInstance as any)._id?.toString() || "",
             heroName: heroData.name,
             priority: priority.score,
             isEquipped: true,
@@ -828,7 +828,7 @@ export class HeroUpgradeService {
         
         if (priority.score > 0) {
           recommendations.push({
-            heroInstanceId: heroInstance._id?.toString() || "",
+            heroInstanceId: (heroInstance as any)._id?.toString() || "",
             heroName: heroData.name,
             priority: priority.score,
             isEquipped: false,
