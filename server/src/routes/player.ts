@@ -4,7 +4,7 @@ import Player from "../models/Player";
 import authMiddleware from "../middleware/authMiddleware";
 import { requireFeature } from "../middleware/featureMiddleware";
 const router = express.Router();
-
+import { FeatureUnlockService } from "../services/FeatureUnlockService";
 // Schémas de validation
 const updatePlayerSchema = Joi.object({
   world: Joi.number().min(1).max(100).optional(),
@@ -104,6 +104,26 @@ router.put("/progress", authMiddleware, async (req: Request, res: Response): Pro
 
     await player.save();
 
+      if (level !== undefined || world !== undefined) {
+    const oldLevel = player.level || 1;
+    const oldWorld = player.world || 1;
+    
+    if (level !== undefined) player.level = level;
+    if (world !== undefined) player.world = world;
+    
+    await player.save();
+    
+    // 🔥 DÉCLENCHEMENT AUTO DES NOTIFICATIONS
+    await FeatureUnlockService.checkAndNotifyProgressionUnlocks(
+      req.userId!,
+      req.serverId!,
+      oldLevel,
+      player.level,
+      oldWorld, 
+      player.world
+    );
+  }
+    
     res.json({
       message: "Player progress updated successfully",
       player: {
@@ -320,5 +340,6 @@ router.delete("/account", authMiddleware, async (req: Request, res: Response): P
 });
 
 export default router;
+
 
 
