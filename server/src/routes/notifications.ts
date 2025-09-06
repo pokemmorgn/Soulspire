@@ -3,6 +3,7 @@ import express, { Request, Response } from "express";
 import Joi from "joi";
 import authMiddleware from "../middleware/authMiddleware";
 import { NotificationService } from "../services/NotificationService";
+import Player from "../models/Player";
 
 const router = express.Router();
 
