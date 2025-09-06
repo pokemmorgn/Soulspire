@@ -2,19 +2,34 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { JWTPayload } from "../types/index";
 
-// Extension de l'interface Request pour inclure userId
+// Extension de l'interface Request pour la nouvelle architecture
 declare global {
   namespace Express {
     interface Request {
+      // Anciens champs pour compatibilité
       userId?: string;
       user?: JWTPayload;
+      
+      // Nouveaux champs pour Account/Player
+      accountId?: string;
+      playerId?: string;
+      serverId?: string;
     }
   }
 }
 
+interface ExtendedJWTPayload extends JWTPayload {
+  accountId?: string;
+  playerId?: string;
+  serverId?: string;
+}
+
 interface AuthenticatedRequest extends Request {
   userId: string;
-  user: JWTPayload;
+  accountId: string;
+  playerId: string;
+  serverId: string;
+  user: ExtendedJWTPayload;
 }
 
 const authMiddleware = (req: Request, res: Response, next: NextFunction): void => {
@@ -29,7 +44,6 @@ const authMiddleware = (req: Request, res: Response, next: NextFunction): void =
       return;
     }
 
-    // Format attendu: "Bearer <token>"
     const parts = authHeader.split(" ");
     if (parts.length !== 2 || parts[0] !== "Bearer") {
       res.status(401).json({ 
@@ -59,19 +73,45 @@ const authMiddleware = (req: Request, res: Response, next: NextFunction): void =
     }
 
     // Vérification du token
-    const decoded = jwt.verify(token, jwtSecret) as JWTPayload;
+    const decoded = jwt.verify(token, jwtSecret) as ExtendedJWTPayload;
 
-    if (!decoded.id) {
+    // Vérifications de base
+    if (!decoded.id && !decoded.playerId) {
       res.status(403).json({ 
-        error: "Invalid token payload",
+        error: "Invalid token payload - missing ID",
         code: "TOKEN_PAYLOAD_INVALID"
       });
       return;
     }
 
-    // Injection de l'ID utilisateur dans la requête
-    req.userId = decoded.id;
-    req.user = decoded;
+    // Support de l'ancien format (pour compatibilité)
+    if (decoded.id && !decoded.playerId) {
+      req.userId = decoded.id;
+      req.user = decoded;
+    } 
+    // Nouveau format Account/Player
+    else if (decoded.accountId && decoded.playerId && decoded.serverId) {
+      req.accountId = decoded.accountId;
+      req.playerId = decoded.playerId;
+      req.serverId = decoded.serverId;
+      req.userId = decoded.playerId; // Pour compatibilité
+      req.user = decoded;
+    }
+    // Format hybride (pendant la migration)
+    else if (decoded.id) {
+      req.userId = decoded.id;
+      req.playerId = decoded.playerId || decoded.id;
+      req.accountId = decoded.accountId;
+      req.serverId = decoded.serverId || "S1";
+      req.user = decoded;
+    }
+    else {
+      res.status(403).json({ 
+        error: "Invalid token payload format",
+        code: "TOKEN_PAYLOAD_INVALID"
+      });
+      return;
+    }
 
     next();
   } catch (err) {
@@ -100,7 +140,7 @@ const authMiddleware = (req: Request, res: Response, next: NextFunction): void =
   }
 };
 
-// Middleware optionnel pour les routes qui peuvent fonctionner avec ou sans auth
+// Middleware optionnel
 const optionalAuthMiddleware = (req: Request, res: Response, next: NextFunction): void => {
   const authHeader = req.headers.authorization;
   
@@ -116,24 +156,32 @@ const optionalAuthMiddleware = (req: Request, res: Response, next: NextFunction)
       const jwtSecret = process.env.JWT_SECRET;
       
       if (jwtSecret && token) {
-        const decoded = jwt.verify(token, jwtSecret) as JWTPayload;
-        req.userId = decoded.id;
+        const decoded = jwt.verify(token, jwtSecret) as ExtendedJWTPayload;
+        
+        // Injection des données selon le format du token
+        if (decoded.accountId && decoded.playerId && decoded.serverId) {
+          req.accountId = decoded.accountId;
+          req.playerId = decoded.playerId;
+          req.serverId = decoded.serverId;
+          req.userId = decoded.playerId;
+        } else if (decoded.id) {
+          req.userId = decoded.id;
+          req.playerId = decoded.id;
+        }
+        
         req.user = decoded;
       }
     }
   } catch (err) {
-    // En cas d'erreur, on continue sans authentification
     console.warn("Optional auth failed:", err);
   }
   
   next();
 };
 
-// Middleware pour vérifier les rôles admin (pour futures fonctionnalités)
+// Middleware pour vérifier les rôles admin
 const adminMiddleware = (req: Request, res: Response, next: NextFunction): void => {
-  // Pour l'instant, on suppose que tous les utilisateurs authentifiés sont admins
-  // À adapter selon vos besoins
-  if (!req.userId) {
+  if (!req.userId && !req.playerId) {
     res.status(401).json({ 
       error: "Authentication required",
       code: "AUTH_REQUIRED"
@@ -144,5 +192,34 @@ const adminMiddleware = (req: Request, res: Response, next: NextFunction): void 
   next();
 };
 
-export { authMiddleware as default, optionalAuthMiddleware, adminMiddleware };
-export type { AuthenticatedRequest };
+// Middleware pour s'assurer qu'on a les nouvelles données Account/Player
+const requireNewAuthMiddleware = (req: Request, res: Response, next: NextFunction): void => {
+  if (!req.accountId || !req.playerId || !req.serverId) {
+    res.status(401).json({ 
+      error: "This endpoint requires new authentication format. Please login again.",
+      code: "AUTH_FORMAT_OUTDATED"
+    });
+    return;
+  }
+  
+  next();
+};
+
+// Middleware de compatibilité pour injecter serverId par défaut
+const injectServerIdMiddleware = (req: Request, res: Response, next: NextFunction): void => {
+  // Si on n'a pas de serverId mais qu'on a un userId, on utilise S1 par défaut
+  if (req.userId && !req.serverId) {
+    req.serverId = "S1";
+  }
+  
+  next();
+};
+
+export { 
+  authMiddleware as default, 
+  optionalAuthMiddleware, 
+  adminMiddleware,
+  requireNewAuthMiddleware,
+  injectServerIdMiddleware
+};
+export type { AuthenticatedRequest, ExtendedJWTPayload };
