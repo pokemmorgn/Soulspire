@@ -2,7 +2,7 @@ import express, { Request, Response } from "express";
 import Joi from "joi";
 import { ShopService } from "../services/ShopService";
 import authMiddleware from "../middleware/authMiddleware";
-
+import { requireFeature } from "../middleware/featureMiddleware";
 const router = express.Router();
 
 // === SCHÉMAS DE VALIDATION ===
@@ -130,7 +130,7 @@ router.get("/:shopType", authMiddleware, async (req: Request, res: Response): Pr
  * POST /api/shops/:shopType/purchase
  * Acheter un objet dans une boutique
  */
-router.post("/:shopType/purchase", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/:shopType/purchase", authMiddleware, requireFeature("shop_basic"), async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.userId) {
       res.status(401).json({ 
