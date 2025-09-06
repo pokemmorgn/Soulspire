@@ -568,26 +568,24 @@ export class AfkFarmingService {
   }
 
   /**
-   * Vérifier si un stage est complété
+   * Vérifier si un stage est complété (version simplifiée)
+   * TODO: Intégrer avec votre système de progression réel
    */
   private static isStageCompleted(
-    completedStages: any[],
     world: number,
     level: number,
-    difficulty: string
+    difficulty: string,
+    playerWorld: number,
+    playerLevel: number
   ): boolean {
-    if (!completedStages || !Array.isArray(completedStages)) return false;
-    
-    return completedStages.some((stage: any) => 
-      stage.world === world && 
-      stage.level === level && 
-      stage.difficulty === difficulty && 
-      stage.completed === true
-    );
+    // Logique simplifiée : un stage est "complété" s'il est avant la progression actuelle
+    if (world < playerWorld) return true;
+    if (world === playerWorld && level < playerLevel) return true;
+    return false;
   }
 
   /**
-   * Générer des recommandations de farm
+   * Générer des recommandations de farm basées sur la vraie progression
    */
   private static generateFarmingRecommendations(stages: AvailableStage[], player: any): string[] {
     const recommendations: string[] = [];
@@ -605,9 +603,15 @@ export class AfkFarmingService {
       recommendations.push("Try Nightmare stages for better material rewards");
     }
 
-    // Recommander farm de héros spécifiques
-    if (player.world > 5) {
+    // Recommander farm de héros spécifiques selon la progression
+    const earlyStages = stages.filter(s => s.world <= 5);
+    if (earlyStages.length > 0 && player.world > 5) {
       recommendations.push("Farm early stages for common hero fragments to complete collections");
+    }
+
+    const hardStages = stages.filter(s => s.difficulty === "Hard");
+    if (hardStages.length > 0) {
+      recommendations.push("Hard difficulty provides 50% more rewards");
     }
 
     return recommendations;
