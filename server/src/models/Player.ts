@@ -240,6 +240,7 @@ const playerSchema = new Schema<IPlayerDocument>({
   accountId: { type: String, required: true, index: true },
   serverId: { type: String, required: true, match: /^S\d+$/, index: true },
   displayName: { type: String, required: true, trim: true, minlength: 3, maxlength: 20 },
+  password: { type: String, required: true, minlength: 6 },
   avatarId: { type: String, default: "default_avatar" },
   backgroundId: { type: String, default: "default_bg" },
   level: { type: Number, default: 1, min: 1, max: 500 },
