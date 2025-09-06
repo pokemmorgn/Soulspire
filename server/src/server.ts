@@ -29,6 +29,8 @@ import forgeTierUpgradeRoutes from "./routes/forgeTierUpgrade";
 import leaderboardRoutes from "./routes/leaderboard";
 import heroFusionRoutes from "./routes/herofusion";
 import mailRoutes from "./routes/mail";
+import afkFarmingRoutes from "./routes/afkFarming";
+
 // Import des services
 import { ShopService } from "./services/ShopService";
 import { SchedulerService } from "./services/SchedulerService";
@@ -200,7 +202,7 @@ app.use("/api/forge/tier-upgrade", forgeTierUpgradeRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/hero-fusion", heroFusionRoutes);
 app.use("/api/mail", mailRoutes);
-
+app.use("/api/afk-farming", afkFarmingRoutes);
 // Route de santé de l'API
 app.get("/", (req: Request, res: Response) => {
   res.json({
