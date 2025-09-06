@@ -381,7 +381,7 @@ router.get("/account", async (req: Request, res: Response): Promise<void> => {
         level: player.level,
         vipLevel: player.vipLevel,
         lastSeenAt: player.lastSeenAt,
-        accountAge: player.createdAt ? Math.floor((Date.now() - player.createdAt.getTime()) / (1000 * 60 * 60 * 24)) : 0
+        accountAge: (player as any).createdAt ? Math.floor((Date.now() - (player as any).createdAt.getTime()) / (1000 * 60 * 60 * 24)) : 0
       }))
     });
   } catch (err) {
