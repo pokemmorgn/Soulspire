@@ -110,7 +110,7 @@ async function getOrCreateFarmingTestPlayers() {
 
   // Créer quelques progressions de campagne
   for (const player of [beginnerPlayer, advancedPlayer]) {
-    const playerId = player._id.toString();
+    const playerId = (player._id as any).toString();
     const maxWorld = player.username === "FarmTestBeginner" ? 3 : 8;
     
     for (let worldId = 1; worldId <= maxWorld; worldId++) {
