@@ -51,7 +51,8 @@ export class AfkRewardsService {
   // === MÉTHODE PRINCIPALE (ENHANCED AVEC STAGE SELECTION + PROGRESSIVE UNLOCKS) ===
   public static async calculatePlayerAfkRewards(playerId: string): Promise<AfkRewardsCalculation> {
     try {
-      const player = await Player.findById(playerId)
+      const player = await Player.findOne({ playerId: playerId })
+
         .select("world level difficulty heroes vipLevel serverId");
       
       if (!player) {
