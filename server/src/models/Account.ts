@@ -419,7 +419,7 @@ accountSchema.methods.getAccountStats = function() {
   return {
     accountAge: this.createdAt ? Math.floor((Date.now() - this.createdAt.getTime()) / (1000 * 60 * 60 * 24)) : 0,
     totalLogins: this.loginHistory.length,
-    totalPurchases: this.purchaseHistory.filter(p => p.status === "completed").length,
+    totalPurchases: this.purchaseHistory.filter((p: IPurchaseHistory) => p.status === "completed").length,
     averageSessionsPerDay: this.loginHistory.length / Math.max(1, Math.floor((Date.now() - this.createdAt.getTime()) / (1000 * 60 * 60 * 24))),
     serversPlayed: this.serverList.length,
     isSpender: this.totalPurchasesUSD > 0,
