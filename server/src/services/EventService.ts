@@ -88,7 +88,7 @@ export class EventService {
         world: player.world,
         heroes_owned: player.heroes.length,
         vip_level: 0, // TODO: Implémenter système VIP
-        server_age: Math.floor((Date.now() - (player.createdAt?.getTime() || 0)) / (1000 * 60 * 60 * 24))
+       server_age: Math.floor((Date.now() - ((player as any).createdAt?.getTime() || 0)) / (1000 * 60 * 60 * 24))
       };
 
       // Vérifier si le joueur peut rejoindre
@@ -102,9 +102,9 @@ export class EventService {
       }
 
       // Ajouter le joueur à l'événement
-      await event.addParticipant(playerId, player.username, serverId);
+      await event.addParticipant(playerId, player.displayName, serverId);
 
-      console.log(`✅ ${player.username} a rejoint l'événement ${event.name}`);
+      console.log(`✅ ${player.displayName} a rejoint l'événement ${event.name}`);
 
       return {
         success: true,
@@ -419,7 +419,7 @@ export class EventService {
         player.save()
       ]);
 
-      console.log(`✅ ${rewardsGiven.length} récompenses données à ${player.username}`);
+      console.log(`✅ ${rewardsGiven.length} récompenses données à ${player.displayName}`);
 
       return {
         success: true,
