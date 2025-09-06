@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema } from "mongoose";
 
-// Interface pour l'historique des achats premium
+// Interface pour l'historique des achats premium (ANALYTICS SEULEMENT)
 interface IPurchaseHistory {
   transactionId: string;
   platform: "android" | "ios" | "web" | "steam";
@@ -8,11 +8,10 @@ interface IPurchaseHistory {
   productName: string;
   priceUSD: number;
   priceCurrency: string;
-  gemsReceived: number;
-  bonusGems: number;
   purchaseDate: Date;
-  serverId?: string; // Serveur où l'achat a été fait
+  serverId: string; // Serveur où l'achat a été fait
   status: "completed" | "pending" | "refunded" | "failed";
+  // Note: Pas de gemsReceived car chaque serveur gère ses propres gems
 }
 
 // Interface pour les connexions
@@ -25,7 +24,7 @@ interface ILoginHistory {
   country?: string;
 }
 
-// Interface principale du compte
+// Interface principale du compte (AUTHENTIFICATION + ANALYTICS SEULEMENT)
 export interface IAccount {
   _id?: string;
   accountId: string; // UUID unique global
@@ -33,29 +32,24 @@ export interface IAccount {
   email?: string;
   password: string;
   
-  // DONNÉES PREMIUM PARTAGÉES ENTRE SERVEURS
-  globalVipLevel: number; // VIP niveau global
-  globalVipExp: number; // Expérience VIP totale
-  paidGems: number; // Gems achetées avec argent réel (partagées)
-  
-  // MÉTADONNÉES COMPTE
+  // STATUT COMPTE
   accountStatus: "active" | "suspended" | "banned" | "inactive";
   suspensionReason?: string;
   suspensionExpiresAt?: Date;
   
-  // SÉCURITÉ ET AUDIT
+  // MÉTADONNÉES CONNEXION
   lastLoginAt: Date;
   lastLoginServerId?: string;
   lastLoginPlatform?: string;
   createdAt: Date;
   
-  // DONNÉES ANALYTICS
-  totalPlaytimeMinutes: number; // Temps de jeu total toutes plateformes
-  totalPurchasesUSD: number; // Total dépensé en argent réel
+  // ANALYTICS GLOBALES (pour business intelligence)
+  totalPlaytimeMinutes: number; // Temps de jeu total tous serveurs
+  totalPurchasesUSD: number; // Total dépensé tous serveurs (analytics)
   firstPurchaseDate?: Date;
   lastPurchaseDate?: Date;
   
-  // PRÉFÉRENCES UTILISATEUR
+  // PRÉFÉRENCES UTILISATEUR (partagées)
   preferences: {
     language: string;
     notifications: {
@@ -69,8 +63,8 @@ export interface IAccount {
     };
   };
   
-  // HISTORIQUES
-  purchaseHistory: IPurchaseHistory[];
+  // HISTORIQUES (analytics seulement)
+  purchaseHistory: IPurchaseHistory[]; // Pour tracking business
   loginHistory: ILoginHistory[];
   
   // DONNÉES CROSS-SERVER
@@ -83,9 +77,6 @@ interface IAccountDocument extends Document {
   username: string;
   email?: string;
   password: string;
-  globalVipLevel: number;
-  globalVipExp: number;
-  paidGems: number;
   accountStatus: "active" | "suspended" | "banned" | "inactive";
   suspensionReason?: string;
   suspensionExpiresAt?: Date;
@@ -114,11 +105,8 @@ interface IAccountDocument extends Document {
   serverList: string[];
   
   // Méthodes d'instance
-  addPurchase(purchase: IPurchaseHistory): Promise<IAccountDocument>;
+  addPurchaseRecord(purchase: IPurchaseHistory): Promise<IAccountDocument>;
   addLoginRecord(serverId: string, platform: string, deviceId?: string, ipAddress?: string): Promise<IAccountDocument>;
-  addVipExp(amount: number): Promise<{ newLevel: number; leveledUp: boolean }>;
-  spendPaidGems(amount: number): Promise<boolean>;
-  addPaidGems(amount: number, transactionId: string): Promise<IAccountDocument>;
   isSuspended(): boolean;
   canAccessServer(serverId: string): boolean;
   addServerToList(serverId: string): Promise<IAccountDocument>;
@@ -137,10 +125,8 @@ const purchaseHistorySchema = new Schema<IPurchaseHistory>({
   productName: { type: String, required: true },
   priceUSD: { type: Number, required: true, min: 0 },
   priceCurrency: { type: String, required: true, maxlength: 3 },
-  gemsReceived: { type: Number, required: true, min: 0 },
-  bonusGems: { type: Number, default: 0, min: 0 },
   purchaseDate: { type: Date, default: Date.now },
-  serverId: { type: String, match: /^S\d+$/ },
+  serverId: { type: String, required: true, match: /^S\d+$/ },
   status: { 
     type: String, 
     enum: ["completed", "pending", "refunded", "failed"],
@@ -190,24 +176,6 @@ const accountSchema = new Schema<IAccountDocument>({
     minlength: 6
   },
   
-  // VIP GLOBAL
-  globalVipLevel: { 
-    type: Number, 
-    default: 0,
-    min: 0,
-    max: 15
-  },
-  globalVipExp: { 
-    type: Number, 
-    default: 0,
-    min: 0
-  },
-  paidGems: { 
-    type: Number, 
-    default: 0,
-    min: 0
-  },
-  
   // STATUT COMPTE
   accountStatus: { 
     type: String, 
@@ -231,7 +199,7 @@ const accountSchema = new Schema<IAccountDocument>({
     enum: ["android", "ios", "web", "steam"]
   },
   
-  // ANALYTICS
+  // ANALYTICS GLOBALES
   totalPlaytimeMinutes: { 
     type: Number, 
     default: 0,
@@ -294,7 +262,6 @@ accountSchema.index({ email: 1 }, { sparse: true });
 accountSchema.index({ accountStatus: 1 });
 accountSchema.index({ lastLoginAt: -1 });
 accountSchema.index({ totalPurchasesUSD: -1 });
-accountSchema.index({ globalVipLevel: -1 });
 accountSchema.index({ "loginHistory.loginDate": -1 });
 accountSchema.index({ "purchaseHistory.purchaseDate": -1 });
 
@@ -307,30 +274,27 @@ accountSchema.statics.findActiveAccounts = function() {
   return this.find({ accountStatus: "active" });
 };
 
-accountSchema.statics.getVipAccounts = function(minLevel: number = 1) {
-  return this.find({ globalVipLevel: { $gte: minLevel } });
-};
-
 accountSchema.statics.getAccountsByServer = function(serverId: string) {
   return this.find({ serverList: serverId });
 };
 
+accountSchema.statics.getSpendingAccounts = function(minSpent: number = 1) {
+  return this.find({ totalPurchasesUSD: { $gte: minSpent } });
+};
+
 // Méthodes d'instance
-accountSchema.methods.addPurchase = function(purchase: IPurchaseHistory) {
-  // Ajouter l'achat à l'historique
+accountSchema.methods.addPurchaseRecord = function(purchase: IPurchaseHistory) {
+  // Ajouter l'achat à l'historique (ANALYTICS SEULEMENT)
   this.purchaseHistory.push(purchase);
   
-  // Mettre à jour les statistiques
+  // Mettre à jour les statistiques globales
   this.totalPurchasesUSD += purchase.priceUSD;
   if (!this.firstPurchaseDate) {
     this.firstPurchaseDate = purchase.purchaseDate;
   }
   this.lastPurchaseDate = purchase.purchaseDate;
   
-  // Ajouter les gems payantes
-  if (purchase.status === "completed") {
-    this.paidGems += purchase.gemsReceived + purchase.bonusGems;
-  }
+  // NOTE: Les gems sont gérées dans Player.ts, pas ici !
   
   return this.save();
 };
@@ -359,37 +323,6 @@ accountSchema.methods.addLoginRecord = function(
   this.lastLoginServerId = serverId;
   this.lastLoginPlatform = platform as any;
   
-  return this.save();
-};
-
-accountSchema.methods.addVipExp = function(amount: number) {
-  const oldLevel = this.globalVipLevel;
-  this.globalVipExp += amount;
-  
-  // Calcul du nouveau niveau VIP (logique simplifiée)
-  // TODO: Intégrer avec VipConfiguration pour les vrais seuils
-  const newLevel = Math.min(15, Math.floor(this.globalVipExp / 1000));
-  this.globalVipLevel = newLevel;
-  
-  return this.save().then(() => ({
-    newLevel,
-    leveledUp: newLevel > oldLevel
-  }));
-};
-
-accountSchema.methods.spendPaidGems = function(amount: number) {
-  if (this.paidGems < amount) {
-    return Promise.resolve(false);
-  }
-  
-  this.paidGems -= amount;
-  return this.save().then(() => true);
-};
-
-accountSchema.methods.addPaidGems = function(amount: number, transactionId: string) {
-  this.paidGems += amount;
-  
-  // Optionnel: ajouter une entrée dans purchaseHistory si ce n'est pas déjà fait
   return this.save();
 };
 
