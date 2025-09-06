@@ -159,7 +159,7 @@ export class AfkServiceEnhanced {
         claimed = state!.claim();
         await state!.save({ session });
 
-        const player = await Player.findById(playerId).session(session);
+const player = await Player.findOne({ playerId: playerId }).session(session);
         if (!player) throw new Error("Player not found");
         player.gold += claimed;
         await player.save({ session });
