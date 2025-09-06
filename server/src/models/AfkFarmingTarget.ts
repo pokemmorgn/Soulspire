@@ -84,7 +84,7 @@ const AfkFarmingTargetSchema = new Schema<IAfkFarmingTarget>({
   
   targetHeroFragments: {
     type: String,
-    default: null,
+    required: false,
   },
   
   isValidStage: {
@@ -95,7 +95,7 @@ const AfkFarmingTargetSchema = new Schema<IAfkFarmingTarget>({
   
   validationMessage: {
     type: String,
-    default: undefined,
+    required: false,
   },
 }, {
   timestamps: true,
@@ -107,77 +107,79 @@ AfkFarmingTargetSchema.index({ playerId: 1, isActive: 1 });
 AfkFarmingTargetSchema.index({ selectedWorld: 1, selectedLevel: 1 });
 AfkFarmingTargetSchema.index({ lastValidatedAt: 1 }); // Pour cleanup périodique
 
-// === MÉTHODES D'INSTANCE ===
+const AfkFarmingTarget = mongoose.model<IAfkFarmingTarget>("AfkFarmingTarget", AfkFarmingTargetSchema);
+
+// === FONCTIONS UTILITAIRES (pas de méthodes d'instance pour éviter les problèmes TypeScript) ===
 
 /**
  * Valider que le stage sélectionné est toujours accessible au joueur
  */
-AfkFarmingTargetSchema.methods.validateStageAccess = async function(): Promise<boolean> {
+export async function validateStageAccess(target: IAfkFarmingTarget): Promise<boolean> {
   try {
     // Import dynamique pour éviter dépendances circulaires
     const Player = require("./Player").default;
-    const player = await Player.findById(this.playerId).select("world level difficulty completedStages");
+    const player = await Player.findById(target.playerId).select("world level difficulty completedStages");
     
     if (!player) {
-      this.isValidStage = false;
-      this.validationMessage = "Player not found";
+      target.isValidStage = false;
+      target.validationMessage = "Player not found";
       return false;
     }
 
     // Vérifier que le monde sélectionné n'est pas supérieur au monde actuel
-    if (this.selectedWorld > player.world) {
-      this.isValidStage = false;
-      this.validationMessage = `World ${this.selectedWorld} not unlocked (current: ${player.world})`;
+    if (target.selectedWorld > player.world) {
+      target.isValidStage = false;
+      target.validationMessage = `World ${target.selectedWorld} not unlocked (current: ${player.world})`;
       return false;
     }
 
     // Si même monde, vérifier le niveau
-    if (this.selectedWorld === player.world && this.selectedLevel > player.level) {
-      this.isValidStage = false;
-      this.validationMessage = `Level ${this.selectedWorld}-${this.selectedLevel} not unlocked`;
+    if (target.selectedWorld === player.world && target.selectedLevel > player.level) {
+      target.isValidStage = false;
+      target.validationMessage = `Level ${target.selectedWorld}-${target.selectedLevel} not unlocked`;
       return false;
     }
 
     // Vérifier la difficulté (Hard/Nightmare nécessite d'avoir complété en Normal/Hard)
-    if (this.selectedDifficulty === "Hard") {
-      const normalCompleted = this.checkStageCompleted(player.completedStages, 
-        this.selectedWorld, this.selectedLevel, "Normal");
+    if (target.selectedDifficulty === "Hard") {
+      const normalCompleted = checkStageCompleted(player.completedStages, 
+        target.selectedWorld, target.selectedLevel, "Normal");
       if (!normalCompleted) {
-        this.isValidStage = false;
-        this.validationMessage = `Must complete ${this.selectedWorld}-${this.selectedLevel} Normal first`;
+        target.isValidStage = false;
+        target.validationMessage = `Must complete ${target.selectedWorld}-${target.selectedLevel} Normal first`;
         return false;
       }
     }
 
-    if (this.selectedDifficulty === "Nightmare") {
-      const hardCompleted = this.checkStageCompleted(player.completedStages, 
-        this.selectedWorld, this.selectedLevel, "Hard");
+    if (target.selectedDifficulty === "Nightmare") {
+      const hardCompleted = checkStageCompleted(player.completedStages, 
+        target.selectedWorld, target.selectedLevel, "Hard");
       if (!hardCompleted) {
-        this.isValidStage = false;
-        this.validationMessage = `Must complete ${this.selectedWorld}-${this.selectedLevel} Hard first`;
+        target.isValidStage = false;
+        target.validationMessage = `Must complete ${target.selectedWorld}-${target.selectedLevel} Hard first`;
         return false;
       }
     }
 
     // Stage valide
-    this.isValidStage = true;
-    this.validationMessage = null;
-    this.lastValidatedAt = new Date();
+    target.isValidStage = true;
+    target.validationMessage = undefined;
+    target.lastValidatedAt = new Date();
     
     return true;
 
   } catch (error) {
     console.error("❌ Erreur validateStageAccess:", error);
-    this.isValidStage = false;
-    this.validationMessage = "Validation error";
+    target.isValidStage = false;
+    target.validationMessage = "Validation error";
     return false;
   }
-};
+}
 
 /**
  * Vérifier si un stage est complété (utilitaire)
  */
-AfkFarmingTargetSchema.methods.checkStageCompleted = function(
+export function checkStageCompleted(
   completedStages: any[], 
   world: number, 
   level: number, 
@@ -191,19 +193,19 @@ AfkFarmingTargetSchema.methods.checkStageCompleted = function(
     stage.difficulty === difficulty && 
     stage.completed === true
   );
-};
+}
 
 /**
  * Obtenir une description lisible du stage sélectionné
  */
-AfkFarmingTargetSchema.methods.getStageDescription = function(): string {
-  return `${this.selectedWorld}-${this.selectedLevel} (${this.selectedDifficulty})`;
-};
+export function getStageDescription(target: IAfkFarmingTarget): string {
+  return `${target.selectedWorld}-${target.selectedLevel} (${target.selectedDifficulty})`;
+}
 
 /**
  * Obtenir les récompenses spécifiques de ce stage (pour preview)
  */
-AfkFarmingTargetSchema.methods.getExpectedRewards = async function(): Promise<{
+export async function getExpectedRewards(target: IAfkFarmingTarget): Promise<{
   specialDrops: string[];
   rewardMultiplier: number;
   recommendedFor: string[];
@@ -213,13 +215,13 @@ AfkFarmingTargetSchema.methods.getExpectedRewards = async function(): Promise<{
   const recommendedFor: string[] = [];
   
   // Fragments de héros selon le monde (logique simplifiée)
-  if (this.selectedWorld <= 5) {
+  if (target.selectedWorld <= 5) {
     specialDrops.push("common_hero_fragments");
     recommendedFor.push("Early game heroes");
-  } else if (this.selectedWorld <= 10) {
+  } else if (target.selectedWorld <= 10) {
     specialDrops.push("rare_hero_fragments");
     recommendedFor.push("Mid game heroes");
-  } else if (this.selectedWorld <= 15) {
+  } else if (target.selectedWorld <= 15) {
     specialDrops.push("epic_hero_fragments");
     recommendedFor.push("Late game heroes");
   } else {
@@ -228,23 +230,23 @@ AfkFarmingTargetSchema.methods.getExpectedRewards = async function(): Promise<{
   }
 
   // Matériaux spéciaux selon la difficulté
-  if (this.selectedDifficulty === "Hard") {
+  if (target.selectedDifficulty === "Hard") {
     specialDrops.push("enhanced_materials");
   }
-  if (this.selectedDifficulty === "Nightmare") {
+  if (target.selectedDifficulty === "Nightmare") {
     specialDrops.push("rare_materials", "ascension_materials");
   }
 
   // Multiplicateur de récompenses selon la difficulté
   let rewardMultiplier = 1.0;
-  if (this.selectedDifficulty === "Hard") {
+  if (target.selectedDifficulty === "Hard") {
     rewardMultiplier = 1.5;
-  } else if (this.selectedDifficulty === "Nightmare") {
+  } else if (target.selectedDifficulty === "Nightmare") {
     rewardMultiplier = 2.0;
   }
 
   // Réduction pour les anciens stages (encourager la progression)
-  const worldDifference = Math.max(0, this.selectedWorld - 1);
+  const worldDifference = Math.max(0, target.selectedWorld - 1);
   const progressionPenalty = Math.max(0.5, 1 - (worldDifference * 0.05)); // -5% par monde d'écart
   rewardMultiplier = rewardMultiplier * progressionPenalty;
 
@@ -253,11 +255,7 @@ AfkFarmingTargetSchema.methods.getExpectedRewards = async function(): Promise<{
     rewardMultiplier,
     recommendedFor
   };
-};
-
-const AfkFarmingTarget = mongoose.model<IAfkFarmingTarget>("AfkFarmingTarget", AfkFarmingTargetSchema);
-
-// === MÉTHODES STATIQUES (comme fonctions séparées pour éviter les problèmes TypeScript) ===
+}
 
 /**
  * Obtenir ou créer le choix de farm d'un joueur
@@ -306,10 +304,10 @@ export async function setFarmingTarget(
   target.isActive = true;
   target.selectedAt = new Date();
   target.reason = options?.reason || "other";
-  target.targetHeroFragments = options?.targetHeroFragments || null;
+  target.targetHeroFragments = options?.targetHeroFragments;
   
   // Valider immédiatement
-  await target.validateStageAccess();
+  await validateStageAccess(target);
   await target.save();
   
   return target;
@@ -340,7 +338,7 @@ export async function validateAllTargets(): Promise<{
   
   for (const target of targets) {
     try {
-      const isValid = await target.validateStageAccess();
+      const isValid = await validateStageAccess(target);
       await target.save();
       
       if (isValid) {
