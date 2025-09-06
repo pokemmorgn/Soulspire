@@ -277,7 +277,7 @@ router.get("/stats", authMiddleware, async (req: Request, res: Response): Promis
         fragmentTypes: player.fragments.size,
         materialTypes: player.materials.size
       },
-      accountAge: player.createdAt ? Math.floor((Date.now() - player.createdAt.getTime()) / (1000 * 60 * 60 * 24)) : 0
+      accountAge: (player as any).createdAt ? Math.floor((Date.now() - (player as any).createdAt.getTime()) / (1000 * 60 * 60 * 24)) : 0
     };
 
     res.json({
@@ -320,3 +320,4 @@ router.delete("/account", authMiddleware, async (req: Request, res: Response): P
 });
 
 export default router;
+
