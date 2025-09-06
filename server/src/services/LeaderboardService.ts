@@ -72,7 +72,7 @@ export class LeaderboardService {
           const powerCalc = await this.calculatePlayerPower(player);
           return {
             playerId: player._id.toString(),
-            playerName: player.username,
+            playerName: player.displayName,
             power: powerCalc.totalPower,
             breakdown: powerCalc.breakdown,
             level: player.level,
@@ -453,7 +453,7 @@ export class LeaderboardService {
         level: player.level,
         additionalData: {
           world: player.world,
-          accountAge: Math.floor((Date.now() - (player.createdAt?.getTime() || Date.now())) / (1000 * 60 * 60 * 24)),
+          accountAge: Math.floor((Date.now() - ((player as any).createdAt?.getTime() || Date.now())) / (1000 * 60 * 60 * 24)),
           lastSeen: player.lastSeenAt
         }
       }));
@@ -643,7 +643,7 @@ export class LeaderboardService {
         const powerCalc = await this.calculatePlayerPower(player);
         return {
           playerId: player._id.toString(),
-          playerName: player.username,
+          playerName: player.displayName,
           serverId: player.serverId,
           power: powerCalc.totalPower,
           level: player.level
@@ -692,7 +692,7 @@ export class LeaderboardService {
         return {
           rank: index + 1,
           playerId: player._id.toString(),
-          playerName: player.username,
+          playerName: player.displayName,
           serverId: player.serverId,
           value: progress.highestFloor,
           level: player.level,
