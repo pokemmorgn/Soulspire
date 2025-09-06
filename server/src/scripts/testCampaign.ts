@@ -112,7 +112,7 @@ class CampaignTester {
     // Équiper des héros
     await this.setupTestHeroes(testPlayer);
     
-    colorLog(colors.green, `👤 Joueur de test créé: ${testPlayer.username} (ID: ${this.testPlayerId})`);
+    colorLog(colors.green, `👤 Joueur de test créé: ${testPlayer.displayName} (ID: ${this.testPlayerId})`);
   }
 
   private async setupTestHeroes(player: any): Promise<void> {
