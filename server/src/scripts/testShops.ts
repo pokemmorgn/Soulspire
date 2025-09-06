@@ -67,7 +67,7 @@ class ShopTester {
     this.testPlayerId = (testPlayer._id as any).toString();
     this.testPlayer = testPlayer;
     
-    log(`✅ Test player created: ${testPlayer.username} (Level: ${testPlayer.level}, VIP: ${testPlayer.vipLevel})`, colors.green);
+   log(`✅ Test player created: ${testPlayer.displayName} (Level: ${testPlayer.level}, VIP: ${testPlayer.vipLevel})`, colors.green);
     log(`   💰 Resources: ${testPlayer.gold} gold, ${testPlayer.gems} gems, ${testPlayer.paidGems} paid gems`, colors.blue);
   }
 
