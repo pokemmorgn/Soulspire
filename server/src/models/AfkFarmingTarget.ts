@@ -29,13 +29,12 @@ export interface IAfkFarmingTarget extends Document {
 }
 
 const AfkFarmingTargetSchema = new Schema<IAfkFarmingTarget>({
-  playerId: {
-    type: Schema.Types.ObjectId,
-    ref: "Player",
-    required: true,
-    index: true,
-    unique: true, // Un seul choix de farm par joueur
-  },
+playerId: {
+  type: String,
+  required: true,
+  index: true,
+  unique: true,
+},
   
   selectedWorld: {
     type: Number,
