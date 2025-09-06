@@ -10,7 +10,6 @@ export interface AfkReward {
   itemId?: string;
   quantity: number;
   baseQuantity: number; // avant multiplicateurs
-  isNewlyUnlocked?: boolean; // Nouveau flag pour UI
 }
 
 export interface AfkRewardsCalculation {
@@ -28,7 +27,7 @@ export interface AfkRewardsCalculation {
   };
   maxAccrualHours: number;
   
-  // Métadonnées pour le stage selection
+  // Nouvelles métadonnées pour le stage selection
   farmingMeta?: {
     isCustomFarming: boolean;
     farmingStage: string;
@@ -38,22 +37,18 @@ export interface AfkRewardsCalculation {
   };
 
   // Nouvelles métadonnées pour progressive unlocks
-  unlockMeta: {
-    totalUnlocked: number;
-    totalAvailable: number;
+  unlockMeta?: {
+    unlockedRewardsCount: number;
+    totalRewardsAvailable: number;
     progressPercentage: number;
     recentUnlocks: string[];
-    upcomingUnlocks: Array<{
-      rewardType: string;
-      requirement: string;
-      levelsToGo: number;
-    }>;
+    nextUnlocks: string[];
   };
 }
 
 export class AfkRewardsService {
   
-  // === MÉTHODE PRINCIPALE (ENHANCED AVEC PROGRESSIVE UNLOCKS) ===
+  // === MÉTHODE PRINCIPALE (ENHANCED AVEC STAGE SELECTION + PROGRESSIVE UNLOCKS) ===
   public static async calculatePlayerAfkRewards(playerId: string): Promise<AfkRewardsCalculation> {
     try {
       const player = await Player.findById(playerId)
@@ -63,38 +58,46 @@ export class AfkRewardsService {
         throw new Error("Player not found");
       }
 
-      // Vérifier s'il y a un stage de farm custom
+      // VÉRIFIER S'IL Y A UN STAGE DE FARM CUSTOM
       const effectiveStage = await this.getEffectiveFarmingStage(playerId);
       
-      // Utiliser le stage effectif pour les calculs
+      // Utiliser le stage effectif (custom ou progression) pour les calculs
       const targetWorld = effectiveStage.world;
       const targetLevel = effectiveStage.level;
       const targetDifficulty = effectiveStage.difficulty;
 
-      // 1. Calculer les taux de base selon le stage effectif ET les déblocages
-      const baseRates = this.calculateBaseRatesWithUnlocks(targetWorld, targetLevel, targetDifficulty);
+      // 1. Calculer les taux de base selon le stage effectif + déblocages progressifs
+      const baseRates = this.calculateBaseRatesWithUnlocks(
+        targetWorld, 
+        targetLevel, 
+        targetDifficulty, 
+        player.world, 
+        player.level
+      );
       
       // 2. Calculer les multiplicateurs (inchangé)
       const multipliers = await this.calculateMultipliers(player);
       
-      // 3. Générer les récompenses finales avec déblocages progressifs
-      const rewards = this.generateRewardsListWithUnlocks(baseRates, multipliers, {
+      // 3. Générer les récompenses finales avec stage effectif + filtrage déblocages
+      const allRewards = this.generateRewardsList(baseRates, multipliers, {
         ...player.toObject(),
         world: targetWorld,
         level: targetLevel,
         difficulty: targetDifficulty
       });
-      
-      // 4. Obtenir les métadonnées de déblocage
-      const unlockInfo = AfkUnlockSystem.getUnlockInfo(player.world, player.level);
-      const upcomingUnlocks = unlockInfo.upcoming.slice(0, 3).map(unlock => ({
-        rewardType: unlock.rewardType,
-        requirement: unlock.requirement.description,
-        levelsToGo: AfkUnlockSystem.getLevelsToUnlock(unlock.rewardType, player.world, player.level).totalLevelsToGo
-      }));
 
+      // 4. NOUVEAU : Filtrer selon déblocages progressifs
+      const unlockedRewards = AfkUnlockSystem.filterRewardsByUnlocks(
+        allRewards, 
+        player.world, 
+        player.level
+      );
+
+      // 5. Obtenir métadonnées des déblocages
+      const unlockInfo = AfkUnlockSystem.getUnlockInfo(player.world, player.level);
+      
       const calculation: AfkRewardsCalculation = {
-        rewards,
+        rewards: unlockedRewards, // Seulement les récompenses débloquées
         multipliers,
         ratesPerMinute: {
           gold: baseRates.goldPerMinute * multipliers.total,
@@ -112,286 +115,72 @@ export class AfkRewardsService {
           effectiveDifficulty: targetDifficulty
         },
 
-        // Nouvelles métadonnées de déblocage progressif
+        // NOUVEAU : Métadonnées des déblocages progressifs
         unlockMeta: {
-          totalUnlocked: unlockInfo.totalUnlocked,
-          totalAvailable: unlockInfo.totalAvailable,
+          unlockedRewardsCount: unlockInfo.unlocked.length,
+          totalRewardsAvailable: unlockInfo.totalAvailable,
           progressPercentage: unlockInfo.progressPercentage,
-          recentUnlocks: [], // Sera calculé lors de la progression
-          upcomingUnlocks
+          recentUnlocks: [], // À remplir si on track la progression
+          nextUnlocks: unlockInfo.upcoming.slice(0, 3).map(u => 
+            `${u.rewardType} (${u.requirement.description})`
+          )
         }
       };
 
-      console.log(`Récompenses AFK calculées: ${unlockInfo.totalUnlocked}/${unlockInfo.totalAvailable} types débloqués (${unlockInfo.progressPercentage}%)`);
+      if (effectiveStage.isCustom) {
+        console.log(`Récompenses AFK calculées avec stage custom: ${calculation.farmingMeta!.farmingStage}`);
+      }
+      
+      console.log(`Déblocages: ${unlockInfo.unlocked.length}/${unlockInfo.totalAvailable} (${unlockInfo.progressPercentage}%)`);
       
       return calculation;
 
     } catch (error: any) {
-      console.error("❌ Erreur calculatePlayerAfkRewards:", error);
+      console.error("Erreur calculatePlayerAfkRewards:", error);
       throw error;
     }
   }
 
-  // === NOUVELLE MÉTHODE: CALCUL DES TAUX AVEC DÉBLOCAGES ===
-  private static calculateBaseRatesWithUnlocks(world: number, level: number, difficulty: string) {
-    // Taux de base comme avant
-    const worldMultiplier = Math.pow(1.15, world - 1);
-    const levelMultiplier = Math.pow(1.05, level - 1);
+  // === NOUVELLE MÉTHODE: CALCUL DES TAUX AVEC DÉBLOCAGES PROGRESSIFS ===
+  private static calculateBaseRatesWithUnlocks(
+    world: number, 
+    level: number, 
+    difficulty: string,
+    playerWorld: number,
+    playerLevel: number
+  ) {
+    // Calcul standard des taux
+    const baseRates = this.calculateBaseRates(world, level, difficulty);
     
-    const difficultyMultiplier: Record<string, number> = {
-      "Normal": 1.0,
-      "Hard": 1.5,
-      "Nightmare": 2.0
+    // NOUVEAU : Appliquer les déblocages progressifs
+    const unlockedRates = AfkUnlockSystem.getAllBaseRates(playerWorld, playerLevel);
+    
+    // Ajuster les taux selon ce qui est débloqué
+    const adjustedRates = {
+      goldPerMinute: unlockedRates.gold > 0 ? baseRates.goldPerMinute : 0,
+      expPerMinute: unlockedRates.exp > 0 ? baseRates.expPerMinute : 0,
+      materialsPerMinute: this.calculateMaterialsRate(unlockedRates, baseRates.materialsPerMinute),
+      worldMultiplier: baseRates.worldMultiplier,
+      levelMultiplier: baseRates.levelMultiplier,
+      difficultyMultiplier: baseRates.difficultyMultiplier
     };
-    const diffMult = difficultyMultiplier[difficulty] || 1.0;
 
-    // Obtenir les taux de base selon les déblocages
-    const baseGoldRate = AfkUnlockSystem.getBaseRate("gold", world, level);
-    const baseExpRate = AfkUnlockSystem.getBaseRate("exp", world, level);
-    
-    // Calculer les taux effectifs
-    const goldPerMinute = Math.floor(baseGoldRate * worldMultiplier * levelMultiplier * diffMult);
-    const expPerMinute = Math.floor(baseExpRate * worldMultiplier * levelMultiplier * diffMult);
-    
-    // Matériaux : moyenne des matériaux débloqués
-    const unlockedMaterials = AfkUnlockSystem.getUnlockedRewards(world, level)
-      .filter(unlock => unlock.category === "material");
-    
-    const avgMaterialRate = unlockedMaterials.length > 0 ? 
-      unlockedMaterials.reduce((sum, mat) => sum + mat.baseRate, 0) / unlockedMaterials.length : 0;
-    
-    const materialsPerMinute = Math.floor(avgMaterialRate * worldMultiplier * levelMultiplier * diffMult);
-
-    return {
-      goldPerMinute,
-      expPerMinute,
-      materialsPerMinute,
-      worldMultiplier,
-      levelMultiplier,
-      difficultyMultiplier: diffMult,
-      unlockedMaterials: unlockedMaterials.length
-    };
+    return adjustedRates;
   }
 
-  // === GÉNÉRATION DE RÉCOMPENSES AVEC DÉBLOCAGES ===
-  private static generateRewardsListWithUnlocks(
-    baseRates: any, 
-    multipliers: any, 
-    player: any
-  ): AfkReward[] {
-    const rewards: AfkReward[] = [];
-
-    // Obtenir toutes les récompenses débloquées
-    const unlockedRewards = AfkUnlockSystem.getUnlockedRewards(player.world, player.level);
-
-    // 1. MONNAIES débloquées
-    unlockedRewards.filter(unlock => unlock.category === "currency").forEach(unlock => {
-      let quantity = 0;
-      let baseQuantity = 0;
-
-      switch (unlock.rewardType) {
-        case "gold":
-          quantity = Math.floor(baseRates.goldPerMinute * multipliers.total);
-          baseQuantity = baseRates.goldPerMinute;
-          break;
-        case "exp":
-          // EXP converti en gems pour simplicité
-          quantity = Math.floor(baseRates.expPerMinute * multipliers.total * 0.1);
-          baseQuantity = Math.floor(baseRates.expPerMinute * 0.1);
-          break;
-        case "gems":
-          const gemsRate = AfkUnlockSystem.getBaseRate("gems", player.world, player.level);
-          const progressionMult = AfkUnlockSystem.getProgressionMultiplier("gems", player.world, player.level);
-          quantity = Math.floor(gemsRate * multipliers.total * progressionMult);
-          baseQuantity = gemsRate;
-          break;
-        case "tickets":
-          if (player.vipLevel >= 2) { // VIP requirement pour tickets
-            const ticketsRate = AfkUnlockSystem.getBaseRate("tickets", player.world, player.level);
-            const progressionMult = AfkUnlockSystem.getProgressionMultiplier("tickets", player.world, player.level);
-            quantity = Math.floor(ticketsRate * multipliers.vip * progressionMult);
-            baseQuantity = ticketsRate;
-          }
-          break;
-      }
-
-      if (quantity > 0) {
-        rewards.push({
-          type: "currency",
-          currencyType: unlock.rewardType as "gold" | "gems" | "tickets",
-          quantity,
-          baseQuantity
-        });
-      }
-    });
-
-    // 2. MATÉRIAUX débloqués
-    const unlockedMaterials = unlockedRewards.filter(unlock => unlock.category === "material");
-    unlockedMaterials.forEach(unlock => {
-      const materialRate = unlock.baseRate;
-      const progressionMult = AfkUnlockSystem.getProgressionMultiplier(unlock.rewardType, player.world, player.level);
-      const quantity = Math.floor(materialRate * baseRates.materialsPerMinute * multipliers.total * progressionMult / 10);
-
-      if (quantity > 0) {
-        rewards.push({
-          type: "material",
-          materialId: unlock.rewardType,
-          quantity,
-          baseQuantity: Math.floor(materialRate * baseRates.materialsPerMinute / 10)
-        });
-      }
-    });
-
-    // 3. FRAGMENTS débloqués
-    const unlockedFragments = unlockedRewards.filter(unlock => unlock.category === "fragment");
-    unlockedFragments.forEach(unlock => {
-      const fragmentRate = unlock.baseRate;
-      const progressionMult = AfkUnlockSystem.getProgressionMultiplier(unlock.rewardType, player.world, player.level);
-      
-      // Système de points basé sur la progression pour les fragments
-      const fragmentBaseRate = Math.min(0.3, player.world * 0.02 + player.level * 0.001);
-      const fragmentPoints = Math.floor(fragmentBaseRate * 100);
-      
-      if (fragmentPoints > 0) {
-        const quantity = Math.floor(fragmentRate * fragmentPoints * multipliers.total * progressionMult / 10);
-        
-        if (quantity > 0) {
-          rewards.push({
-            type: "fragment",
-            fragmentId: unlock.rewardType,
-            quantity,
-            baseQuantity: Math.floor(fragmentRate * fragmentPoints / 10)
-          });
-        }
-      }
-    });
-
-    return rewards.filter(r => r.quantity > 0);
+  // === CALCUL DES MATÉRIAUX SELON DÉBLOCAGES ===
+  private static calculateMaterialsRate(unlockedRates: Record<string, number>, baseMaterialsRate: number): number {
+    // Calculer le taux de matériaux selon ce qui est débloqué
+    const materialTypes = ["fusion_crystal", "elemental_essence", "ascension_stone", "divine_crystal"];
+    const unlockedMaterials = materialTypes.filter(type => unlockedRates[type] > 0);
+    
+    if (unlockedMaterials.length === 0) return 0;
+    
+    // Répartir le taux de base sur les matériaux débloqués
+    return baseMaterialsRate * (unlockedMaterials.length / materialTypes.length);
   }
 
-  // === MÉTHODE POUR DÉTECTER LES NOUVEAUX DÉBLOCAGES ===
-  public static async checkForNewUnlocks(
-    playerId: string,
-    previousWorld: number,
-    previousLevel: number
-  ): Promise<{
-    hasNewUnlocks: boolean;
-    newUnlocks: Array<{
-      rewardType: string;
-      unlockMessage: string;
-      category: string;
-      rarity: string;
-    }>;
-  }> {
-    try {
-      const player = await Player.findById(playerId).select("world level");
-      if (!player) {
-        return { hasNewUnlocks: false, newUnlocks: [] };
-      }
-
-      const recentUnlocks = AfkUnlockSystem.getRecentUnlocks(
-        previousWorld, 
-        previousLevel, 
-        player.world, 
-        player.level
-      );
-
-      const newUnlocks = recentUnlocks.map(unlock => ({
-        rewardType: unlock.rewardType,
-        unlockMessage: unlock.requirement.unlockMessage,
-        category: unlock.category,
-        rarity: unlock.rarity
-      }));
-
-      return {
-        hasNewUnlocks: newUnlocks.length > 0,
-        newUnlocks
-      };
-
-    } catch (error) {
-      console.error("❌ Erreur checkForNewUnlocks:", error);
-      return { hasNewUnlocks: false, newUnlocks: [] };
-    }
-  }
-
-  // === MÉTHODE POUR L'UI: PREVIEW DES DÉBLOCAGES ===
-  public static async getUnlockPreview(playerId: string): Promise<{
-    current: {
-      unlocked: Array<{
-        rewardType: string;
-        category: string;
-        rarity: string;
-        baseRate: number;
-        isActive: boolean;
-      }>;
-      progressPercentage: number;
-    };
-    upcoming: Array<{
-      rewardType: string;
-      requirement: string;
-      category: string;
-      rarity: string;
-      levelsToGo: number;
-      estimatedReward: string;
-    }>;
-  }> {
-    try {
-      const player = await Player.findById(playerId).select("world level");
-      if (!player) {
-        throw new Error("Player not found");
-      }
-
-      const unlockInfo = AfkUnlockSystem.getUnlockInfo(player.world, player.level);
-      
-      const current = {
-        unlocked: unlockInfo.unlocked.map(unlock => ({
-          rewardType: unlock.rewardType,
-          category: unlock.category,
-          rarity: unlock.rarity,
-          baseRate: unlock.baseRate,
-          isActive: unlock.isActive
-        })),
-        progressPercentage: unlockInfo.progressPercentage
-      };
-
-      const upcoming = unlockInfo.upcoming.map(unlock => {
-        const levelsToGo = AfkUnlockSystem.getLevelsToUnlock(unlock.rewardType, player.world, player.level);
-        
-        // Estimation des récompenses selon le type
-        let estimatedReward = "";
-        switch (unlock.category) {
-          case "currency":
-            estimatedReward = unlock.rewardType === "gold" ? "High gold rates" : 
-                            unlock.rewardType === "gems" ? "Premium currency" : "Free summons";
-            break;
-          case "material":
-            estimatedReward = `${unlock.baseRate}/min ${unlock.rarity} materials`;
-            break;
-          case "fragment":
-            estimatedReward = `${unlock.rarity} hero fragments`;
-            break;
-        }
-
-        return {
-          rewardType: unlock.rewardType,
-          requirement: unlock.requirement.description,
-          category: unlock.category,
-          rarity: unlock.rarity,
-          levelsToGo: levelsToGo.totalLevelsToGo,
-          estimatedReward
-        };
-      });
-
-      return { current, upcoming };
-
-    } catch (error: any) {
-      console.error("❌ Erreur getUnlockPreview:", error);
-      throw error;
-    }
-  }
-
-  // === MÉTHODES EXISTANTES CONSERVÉES ===
-
+  // === MÉTHODE EXISTANTE ÉTENDUE : OBTENIR LE STAGE EFFECTIF ===
   private static async getEffectiveFarmingStage(playerId: string): Promise<{
     world: number;
     level: number;
@@ -399,6 +188,7 @@ export class AfkRewardsService {
     isCustom: boolean;
   }> {
     try {
+      // Import dynamique pour éviter dépendances circulaires
       const { getOrCreateForPlayer } = require("../models/AfkFarmingTarget");
       
       const [player, farmingTarget] = await Promise.all([
@@ -410,6 +200,7 @@ export class AfkRewardsService {
         throw new Error("Player not found");
       }
 
+      // Si le farm custom est actif ET valide, l'utiliser
       if (farmingTarget && farmingTarget.isActive && farmingTarget.isValidStage) {
         return {
           world: farmingTarget.selectedWorld,
@@ -419,6 +210,7 @@ export class AfkRewardsService {
         };
       }
 
+      // Sinon, utiliser le stage de progression
       return {
         world: player.world,
         level: player.level,
@@ -427,8 +219,9 @@ export class AfkRewardsService {
       };
 
     } catch (error) {
-      console.error("❌ Erreur getEffectiveFarmingStage:", error);
+      console.error("Erreur getEffectiveFarmingStage:", error);
       
+      // Fallback sécurisé
       const player = await Player.findById(playerId).select("world level difficulty");
       return {
         world: player?.world || 1,
@@ -439,11 +232,47 @@ export class AfkRewardsService {
     }
   }
 
+  // === TAUX DE BASE SELON LA PROGRESSION ===
+  private static calculateBaseRates(world: number, level: number, difficulty: string) {
+    // Progression exponentielle comme AFK Arena
+    const worldMultiplier = Math.pow(1.15, world - 1); // +15% par monde
+    const levelMultiplier = Math.pow(1.05, level - 1);  // +5% par niveau
+    
+    // Bonus de difficulté
+    const difficultyMultiplier: Record<string, number> = {
+      "Normal": 1.0,
+      "Hard": 1.5,
+      "Nightmare": 2.0
+    };
+    const diffMult = difficultyMultiplier[difficulty] || 1.0;
+
+    const baseGold = 100; // Gold de base monde 1 niveau 1
+    const baseExp = 50;   // EXP de base
+    const baseMaterials = 10; // Matériaux de base
+
+    return {
+      goldPerMinute: Math.floor(baseGold * worldMultiplier * levelMultiplier * diffMult),
+      expPerMinute: Math.floor(baseExp * worldMultiplier * levelMultiplier * diffMult),
+      materialsPerMinute: Math.floor(baseMaterials * worldMultiplier * levelMultiplier * diffMult),
+      worldMultiplier,
+      levelMultiplier,
+      difficultyMultiplier: diffMult
+    };
+  }
+
+  // === CALCUL DES MULTIPLICATEURS ===
   private static async calculateMultipliers(player: any) {
     try {
+      // 1. Multiplicateur VIP
       const vipMultiplier = await VipService.getAfkRewardsMultiplier(player._id.toString(), player.serverId);
+      
+      // 2. Multiplicateur de stage (progression)
       const stageMultiplier = this.calculateStageMultiplier(player.world, player.level);
+      
+      // 3. Multiplicateur d'équipe (héros équipés)
       const heroesMultiplier = this.calculateHeroesMultiplier(player.heroes);
+      
+      // 4. Multiplicateur total
       const totalMultiplier = vipMultiplier * stageMultiplier * heroesMultiplier;
 
       return {
@@ -454,7 +283,7 @@ export class AfkRewardsService {
       };
 
     } catch (error) {
-      console.error("❌ Erreur calculateMultipliers:", error);
+      console.error("Erreur calculateMultipliers:", error);
       return {
         vip: 1.0,
         stage: 1.0,
@@ -464,29 +293,35 @@ export class AfkRewardsService {
     }
   }
 
+  // === MULTIPLICATEUR DE STAGE ===
   private static calculateStageMultiplier(world: number, level: number): number {
-    const totalStages = (world - 1) * 30 + level;
+    // Plus on progresse, plus les récompenses AFK sont importantes
+    const totalStages = (world - 1) * 30 + level; // Estimation stages totaux
     
     if (totalStages < 50) return 1.0;
     if (totalStages < 100) return 1.2;
     if (totalStages < 200) return 1.5;
     if (totalStages < 300) return 2.0;
     if (totalStages < 500) return 3.0;
-    return 5.0;
+    return 5.0; // End-game
   }
 
+  // === MULTIPLICATEUR D'ÉQUIPE ===
   private static calculateHeroesMultiplier(heroes: any[]): number {
-    if (!heroes || heroes.length === 0) return 0.5;
+    if (!heroes || heroes.length === 0) return 0.5; // Pas d'équipe = pénalité
 
     const equippedHeroes = heroes.filter(h => h.equipped && h.slot);
     if (equippedHeroes.length === 0) return 0.5;
 
+    // Calcul basé sur la puissance de l'équipe
     let totalPower = 0;
     equippedHeroes.forEach(hero => {
+      // Calcul simple de puissance : niveau × étoiles
       const heroPower = hero.level * hero.stars;
       totalPower += heroPower;
     });
 
+    // Multiplicateur basé sur la puissance totale
     const avgPower = totalPower / equippedHeroes.length;
     
     if (avgPower < 50) return 0.8;
@@ -496,19 +331,293 @@ export class AfkRewardsService {
     return 2.0;
   }
 
-  private static calculateMaxAccrualHours(vipLevel: number): number {
-    let baseHours = 12;
-    
-    if (vipLevel >= 3) baseHours += 2;
-    if (vipLevel >= 6) baseHours += 2;
-    if (vipLevel >= 9) baseHours += 4;
-    if (vipLevel >= 12) baseHours += 4;
-    
-    return baseHours;
+  // === GÉNÉRATION DE LA LISTE DES RÉCOMPENSES (ENHANCED AVEC PROGRESSIVE UNLOCKS) ===
+  private static generateRewardsList(
+    baseRates: any, 
+    multipliers: any, 
+    player: any
+  ): AfkReward[] {
+    const rewards: AfkReward[] = [];
+
+    // 1. OR (toujours présent si débloqué)
+    if (AfkUnlockSystem.isRewardUnlocked("gold", player.world, player.level)) {
+      const goldMultiplier = AfkUnlockSystem.getProgressionMultiplier("gold", player.world, player.level);
+      rewards.push({
+        type: "currency",
+        currencyType: "gold",
+        quantity: Math.floor(baseRates.goldPerMinute * multipliers.total * goldMultiplier),
+        baseQuantity: baseRates.goldPerMinute
+      });
+    }
+
+    // 2. EXP (si débloqué et niveau < 100)
+    if (player.level < 100 && AfkUnlockSystem.isRewardUnlocked("exp", player.world, player.level)) {
+      const expMultiplier = AfkUnlockSystem.getProgressionMultiplier("exp", player.world, player.level);
+      rewards.push({
+        type: "currency",
+        currencyType: "gems", // On utilise gems comme EXP pour simplifier
+        quantity: Math.floor(baseRates.expPerMinute * multipliers.total * 0.1 * expMultiplier),
+        baseQuantity: Math.floor(baseRates.expPerMinute * 0.1)
+      });
+    }
+
+    // 3. GEMS (si débloqué)
+    if (AfkUnlockSystem.isRewardUnlocked("gems", player.world, player.level)) {
+      const gemsRate = AfkUnlockSystem.getBaseRate("gems", player.world, player.level);
+      const gemsMultiplier = AfkUnlockSystem.getProgressionMultiplier("gems", player.world, player.level);
+      rewards.push({
+        type: "currency",
+        currencyType: "gems",
+        quantity: Math.floor(gemsRate * multipliers.total * gemsMultiplier),
+        baseQuantity: gemsRate
+      });
+    }
+
+    // 4. TICKETS (si débloqué et VIP 2+)
+    if (player.vipLevel >= 2 && AfkUnlockSystem.isRewardUnlocked("tickets", player.world, player.level)) {
+      const ticketsRate = AfkUnlockSystem.getBaseRate("tickets", player.world, player.level);
+      const ticketsMultiplier = AfkUnlockSystem.getProgressionMultiplier("tickets", player.world, player.level);
+      rewards.push({
+        type: "currency",
+        currencyType: "tickets",
+        quantity: Math.floor(ticketsRate * multipliers.vip * ticketsMultiplier),
+        baseQuantity: ticketsRate
+      });
+    }
+
+    // 5. MATÉRIAUX (selon déblocages progressifs)
+    const materialRewards = this.getMaterialsForWorldWithUnlocks(
+      player.world, 
+      player.level, 
+      baseRates.materialsPerMinute, 
+      multipliers.total
+    );
+    rewards.push(...materialRewards);
+
+    // 6. FRAGMENTS DE HÉROS (selon déblocages progressifs)
+    const fragmentRewards = this.getFragmentRewardsWithUnlocks(
+      player.world, 
+      player.level, 
+      multipliers.total
+    );
+    rewards.push(...fragmentRewards);
+
+    return rewards.filter(r => r.quantity > 0);
   }
 
-  // === MÉTHODES PUBLIQUES CONSERVÉES ===
+  // === MATÉRIAUX AVEC DÉBLOCAGES PROGRESSIFS ===
+  private static getMaterialsForWorldWithUnlocks(
+    playerWorld: number, 
+    playerLevel: number, 
+    baseMaterials: number, 
+    totalMultiplier: number
+  ): AfkReward[] {
+    const materials: AfkReward[] = [];
 
+    // Fusion Crystals
+    if (AfkUnlockSystem.isRewardUnlocked("fusion_crystal", playerWorld, playerLevel)) {
+      const multiplier = AfkUnlockSystem.getProgressionMultiplier("fusion_crystal", playerWorld, playerLevel);
+      materials.push({
+        type: "material",
+        materialId: "fusion_crystal",
+        quantity: Math.floor(baseMaterials * totalMultiplier * 0.8 * multiplier),
+        baseQuantity: Math.floor(baseMaterials * 0.8)
+      });
+    }
+
+    // Elemental Essence
+    if (AfkUnlockSystem.isRewardUnlocked("elemental_essence", playerWorld, playerLevel)) {
+      const multiplier = AfkUnlockSystem.getProgressionMultiplier("elemental_essence", playerWorld, playerLevel);
+      materials.push({
+        type: "material",
+        materialId: "elemental_essence",
+        quantity: Math.floor(baseMaterials * totalMultiplier * 0.3 * multiplier),
+        baseQuantity: Math.floor(baseMaterials * 0.3)
+      });
+    }
+
+    // Ascension Stones
+    if (AfkUnlockSystem.isRewardUnlocked("ascension_stone", playerWorld, playerLevel)) {
+      const multiplier = AfkUnlockSystem.getProgressionMultiplier("ascension_stone", playerWorld, playerLevel);
+      materials.push({
+        type: "material",
+        materialId: "ascension_stone",
+        quantity: Math.floor(baseMaterials * totalMultiplier * 0.1 * multiplier),
+        baseQuantity: Math.floor(baseMaterials * 0.1)
+      });
+    }
+
+    // Divine Crystals
+    if (AfkUnlockSystem.isRewardUnlocked("divine_crystal", playerWorld, playerLevel)) {
+      const multiplier = AfkUnlockSystem.getProgressionMultiplier("divine_crystal", playerWorld, playerLevel);
+      materials.push({
+        type: "material",
+        materialId: "divine_crystal",
+        quantity: Math.floor(baseMaterials * totalMultiplier * 0.05 * multiplier),
+        baseQuantity: Math.floor(baseMaterials * 0.05)
+      });
+    }
+
+    return materials;
+  }
+
+  // === FRAGMENTS AVEC DÉBLOCAGES PROGRESSIFS ===
+  private static getFragmentRewardsWithUnlocks(
+    playerWorld: number, 
+    playerLevel: number, 
+    totalMultiplier: number
+  ): AfkReward[] {
+    const fragments: AfkReward[] = [];
+
+    // Chance de fragments selon la progression (déterministe)
+    const fragmentBaseRate = Math.min(0.3, playerWorld * 0.02 + playerLevel * 0.001);
+    const fragmentPoints = Math.floor(fragmentBaseRate * 100);
+    
+    if (fragmentPoints <= 0) return fragments;
+
+    // Héros communs
+    if (AfkUnlockSystem.isRewardUnlocked("common_hero_fragments", playerWorld, playerLevel)) {
+      const multiplier = AfkUnlockSystem.getProgressionMultiplier("common_hero_fragments", playerWorld, playerLevel);
+      const commonQuantity = Math.floor((fragmentPoints * 0.6) * totalMultiplier * multiplier / 10);
+      if (commonQuantity > 0) {
+        fragments.push({
+          type: "fragment",
+          fragmentId: "common_hero_fragments",
+          quantity: commonQuantity,
+          baseQuantity: Math.floor(fragmentPoints * 0.6 / 10)
+        });
+      }
+    }
+
+    // Héros rares
+    if (fragmentPoints >= 15 && AfkUnlockSystem.isRewardUnlocked("rare_hero_fragments", playerWorld, playerLevel)) {
+      const multiplier = AfkUnlockSystem.getProgressionMultiplier("rare_hero_fragments", playerWorld, playerLevel);
+      const rareQuantity = Math.floor((fragmentPoints * 0.3) * totalMultiplier * multiplier / 15);
+      if (rareQuantity > 0) {
+        fragments.push({
+          type: "fragment",
+          fragmentId: "rare_hero_fragments",
+          quantity: rareQuantity,
+          baseQuantity: Math.floor(fragmentPoints * 0.3 / 15)
+        });
+      }
+    }
+
+    // Héros épiques
+    if (fragmentPoints >= 25 && AfkUnlockSystem.isRewardUnlocked("epic_hero_fragments", playerWorld, playerLevel)) {
+      const multiplier = AfkUnlockSystem.getProgressionMultiplier("epic_hero_fragments", playerWorld, playerLevel);
+      const epicQuantity = Math.floor((fragmentPoints * 0.1) * totalMultiplier * multiplier / 25);
+      if (epicQuantity > 0) {
+        fragments.push({
+          type: "fragment",
+          fragmentId: "epic_hero_fragments",
+          quantity: epicQuantity,
+          baseQuantity: Math.floor(fragmentPoints * 0.1 / 25)
+        });
+      }
+    }
+
+    // Héros légendaires
+    if (fragmentPoints >= 40 && AfkUnlockSystem.isRewardUnlocked("legendary_hero_fragments", playerWorld, playerLevel)) {
+      const multiplier = AfkUnlockSystem.getProgressionMultiplier("legendary_hero_fragments", playerWorld, playerLevel);
+      const legendaryQuantity = Math.floor((fragmentPoints * 0.05) * totalMultiplier * multiplier / 40);
+      if (legendaryQuantity > 0) {
+        fragments.push({
+          type: "fragment",
+          fragmentId: "legendary_hero_fragments",
+          quantity: legendaryQuantity,
+          baseQuantity: Math.floor(fragmentPoints * 0.05 / 40)
+        });
+      }
+    }
+
+    return fragments.filter(f => f.quantity > 0);
+  }
+
+  // === NOUVELLES MÉTHODES POUR PROGRESSIVE UNLOCKS ===
+
+  /**
+   * Vérifier si un joueur a débloqué de nouvelles récompenses récemment
+   */
+  public static async checkForNewUnlocks(
+    playerId: string,
+    previousWorld: number,
+    previousLevel: number
+  ): Promise<{
+    hasNewUnlocks: boolean;
+    newUnlocks: string[];
+    unlockMessages: string[];
+  }> {
+    try {
+      const player = await Player.findById(playerId).select("world level");
+      if (!player) throw new Error("Player not found");
+
+      const recentUnlocks = AfkUnlockSystem.getRecentUnlocks(
+        previousWorld,
+        previousLevel,
+        player.world,
+        player.level
+      );
+
+      return {
+        hasNewUnlocks: recentUnlocks.length > 0,
+        newUnlocks: recentUnlocks.map(u => u.rewardType),
+        unlockMessages: recentUnlocks.map(u => u.requirement.unlockMessage)
+      };
+    } catch (error: any) {
+      console.error("Erreur checkForNewUnlocks:", error);
+      return { hasNewUnlocks: false, newUnlocks: [], unlockMessages: [] };
+    }
+  }
+
+  /**
+   * Obtenir un aperçu des déblocages pour l'UI
+   */
+  public static async getUnlockPreview(playerId: string): Promise<{
+    current: any;
+    upcoming: any[];
+    progressPercentage: number;
+  }> {
+    try {
+      const player = await Player.findById(playerId).select("world level");
+      if (!player) throw new Error("Player not found");
+
+      const unlockInfo = AfkUnlockSystem.getUnlockInfo(player.world, player.level);
+
+      return {
+        current: {
+          unlockedCount: unlockInfo.unlocked.length,
+          totalAvailable: unlockInfo.totalAvailable,
+          latestUnlocks: unlockInfo.unlocked.slice(-3).map(u => u.rewardType)
+        },
+        upcoming: unlockInfo.upcoming.map(u => ({
+          rewardType: u.rewardType,
+          requirement: u.requirement.description,
+          levelsToGo: AfkUnlockSystem.getLevelsToUnlock(u.rewardType, player.world, player.level).totalLevelsToGo
+        })),
+        progressPercentage: unlockInfo.progressPercentage
+      };
+    } catch (error: any) {
+      console.error("Erreur getUnlockPreview:", error);
+      throw error;
+    }
+  }
+
+  // === DURÉE MAXIMALE D'ACCUMULATION ===
+  private static calculateMaxAccrualHours(vipLevel: number): number {
+    // Base : 12h comme AFK Arena
+    let baseHours = 12;
+    
+    // Bonus VIP
+    if (vipLevel >= 3) baseHours += 2;  // +2h à VIP 3
+    if (vipLevel >= 6) baseHours += 2;  // +2h à VIP 6
+    if (vipLevel >= 9) baseHours += 4;  // +4h à VIP 9
+    if (vipLevel >= 12) baseHours += 4; // +4h à VIP 12
+    
+    return baseHours; // Max 24h
+  }
+
+  // === APPLIQUER LES RÉCOMPENSES AU JOUEUR ===
   public static async applyAfkRewards(
     playerId: string, 
     rewards: AfkReward[], 
@@ -551,20 +660,21 @@ export class AfkRewardsService {
             break;
 
           case "item":
-            console.log(`📦 Objet AFK reçu: ${reward.itemId} x${finalQuantity}`);
+            console.log(`Objet AFK reçu: ${reward.itemId} x${finalQuantity}`);
             break;
         }
       }
 
       await player.save();
-      console.log(`✅ Récompenses AFK appliquées pour ${player.username}`);
+      console.log(`Récompenses AFK appliquées pour ${player.username}`);
 
     } catch (error: any) {
-      console.error("❌ Erreur applyAfkRewards:", error);
+      console.error("Erreur applyAfkRewards:", error);
       throw error;
     }
   }
 
+  // === RÉSUMÉ POUR L'UI (ENHANCED) ===
   public static async getAfkSummaryForPlayer(playerId: string): Promise<{
     canClaim: boolean;
     pendingRewards: AfkReward[];
@@ -573,13 +683,13 @@ export class AfkRewardsService {
     multipliers: any;
     nextRewardIn: number;
     farmingMeta?: any;
-    unlockMeta?: any; // Nouveau
+    unlockMeta?: any; // NOUVEAU
   }> {
     try {
       const calculation = await this.calculatePlayerAfkRewards(playerId);
       
-      const timeAccumulated = 0;
-      const maxAccrualTime = calculation.maxAccrualHours * 3600;
+      const timeAccumulated = 0; // À récupérer depuis AfkState
+      const maxAccrualTime = calculation.maxAccrualHours * 3600; // en secondes
       
       return {
         canClaim: timeAccumulated > 0,
@@ -587,17 +697,309 @@ export class AfkRewardsService {
         timeAccumulated,
         maxAccrualTime,
         multipliers: calculation.multipliers,
-        nextRewardIn: 60,
+        nextRewardIn: 60, // 1 minute pour le prochain tick
         farmingMeta: calculation.farmingMeta,
-        unlockMeta: calculation.unlockMeta // Nouvelles métadonnées
+        unlockMeta: calculation.unlockMeta // NOUVEAU
       };
 
     } catch (error: any) {
-      console.error("❌ Erreur getAfkSummaryForPlayer:", error);
+      console.error("Erreur getAfkSummaryForPlayer:", error);
       throw error;
     }
   }
 
-  // Autres méthodes publiques (simulateAfkGains, etc.) conservées telles quelles...
-  // [Les autres méthodes restent identiques à la version précédente]
+  // === NOUVELLES MÉTHODES UTILITAIRES (ENHANCED) ===
+
+  // Calculer les récompenses pour une durée spécifique (en minutes)
+  public static async calculateRewardsForDuration(
+    playerId: string, 
+    durationMinutes: number
+  ): Promise<AfkReward[]> {
+    try {
+      const calculation = await this.calculatePlayerAfkRewards(playerId);
+      
+      return calculation.rewards.map(reward => ({
+        ...reward,
+        quantity: Math.floor(reward.quantity * durationMinutes),
+        baseQuantity: reward.baseQuantity
+      })).filter(r => r.quantity > 0);
+
+    } catch (error: any) {
+      console.error("Erreur calculateRewardsForDuration:", error);
+      return [];
+    }
+  }
+
+  // Simuler les gains pour X heures (pour l'UI) - ENHANCED
+  public static async simulateAfkGains(
+    playerId: string, 
+    hours: number
+  ): Promise<{
+    rewards: AfkReward[];
+    totalValue: number;
+    cappedAt: number; // En heures si atteint le cap
+    farmingMeta?: any;
+    unlockMeta?: any; // NOUVEAU
+  }> {
+    try {
+      const calculation = await this.calculatePlayerAfkRewards(playerId);
+      const requestedMinutes = hours * 60;
+      const maxMinutes = calculation.maxAccrualHours * 60;
+      
+      const effectiveMinutes = Math.min(requestedMinutes, maxMinutes);
+      const cappedAt = effectiveMinutes < requestedMinutes ? calculation.maxAccrualHours : hours;
+      
+      const rewards = calculation.rewards.map(reward => ({
+        ...reward,
+        quantity: Math.floor(reward.quantity * effectiveMinutes),
+        baseQuantity: reward.baseQuantity
+      })).filter(r => r.quantity > 0);
+
+      // Calculer valeur totale
+      let totalValue = 0;
+      rewards.forEach(reward => {
+        switch (reward.type) {
+          case "currency":
+            if (reward.currencyType === "gold") totalValue += reward.quantity * 0.001;
+            else if (reward.currencyType === "gems") totalValue += reward.quantity * 1;
+            else if (reward.currencyType === "tickets") totalValue += reward.quantity * 5;
+            break;
+          case "material":
+            totalValue += reward.quantity * 2;
+            break;
+          case "fragment":
+            totalValue += reward.quantity * 10;
+            break;
+        }
+      });
+
+      return {
+        rewards,
+        totalValue: Math.round(totalValue),
+        cappedAt,
+        farmingMeta: calculation.farmingMeta,
+        unlockMeta: calculation.unlockMeta // NOUVEAU
+      };
+
+    } catch (error: any) {
+      console.error("Erreur simulateAfkGains:", error);
+      return { rewards: [], totalValue: 0, cappedAt: hours };
+    }
+  }
+
+  // Obtenir les taux actuels d'un joueur (pour l'UI) - ENHANCED
+  public static async getPlayerCurrentRates(playerId: string): Promise<{
+    ratesPerMinute: {
+      gold: number;
+      gems: number;
+      tickets: number;
+      materials: number;
+    };
+    multipliers: {
+      vip: number;
+      stage: number;
+      heroes: number;
+      total: number;
+    };
+    maxAccrualHours: number;
+    progression: {
+      world: number;
+      level: number;
+      difficulty: string;
+      totalStages: number;
+    };
+    farmingMeta?: any;
+    unlockMeta?: any; // NOUVEAU
+  }> {
+    try {
+      const player = await Player.findById(playerId)
+        .select("world level difficulty heroes vipLevel serverId");
+      
+      if (!player) {
+        throw new Error("Player not found");
+      }
+
+      const calculation = await this.calculatePlayerAfkRewards(playerId);
+      
+      return {
+        ratesPerMinute: {
+          gold: calculation.ratesPerMinute.gold,
+          gems: calculation.ratesPerMinute.exp,
+          tickets: player.vipLevel >= 2 ? Math.floor(0.5 * calculation.multipliers.vip) : 0,
+          materials: calculation.ratesPerMinute.materials
+        },
+        multipliers: calculation.multipliers,
+        maxAccrualHours: calculation.maxAccrualHours,
+        progression: {
+          world: player.world,
+          level: player.level,
+          difficulty: player.difficulty,
+          totalStages: (player.world - 1) * 30 + player.level
+        },
+        farmingMeta: calculation.farmingMeta,
+        unlockMeta: calculation.unlockMeta // NOUVEAU
+      };
+
+    } catch (error: any) {
+      console.error("Erreur getPlayerCurrentRates:", error);
+      throw error;
+    }
+  }
+
+  // Comparer les gains avant/après upgrade (pour motiver l'upgrade) - ENHANCED
+  public static async compareUpgradeGains(playerId: string): Promise<{
+    current: any;
+    afterWorldUp: any;
+    afterLevelUp: any;
+    afterVipUp: any;
+    improvement: {
+      worldUp: number; // % d'amélioration
+      levelUp: number;
+      vipUp: number;
+    };
+    farmingMeta?: any;
+    unlockMeta?: any; // NOUVEAU
+  }> {
+    try {
+      const player = await Player.findById(playerId)
+        .select("world level difficulty heroes vipLevel serverId");
+      
+      if (!player) {
+        throw new Error("Player not found");
+      }
+
+      // Calcul actuel
+      const current = await this.calculatePlayerAfkRewards(playerId);
+      
+      // Simulation world +1
+      const tempWorld = { ...player.toObject(), world: player.world + 1 };
+      const afterWorldUp = this.calculateBaseRatesWithUnlocks(
+        tempWorld.world, tempWorld.level, tempWorld.difficulty,
+        tempWorld.world, tempWorld.level
+      );
+      const worldMultipliers = await this.calculateMultipliers(tempWorld);
+      
+      // Simulation level +5
+      const tempLevel = { ...player.toObject(), level: player.level + 5 };
+      const afterLevelUp = this.calculateBaseRatesWithUnlocks(
+        tempLevel.world, tempLevel.level, tempLevel.difficulty,
+        tempLevel.world, tempLevel.level
+      );
+      const levelMultipliers = await this.calculateMultipliers(tempLevel);
+      
+      // Simulation VIP +1
+      const tempVip = { ...player.toObject(), vipLevel: player.vipLevel + 1 };
+      const vipMultipliers = await this.calculateMultipliers(tempVip);
+      
+      // Calculer améliorations
+      const currentGold = current.ratesPerMinute.gold;
+      const worldGold = afterWorldUp.goldPerMinute * worldMultipliers.total;
+      const levelGold = afterLevelUp.goldPerMinute * levelMultipliers.total;
+      const vipGold = current.ratesPerMinute.gold * (vipMultipliers.total / current.multipliers.total);
+      
+      return {
+        current: {
+          goldPerMinute: currentGold,
+          multipliers: current.multipliers
+        },
+        afterWorldUp: {
+          goldPerMinute: worldGold,
+          multipliers: worldMultipliers
+        },
+        afterLevelUp: {
+          goldPerMinute: levelGold,
+          multipliers: levelMultipliers
+        },
+        afterVipUp: {
+          goldPerMinute: vipGold,
+          multipliers: vipMultipliers
+        },
+        improvement: {
+          worldUp: Math.round(((worldGold / currentGold) - 1) * 100),
+          levelUp: Math.round(((levelGold / currentGold) - 1) * 100),
+          vipUp: Math.round(((vipGold / currentGold) - 1) * 100)
+        },
+        farmingMeta: current.farmingMeta,
+        unlockMeta: current.unlockMeta // NOUVEAU
+      };
+
+    } catch (error: any) {
+      console.error("Erreur compareUpgradeGains:", error);
+      throw error;
+    }
+  }
+
+  // === NOUVELLE MÉTHODE: FORCER RECALCUL AVEC STAGE SPÉCIFIQUE (ENHANCED) ===
+  public static async calculateRewardsForSpecificStage(
+    playerId: string,
+    world: number,
+    level: number,
+    difficulty: string
+  ): Promise<AfkRewardsCalculation> {
+    try {
+      const player = await Player.findById(playerId)
+        .select("world level heroes vipLevel serverId");
+      
+      if (!player) {
+        throw new Error("Player not found");
+      }
+
+      // Calculer directement pour le stage spécifié AVEC déblocages progressifs
+      const baseRates = this.calculateBaseRatesWithUnlocks(
+        world, level, difficulty,
+        player.world, player.level // Utiliser la vraie progression pour les déblocages
+      );
+      const multipliers = await this.calculateMultipliers(player);
+      
+      const tempPlayer = {
+        ...player.toObject(),
+        world,
+        level,
+        difficulty
+      };
+      
+      const allRewards = this.generateRewardsList(baseRates, multipliers, tempPlayer);
+      
+      // Filtrer selon déblocages progressifs (progression réelle du joueur)
+      const unlockedRewards = AfkUnlockSystem.filterRewardsByUnlocks(
+        allRewards, 
+        player.world, 
+        player.level
+      );
+
+      // Métadonnées des déblocages
+      const unlockInfo = AfkUnlockSystem.getUnlockInfo(player.world, player.level);
+      
+      return {
+        rewards: unlockedRewards,
+        multipliers,
+        ratesPerMinute: {
+          gold: baseRates.goldPerMinute * multipliers.total,
+          exp: baseRates.expPerMinute * multipliers.total,
+          materials: baseRates.materialsPerMinute * multipliers.total
+        },
+        maxAccrualHours: this.calculateMaxAccrualHours(player.vipLevel),
+        farmingMeta: {
+          isCustomFarming: true,
+          farmingStage: `${world}-${level} (${difficulty})`,
+          effectiveWorld: world,
+          effectiveLevel: level,
+          effectiveDifficulty: difficulty
+        },
+        unlockMeta: {
+          unlockedRewardsCount: unlockInfo.unlocked.length,
+          totalRewardsAvailable: unlockInfo.totalAvailable,
+          progressPercentage: unlockInfo.progressPercentage,
+          recentUnlocks: [],
+          nextUnlocks: unlockInfo.upcoming.slice(0, 3).map(u => 
+            `${u.rewardType} (${u.requirement.description})`
+          )
+        }
+      };
+
+    } catch (error: any) {
+      console.error("Erreur calculateRewardsForSpecificStage:", error);
+      throw error;
+    }
+  }
 }
