@@ -290,6 +290,47 @@ public static async notifyFeatureUnlock(
   }
 
   /**
+ * Sauvegarder une demande de push notification
+ */
+private static async savePushRequest(
+  playerId: string, 
+  serverId: string, 
+  pushData: {
+    title: string;
+    message: string;
+    data?: Record<string, any>;
+    priority: string;
+  }
+): Promise<void> {
+  try {
+    const player = await Player.findOne({ _id: playerId, serverId });
+    if (!player) return;
+
+    if (!(player as any).pushQueue) {
+      (player as any).pushQueue = [];
+    }
+
+    const pushNotification = {
+      id: `push_${Date.now()}`,
+      ...pushData,
+      timestamp: new Date(),
+      sent: false
+    };
+
+    (player as any).pushQueue.push(pushNotification);
+
+    // Garder seulement les 20 dernières demandes
+    if ((player as any).pushQueue.length > 20) {
+      (player as any).pushQueue = (player as any).pushQueue.slice(-20);
+    }
+
+    await player.save();
+    
+  } catch (error) {
+    console.error("Error saving push request:", error);
+  }
+}
+  /**
    * Vérifier si une feature était débloquée avant
    */
   private static wasFeatureUnlockedBefore(
