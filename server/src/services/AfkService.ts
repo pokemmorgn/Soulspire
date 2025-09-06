@@ -512,7 +512,7 @@ export class AfkServiceEnhanced {
     if (!state.lastTickAt) {
       const anchor =
         (player?.lastSeenAt as Date | undefined) ??
-        (player?.createdAt as Date | undefined) ??
+        ((player as any)?.createdAt as Date | undefined) ??
         new Date();
 
       state.lastTickAt = anchor;
