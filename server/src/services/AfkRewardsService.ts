@@ -666,7 +666,7 @@ export class AfkRewardsService {
       }
 
       await player.save();
-      console.log(`Récompenses AFK appliquées pour ${player.username}`);
+      console.log(`Récompenses AFK appliquées pour ${player.displayName}`);
 
     } catch (error: any) {
       console.error("Erreur applyAfkRewards:", error);
