@@ -4,6 +4,7 @@ import { BattleService } from "../services/BattleService";
 import { IBattleOptions } from "../services/BattleEngine";
 import LevelProgress from "../models/LevelProgress";
 import authMiddleware from "../middleware/authMiddleware";
+import { requireFeature } from "../middleware/featureMiddleware";
 
 const router = express.Router();
 
@@ -123,7 +124,7 @@ router.post("/campaign", authMiddleware, async (req: Request, res: Response): Pr
   }
 });
 
-router.post("/arena", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/arena", authMiddleware, requireFeature("arena"), async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = arenaBattleSchema.validate(req.body);
     if (error) {
