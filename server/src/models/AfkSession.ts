@@ -20,12 +20,11 @@ export interface IAfkSession extends Document {
 }
 
 const AfkSessionSchema = new Schema<IAfkSession>({
-  playerId: {
-    type: Schema.Types.ObjectId,
-    ref: "Player",
-    required: true,
-    index: true,
-  },
+playerId: {
+  type: String,
+  required: true,
+  index: true,
+},
   deviceId: { type: String, default: null },
   source: { type: String, enum: ["idle", "offline"], default: "idle", index: true },
   status: { type: String, enum: ["running", "ended"], default: "running", index: true },
