@@ -142,7 +142,7 @@ const router = Router();
 
 /** Auth middleware */
 const requireAuth: RequestHandler = (req, res, next) => {
-  if (!req.user?.id) return res.status(401).json({ ok: false, error: "Unauthenticated" });
+  if (!req.playerId) return res.status(401).json({ ok: false, error: "Unauthenticated" });
   next();
 };
 
@@ -156,7 +156,7 @@ const lastHeartbeatByPlayer = new Map<string, number>();
  * Retourne format original + données enhanced si disponibles
  */
 const getSummary: RequestHandler = async (req, res) => {
-  const playerId = req.user!.id;
+const playerId = req.playerId!;
   
   try {
     const summary = await AfkServiceEnhanced.getSummaryEnhanced(playerId, true);
