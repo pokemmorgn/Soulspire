@@ -63,7 +63,7 @@ export class HeroUpgradeService {
         return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
       }
 
-      const heroInstance = player.heroes.find(h => h._id?.toString() === heroInstanceId);
+      const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
       if (!heroInstance) {
         return { success: false, error: "Hero not found", code: "HERO_NOT_FOUND" };
       }
@@ -157,7 +157,7 @@ export class HeroUpgradeService {
         return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
       }
 
-      const heroInstance = player.heroes.find(h => h._id?.toString() === heroInstanceId);
+      const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
       if (!heroInstance) {
         return { success: false, error: "Hero not found", code: "HERO_NOT_FOUND" };
       }
@@ -248,7 +248,7 @@ export class HeroUpgradeService {
         return { success: false, error: "Player not found" };
       }
 
-      const heroInstance = player.heroes.find(h => h._id?.toString() === heroInstanceId);
+      const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
       if (!heroInstance) {
         return { success: false, error: "Hero not found" };
       }
@@ -330,7 +330,7 @@ export class HeroUpgradeService {
         return { success: false, error: "Player not found" };
       }
 
-      const heroInstance = player.heroes.find(h => h._id?.toString() === heroInstanceId);
+      const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
       if (!heroInstance) {
         return { success: false, error: "Hero not found" };
       }
@@ -422,7 +422,7 @@ export class HeroUpgradeService {
         throw new Error("Player not found");
       }
 
-      const heroInstance = player.heroes.find(h => h._id?.toString() === heroInstanceId);
+      const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
       if (!heroInstance) {
         throw new Error("Hero not found");
       }
@@ -582,7 +582,7 @@ export class HeroUpgradeService {
       const availableGold = maxGoldToSpend || player.gold;
 
       for (const heroInstanceId of heroInstanceIds) {
-        const heroInstance = player.heroes.find(h => h._id?.toString() === heroInstanceId);
+        const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
         if (!heroInstance) continue;
 
         const heroData = await Hero.findById(heroInstance.heroId);
@@ -668,7 +668,7 @@ export class HeroUpgradeService {
         throw new Error("Player not found");
       }
 
-      const heroInstance = player.heroes.find(h => h._id?.toString() === heroInstanceId);
+      const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
       if (!heroInstance) {
         throw new Error("Hero not found");
       }
