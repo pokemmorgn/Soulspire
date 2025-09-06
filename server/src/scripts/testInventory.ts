@@ -67,7 +67,7 @@ class InventoryTester {
     this.testPlayerId = (testPlayer._id as any).toString();
     this.player = testPlayer;
     
-    log(`✅ Test player created: ${testPlayer.username} (ID: ${this.testPlayerId})`, colors.green);
+   log(`✅ Test player created: ${testPlayer.displayName} (ID: ${this.testPlayerId})`, colors.green);
   }
 
   async createTestHero(): Promise<void> {
