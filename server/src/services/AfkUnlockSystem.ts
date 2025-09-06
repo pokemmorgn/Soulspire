@@ -206,29 +206,45 @@ export class AfkUnlockSystem {
   /**
    * Vérifier si un type de récompense est débloqué pour un joueur
    */
-  public static isRewardUnlocked(
-    rewardType: RewardType | MaterialType | FragmentType,
-    playerWorld: number,
-    playerLevel: number
-  ): boolean {
-    const unlock = AFK_UNLOCK_CONFIG.find(u => u.rewardType === rewardType);
-    
-    if (!unlock || !unlock.isActive) {
-      return false;
-    }
+public static isRewardUnlocked(
+  rewardType: RewardType | MaterialType | FragmentType,
+  playerWorld: number,
+  playerLevel: number
+): boolean {
+  const unlock = AFK_UNLOCK_CONFIG.find(u => u.rewardType === rewardType);
+  
+  if (!unlock || !unlock.isActive) {
+    return false;
+  }
 
-    // Vérifier le monde
-    if (playerWorld < unlock.requirement.world) {
-      return false;
-    }
+  // Sécurité : assurer que les paramètres sont valides
+  const safePlayerWorld = Math.max(1, playerWorld);
+  const safePlayerLevel = Math.max(1, playerLevel);
 
-    // Si même monde, vérifier le niveau (si spécifié)
-    if (playerWorld === unlock.requirement.world && unlock.requirement.level) {
-      return playerLevel >= unlock.requirement.level;
-    }
-
+  // Cas 1: Monde du joueur supérieur au monde requis = toujours débloqué
+  if (safePlayerWorld > unlock.requirement.world) {
     return true;
   }
+  
+  // Cas 2: Monde du joueur inférieur au monde requis = jamais débloqué
+  if (safePlayerWorld < unlock.requirement.world) {
+    return false;
+  }
+
+  // Cas 3: Même monde - vérifier le niveau requis
+  if (safePlayerWorld === unlock.requirement.world) {
+    // Si pas de niveau spécifique requis, débloqué dès qu'on atteint le monde
+    if (!unlock.requirement.level || unlock.requirement.level <= 1) {
+      return true;
+    }
+    
+    // Si niveau spécifique requis, vérifier
+    return safePlayerLevel >= unlock.requirement.level;
+  }
+
+  // Fallback (ne devrait jamais arriver)
+  return false;
+}
 
   /**
    * Obtenir tous les types de récompenses débloqués pour un joueur
