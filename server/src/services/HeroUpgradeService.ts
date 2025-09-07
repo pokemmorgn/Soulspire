@@ -58,7 +58,7 @@ export class HeroUpgradeService {
     targetLevel?: number
   ): Promise<HeroUpgradeResult> {
     try {
-      const player = await Player.findOne({ _id: playerId, serverId });
+      const player = await Player.findOne({ accountId, serverId });
       if (!player) {
         return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
       }
@@ -113,7 +113,7 @@ export class HeroUpgradeService {
 
       await player.save();
 
-      await this.updateProgressTracking(playerId, serverId, "level_up", finalTargetLevel - currentLevel);
+      await this.updateProgressTracking(player._id.toString(), serverId, "level_up", finalTargetLevel - currentLevel);
 
       console.log(`⬆️ ${heroData.name} level ${currentLevel} → ${finalTargetLevel} (${totalCost.gold} gold)`);
 
@@ -152,7 +152,7 @@ export class HeroUpgradeService {
     heroInstanceId: string
   ): Promise<HeroUpgradeResult> {
     try {
-      const player = await Player.findOne({ _id: playerId, serverId });
+      const player = await Player.findOne({ accountId, serverId });
       if (!player) {
         return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
       }
@@ -203,7 +203,7 @@ export class HeroUpgradeService {
 
       await player.save();
 
-      await this.updateProgressTracking(playerId, serverId, "star_upgrade", 1);
+     await this.updateProgressTracking(player._id.toString(), serverId, "star_upgrade", 1);
 
       console.log(`⭐ ${heroData.name} ${currentStars} → ${heroInstance.stars} étoiles (${requiredFragments} fragments)`);
 
@@ -243,7 +243,7 @@ export class HeroUpgradeService {
     skillSlot: "spell1" | "spell2" | "spell3" | "ultimate" | "passive"
   ): Promise<SkillUpgradeResult> {
     try {
-      const player = await Player.findOne({ _id: playerId, serverId });
+      const player = await Player.findOne({ accountId, serverId });
       if (!player) {
         return { success: false, error: "Player not found" };
       }
@@ -325,7 +325,7 @@ export class HeroUpgradeService {
     heroInstanceId: string
   ): Promise<EvolutionResult> {
     try {
-      const player = await Player.findOne({ _id: playerId, serverId });
+      const player = await Player.findOne({ accountId, serverId });
       if (!player) {
         return { success: false, error: "Player not found" };
       }
@@ -390,7 +390,7 @@ export class HeroUpgradeService {
         heroData.save()
       ]);
 
-      await this.updateProgressTracking(playerId, serverId, "hero_evolution", 1);
+      await this.updateProgressTracking(player._id.toString(), serverId, "hero_evolution", 1);
 
       console.log(`🌟 ${heroData.name} évolution ${oldRarity} → ${newRarity}`);
 
@@ -417,7 +417,7 @@ export class HeroUpgradeService {
     heroInstanceId: string
   ) {
     try {
-      const player = await Player.findOne({ _id: playerId, serverId });
+      const player = await Player.findOne({ accountId, serverId });
       if (!player) {
         throw new Error("Player not found");
       }
@@ -572,7 +572,7 @@ export class HeroUpgradeService {
     maxGoldToSpend?: number
   ) {
     try {
-      const player = await Player.findOne({ _id: playerId, serverId });
+      const player = await Player.findOne({ accountId, serverId });
       if (!player) {
         throw new Error("Player not found");
       }
@@ -637,7 +637,7 @@ export class HeroUpgradeService {
       await player.save();
 
       const successfulUpgrades = results.filter(r => r.success).length;
-      await this.updateProgressTracking(playerId, serverId, "bulk_level_up", successfulUpgrades);
+      await this.updateProgressTracking(player._id.toString(), serverId, "bulk_level_up", successfulUpgrades);
 
       return {
         success: true,
@@ -663,7 +663,7 @@ export class HeroUpgradeService {
     upgradeStars: boolean = false
   ) {
     try {
-      const player = await Player.findOne({ _id: playerId, serverId });
+      const player = await Player.findOne({ accountId, serverId });
       if (!player) {
         throw new Error("Player not found");
       }
