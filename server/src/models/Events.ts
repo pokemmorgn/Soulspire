@@ -448,7 +448,7 @@ const eventSchema = new Schema<IEventDocument>({
 });
 
 // Index pour optimiser les requêtes
-eventSchema.index({ eventId: 1 });
+eventSchema.index({ eventId: 1 }, { unique: true });
 eventSchema.index({ status: 1, isVisible: 1 });
 eventSchema.index({ startTime: 1, endTime: 1 });
 eventSchema.index({ "serverConfig.allowedServers": 1 });
