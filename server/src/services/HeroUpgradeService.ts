@@ -1,321 +1,120 @@
 import Player from "../models/Player";
 import Hero from "../models/Hero";
-import FusionHistoryModel from "../models/FusionHistory";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
 import { IPlayerHero } from "../types/index";
 
-export interface FusionRequirements {
-  mainHero: string;
-  copies: string[];
-  foodHeroes: string[];
-  materials: Record<string, number>;
-  gold: number;
-}
-
-export interface FusionPreview {
-  canFuse: boolean;
-  currentRarity: string;
-  currentStars: number;
-  targetRarity: string;
-  targetStars: number;
-  requirements: FusionRequirements;
-  statsPreview: {
-    current: any;
-    after: any;
-    gained: any;
-  };
-  missingRequirements: string[];
-}
-
-export interface FusionResult {
+export interface HeroUpgradeResult {
   success: boolean;
-  fusedHero?: {
-    instanceId: string;
-    heroData: any;
-    newRarity: string;
-    newStars: number;
-    newStats: any;
-    powerGained: number;
-  };
-  consumedHeroes?: string[];
+  hero?: any;
+  newLevel?: number;
+  newStars?: number;
+  statsGained?: any;
   cost?: {
-    gold: number;
-    materials: Record<string, number>;
+    gold?: number;
+    fragments?: number;
+    materials?: Record<string, number>;
   };
   playerResources?: {
     gold: number;
+    fragments: Record<string, number>;
     materials: Record<string, number>;
   };
   error?: string;
   code?: string;
 }
 
-export interface FusionHistory {
-  _id?: string;
-  accountId: string;
-  mainHeroId: string;
-  fromRarity: string;
-  fromStars: number;
-  toRarity: string;
-  toStars: number;
-  consumedHeroes: {
-    heroId: string;
-    heroName: string;
-    rarity: string;
-    role: "copy" | "food";
-  }[];
-  cost: {
-    gold: number;
-    materials: Record<string, number>;
+export interface SkillUpgradeResult {
+  success: boolean;
+  skill?: {
+    skillId: string;
+    oldLevel: number;
+    newLevel: number;
+    newDescription?: string;
   };
-  timestamp: Date;
+  cost?: Record<string, number>;
+  error?: string;
 }
 
-export class HeroFusionService {
-  private static readonly RARITY_PROGRESSION = [
-    "Common", "Rare", "Epic", "Legendary", "Ascended"
-  ];
-
-  private static readonly FUSION_REQUIREMENTS: Record<string, {
-    copies: number;
-    food: number;
+export interface EvolutionResult {
+  success: boolean;
+  hero?: any;
+  newRarity?: string;
+  statsBonus?: any;
+  unlockedSkills?: string[];
+  cost?: {
+    fragments: number;
     materials: Record<string, number>;
-    goldMultiplier: number;
-  }> = {
-    "Common_to_Rare": {
-      copies: 1,
-      food: 1,
-      materials: { "fusion_crystal": 5 },
-      goldMultiplier: 1.0
-    },
-    "Rare_to_Epic": {
-      copies: 1,
-      food: 2,
-      materials: { "fusion_crystal": 10, "elemental_essence": 3 },
-      goldMultiplier: 1.5
-    },
-    "Epic_to_Legendary": {
-      copies: 1,
-      food: 2,
-      materials: { "fusion_crystal": 20, "elemental_essence": 8, "ascension_stone": 2 },
-      goldMultiplier: 2.0
-    },
-    "Legendary_to_Ascended": {
-      copies: 1,
-      food: 2,
-      materials: { "fusion_crystal": 40, "elemental_essence": 15, "ascension_stone": 5, "divine_crystal": 1 },
-      goldMultiplier: 3.0
-    },
-    "Ascended_1_to_2": {
-      copies: 1,
-      food: 1,
-      materials: { "stellar_essence": 10, "divine_crystal": 2 },
-      goldMultiplier: 4.0
-    },
-    "Ascended_2_to_3": {
-      copies: 1,
-      food: 2,
-      materials: { "stellar_essence": 20, "divine_crystal": 4 },
-      goldMultiplier: 5.0
-    },
-    "Ascended_3_to_4": {
-      copies: 1,
-      food: 3,
-      materials: { "stellar_essence": 40, "divine_crystal": 8, "cosmic_shard": 1 },
-      goldMultiplier: 6.0
-    },
-    "Ascended_4_to_5": {
-      copies: 1,
-      food: 4,
-      materials: { "stellar_essence": 80, "divine_crystal": 15, "cosmic_shard": 3 },
-      goldMultiplier: 8.0
-    }
   };
+  error?: string;
+}
 
-  public static async getFusionPreview(
-    accountId: string,
-    serverId: string,
-    heroInstanceId: string
-  ): Promise<FusionPreview> {
-    try {
-      const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
-      if (!player) {
-        throw new Error("Player not found");
-      }
+export class HeroUpgradeService {
 
-      const heroInstance = player.heroes.find((h: any) => h._id?.toString() === heroInstanceId);
-      if (!heroInstance) {
-        throw new Error("Hero not found");
-      }
-
-      const heroData = heroInstance.heroId as any;
-      const currentRarity = heroData.rarity;
-      const currentStars = (heroInstance as any).ascensionStars || 0;
-
-      const nextLevel = this.getNextAscensionLevel(currentRarity, currentStars);
-      if (!nextLevel) {
-        return {
-          canFuse: false,
-          currentRarity,
-          currentStars,
-          targetRarity: currentRarity,
-          targetStars: currentStars,
-          requirements: this.createEmptyRequirements(),
-          statsPreview: { current: {}, after: {}, gained: {} },
-          missingRequirements: ["Hero is already at maximum ascension"]
-        };
-      }
-
-      const requirements = await this.calculateFusionRequirements(
-        player,
-        heroInstance,
-        heroData,
-        nextLevel.rarity,
-        nextLevel.stars
-      );
-
-      const missingRequirements = await this.validateRequirements(player, requirements);
-
-      const currentStats = this.calculateAscendedStats(heroData, heroInstance.level, currentRarity, currentStars);
-      const afterStats = this.calculateAscendedStats(heroData, heroInstance.level, nextLevel.rarity, nextLevel.stars);
-      const gainedStats = this.calculateStatsDifference(currentStats, afterStats);
-
-      return {
-        canFuse: missingRequirements.length === 0,
-        currentRarity,
-        currentStars,
-        targetRarity: nextLevel.rarity,
-        targetStars: nextLevel.stars,
-        requirements,
-        statsPreview: {
-          current: currentStats,
-          after: afterStats,
-          gained: gainedStats
-        },
-        missingRequirements
-      };
-
-    } catch (error: any) {
-      throw error;
-    }
-  }
-
-  public static async fuseHero(
+  public static async levelUpHero(
     accountId: string,
     serverId: string,
     heroInstanceId: string,
-    requirements: FusionRequirements
-  ): Promise<FusionResult> {
+    targetLevel?: number
+  ): Promise<HeroUpgradeResult> {
     try {
-      const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
+      const player = await Player.findOne({ accountId, serverId });
       if (!player) {
         return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
       }
 
-      const heroInstance = player.heroes.find((h: any) => h._id?.toString() === heroInstanceId);
+      const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
       if (!heroInstance) {
         return { success: false, error: "Hero not found", code: "HERO_NOT_FOUND" };
       }
 
-      const validationResult = await this.validateFusionRequest(player, heroInstance, requirements);
-      if (!validationResult.valid) {
-        return { 
-          success: false, 
-          error: validationResult.error, 
-          code: "VALIDATION_FAILED" 
-        };
+      const heroData = await Hero.findById(heroInstance.heroId);
+      if (!heroData) {
+        return { success: false, error: "Hero data not found", code: "HERO_DATA_NOT_FOUND" };
       }
 
-      const heroData = heroInstance.heroId as any;
-      const currentRarity = heroData.rarity;
-      const currentStars = (heroInstance as any).ascensionStars || 0;
+      const currentLevel = heroInstance.level;
+      const maxLevel = this.getMaxLevel(heroInstance.stars, player.level);
+      const finalTargetLevel = targetLevel ? Math.min(targetLevel, maxLevel) : currentLevel + 1;
 
-      const nextLevel = this.getNextAscensionLevel(currentRarity, currentStars);
-      if (!nextLevel) {
-        return { 
-          success: false, 
-          error: "Hero is already at maximum ascension", 
-          code: "MAX_ASCENSION_REACHED" 
-        };
+      if (currentLevel >= maxLevel) {
+        return { success: false, error: "Hero is at maximum level", code: "MAX_LEVEL_REACHED" };
       }
 
-      if (player.gold < requirements.gold) {
+      if (finalTargetLevel <= currentLevel) {
+        return { success: false, error: "Invalid target level", code: "INVALID_TARGET_LEVEL" };
+      }
+
+      const totalCost = this.calculateLevelUpCost(currentLevel, finalTargetLevel, heroData.rarity);
+
+      if (player.gold < totalCost.gold) {
         return { 
           success: false, 
-          error: `Insufficient gold. Required: ${requirements.gold}`, 
+          error: `Insufficient gold. Required: ${totalCost.gold}, Available: ${player.gold}`, 
           code: "INSUFFICIENT_GOLD" 
         };
       }
 
-      for (const [materialId, quantity] of Object.entries(requirements.materials)) {
-        const available = player.materials.get(materialId) || 0;
-        if (available < quantity) {
-          return { 
-            success: false, 
-            error: `Insufficient ${materialId}. Required: ${quantity}, Available: ${available}`, 
-            code: "INSUFFICIENT_MATERIALS" 
-          };
-        }
-      }
-
-      const oldStats = this.calculateAscendedStats(heroData, heroInstance.level, currentRarity, currentStars);
-
-      player.gold -= requirements.gold;
-      for (const [materialId, quantity] of Object.entries(requirements.materials)) {
-        const current = player.materials.get(materialId) || 0;
-        player.materials.set(materialId, current - quantity);
-      }
-
-      const consumedHeroNames: string[] = [];
-      const allConsumedIds = [...requirements.copies, ...requirements.foodHeroes];
+      const oldStats = this.calculateHeroStats(heroData, currentLevel, heroInstance.stars);
       
-      for (const consumedId of allConsumedIds) {
-        const heroIndex = player.heroes.findIndex((h: any) => h._id?.toString() === consumedId);
-        if (heroIndex !== -1) {
-          const consumedHero = player.heroes[heroIndex].heroId as any;
-          consumedHeroNames.push(consumedHero.name);
-          player.heroes.splice(heroIndex, 1);
-        }
-      }
+      player.gold -= totalCost.gold;
+      heroInstance.level = finalTargetLevel;
 
-      if (nextLevel.rarity !== currentRarity) {
-        heroData.rarity = nextLevel.rarity;
-        await heroData.save();
-      }
-      
-      (heroInstance as any).ascensionStars = nextLevel.stars;
-
-      const newStats = this.calculateAscendedStats(heroData, heroInstance.level, nextLevel.rarity, nextLevel.stars);
-      const powerGained = this.calculatePower(newStats) - this.calculatePower(oldStats);
+      const newStats = this.calculateHeroStats(heroData, finalTargetLevel, heroInstance.stars);
+      const statsGained = {
+        hp: newStats.hp - oldStats.hp,
+        atk: newStats.atk - oldStats.atk,
+        def: newStats.def - oldStats.def,
+        vitesse: newStats.vitesse - oldStats.vitesse,
+        moral: newStats.moral - oldStats.moral
+      };
 
       await player.save();
-
-      await this.saveFusionHistory({
-        accountId,
-        mainHeroId: heroData._id.toString(),
-        fromRarity: currentRarity,
-        fromStars: currentStars,
-        toRarity: nextLevel.rarity,
-        toStars: nextLevel.stars,
-        consumedHeroes: allConsumedIds.map((id: string, index: number) => ({
-          heroId: id,
-          heroName: consumedHeroNames[index] || "Unknown",
-          rarity: requirements.copies.includes(id) ? currentRarity : "Food",
-          role: requirements.copies.includes(id) ? "copy" as const : "food" as const
-        })),
-        cost: {
-          gold: requirements.gold,
-          materials: requirements.materials
-        },
-        timestamp: new Date()
-      }, serverId, powerGained, heroData.name);
-
-      await this.updateProgressTracking(accountId, serverId, nextLevel.rarity, nextLevel.stars);
+      await this.updateProgressTracking(accountId, serverId, "level_up", finalTargetLevel - currentLevel);
 
       return {
         success: true,
-        fusedHero: {
+        hero: {
           instanceId: heroInstanceId,
           heroData: {
             name: heroData.name,
@@ -323,80 +122,510 @@ export class HeroFusionService {
             element: heroData.element,
             role: heroData.role
           },
-          newRarity: nextLevel.rarity,
-          newStars: nextLevel.stars,
-          newStats,
-          powerGained
+          level: heroInstance.level,
+          stars: heroInstance.stars
         },
-        consumedHeroes: allConsumedIds,
-        cost: {
-          gold: requirements.gold,
-          materials: requirements.materials
-        },
+        newLevel: finalTargetLevel,
+        statsGained,
+        cost: totalCost,
         playerResources: {
           gold: player.gold,
+          fragments: Object.fromEntries(player.fragments.entries()),
           materials: Object.fromEntries(player.materials.entries())
         }
       };
 
     } catch (error: any) {
-      return { success: false, error: error.message, code: "FUSION_FAILED" };
+      return { success: false, error: error.message, code: "LEVEL_UP_FAILED" };
     }
   }
 
-  public static async getFusableHeroes(accountId: string, serverId: string) {
+  public static async upgradeHeroStars(
+    accountId: string,
+    serverId: string,
+    heroInstanceId: string
+  ): Promise<HeroUpgradeResult> {
+    try {
+      const player = await Player.findOne({ accountId, serverId });
+      if (!player) {
+        return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
+      }
+
+      const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
+      if (!heroInstance) {
+        return { success: false, error: "Hero not found", code: "HERO_NOT_FOUND" };
+      }
+
+      const heroData = await Hero.findById(heroInstance.heroId);
+      if (!heroData) {
+        return { success: false, error: "Hero data not found", code: "HERO_DATA_NOT_FOUND" };
+      }
+
+      const currentStars = heroInstance.stars;
+      const maxStars = this.getMaxStars(heroData.rarity);
+
+      if (currentStars >= maxStars) {
+        return { success: false, error: "Hero is at maximum stars", code: "MAX_STARS_REACHED" };
+      }
+
+      const requiredFragments = this.getStarUpgradeFragmentCost(currentStars, heroData.rarity);
+      const currentFragments = player.fragments.get(heroInstance.heroId.toString()) || 0;
+
+      if (currentFragments < requiredFragments) {
+        return { 
+          success: false, 
+          error: `Insufficient fragments. Required: ${requiredFragments}, Available: ${currentFragments}`, 
+          code: "INSUFFICIENT_FRAGMENTS" 
+        };
+      }
+
+      const oldStats = this.calculateHeroStats(heroData, heroInstance.level, currentStars);
+      
+      player.fragments.set(heroInstance.heroId.toString(), currentFragments - requiredFragments);
+      heroInstance.stars = currentStars + 1;
+
+      const newStats = this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars);
+      const statsGained = {
+        hp: newStats.hp - oldStats.hp,
+        atk: newStats.atk - oldStats.atk,
+        def: newStats.def - oldStats.def,
+        vitesse: newStats.vitesse - oldStats.vitesse,
+        moral: newStats.moral - oldStats.moral
+      };
+
+      await player.save();
+      await this.updateProgressTracking(accountId, serverId, "star_upgrade", 1);
+
+      return {
+        success: true,
+        hero: {
+          instanceId: heroInstanceId,
+          heroData: {
+            name: heroData.name,
+            rarity: heroData.rarity,
+            element: heroData.element,
+            role: heroData.role
+          },
+          level: heroInstance.level,
+          stars: heroInstance.stars
+        },
+        newStars: heroInstance.stars,
+        statsGained,
+        cost: { fragments: requiredFragments },
+        playerResources: {
+          gold: player.gold,
+          fragments: Object.fromEntries(player.fragments.entries()),
+          materials: Object.fromEntries(player.materials.entries())
+        }
+      };
+
+    } catch (error: any) {
+      return { success: false, error: error.message, code: "STAR_UPGRADE_FAILED" };
+    }
+  }
+
+  public static async upgradeHeroSkill(
+    accountId: string,
+    serverId: string,
+    heroInstanceId: string,
+    skillSlot: "spell1" | "spell2" | "spell3" | "ultimate" | "passive"
+  ): Promise<SkillUpgradeResult> {
+    try {
+      const player = await Player.findOne({ accountId, serverId });
+      if (!player) {
+        return { success: false, error: "Player not found" };
+      }
+
+      const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
+      if (!heroInstance) {
+        return { success: false, error: "Hero not found" };
+      }
+
+      const heroData = await Hero.findById(heroInstance.heroId);
+      if (!heroData) {
+        return { success: false, error: "Hero data not found" };
+      }
+
+      if (!(heroInstance as any).skills) {
+        (heroInstance as any).skills = {
+          spell1: { level: 1 },
+          spell2: { level: 1 },
+          spell3: { level: 1 },
+          ultimate: { level: 1 },
+          passive: { level: 1 }
+        };
+      }
+
+      const currentSkillLevel = (heroInstance as any).skills[skillSlot]?.level || 1;
+      const maxSkillLevel = this.getMaxSkillLevel(heroInstance.level);
+
+      if (currentSkillLevel >= maxSkillLevel) {
+        return { success: false, error: "Skill is at maximum level" };
+      }
+
+      const skillCost = this.calculateSkillUpgradeCost(currentSkillLevel, heroData.rarity);
+
+      if (player.gold < skillCost.gold) {
+        return { success: false, error: `Insufficient gold. Required: ${skillCost.gold}` };
+      }
+
+      const requiredMaterial = `skill_essence_${heroData.element.toLowerCase()}`;
+      const currentMaterial = player.materials.get(requiredMaterial) || 0;
+
+      if (currentMaterial < skillCost.materials) {
+        return { 
+          success: false, 
+          error: `Insufficient ${requiredMaterial}. Required: ${skillCost.materials}` 
+        };
+      }
+
+      player.gold -= skillCost.gold;
+      player.materials.set(requiredMaterial, currentMaterial - skillCost.materials);
+      
+      (heroInstance as any).skills[skillSlot].level = currentSkillLevel + 1;
+
+      await player.save();
+
+      return {
+        success: true,
+        skill: {
+          skillId: skillSlot,
+          oldLevel: currentSkillLevel,
+          newLevel: currentSkillLevel + 1
+        },
+        cost: {
+          gold: skillCost.gold,
+          [requiredMaterial]: skillCost.materials
+        }
+      };
+
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  public static async evolveHero(
+    accountId: string,
+    serverId: string,
+    heroInstanceId: string
+  ): Promise<EvolutionResult> {
+    try {
+      const player = await Player.findOne({ accountId, serverId });
+      if (!player) {
+        return { success: false, error: "Player not found" };
+      }
+
+      const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
+      if (!heroInstance) {
+        return { success: false, error: "Hero not found" };
+      }
+
+      const heroData = await Hero.findById(heroInstance.heroId);
+      if (!heroData) {
+        return { success: false, error: "Hero data not found" };
+      }
+
+      if (!this.canEvolveHero(heroInstance, heroData)) {
+        return { success: false, error: "Hero cannot be evolved yet" };
+      }
+
+      const evolutionCost = this.calculateEvolutionCost(heroData.rarity);
+      
+      const currentFragments = player.fragments.get(heroInstance.heroId.toString()) || 0;
+      if (currentFragments < evolutionCost.fragments) {
+        return { 
+          success: false, 
+          error: `Insufficient fragments. Required: ${evolutionCost.fragments}` 
+        };
+      }
+
+      const evolutionMaterials = this.getEvolutionMaterials(heroData.rarity);
+      for (const [materialId, quantity] of Object.entries(evolutionMaterials)) {
+        const currentQuantity = player.materials.get(materialId) || 0;
+        if (currentQuantity < quantity) {
+          return { 
+            success: false, 
+            error: `Insufficient ${materialId}. Required: ${quantity}` 
+          };
+        }
+      }
+
+      const newRarity = this.getNextRarity(heroData.rarity);
+      if (!newRarity) {
+        return { success: false, error: "Cannot evolve further" };
+      }
+
+      player.fragments.set(heroInstance.heroId.toString(), currentFragments - evolutionCost.fragments);
+      
+      for (const [materialId, quantity] of Object.entries(evolutionMaterials)) {
+        const currentQuantity = player.materials.get(materialId) || 0;
+        player.materials.set(materialId, currentQuantity - quantity);
+      }
+
+      const oldRarity = heroData.rarity;
+      (heroData as any).rarity = newRarity;
+      
+      const evolutionBonus = this.calculateEvolutionStatsBonus(oldRarity, newRarity);
+      heroData.baseStats.hp = Math.floor(heroData.baseStats.hp * evolutionBonus.hpMultiplier);
+      heroData.baseStats.atk = Math.floor(heroData.baseStats.atk * evolutionBonus.atkMultiplier);
+      heroData.baseStats.def = Math.floor(heroData.baseStats.def * evolutionBonus.defMultiplier);
+
+      await Promise.all([
+        player.save(),
+        heroData.save()
+      ]);
+
+      await this.updateProgressTracking(accountId, serverId, "hero_evolution", 1);
+
+      return {
+        success: true,
+        hero: heroInstance,
+        newRarity,
+        statsBonus: evolutionBonus,
+        cost: {
+          fragments: evolutionCost.fragments,
+          materials: evolutionMaterials
+        }
+      };
+
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  public static async getHeroUpgradeInfo(
+    accountId: string,
+    serverId: string,
+    heroInstanceId: string
+  ) {
+    try {
+      const player = await Player.findOne({ accountId, serverId });
+      if (!player) {
+        throw new Error("Player not found");
+      }
+
+      const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
+      if (!heroInstance) {
+        throw new Error("Hero not found");
+      }
+
+      const heroData = await Hero.findById(heroInstance.heroId);
+      if (!heroData) {
+        throw new Error("Hero data not found");
+      }
+
+      const currentStats = this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars);
+      const maxLevel = this.getMaxLevel(heroInstance.stars, player.level);
+      const maxStars = this.getMaxStars(heroData.rarity);
+
+      const levelUpInfo = heroInstance.level < maxLevel ? {
+        available: true,
+        currentLevel: heroInstance.level,
+        maxLevel,
+        nextLevelCost: this.calculateLevelUpCost(heroInstance.level, heroInstance.level + 1, heroData.rarity),
+        maxLevelCost: this.calculateLevelUpCost(heroInstance.level, maxLevel, heroData.rarity),
+        statsAtMaxLevel: this.calculateHeroStats(heroData, maxLevel, heroInstance.stars)
+      } : { available: false, reason: "Maximum level reached" };
+
+      const starUpgradeInfo = heroInstance.stars < maxStars ? {
+        available: true,
+        currentStars: heroInstance.stars,
+        maxStars,
+        nextStarCost: this.getStarUpgradeFragmentCost(heroInstance.stars, heroData.rarity),
+        currentFragments: player.fragments.get(heroInstance.heroId.toString()) || 0,
+        statsAtNextStar: this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars + 1)
+      } : { available: false, reason: "Maximum stars reached" };
+
+      const evolutionInfo = this.canEvolveHero(heroInstance, heroData) ? {
+        available: true,
+        currentRarity: heroData.rarity,
+        nextRarity: this.getNextRarity(heroData.rarity),
+        cost: this.calculateEvolutionCost(heroData.rarity),
+        requirements: this.getEvolutionRequirements(heroData.rarity)
+      } : { available: false, reason: "Evolution requirements not met" };
+
+      const skillsInfo = this.getSkillsUpgradeInfo(heroInstance, heroData, player);
+
+      return {
+        success: true,
+        hero: {
+          instanceId: heroInstanceId,
+          name: heroData.name,
+          rarity: heroData.rarity,
+          element: heroData.element,
+          role: heroData.role,
+          level: heroInstance.level,
+          stars: heroInstance.stars,
+          currentStats
+        },
+        upgrades: {
+          levelUp: levelUpInfo,
+          starUpgrade: starUpgradeInfo,
+          evolution: evolutionInfo,
+          skills: skillsInfo
+        },
+        playerResources: {
+          gold: player.gold,
+          fragments: Object.fromEntries(player.fragments.entries()),
+          materials: Object.fromEntries(player.materials.entries())
+        }
+      };
+
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
+  public static async getPlayerHeroesUpgradeOverview(accountId: string, serverId: string) {
     try {
       const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
       if (!player) {
         throw new Error("Player not found");
       }
 
-      const fusableHeroes: any[] = [];
+      const heroesOverview = await Promise.all(player.heroes.map(async (heroInstance: any) => {
+        const heroData = heroInstance.heroId;
+        const currentStats = this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars);
+        
+        const canLevelUp = heroInstance.level < this.getMaxLevel(heroInstance.stars, player.level);
+        const canUpgradeStars = heroInstance.stars < this.getMaxStars(heroData.rarity);
+        const canEvolve = this.canEvolveHero(heroInstance, heroData);
 
-      for (const heroInstance of player.heroes) {
-        const heroData = heroInstance.heroId as any;
-        const currentRarity = heroData.rarity;
-        const currentStars = (heroInstance as any).ascensionStars || 0;
+        const nextLevelCost = canLevelUp ? 
+          this.calculateLevelUpCost(heroInstance.level, heroInstance.level + 1, heroData.rarity) : null;
+        
+        const nextStarCost = canUpgradeStars ? 
+          this.getStarUpgradeFragmentCost(heroInstance.stars, heroData.rarity) : null;
 
-        const nextLevel = this.getNextAscensionLevel(currentRarity, currentStars);
-        if (nextLevel) {
-          const requirements = await this.calculateFusionRequirements(
-            player,
-            heroInstance,
-            heroData,
-            nextLevel.rarity,
-            nextLevel.stars
-          );
+        return {
+          instanceId: heroInstance._id?.toString() || "",
+          heroId: heroData._id.toString(),
+          name: heroData.name,
+          rarity: heroData.rarity,
+          element: heroData.element,
+          role: heroData.role,
+          level: heroInstance.level,
+          stars: heroInstance.stars,
+          equipped: heroInstance.equipped,
+          currentStats,
+          power: this.calculateHeroPower(currentStats),
+          upgradePossibilities: {
+            canLevelUp,
+            canUpgradeStars,
+            canEvolve,
+            nextLevelCost,
+            nextStarCost,
+            hasFragments: canUpgradeStars && nextStarCost !== null ? 
+              (player.fragments.get(heroData._id.toString()) || 0) >= nextStarCost : false
+          }
+        };
+      }));
 
-          const missingRequirements = await this.validateRequirements(player, requirements);
+      const upgradeStats = {
+        totalHeroes: heroesOverview.length,
+        canLevelUp: heroesOverview.filter(h => h.upgradePossibilities.canLevelUp).length,
+        canUpgradeStars: heroesOverview.filter(h => h.upgradePossibilities.canUpgradeStars).length,
+        canEvolve: heroesOverview.filter(h => h.upgradePossibilities.canEvolve).length,
+        totalPower: heroesOverview.reduce((sum, h) => sum + h.power, 0)
+      };
 
-          fusableHeroes.push({
-            instanceId: (heroInstance as any)._id?.toString() || "",
+      return {
+        success: true,
+        heroes: heroesOverview.sort((a, b) => b.power - a.power),
+        stats: upgradeStats,
+        playerResources: {
+          gold: player.gold,
+          totalFragments: Array.from(player.fragments.values()).reduce((sum, f) => sum + f, 0),
+          totalMaterials: Array.from(player.materials.values()).reduce((sum, m) => sum + m, 0)
+        }
+      };
+
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
+  public static async bulkLevelUpHeroes(
+    accountId: string,
+    serverId: string,
+    heroInstanceIds: string[],
+    maxGoldToSpend?: number
+  ) {
+    try {
+      const player = await Player.findOne({ accountId, serverId });
+      if (!player) {
+        throw new Error("Player not found");
+      }
+
+      const results: any[] = [];
+      let totalGoldSpent = 0;
+      const availableGold = maxGoldToSpend || player.gold;
+
+      for (const heroInstanceId of heroInstanceIds) {
+        const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
+        if (!heroInstance) continue;
+
+        const heroData = await Hero.findById(heroInstance.heroId);
+        if (!heroData) continue;
+
+        const maxLevel = this.getMaxLevel(heroInstance.stars, player.level);
+        if (heroInstance.level >= maxLevel) {
+          results.push({
+            heroInstanceId,
+            success: false,
+            reason: "Already at maximum level"
+          });
+          continue;
+        }
+
+        let targetLevel = heroInstance.level;
+        let levelCost = 0;
+
+        while (targetLevel < maxLevel && totalGoldSpent + levelCost < availableGold) {
+          const nextLevelCost = this.calculateLevelUpCost(targetLevel, targetLevel + 1, heroData.rarity);
+          if (totalGoldSpent + levelCost + nextLevelCost.gold <= availableGold) {
+            levelCost += nextLevelCost.gold;
+            targetLevel++;
+          } else {
+            break;
+          }
+        }
+
+        if (targetLevel > heroInstance.level) {
+          const oldLevel = heroInstance.level;
+          heroInstance.level = targetLevel;
+          totalGoldSpent += levelCost;
+
+          results.push({
+            heroInstanceId,
             heroName: heroData.name,
-            currentRarity,
-            currentStars,
-            targetRarity: nextLevel.rarity,
-            targetStars: nextLevel.stars,
-            canFuse: missingRequirements.length === 0,
-            requirements,
-            missingRequirements
+            success: true,
+            oldLevel,
+            newLevel: targetLevel,
+            goldSpent: levelCost
+          });
+        } else {
+          results.push({
+            heroInstanceId,
+            success: false,
+            reason: "Insufficient gold"
           });
         }
       }
 
-      fusableHeroes.sort((a: any, b: any) => {
-        if (a.canFuse !== b.canFuse) return a.canFuse ? -1 : 1;
-        const rarityOrder = this.RARITY_PROGRESSION.indexOf(a.currentRarity) - this.RARITY_PROGRESSION.indexOf(b.currentRarity);
-        return rarityOrder !== 0 ? -rarityOrder : a.currentStars - b.currentStars;
-      });
+      player.gold -= totalGoldSpent;
+      await player.save();
+
+      const successfulUpgrades = results.filter(r => r.success).length;
+      await this.updateProgressTracking(accountId, serverId, "bulk_level_up", successfulUpgrades);
 
       return {
         success: true,
-        fusableHeroes,
+        results,
         summary: {
-          totalFusable: fusableHeroes.length,
-          readyToFuse: fusableHeroes.filter((h: any) => h.canFuse).length,
-          byRarity: this.groupByRarity(fusableHeroes)
+          heroesUpgraded: successfulUpgrades,
+          totalGoldSpent,
+          remainingGold: player.gold
         }
       };
 
@@ -405,17 +634,137 @@ export class HeroFusionService {
     }
   }
 
-  public static async getFusionHistory(accountId: string, serverId: string, limit: number = 20) {
+  public static async autoUpgradeHero(
+    accountId: string,
+    serverId: string,
+    heroInstanceId: string,
+    maxGoldToSpend?: number,
+    upgradeStars: boolean = false
+  ) {
     try {
-      const history = await this.loadFusionHistory(accountId, serverId, limit);
+      const player = await Player.findOne({ accountId, serverId });
+      if (!player) {
+        throw new Error("Player not found");
+      }
+
+      const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
+      if (!heroInstance) {
+        throw new Error("Hero not found");
+      }
+
+      const heroData = await Hero.findById(heroInstance.heroId);
+      if (!heroData) {
+        throw new Error("Hero data not found");
+      }
+
+      const upgrades: any[] = [];
+      let totalCost = { gold: 0, fragments: 0 };
+      const availableGold = maxGoldToSpend || player.gold;
+
+      const maxLevel = this.getMaxLevel(heroInstance.stars, player.level);
+      if (heroInstance.level < maxLevel) {
+        let targetLevel = heroInstance.level;
+        let levelCost = 0;
+
+        while (targetLevel < maxLevel && levelCost < availableGold) {
+          const nextLevelCost = this.calculateLevelUpCost(targetLevel, targetLevel + 1, heroData.rarity);
+          if (levelCost + nextLevelCost.gold <= availableGold) {
+            levelCost += nextLevelCost.gold;
+            targetLevel++;
+          } else {
+            break;
+          }
+        }
+
+        if (targetLevel > heroInstance.level) {
+          const oldLevel = heroInstance.level;
+          heroInstance.level = targetLevel;
+          totalCost.gold += levelCost;
+
+          upgrades.push({
+            type: "level",
+            from: oldLevel,
+            to: targetLevel,
+            cost: { gold: levelCost }
+          });
+        }
+      }
+
+      if (upgradeStars) {
+        const maxStars = this.getMaxStars(heroData.rarity);
+        while (heroInstance.stars < maxStars) {
+          const fragmentCost = this.getStarUpgradeFragmentCost(heroInstance.stars, heroData.rarity);
+          const currentFragments = player.fragments.get(heroInstance.heroId.toString()) || 0;
+
+          if (currentFragments >= fragmentCost) {
+            const oldStars = heroInstance.stars;
+            heroInstance.stars++;
+            player.fragments.set(heroInstance.heroId.toString(), currentFragments - fragmentCost);
+            totalCost.fragments += fragmentCost;
+
+            upgrades.push({
+              type: "stars",
+              from: oldStars,
+              to: heroInstance.stars,
+              cost: { fragments: fragmentCost }
+            });
+
+            const newMaxLevel = this.getMaxLevel(heroInstance.stars, player.level);
+            if (heroInstance.level < newMaxLevel && totalCost.gold < availableGold) {
+              let additionalLevels = 0;
+              let additionalCost = 0;
+              let currentLevel = heroInstance.level;
+
+              while (currentLevel < newMaxLevel && totalCost.gold + additionalCost < availableGold) {
+                const nextCost = this.calculateLevelUpCost(currentLevel, currentLevel + 1, heroData.rarity);
+                if (totalCost.gold + additionalCost + nextCost.gold <= availableGold) {
+                  additionalCost += nextCost.gold;
+                  currentLevel++;
+                  additionalLevels++;
+                } else {
+                  break;
+                }
+              }
+
+              if (additionalLevels > 0) {
+                const oldLevel = heroInstance.level;
+                heroInstance.level = currentLevel;
+                totalCost.gold += additionalCost;
+
+                upgrades.push({
+                  type: "level_after_star",
+                  from: oldLevel,
+                  to: currentLevel,
+                  cost: { gold: additionalCost }
+                });
+              }
+            }
+          } else {
+            break;
+          }
+        }
+      }
+
+      player.gold -= totalCost.gold;
+      await player.save();
+
+      const finalStats = this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars);
 
       return {
         success: true,
-        history,
-        summary: {
-          totalFusions: history.length,
-          totalGoldSpent: history.reduce((sum: number, h: FusionHistory) => sum + h.cost.gold, 0),
-          rarityAchievements: this.calculateRarityAchievements(history)
+        hero: {
+          instanceId: heroInstanceId,
+          name: heroData.name,
+          finalLevel: heroInstance.level,
+          finalStars: heroInstance.stars,
+          finalStats,
+          finalPower: this.calculateHeroPower(finalStats)
+        },
+        upgrades,
+        totalCost,
+        playerResources: {
+          gold: player.gold,
+          fragments: Object.fromEntries(player.fragments.entries())
         }
       };
 
@@ -424,68 +773,62 @@ export class HeroFusionService {
     }
   }
 
-  public static async getOptimalFusionPath(accountId: string, serverId: string, targetHeroId: string) {
+  public static async getUpgradeRecommendations(accountId: string, serverId: string) {
     try {
       const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
       if (!player) {
         throw new Error("Player not found");
       }
 
-      const targetHero = player.heroes.find((h: any) => h._id?.toString() === targetHeroId);
-      if (!targetHero) {
-        throw new Error("Target hero not found");
-      }
+      const recommendations: any[] = [];
+      const equippedHeroes = player.heroes.filter((h: any) => h.equipped);
+      const unequippedHeroes = player.heroes.filter((h: any) => !h.equipped);
 
-      const heroData = targetHero.heroId as any;
-      const currentRarity = heroData.rarity;
-      const currentStars = (targetHero as any).ascensionStars || 0;
-
-      const fusionPath: any[] = [];
-      let pathRarity = currentRarity;
-      let pathStars = currentStars;
-      let totalCost = { gold: 0, materials: {} as Record<string, number> };
-
-      while (true) {
-        const nextLevel = this.getNextAscensionLevel(pathRarity, pathStars);
-        if (!nextLevel) break;
-
-        const requirements = await this.calculateFusionRequirements(
-          player,
-          targetHero,
-          heroData,
-          nextLevel.rarity,
-          nextLevel.stars
-        );
-
-        fusionPath.push({
-          from: `${pathRarity} ${pathStars}★`,
-          to: `${nextLevel.rarity} ${nextLevel.stars}★`,
-          requirements,
-          feasible: (await this.validateRequirements(player, requirements)).length === 0
-        });
-
-        totalCost.gold += requirements.gold;
-        for (const [mat, qty] of Object.entries(requirements.materials)) {
-          totalCost.materials[mat] = (totalCost.materials[mat] || 0) + qty;
+      for (const heroInstance of equippedHeroes) {
+        const heroData = heroInstance.heroId as any;
+        const priority = this.calculateUpgradePriority(heroInstance, heroData, player, true);
+        
+        if (priority.score > 0) {
+          recommendations.push({
+            heroInstanceId: (heroInstance as any)._id?.toString() || "",
+            heroName: heroData.name,
+            priority: priority.score,
+            isEquipped: true,
+            recommendations: priority.recommendations,
+            estimatedCost: priority.estimatedCost
+          });
         }
-
-        pathRarity = nextLevel.rarity;
-        pathStars = nextLevel.stars;
       }
+
+      for (const heroInstance of unequippedHeroes.slice(0, 10)) {
+        const heroData = heroInstance.heroId as any;
+        const priority = this.calculateUpgradePriority(heroInstance, heroData, player, false);
+        
+        if (priority.score > 0) {
+          recommendations.push({
+            heroInstanceId: (heroInstance as any)._id?.toString() || "",
+            heroName: heroData.name,
+            priority: priority.score,
+            isEquipped: false,
+            recommendations: priority.recommendations,
+            estimatedCost: priority.estimatedCost
+          });
+        }
+      }
+
+      recommendations.sort((a, b) => b.priority - a.priority);
 
       return {
         success: true,
-        targetHero: {
-          name: heroData.name,
-          currentLevel: `${currentRarity} ${currentStars}★`,
-          maxLevel: `${pathRarity} ${pathStars}★`
+        recommendations: recommendations.slice(0, 20),
+        playerBudget: {
+          gold: player.gold,
+          totalFragments: Array.from(player.fragments.values()).reduce((sum, f) => sum + f, 0)
         },
-        fusionPath,
-        totalCost,
-        feasibility: {
-          canAffordAll: this.canAffordPath(player, totalCost),
-          stepsBlocked: fusionPath.filter((step: any) => !step.feasible).length,
-          nextBlockedStep: fusionPath.find((step: any) => !step.feasible)?.from || null
+        summary: {
+          equippedHeroesCount: equippedHeroes.length,
+          totalRecommendations: recommendations.length,
+          highPriorityCount: recommendations.filter(r => r.priority >= 8).length
         }
       };
 
@@ -494,7 +837,7 @@ export class HeroFusionService {
     }
   }
 
-  public static async getFusionStats(accountId: string, serverId: string) {
+  public static async getHeroUpgradeStats(accountId: string, serverId: string) {
     try {
       const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
       if (!player) {
@@ -503,75 +846,56 @@ export class HeroFusionService {
 
       const stats = {
         totalHeroes: player.heroes.length,
-        rarityDistribution: {} as Record<string, number>,
-        ascendedHeroes: 0,
+        averageLevel: 0,
+        averageStars: 0,
+        rarityDistribution: { "Common": 0, "Rare": 0, "Epic": 0, "Legendary": 0 },
+        maxLevelHeroes: 0,
         maxStarHeroes: 0,
-        averageAscensionLevel: 0,
         totalPower: 0,
-        fusionPotential: {
-          readyToFuse: 0,
-          needMaterials: 0,
-          needCopies: 0,
-          maxLevel: 0
-        }
+        upgradeableHeroes: 0,
+        fragmentsAvailable: Array.from(player.fragments.values()).reduce((sum, f) => sum + f, 0),
+        goldAvailable: player.gold
       };
-
-      for (const rarity of this.RARITY_PROGRESSION) {
-        stats.rarityDistribution[rarity] = 0;
-      }
-
-      let totalAscensionValue = 0;
 
       for (const heroInstance of player.heroes) {
         const heroData = heroInstance.heroId as any;
-        const rarity = heroData.rarity;
-        const stars = (heroInstance as any).ascensionStars || 0;
-
-        stats.rarityDistribution[rarity]++;
-
-        if (rarity === "Ascended") {
-          stats.ascendedHeroes++;
-          if (stars === 5) {
-            stats.maxStarHeroes++;
-          }
+        stats.averageLevel += heroInstance.level;
+        stats.averageStars += heroInstance.stars;
+        
+        const rarityKey = heroData.rarity as keyof typeof stats.rarityDistribution;
+        if (stats.rarityDistribution[rarityKey] !== undefined) {
+          stats.rarityDistribution[rarityKey]++;
         }
-
-        const rarityValue = this.RARITY_PROGRESSION.indexOf(rarity);
-        const ascensionValue = rarityValue + (rarity === "Ascended" ? stars * 0.2 : 0);
-        totalAscensionValue += ascensionValue;
-
-        const currentStats = this.calculateAscendedStats(heroData, heroInstance.level, rarity, stars);
-        stats.totalPower += this.calculatePower(currentStats);
-
-        const nextLevel = this.getNextAscensionLevel(rarity, stars);
-        if (nextLevel) {
-          const requirements = await this.calculateFusionRequirements(
-            player,
-            heroInstance,
-            heroData,
-            nextLevel.rarity,
-            nextLevel.stars
-          );
-          const missing = await this.validateRequirements(player, requirements);
-          
-          if (missing.length === 0) {
-            stats.fusionPotential.readyToFuse++;
-          } else if (missing.some((m: string) => m.includes("copies"))) {
-            stats.fusionPotential.needCopies++;
-          } else {
-            stats.fusionPotential.needMaterials++;
-          }
-        } else {
-          stats.fusionPotential.maxLevel++;
+        
+        const currentStats = this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars);
+        stats.totalPower += this.calculateHeroPower(currentStats);
+        
+        const maxLevel = this.getMaxLevel(heroInstance.stars, player.level);
+        const maxStars = this.getMaxStars(heroData.rarity);
+        
+        if (heroInstance.level >= maxLevel && heroInstance.stars >= maxStars) {
+          stats.maxLevelHeroes++;
+        }
+        
+        if (heroInstance.level < maxLevel || heroInstance.stars < maxStars) {
+          stats.upgradeableHeroes++;
         }
       }
 
-      stats.averageAscensionLevel = totalAscensionValue / stats.totalHeroes;
+      stats.averageLevel = Math.round(stats.averageLevel / stats.totalHeroes * 10) / 10;
+      stats.averageStars = Math.round(stats.averageStars / stats.totalHeroes * 10) / 10;
 
       return {
         success: true,
         stats,
-        recommendations: this.generateFusionRecommendations(stats, player)
+        analysis: {
+          upgradeProgress: Math.round((stats.maxLevelHeroes / stats.totalHeroes) * 100),
+          powerPerHero: Math.round(stats.totalPower / stats.totalHeroes),
+          resourceSufficiency: {
+            gold: stats.goldAvailable > stats.upgradeableHeroes * 1000,
+            fragments: stats.fragmentsAvailable > stats.upgradeableHeroes * 20
+          }
+        }
       };
 
     } catch (error: any) {
@@ -579,510 +903,252 @@ export class HeroFusionService {
     }
   }
 
-  public static simulateFusion(
-    heroBaseStats: any,
-    currentLevel: number,
-    fromRarity: string,
-    fromStars: number,
-    toRarity: string,
-    toStars: number
-  ) {
-    const beforeStats = this.calculateAscendedStats(
-      { baseStats: heroBaseStats },
-      currentLevel,
-      fromRarity,
-      fromStars
-    );
+  private static calculateLevelUpCost(currentLevel: number, targetLevel: number, rarity: string) {
+    let totalGold = 0;
+    const rarityMultiplier = this.getRarityMultiplier(rarity);
 
-    const afterStats = this.calculateAscendedStats(
-      { baseStats: heroBaseStats },
-      currentLevel,
-      toRarity,
-      toStars
-    );
+    for (let level = currentLevel; level < targetLevel; level++) {
+      const baseCost = 100 + (level * 15);
+      totalGold += Math.floor(baseCost * rarityMultiplier);
+    }
 
-    const powerBefore = this.calculatePower(beforeStats);
-    const powerAfter = this.calculatePower(afterStats);
+    return { gold: totalGold };
+  }
+
+  private static getStarUpgradeFragmentCost(currentStars: number, rarity: string): number {
+    const baseCosts = [10, 20, 40, 80, 160];
+    const rarityMultiplier = this.getRarityMultiplier(rarity);
+    return Math.floor((baseCosts[currentStars - 1] || 200) * rarityMultiplier);
+  }
+
+  private static calculateSkillUpgradeCost(currentLevel: number, rarity: string) {
+    const baseGold = 500 + (currentLevel * 200);
+    const baseMaterials = 2 + Math.floor(currentLevel / 2);
+    const rarityMultiplier = this.getRarityMultiplier(rarity);
 
     return {
-      before: {
-        rarity: fromRarity,
-        stars: fromStars,
-        stats: beforeStats,
-        power: powerBefore
-      },
-      after: {
-        rarity: toRarity,
-        stars: toStars,
-        stats: afterStats,
-        power: powerAfter
-      },
-      gains: {
-        stats: this.calculateStatsDifference(beforeStats, afterStats),
-        power: powerAfter - powerBefore,
-        powerPercentage: Math.round(((powerAfter - powerBefore) / powerBefore) * 100)
-      }
+      gold: Math.floor(baseGold * rarityMultiplier),
+      materials: Math.floor(baseMaterials * rarityMultiplier)
     };
   }
 
-  public static calculateFullAscensionCost(
-    fromRarity: string,
-    fromStars: number,
-    toRarity: string,
-    toStars: number
-  ) {
-    const totalCost = {
-      gold: 0,
-      materials: {} as Record<string, number>,
-      heroesNeeded: {
-        copies: 0,
-        food: 0
-      }
+  private static calculateEvolutionCost(rarity: string) {
+    const costs: Record<string, number> = {
+      "Common": 100,
+      "Rare": 200,
+      "Epic": 400,
+      "Legendary": 800
     };
-
-    let currentRarity = fromRarity;
-    let currentStars = fromStars;
-
-    while (currentRarity !== toRarity || currentStars !== toStars) {
-      const nextLevel = this.getNextAscensionLevel(currentRarity, currentStars);
-      if (!nextLevel) break;
-
-      let fusionKey = "";
-      if (currentRarity !== "Ascended") {
-        fusionKey = `${currentRarity}_to_${nextLevel.rarity}`;
-      } else {
-        fusionKey = `Ascended_${currentStars}_to_${nextLevel.stars}`;
-      }
-
-      const fusionConfig = this.FUSION_REQUIREMENTS[fusionKey];
-      if (fusionConfig) {
-        const baseGoldCost = 1000 * (this.RARITY_PROGRESSION.indexOf(currentRarity) + 1);
-        totalCost.gold += Math.floor(baseGoldCost * fusionConfig.goldMultiplier);
-
-        for (const [materialId, quantity] of Object.entries(fusionConfig.materials)) {
-          totalCost.materials[materialId] = (totalCost.materials[materialId] || 0) + quantity;
-        }
-
-        totalCost.heroesNeeded.copies += fusionConfig.copies;
-        totalCost.heroesNeeded.food += fusionConfig.food;
-      }
-
-      currentRarity = nextLevel.rarity;
-      currentStars = nextLevel.stars;
-    }
-
-    return totalCost;
+    return { fragments: costs[rarity] || 1000 };
   }
 
-  public static async getPlayerFusionAnalytics(accountId: string, serverId: string) {
-    try {
-      const [stats, trends, topFusions] = await Promise.all([
-        (FusionHistoryModel as any).getPlayerFusionStats(accountId, serverId),
-        (FusionHistoryModel as any).getFusionTrends(accountId, serverId, 30),
-        (FusionHistoryModel as any).getTopFusionsByPower(accountId, serverId, 5)
-      ]);
-
-      return {
-        success: true,
-        analytics: {
-          fusionsByRarity: stats,
-          last30DaysTrends: trends,
-          topPowerGainFusions: topFusions
-        }
-      };
-    } catch (error: any) {
-      throw error;
-    }
-  }
-
-  public static async getHeroSpecificHistory(accountId: string, serverId: string, heroId: string) {
-    try {
-      const history = await (FusionHistoryModel as any).getHeroFusionHistory(accountId, serverId, heroId, 10);
-      
-      return {
-        success: true,
-        heroHistory: history,
-        summary: {
-          totalFusions: history.length,
-          totalPowerGained: history.reduce((sum: number, h: any) => sum + h.powerGained, 0),
-          currentLevel: history.length > 0 ? `${history[0].toRarity} ${history[0].toStars}★` : "Unknown"
-        }
-      };
-    } catch (error: any) {
-      throw error;
-    }
-  }
-
-  public static async getServerFusionLeaderboard(
-    serverId: string,
-    timeframe: "daily" | "weekly" | "monthly" | "all" = "weekly",
-    limit: number = 50
-  ) {
-    try {
-      const leaderboard = await (FusionHistoryModel as any).getServerFusionLeaderboard(serverId, limit, timeframe);
-      
-      return {
-        success: true,
-        leaderboard,
-        timeframe,
-        summary: {
-          totalPlayers: leaderboard.length,
-          topPowerGain: leaderboard[0]?.totalPowerGained || 0,
-          averageFusions: Math.round(leaderboard.reduce((sum: number, p: any) => sum + p.totalFusions, 0) / leaderboard.length)
-        }
-      };
-    } catch (error: any) {
-      throw error;
-    }
-  }
-
-  private static getNextAscensionLevel(currentRarity: string, currentStars: number): { rarity: string; stars: number } | null {
-    const currentRarityIndex = this.RARITY_PROGRESSION.indexOf(currentRarity);
-    
-    if (currentRarity === "Ascended") {
-      if (currentStars < 5) {
-        return { rarity: "Ascended", stars: currentStars + 1 };
-      }
-      return null;
-    } else {
-      if (currentRarityIndex < this.RARITY_PROGRESSION.length - 2) {
-        return { rarity: this.RARITY_PROGRESSION[currentRarityIndex + 1], stars: 0 };
-      } else if (currentRarityIndex === this.RARITY_PROGRESSION.length - 2) {
-        return { rarity: "Ascended", stars: 1 };
-      }
-      return null;
-    }
-  }
-
-  private static async calculateFusionRequirements(
-    player: any,
-    heroInstance: any,
-    heroData: any,
-    targetRarity: string,
-    targetStars: number
-  ): Promise<FusionRequirements> {
-    const currentRarity = heroData.rarity;
-    const currentStars = (heroInstance as any).ascensionStars || 0;
-
-    let fusionKey = "";
-    if (currentRarity !== "Ascended") {
-      fusionKey = `${currentRarity}_to_${targetRarity}`;
-    } else {
-      fusionKey = `Ascended_${currentStars}_to_${targetStars}`;
-    }
-
-    const fusionConfig = this.FUSION_REQUIREMENTS[fusionKey];
-    if (!fusionConfig) {
-      return this.createEmptyRequirements();
-    }
-
-    const availableCopies = player.heroes.filter((h: any) => 
-      h.heroId._id.toString() === heroData._id.toString() && 
-      h._id?.toString() !== heroInstance._id?.toString()
-    );
-
-    const availableFoodHeroes = this.findAvailableFoodHeroes(
-      player.heroes,
-      heroData.element,
-      currentRarity,
-      heroInstance._id?.toString()
-    );
-
-    const requiredCopies = Math.min(fusionConfig.copies, availableCopies.length);
-    const requiredFood = Math.min(fusionConfig.food, availableFoodHeroes.length);
-
-    const baseGoldCost = 1000 * (this.RARITY_PROGRESSION.indexOf(currentRarity) + 1);
-    const goldCost = Math.floor(baseGoldCost * fusionConfig.goldMultiplier);
-
-    return {
-      mainHero: heroInstance._id?.toString() || "",
-      copies: availableCopies.slice(0, requiredCopies).map((h: any) => h._id?.toString() || ""),
-      foodHeroes: availableFoodHeroes.slice(0, requiredFood).map((h: any) => h._id?.toString() || ""),
-      materials: fusionConfig.materials,
-      gold: goldCost
+  private static getEvolutionMaterials(rarity: string): Record<string, number> {
+    const materials: Record<string, Record<string, number>> = {
+      "Common": { "evolution_crystal_basic": 5, "essence_pure": 10 },
+      "Rare": { "evolution_crystal_basic": 10, "evolution_crystal_advanced": 3, "essence_pure": 20 },
+      "Epic": { "evolution_crystal_advanced": 8, "evolution_crystal_superior": 2, "essence_pure": 50 },
+      "Legendary": { "evolution_crystal_superior": 5, "evolution_crystal_divine": 1, "essence_pure": 100 }
     };
+    return materials[rarity] || {};
   }
 
-  private static findAvailableFoodHeroes(
-    allHeroes: any[],
-    requiredElement: string,
-    minRarity: string,
-    excludeId?: string
-  ): any[] {
-    const minRarityIndex = this.RARITY_PROGRESSION.indexOf(minRarity);
-    
-    return allHeroes.filter((hero: any) => {
-      if (hero._id?.toString() === excludeId) return false;
-      if (hero.equipped) return false;
-      
-      const heroData = hero.heroId;
-      if (!heroData) return false;
-      
-      if (heroData.element !== requiredElement) return false;
-      
-      const heroRarityIndex = this.RARITY_PROGRESSION.indexOf(heroData.rarity);
-      return heroRarityIndex >= 0 && heroRarityIndex <= minRarityIndex;
-    });
-  }
-
-  private static async validateRequirements(player: any, requirements: FusionRequirements): Promise<string[]> {
-    const missing: string[] = [];
-
-    if (player.gold < requirements.gold) {
-      missing.push(`Gold: need ${requirements.gold}, have ${player.gold}`);
-    }
-
-    for (const [materialId, quantity] of Object.entries(requirements.materials)) {
-      const available = player.materials.get(materialId) || 0;
-      if (available < quantity) {
-        missing.push(`${materialId}: need ${quantity}, have ${available}`);
-      }
-    }
-
-    const actualCopies = player.heroes.filter((h: any) => 
-      requirements.copies.includes(h._id?.toString() || "")
-    ).length;
-    if (actualCopies < requirements.copies.length) {
-      missing.push(`Hero copies: need ${requirements.copies.length}, have ${actualCopies}`);
-    }
-
-    const actualFood = player.heroes.filter((h: any) => 
-      requirements.foodHeroes.includes(h._id?.toString() || "")
-    ).length;
-    if (actualFood < requirements.foodHeroes.length) {
-      missing.push(`Food heroes: need ${requirements.foodHeroes.length}, have ${actualFood}`);
-    }
-
-    return missing;
-  }
-
-  private static async validateFusionRequest(
-    player: any,
-    heroInstance: any,
-    requirements: FusionRequirements
-  ): Promise<{ valid: boolean; error?: string }> {
-    if (requirements.mainHero !== (heroInstance._id?.toString() || "")) {
-      return { valid: false, error: "Main hero ID mismatch" };
-    }
-
-    const allRequiredIds = [...requirements.copies, ...requirements.foodHeroes];
-    for (const requiredId of allRequiredIds) {
-      const ownedHero = player.heroes.find((h: any) => h._id?.toString() === requiredId);
-      if (!ownedHero) {
-        return { valid: false, error: `Hero ${requiredId} not owned by player` };
-      }
-      if (ownedHero.equipped) {
-        return { valid: false, error: `Cannot consume equipped hero ${requiredId}` };
-      }
-    }
-
-    if (allRequiredIds.includes(requirements.mainHero)) {
-      return { valid: false, error: "Cannot consume main hero" };
-    }
-
-    const uniqueIds = new Set(allRequiredIds);
-    if (uniqueIds.size !== allRequiredIds.length) {
-      return { valid: false, error: "Duplicate heroes in requirements" };
-    }
-
-    return { valid: true };
-  }
-
-  private static calculateAscendedStats(heroData: any, level: number, rarity: string, stars: number) {
-    const baseStats = heroData.baseStats;
+  private static calculateHeroStats(heroData: any, level: number, stars: number) {
     const levelMultiplier = 1 + (level - 1) * 0.08;
-    
-    const rarityMultipliers: Record<string, number> = {
+    const starMultiplier = 1 + (stars - 1) * 0.15;
+    const totalMultiplier = levelMultiplier * starMultiplier;
+
+    return {
+      hp: Math.floor(heroData.baseStats.hp * totalMultiplier),
+      atk: Math.floor(heroData.baseStats.atk * totalMultiplier),
+      def: Math.floor(heroData.baseStats.def * totalMultiplier),
+      vitesse: Math.floor((heroData.baseStats.vitesse || 80) * Math.min(2.0, totalMultiplier * 0.6 + 0.4)),
+      moral: Math.floor((heroData.baseStats.moral || 60) * totalMultiplier * 0.8 + 0.2)
+    };
+  }
+
+  private static getMaxLevel(stars: number, playerLevel: number): number {
+    const starLevelCaps = [20, 30, 40, 60, 80, 100];
+    const starCap = starLevelCaps[stars - 1] || 100;
+    return Math.min(starCap, playerLevel + 20);
+  }
+
+  private static getMaxStars(rarity: string): number {
+    const maxStars: Record<string, number> = {
+      "Common": 5,
+      "Rare": 6,
+      "Epic": 6,
+      "Legendary": 6
+    };
+    return maxStars[rarity] || 6;
+  }
+
+  private static getMaxSkillLevel(heroLevel: number): number {
+    return Math.min(10, Math.floor(heroLevel / 10) + 1);
+  }
+
+  private static getRarityMultiplier(rarity: string): number {
+    const multipliers: Record<string, number> = {
       "Common": 1.0,
-      "Rare": 1.3,
-      "Epic": 1.7,
-      "Legendary": 2.2,
-      "Ascended": 3.0
+      "Rare": 1.5,
+      "Epic": 2.0,
+      "Legendary": 3.0
     };
+    return multipliers[rarity] || 1.0;
+  }
+
+  private static canEvolveHero(heroInstance: any, heroData: any): boolean {
+    return heroInstance.level >= 50 && 
+           heroInstance.stars >= 5 && 
+           heroData.rarity !== "Legendary";
+  }
+
+  private static getNextRarity(currentRarity: string): string | null {
+    const progression: Record<string, string> = {
+      "Common": "Rare",
+      "Rare": "Epic",
+      "Epic": "Legendary"
+    };
+    return progression[currentRarity] || null;
+  }
+
+  private static calculateEvolutionStatsBonus(oldRarity: string, newRarity: string) {
+    return {
+      hpMultiplier: 1.3,
+      atkMultiplier: 1.25,
+      defMultiplier: 1.2,
+      speedBonus: 10,
+      skillLevelBonus: 1
+    };
+  }
+
+  private static getEvolutionRequirements(rarity: string) {
+    return {
+      minLevel: 50,
+      minStars: 5,
+      materials: this.getEvolutionMaterials(rarity)
+    };
+  }
+
+  private static calculateUpgradePriority(heroInstance: any, heroData: any, player: any, isEquipped: boolean) {
+    let score = 0;
+    const recommendations: string[] = [];
+    let estimatedCost = { gold: 0, fragments: 0 };
+
+    const basePriority = isEquipped ? 5 : 2;
+    const rarityValues: Record<string, number> = { "Common": 0, "Rare": 1, "Epic": 2, "Legendary": 3 };
+    const rarityBonus = rarityValues[heroData.rarity] || 0;
     
-    const rarityMultiplier = rarityMultipliers[rarity] || 1.0;
-    const starMultiplier = rarity === "Ascended" ? 1 + (stars * 0.2) : 1.0;
-    const totalMultiplier = levelMultiplier * rarityMultiplier * starMultiplier;
+    score += basePriority + rarityBonus;
+
+    const maxLevel = this.getMaxLevel(heroInstance.stars, player.level);
+    if (heroInstance.level < maxLevel) {
+      const levelGap = maxLevel - heroInstance.level;
+      const levelPriority = Math.min(3, levelGap / 10);
+      score += levelPriority;
+      
+      if (levelGap >= 5) {
+        recommendations.push(`Level up ${levelGap} levels`);
+        estimatedCost.gold += this.calculateLevelUpCost(heroInstance.level, Math.min(heroInstance.level + 10, maxLevel), heroData.rarity).gold;
+      }
+    }
+
+    const maxStars = this.getMaxStars(heroData.rarity);
+    if (heroInstance.stars < maxStars) {
+      const fragmentCost = this.getStarUpgradeFragmentCost(heroInstance.stars, heroData.rarity);
+      const availableFragments = player.fragments.get(heroInstance.heroId.toString()) || 0;
+      
+      if (availableFragments >= fragmentCost) {
+        score += 2;
+        recommendations.push(`Upgrade to ${heroInstance.stars + 1} stars`);
+        estimatedCost.fragments += fragmentCost;
+      } else {
+        const fragmentsNeeded = fragmentCost - availableFragments;
+        if (fragmentsNeeded <= 50) {
+          score += 1;
+          recommendations.push(`Need ${fragmentsNeeded} more fragments for star upgrade`);
+        }
+      }
+    }
+
+    if (this.canEvolveHero(heroInstance, heroData)) {
+      const evolutionCost = this.calculateEvolutionCost(heroData.rarity);
+      const availableFragments = player.fragments.get(heroInstance.heroId.toString()) || 0;
+      
+      if (availableFragments >= evolutionCost.fragments) {
+        score += 4;
+        recommendations.push("Ready for evolution!");
+        estimatedCost.fragments += evolutionCost.fragments;
+      }
+    }
+
+    const currentPower = this.calculateHeroPower(this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars));
+    if (currentPower < player.level * 100) {
+      score += 1;
+      recommendations.push("Power below player level average");
+    }
 
     return {
-      hp: Math.floor(baseStats.hp * totalMultiplier),
-      atk: Math.floor(baseStats.atk * totalMultiplier),
-      def: Math.floor(baseStats.def * totalMultiplier),
-      crit: Math.min(100, baseStats.crit * (1 + (totalMultiplier - 1) * 0.3)),
-      critDamage: Math.floor(baseStats.critDamage * (1 + (totalMultiplier - 1) * 0.2)),
-      vitesse: Math.floor(baseStats.vitesse * (1 + (totalMultiplier - 1) * 0.5)),
-      moral: Math.floor(baseStats.moral * (1 + (totalMultiplier - 1) * 0.4))
+      score: Math.round(score * 10) / 10,
+      recommendations,
+      estimatedCost
     };
   }
 
-  private static calculateStatsDifference(current: any, after: any) {
-    const gained: any = {};
-    for (const stat in current) {
-      gained[stat] = after[stat] - current[stat];
+  private static calculateHeroPower(stats: any): number {
+    return Math.floor(stats.atk * 1.0 + stats.def * 2.0 + stats.hp / 10);
+  }
+
+  private static getSkillsUpgradeInfo(heroInstance: any, heroData: any, player: any) {
+    const skills = ["spell1", "spell2", "spell3", "ultimate", "passive"];
+    const skillsInfo: any = {};
+
+    if (!(heroInstance as any).skills) {
+      (heroInstance as any).skills = {
+        spell1: { level: 1 },
+        spell2: { level: 1 },
+        spell3: { level: 1 },
+        ultimate: { level: 1 },
+        passive: { level: 1 }
+      };
     }
-    return gained;
-  }
 
-  private static calculatePower(stats: any): number {
-    return Math.floor(
-      stats.atk * 1.0 + 
-      stats.def * 1.5 + 
-      stats.hp / 10 + 
-      stats.vitesse * 0.5 + 
-      stats.crit * 2 + 
-      stats.critDamage * 0.1
-    );
-  }
-
-  private static createEmptyRequirements(): FusionRequirements {
-    return {
-      mainHero: "",
-      copies: [],
-      foodHeroes: [],
-      materials: {},
-      gold: 0
-    };
-  }
-
-  private static groupByRarity(heroes: any[]) {
-    const groups: Record<string, number> = {};
-    for (const rarity of this.RARITY_PROGRESSION) {
-      groups[rarity] = heroes.filter((h: any) => h.currentRarity === rarity).length;
+    for (const skillSlot of skills) {
+      const currentLevel = (heroInstance as any).skills[skillSlot]?.level || 1;
+      const maxLevel = this.getMaxSkillLevel(heroInstance.level);
+      
+      if (currentLevel < maxLevel) {
+        const cost = this.calculateSkillUpgradeCost(currentLevel, heroData.rarity);
+        const requiredMaterial = `skill_essence_${heroData.element.toLowerCase()}`;
+        
+        skillsInfo[skillSlot] = {
+          available: true,
+          currentLevel,
+          maxLevel,
+          cost,
+          requiredMaterial,
+          playerHasMaterial: (player.materials.get(requiredMaterial) || 0) >= cost.materials
+        };
+      } else {
+        skillsInfo[skillSlot] = {
+          available: false,
+          currentLevel,
+          maxLevel,
+          reason: "Maximum level reached"
+        };
+      }
     }
-    return groups;
+
+    return skillsInfo;
   }
 
-  private static canAffordPath(player: any, totalCost: { gold: number; materials: Record<string, number> }): boolean {
-    if (player.gold < totalCost.gold) return false;
-    
-    for (const [materialId, quantity] of Object.entries(totalCost.materials)) {
-      const available = player.materials.get(materialId) || 0;
-      if (available < quantity) return false;
-    }
-    
-    return true;
-  }
-
-  private static async saveFusionHistory(
-    historyEntry: FusionHistory, 
-    serverId: string, 
-    powerGained: number, 
-    mainHeroName: string
-  ): Promise<void> {
-    try {
-      const fusionHistory = new FusionHistoryModel({
-        accountId: historyEntry.accountId,
-        serverId,
-        mainHeroId: historyEntry.mainHeroId,
-        mainHeroName,
-        fromRarity: historyEntry.fromRarity,
-        fromStars: historyEntry.fromStars,
-        toRarity: historyEntry.toRarity,
-        toStars: historyEntry.toStars,
-        consumedHeroes: historyEntry.consumedHeroes,
-        cost: {
-          gold: historyEntry.cost.gold,
-          materials: new Map(Object.entries(historyEntry.cost.materials))
-        },
-        powerGained,
-        fusionType: historyEntry.fromRarity !== historyEntry.toRarity ? "rarity_upgrade" : "star_upgrade",
-        success: true,
-        timestamp: historyEntry.timestamp
-      });
-
-      await fusionHistory.save();
-    } catch (error) {
-      console.error("❌ Erreur sauvegarde fusion history:", error);
-    }
-  }
-
-  private static async loadFusionHistory(accountId: string, serverId: string, limit: number): Promise<FusionHistory[]> {
-    try {
-      const history = await (FusionHistoryModel as any).getPlayerFusionHistory(accountId, serverId, limit);
-      return history.map((entry: any) => ({
-        _id: entry._id.toString(),
-        accountId: entry.accountId,
-        mainHeroId: entry.mainHeroId,
-        fromRarity: entry.fromRarity,
-        fromStars: entry.fromStars,
-        toRarity: entry.toRarity,
-        toStars: entry.toStars,
-        consumedHeroes: entry.consumedHeroes,
-        cost: {
-          gold: entry.cost.gold,
-          materials: Object.fromEntries(entry.cost.materials || new Map())
-        },
-        timestamp: entry.timestamp
-      }));
-    } catch (error) {
-      console.error("❌ Erreur chargement fusion history:", error);
-      return [];
-    }
-  }
-
-  private static calculateRarityAchievements(history: FusionHistory[]) {
-    const achievements: Record<string, number> = {};
-    for (const entry of history) {
-      achievements[entry.toRarity] = (achievements[entry.toRarity] || 0) + 1;
-    }
-    return achievements;
-  }
-
-  private static async updateProgressTracking(
-    accountId: string,
-    serverId: string,
-    newRarity: string,
-    newStars: number
-  ) {
+  private static async updateProgressTracking(accountId: string, serverId: string, upgradeType: string, value: number) {
     try {
       await Promise.all([
-        MissionService.updateProgress(
-          accountId,
-          serverId,
-          "heroes_owned",
-          1,
-          { rarity: newRarity, stars: newStars }
-        ),
-        EventService.updatePlayerProgress(
-          accountId,
-          serverId,
-          "collect_items",
-          1,
-          { itemType: "hero_fusion", rarity: newRarity, stars: newStars }
-        )
+        MissionService.updateProgress(accountId, serverId, "heroes_owned", value, { upgradeType }),
+        EventService.updatePlayerProgress(accountId, serverId, "collect_items", value, { itemType: "hero_upgrade", upgradeType })
       ]);
     } catch (error) {
-      console.error("⚠️ Erreur mise à jour progression fusion:", error);
+      console.error("⚠️ Erreur mise à jour progression héros:", error);
     }
-  }
-
-  private static generateFusionRecommendations(stats: any, player: any): string[] {
-    const recommendations: string[] = [];
-
-    if (stats.fusionPotential.readyToFuse > 0) {
-      recommendations.push(`${stats.fusionPotential.readyToFuse} heroes ready for fusion!`);
-    }
-
-    if (stats.fusionPotential.needCopies > stats.fusionPotential.needMaterials) {
-      recommendations.push("Focus on summoning for hero copies");
-    } else if (stats.fusionPotential.needMaterials > 0) {
-      recommendations.push("Farm materials for fusion upgrades");
-    }
-
-    if (stats.ascendedHeroes < 3) {
-      recommendations.push("Priority: Get your first 3 Ascended heroes");
-    }
-
-    const commonHeroes = stats.rarityDistribution["Common"] || 0;
-    if (commonHeroes > 10) {
-      recommendations.push("Use excess Common heroes as fusion food");
-    }
-
-    if (stats.averageAscensionLevel < 2.0) {
-      recommendations.push("Focus on upgrading your strongest heroes first");
-    }
-
-    return recommendations;
   }
 }
-export default HeroUpgradeService;
