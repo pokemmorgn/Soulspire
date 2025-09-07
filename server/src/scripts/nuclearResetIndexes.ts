@@ -55,7 +55,7 @@ async function nuclearResetIndexes() {
     log(colors.red, "\n💥 Suppression COMPLÈTE des index players...");
     
     for (const index of playersIndexes) {
-      if (index.name !== '_id_') { // Garder seulement l'index _id
+      if (index.name && index.name !== '_id_') { // Vérification TypeScript stricte
         try {
           await db.collection('players').dropIndex(index.name);
           log(colors.green, `✅ Index ${index.name} supprimé de players`);
@@ -72,7 +72,7 @@ async function nuclearResetIndexes() {
     log(colors.red, "\n💥 Suppression COMPLÈTE des index accounts...");
     
     for (const index of accountsIndexes) {
-      if (index.name !== '_id_') { // Garder seulement l'index _id
+      if (index.name && index.name !== '_id_') { // Vérification TypeScript stricte
         try {
           await db.collection('accounts').dropIndex(index.name);
           log(colors.green, `✅ Index ${index.name} supprimé de accounts`);
@@ -88,35 +88,41 @@ async function nuclearResetIndexes() {
     
     log(colors.blue, "\n🔄 Recréation des index essentiels...");
     
-    // Index PLAYERS essentiels uniquement
-    const playerIndexes = [
-      { fields: { playerId: 1 }, options: { unique: true, name: "playerId_1" } },
-      { fields: { accountId: 1, serverId: 1 }, options: { name: "accountId_1_serverId_1" } },
-      { fields: { serverId: 1 }, options: { name: "serverId_1" } }
-    ];
-    
-    for (const idx of playerIndexes) {
-      try {
-        await db.collection('players').createIndex(idx.fields, idx.options);
-        log(colors.green, `✅ Index ${idx.options.name} créé sur players`);
-      } catch (error: any) {
-        log(colors.yellow, `⚠️ Index ${idx.options.name} déjà existant: ${error.message}`);
-      }
+    // Index PLAYERS essentiels - Un par un pour éviter les erreurs TypeScript
+    try {
+      await db.collection('players').createIndex({ playerId: 1 }, { unique: true, name: "playerId_1" });
+      log(colors.green, "✅ Index playerId_1 créé sur players");
+    } catch (error: any) {
+      log(colors.yellow, `⚠️ Index playerId_1 déjà existant: ${error.message}`);
     }
     
-    // Index ACCOUNTS essentiels uniquement
-    const accountIndexes = [
-      { fields: { accountId: 1 } as const, options: { unique: true, name: "accountId_1" } },
-      { fields: { username: 1 } as const, options: { unique: true, name: "username_1" } }
-    ];
+    try {
+      await db.collection('players').createIndex({ accountId: 1, serverId: 1 }, { name: "accountId_1_serverId_1" });
+      log(colors.green, "✅ Index accountId_1_serverId_1 créé sur players");
+    } catch (error: any) {
+      log(colors.yellow, `⚠️ Index accountId_1_serverId_1 déjà existant: ${error.message}`);
+    }
     
-    for (const idx of accountIndexes) {
-      try {
-        await db.collection('accounts').createIndex(idx.fields, idx.options);
-        log(colors.green, `✅ Index ${idx.options.name} créé sur accounts`);
-      } catch (error: any) {
-        log(colors.yellow, `⚠️ Index ${idx.options.name} déjà existant: ${error.message}`);
-      }
+    try {
+      await db.collection('players').createIndex({ serverId: 1 }, { name: "serverId_1" });
+      log(colors.green, "✅ Index serverId_1 créé sur players");
+    } catch (error: any) {
+      log(colors.yellow, `⚠️ Index serverId_1 déjà existant: ${error.message}`);
+    }
+    
+    // Index ACCOUNTS essentiels - Un par un
+    try {
+      await db.collection('accounts').createIndex({ accountId: 1 }, { unique: true, name: "accountId_1" });
+      log(colors.green, "✅ Index accountId_1 créé sur accounts");
+    } catch (error: any) {
+      log(colors.yellow, `⚠️ Index accountId_1 déjà existant: ${error.message}`);
+    }
+    
+    try {
+      await db.collection('accounts').createIndex({ username: 1 }, { unique: true, name: "username_1" });
+      log(colors.green, "✅ Index username_1 créé sur accounts");
+    } catch (error: any) {
+      log(colors.yellow, `⚠️ Index username_1 déjà existant: ${error.message}`);
     }
 
     // =============================================
@@ -167,4 +173,4 @@ if (require.main === module) {
   nuclearResetIndexes().then(() => process.exit(0));
 }
 
-export default nuclearResetIndexes;
+export default nuclearResetIndexe
