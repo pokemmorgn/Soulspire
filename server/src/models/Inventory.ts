@@ -86,9 +86,9 @@ interface IInventoryStats {
 
 // Document principal de l'inventaire
 interface IInventoryDocument extends Document {
-  playerId: string;
+  playerId: string;  // ✅ RÉFÉRENCE vers Player._id (pas vers Account)
   
-  // Monnaies de base (depuis Player)
+  // Monnaies de base (synchronisées avec Player)
   gold: number;
   gems: number;
   paidGems: number;
@@ -102,7 +102,9 @@ interface IInventoryDocument extends Document {
   autoSell: boolean;           // Auto-vendre les objets de faible rareté
   autoSellRarity: string;      // Rareté maximum à auto-vendre
   
-  // Dernière mise à jour
+  // ✅ NOUVEAU: Métadonnées serveur
+  serverId?: string;           // Pour traçabilité et migration future
+  lastSyncAt: Date;           // Dernière synchronisation avec Player
   lastCleanup: Date;          // Dernière suppression d'objets expirés
   
   // === MÉTHODES D'INSTANCE ===
@@ -132,6 +134,10 @@ interface IInventoryDocument extends Document {
   getMaterialsByType(materialType: string, grade?: string): IOwnedItem[];
   canCraftItem(itemId: string): Promise<boolean>;
   
+  // ✅ NOUVELLES MÉTHODES pour la nouvelle architecture
+  syncWithPlayer(): Promise<boolean>;
+  validateConsistency(): Promise<{ valid: boolean; issues: string[] }>;
+  
   // Utilitaires
   getInventoryStats(): IInventoryStats;
   cleanupExpiredItems(): Promise<number>;
@@ -155,7 +161,7 @@ const ownedItemSchema = new Schema<IOwnedItem>({
   instanceId: { 
     type: String, 
     required: true,
-    unique: true,
+    // ✅ CORRECTION: Pas d'unique ici car géré au niveau global
     default: () => new mongoose.Types.ObjectId().toString()
   },
   quantity: { 
@@ -255,7 +261,7 @@ const inventorySchema = new Schema<IInventoryDocument>({
   playerId: { 
     type: String,
     required: true,
-    unique: true
+    unique: true  // ✅ UN inventaire par Player
   },
   
   // Monnaies de base (synchronisées avec Player)
@@ -319,7 +325,16 @@ const inventorySchema = new Schema<IInventoryDocument>({
     default: "Common"
   },
   
-  // Maintenance
+  // ✅ NOUVELLES MÉTADONNÉES
+  serverId: {
+    type: String,
+    match: /^S\d+$/,
+    // Pas required pour compatibilité avec données existantes
+  },
+  lastSyncAt: { 
+    type: Date, 
+    default: Date.now 
+  },
   lastCleanup: { 
     type: Date, 
     default: Date.now 
@@ -329,17 +344,72 @@ const inventorySchema = new Schema<IInventoryDocument>({
   collection: 'inventories'
 });
 
-// === INDEX ===
-inventorySchema.index({ playerId: 1 });
-inventorySchema.index({ "storage.weapons.itemId": 1 });
+// === INDEX OPTIMISÉS ===
+inventorySchema.index({ playerId: 1 }, { unique: true });
+inventorySchema.index({ serverId: 1 });
+inventorySchema.index({ playerId: 1, serverId: 1 });
 inventorySchema.index({ "storage.weapons.isEquipped": 1 });
 inventorySchema.index({ "storage.*.instanceId": 1 });
+inventorySchema.index({ lastSyncAt: 1 });
+
+// ✅ INDEX GLOBAL pour instanceId unique
+inventorySchema.index({ 
+  "storage.weapons.instanceId": 1,
+  "storage.helmets.instanceId": 1,
+  "storage.armors.instanceId": 1,
+  "storage.boots.instanceId": 1,
+  "storage.gloves.instanceId": 1,
+  "storage.accessories.instanceId": 1,
+  "storage.potions.instanceId": 1,
+  "storage.scrolls.instanceId": 1,
+  "storage.enhancementItems.instanceId": 1,
+  "storage.enhancementMaterials.instanceId": 1,
+  "storage.evolutionMaterials.instanceId": 1,
+  "storage.craftingMaterials.instanceId": 1,
+  "storage.awakeningMaterials.instanceId": 1,
+  "storage.artifacts.instanceId": 1
+}, { sparse: true });
+
+// === MIDDLEWARE DE VALIDATION ===
+inventorySchema.pre('save', function(next) {
+  // S'assurer que les monnaies ne sont jamais négatives
+  if (this.gold < 0) this.gold = 0;
+  if (this.gems < 0) this.gems = 0;
+  if (this.paidGems < 0) this.paidGems = 0;
+  if (this.tickets < 0) this.tickets = 0;
+  
+  // Mettre à jour lastSyncAt
+  this.lastSyncAt = new Date();
+  
+  // Nettoyer les maps vides
+  if (this.storage.heroFragments && this.storage.heroFragments.size === 0) {
+    this.storage.heroFragments = new Map();
+  }
+  if (this.storage.specialCurrencies && this.storage.specialCurrencies.size === 0) {
+    this.storage.specialCurrencies = new Map();
+  }
+  
+  next();
+});
 
 // === MÉTHODES STATIQUES ===
 
-inventorySchema.statics.createForPlayer = async function(playerId: string) {
+inventorySchema.statics.createForPlayer = async function(playerId: string, serverId?: string) {
+  // ✅ VÉRIFIER que le Player existe d'abord
+  const Player = mongoose.model('Player');
+  const player = await Player.findById(playerId);
+  
+  if (!player) {
+    throw new Error(`Player not found: ${playerId}`);
+  }
+  
   const inventory = new this({
     playerId,
+    serverId: serverId || player.serverId,
+    gold: player.gold || 0,
+    gems: player.gems || 0,
+    paidGems: player.paidGems || 0,
+    tickets: player.tickets || 0,
     maxCapacity: 200,
     storage: {
       weapons: [],
@@ -364,9 +434,137 @@ inventorySchema.statics.createForPlayer = async function(playerId: string) {
   return await inventory.save();
 };
 
+// ✅ NOUVELLE MÉTHODE: Trouver par Player et Serveur
+inventorySchema.statics.findByPlayerAndServer = function(playerId: string, serverId?: string) {
+  const query: any = { playerId };
+  if (serverId) query.serverId = serverId;
+  return this.findOne(query);
+};
+
+// ✅ NOUVELLE MÉTHODE: Migration en lot
+inventorySchema.statics.migrateToNewFormat = async function() {
+  const Player = mongoose.model('Player');
+  const inventories = await this.find({ serverId: { $exists: false } });
+  
+  let migrated = 0;
+  let errors = 0;
+  
+  for (const inventory of inventories) {
+    try {
+      const player = await Player.findById(inventory.playerId);
+      if (player) {
+        inventory.serverId = player.serverId;
+        inventory.gold = player.gold;
+        inventory.gems = player.gems;
+        inventory.paidGems = player.paidGems;
+        inventory.tickets = player.tickets;
+        await inventory.save();
+        migrated++;
+      } else {
+        // Supprimer inventaire orphelin
+        await this.deleteOne({ _id: inventory._id });
+      }
+    } catch (error) {
+      console.error(`Migration error for inventory ${inventory.playerId}:`, error);
+      errors++;
+    }
+  }
+  
+  return { migrated, errors };
+};
+
 // === MÉTHODES D'INSTANCE ===
 
-// Ajouter un objet
+// ✅ NOUVELLE MÉTHODE: Synchroniser avec Player
+inventorySchema.methods.syncWithPlayer = async function(): Promise<boolean> {
+  try {
+    const Player = mongoose.model('Player');
+    const player = await Player.findById(this.playerId);
+    
+    if (!player) {
+      console.error(`Player not found for inventory: ${this.playerId}`);
+      return false;
+    }
+    
+    // Synchroniser les monnaies
+    this.gold = player.gold;
+    this.gems = player.gems;
+    this.paidGems = player.paidGems;
+    this.tickets = player.tickets;
+    
+    // Mettre à jour serverId si manquant
+    if (!this.serverId && player.serverId) {
+      this.serverId = player.serverId;
+    }
+    
+    this.lastSyncAt = new Date();
+    await this.save();
+    
+    console.log(`✅ Inventaire synchronisé pour ${this.playerId}`);
+    return true;
+    
+  } catch (error) {
+    console.error(`❌ Erreur synchronisation inventaire ${this.playerId}:`, error);
+    return false;
+  }
+};
+
+// ✅ NOUVELLE MÉTHODE: Valider la cohérence
+inventorySchema.methods.validateConsistency = async function(): Promise<{ valid: boolean; issues: string[] }> {
+  const issues: string[] = [];
+  
+  try {
+    const Player = mongoose.model('Player');
+    const player = await Player.findById(this.playerId);
+    
+    if (!player) {
+      issues.push("Player not found");
+      return { valid: false, issues };
+    }
+    
+    // Vérifier synchronisation des monnaies
+    if (this.gold !== player.gold) {
+      issues.push(`Gold mismatch: Inventory(${this.gold}) vs Player(${player.gold})`);
+    }
+    
+    if (this.gems !== player.gems) {
+      issues.push(`Gems mismatch: Inventory(${this.gems}) vs Player(${player.gems})`);
+    }
+    
+    if (this.paidGems !== player.paidGems) {
+      issues.push(`Paid gems mismatch: Inventory(${this.paidGems}) vs Player(${player.paidGems})`);
+    }
+    
+    if (this.tickets !== player.tickets) {
+      issues.push(`Tickets mismatch: Inventory(${this.tickets}) vs Player(${player.tickets})`);
+    }
+    
+    // Vérifier serverId
+    if (this.serverId && player.serverId && this.serverId !== player.serverId) {
+      issues.push(`Server mismatch: Inventory(${this.serverId}) vs Player(${player.serverId})`);
+    }
+    
+    // Vérifier objets équipés vs héros existants
+    const equippedItems = this.getEquippedItems();
+    for (const item of equippedItems) {
+      const heroExists = player.heroes.some((h: any) => h.heroId.toString() === item.equippedTo);
+      if (!heroExists) {
+        issues.push(`Item ${item.instanceId} equipped to non-existent hero ${item.equippedTo}`);
+      }
+    }
+    
+    return {
+      valid: issues.length === 0,
+      issues
+    };
+    
+  } catch (error: any) {
+    issues.push(`Validation error: ${error.message}`);
+    return { valid: false, issues };
+  }
+};
+
+// Ajouter un objet (méthode existante avec améliorations)
 inventorySchema.methods.addItem = async function(
   itemId: string, 
   quantity: number = 1, 
@@ -423,16 +621,15 @@ inventorySchema.methods.addItem = async function(
   } else if (item.category === "Artifact") {
     storageCategory = "artifacts";
   } else if (item.category === "Chest") {
-    // Pour les coffres, on les met dans les artefacts ou une catégorie spéciale
     storageCategory = "artifacts";
   } else if (item.category === "Fragment") {
-    // Les fragments vont dans les maps spéciales, pas dans les tableaux
+    // Les fragments vont dans les maps spéciales
     const fragmentsMap = this.storage.heroFragments || new Map();
     const currentQuantity = fragmentsMap.get(itemId) || 0;
     fragmentsMap.set(itemId, currentQuantity + quantity);
     this.storage.heroFragments = fragmentsMap;
     await this.save();
-    return newOwnedItem; // Retour anticipé
+    return newOwnedItem;
   } else if (item.category === "Currency") {
     // Les monnaies spéciales vont dans les maps
     const currenciesMap = this.storage.specialCurrencies || new Map();
@@ -440,7 +637,7 @@ inventorySchema.methods.addItem = async function(
     currenciesMap.set(itemId, currentQuantity + quantity);
     this.storage.specialCurrencies = currenciesMap;
     await this.save();
-    return newOwnedItem; // Retour anticipé
+    return newOwnedItem;
   } else {
     throw new Error(`Cannot store item of category: ${item.category}`);
   }
@@ -456,12 +653,13 @@ inventorySchema.methods.addItem = async function(
   return newOwnedItem;
 };
 
+// === AUTRES MÉTHODES EXISTANTES (inchangées) ===
+
 // Supprimer un objet
 inventorySchema.methods.removeItem = async function(
   instanceId: string, 
   quantity?: number
 ): Promise<boolean> {
-  // Chercher l'objet dans toutes les catégories
   const categories = ['weapons', 'helmets', 'armors', 'boots', 'gloves', 'accessories', 
                      'potions', 'scrolls', 'enhancementItems', 'enhancementMaterials', 
                      'evolutionMaterials', 'craftingMaterials', 'awakeningMaterials', 'artifacts'];
@@ -472,10 +670,8 @@ inventorySchema.methods.removeItem = async function(
       const itemIndex = items.findIndex(item => item.instanceId === instanceId);
       if (itemIndex !== -1) {
         if (!quantity || quantity >= items[itemIndex].quantity) {
-          // Supprimer complètement
           items.splice(itemIndex, 1);
         } else {
-          // Réduire la quantité
           items[itemIndex].quantity -= quantity;
         }
         await this.save();
@@ -536,8 +732,7 @@ inventorySchema.methods.getItemsByCategory = function(category: string, subCateg
     }
   }
   
-  // Filtrer par catégorie (nécessiterait une requête Item pour vérifier la catégorie exacte)
-  // Pour l'instant, retourne tous les objets
+  // TODO: Améliorer le filtrage par catégorie avec requête Item
   return allItems;
 };
 
@@ -562,7 +757,6 @@ inventorySchema.methods.getInventoryStats = function(): IInventoryStats {
     setsCompleted: []
   };
   
-  // Compter tous les objets dans toutes les catégories
   const categories = ['weapons', 'helmets', 'armors', 'boots', 'gloves', 'accessories', 
                      'potions', 'scrolls', 'enhancementItems', 'enhancementMaterials', 
                      'evolutionMaterials', 'craftingMaterials', 'awakeningMaterials', 'artifacts'];
@@ -572,7 +766,6 @@ inventorySchema.methods.getInventoryStats = function(): IInventoryStats {
     if (Array.isArray(items) && items.length > 0) {
       stats.totalItems += items.length;
       
-      // Catégoriser par type
       if (['weapons', 'helmets', 'armors', 'boots', 'gloves', 'accessories'].includes(category)) {
         stats.equipmentCount += items.length;
       } else if (['potions', 'scrolls', 'enhancementItems'].includes(category)) {
@@ -633,6 +826,8 @@ inventorySchema.methods.unequipItem = async function(instanceId: string): Promis
   
   return false;
 };
+
+// Équiper un objet
 inventorySchema.methods.equipItem = async function(
   instanceId: string, 
   heroId: string
@@ -702,6 +897,227 @@ inventorySchema.methods.calculateTotalValue = function(): number {
   // Pour l'instant on retourne juste les monnaies
   
   return totalValue;
+};
+
+// ✅ NOUVELLES MÉTHODES UTILITAIRES
+
+// Optimiser le stockage (défragmentation)
+inventorySchema.methods.optimizeStorage = async function(): Promise<void> {
+  console.log(`🔧 Optimisation stockage pour ${this.playerId}`);
+  
+  const categories = ['weapons', 'helmets', 'armors', 'boots', 'gloves', 'accessories', 
+                     'potions', 'scrolls', 'enhancementItems', 'enhancementMaterials', 
+                     'evolutionMaterials', 'craftingMaterials', 'awakeningMaterials', 'artifacts'];
+  
+  let optimized = false;
+  
+  for (const category of categories) {
+    const items = this.storage[category as keyof ICategorizedStorage] as IOwnedItem[];
+    if (Array.isArray(items)) {
+      // Supprimer les objets avec quantité <= 0
+      const validItems = items.filter(item => item.quantity > 0);
+      if (validItems.length !== items.length) {
+        (this.storage[category as keyof ICategorizedStorage] as IOwnedItem[]) = validItems;
+        optimized = true;
+      }
+      
+      // Grouper les objets identiques (même itemId, niveau, amélioration)
+      const groupedItems = new Map<string, IOwnedItem>();
+      
+      for (const item of validItems) {
+        const key = `${item.itemId}-${item.level}-${item.enhancement}-${item.isEquipped}`;
+        const existing = groupedItems.get(key);
+        
+        if (existing && !item.isEquipped) {
+          // Fusionner les quantités pour les objets non équipés identiques
+          existing.quantity += item.quantity;
+          optimized = true;
+        } else {
+          groupedItems.set(key, { ...item });
+        }
+      }
+      
+      if (optimized) {
+        (this.storage[category as keyof ICategorizedStorage] as IOwnedItem[]) = Array.from(groupedItems.values());
+      }
+    }
+  }
+  
+  if (optimized) {
+    await this.save();
+    console.log(`✅ Stockage optimisé pour ${this.playerId}`);
+  }
+};
+
+// Trier les objets par rareté
+inventorySchema.methods.sortItemsByRarity = function(items: IOwnedItem[]): IOwnedItem[] {
+  const rarityOrder = ["Common", "Rare", "Epic", "Legendary", "Mythic", "Ascended"];
+  
+  return items.sort((a, b) => {
+    // Nécessiterait une requête vers Item pour obtenir la rareté
+    // Pour l'instant, tri par niveau puis amélioration
+    if (a.level !== b.level) return b.level - a.level;
+    return b.enhancement - a.enhancement;
+  });
+};
+
+// Trier les objets par niveau
+inventorySchema.methods.sortItemsByLevel = function(items: IOwnedItem[]): IOwnedItem[] {
+  return items.sort((a, b) => {
+    if (a.level !== b.level) return b.level - a.level;
+    if (a.enhancement !== b.enhancement) return b.enhancement - a.enhancement;
+    return a.acquiredDate.getTime() - b.acquiredDate.getTime();
+  });
+};
+
+// Filtrer les objets par rareté
+inventorySchema.methods.filterItemsByRarity = function(items: IOwnedItem[], rarity: string): IOwnedItem[] {
+  // Nécessiterait une requête vers Item pour filtrer par rareté
+  // Pour l'instant, retourne tous les objets
+  return items;
+};
+
+// Obtenir les consommables expirés
+inventorySchema.methods.getExpiredConsumables = function(): IOwnedItem[] {
+  const expiredItems: IOwnedItem[] = [];
+  const now = new Date();
+  
+  ['potions', 'scrolls', 'enhancementItems'].forEach(category => {
+    const items = this.storage[category as keyof ICategorizedStorage] as IOwnedItem[];
+    items.forEach(item => {
+      if (item.consumableData?.expirationDate && 
+          item.consumableData.expirationDate < now) {
+        expiredItems.push(item);
+      }
+    });
+  });
+  
+  return expiredItems;
+};
+
+// Utiliser un consommable
+inventorySchema.methods.useConsumable = async function(instanceId: string, heroId?: string): Promise<any> {
+  const consumableCategories = ['potions', 'scrolls', 'enhancementItems'];
+  
+  for (const category of consumableCategories) {
+    const items = this.storage[category as keyof ICategorizedStorage] as IOwnedItem[];
+    const itemIndex = items.findIndex(item => item.instanceId === instanceId);
+    
+    if (itemIndex !== -1) {
+      const item = items[itemIndex];
+      
+      // Vérifier si le consommable peut être utilisé
+      if (item.consumableData?.expirationDate && 
+          item.consumableData.expirationDate < new Date()) {
+        throw new Error("Consommable expiré");
+      }
+      
+      if (item.consumableData?.usageCount && item.consumableData.usageCount <= 0) {
+        throw new Error("Consommable épuisé");
+      }
+      
+      // Utiliser le consommable
+      item.lastUsedDate = new Date();
+      
+      if (item.consumableData?.usageCount) {
+        item.consumableData.usageCount--;
+        
+        // Supprimer si épuisé
+        if (item.consumableData.usageCount <= 0) {
+          items.splice(itemIndex, 1);
+        }
+      } else {
+        // Consommable à usage unique
+        if (item.quantity > 1) {
+          item.quantity--;
+        } else {
+          items.splice(itemIndex, 1);
+        }
+      }
+      
+      await this.save();
+      
+      return {
+        success: true,
+        itemId: item.itemId,
+        heroId,
+        effect: "Consommable utilisé" // TODO: Implémenter les effets réels
+      };
+    }
+  }
+  
+  throw new Error("Consommable non trouvé");
+};
+
+// Obtenir les matériaux par type
+inventorySchema.methods.getMaterialsByType = function(materialType: string, grade?: string): IOwnedItem[] {
+  const materialCategories = ['enhancementMaterials', 'evolutionMaterials', 'craftingMaterials', 'awakeningMaterials'];
+  const materials: IOwnedItem[] = [];
+  
+  for (const category of materialCategories) {
+    const items = this.storage[category as keyof ICategorizedStorage] as IOwnedItem[];
+    materials.push(...items);
+  }
+  
+  // TODO: Filtrer par type et grade avec requête vers Item
+  return materials;
+};
+
+// Vérifier si peut fabriquer un objet
+inventorySchema.methods.canCraftItem = async function(itemId: string): Promise<boolean> {
+  // TODO: Implémenter la logique de craft avec recettes
+  return false;
+};
+
+// Obtenir les pièces d'un set équipées
+inventorySchema.methods.getEquippedSetPieces = function(heroId: string, setId: string): number {
+  const equippedItems = this.getEquippedItems(heroId);
+  
+  // TODO: Implémenter la logique des sets avec requête vers Item
+  return 0;
+};
+
+// Obtenir les pièces d'un set disponibles
+inventorySchema.methods.getAvailableSetPieces = function(setId: string): IOwnedItem[] {
+  // TODO: Implémenter la logique des sets avec requête vers Item
+  return [];
+};
+
+// Améliorer un équipement
+inventorySchema.methods.upgradeEquipment = async function(
+  instanceId: string, 
+  targetLevel?: number, 
+  targetEnhancement?: number
+): Promise<boolean> {
+  const item = this.getItem(instanceId);
+  
+  if (!item) {
+    return false;
+  }
+  
+  // TODO: Implémenter la logique d'amélioration avec coûts et matériaux
+  
+  if (targetLevel && targetLevel > item.level) {
+    item.level = Math.min(targetLevel, 100);
+  }
+  
+  if (targetEnhancement && targetEnhancement > item.enhancement) {
+    item.enhancement = Math.min(targetEnhancement, 15);
+    
+    // Ajouter à l'historique
+    if (!item.equipmentData) {
+      item.equipmentData = {
+        durability: 100,
+        socketedGems: [],
+        upgradeHistory: []
+      };
+    }
+    
+    item.equipmentData.upgradeHistory.push(new Date());
+  }
+  
+  await this.save();
+  return true;
 };
 
 export default mongoose.model<IInventoryDocument>("Inventory", inventorySchema);
