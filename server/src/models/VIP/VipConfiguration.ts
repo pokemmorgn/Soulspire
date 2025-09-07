@@ -107,9 +107,8 @@ const vipConfigurationSchema = new Schema<IVipConfiguration>({
   level: {
     type: Number,
     required: true,
-    unique: true,
     min: 0,
-    max: 50 // Permet d'étendre jusqu'à VIP 50 si besoin
+    max: 50
   },
   title: {
     type: String,
