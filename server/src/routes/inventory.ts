@@ -639,7 +639,7 @@ router.get("/health", async (req: Request, res: Response): Promise<void> => {
       timestamp: new Date(),
       system: "InventoryService",
       version: "2.0.0",
-      serverId,
+      server: serverId,
       ...globalStats
     });
 
