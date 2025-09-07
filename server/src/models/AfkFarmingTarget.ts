@@ -117,7 +117,7 @@ export async function validateStageAccess(target: IAfkFarmingTarget): Promise<bo
   try {
     // Import dynamique pour éviter dépendances circulaires
     const Player = require("./Player").default;
-    const player = await Player.findById(target.playerId).select("world level difficulty completedStages");
+    const player = await Player.findOne({ playerId: target.playerId }).select("world level difficulty completedStages");
     
     if (!player) {
       target.isValidStage = false;
