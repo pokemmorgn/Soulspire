@@ -264,8 +264,8 @@ export async function getOrCreateForPlayer(playerId: string): Promise<IAfkFarmin
   
   if (!target) {
     // Créer avec le stage actuel du joueur par défaut
-    const Player = require("./Player").default;
-    const player = await Player.findById(playerId).select("world level difficulty");
+const Player = require("./Player").default;
+const player = await Player.findOne({ playerId: playerId }).select("world level difficulty");
     
     if (!player) throw new Error("Player not found");
     
