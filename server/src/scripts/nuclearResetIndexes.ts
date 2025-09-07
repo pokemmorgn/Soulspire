@@ -106,8 +106,8 @@ async function nuclearResetIndexes() {
     
     // Index ACCOUNTS essentiels uniquement
     const accountIndexes = [
-      { fields: { accountId: 1 }, options: { unique: true, name: "accountId_1" } },
-      { fields: { username: 1 }, options: { unique: true, name: "username_1" } }
+      { fields: { accountId: 1 } as const, options: { unique: true, name: "accountId_1" } },
+      { fields: { username: 1 } as const, options: { unique: true, name: "username_1" } }
     ];
     
     for (const idx of accountIndexes) {
