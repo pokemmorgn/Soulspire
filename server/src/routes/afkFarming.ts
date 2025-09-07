@@ -1,23 +1,23 @@
 import { Router } from "express";
 import AfkFarmingService from "../services/AfkFarmingService";
+import authMiddleware from "../middleware/authMiddleware";
 
 /**
  * Routes AFK Farming - Stage Selection pour Unity
  * Compatible avec le système AFK existant
+ * VERSION CORRIGÉE pour Account/Player system
  */
 
 const router = Router();
 
-/** Auth middleware */
-const requireAuth = (req: any, res: any, next: any) => {
-  if (!req.user?.id) {
-    return res.status(401).json({ 
-      success: false, 
-      error: "Unauthenticated" 
-    });
+// Extension TypeScript pour éviter les erreurs de compilation
+declare module "express-serve-static-core" {
+  interface Request {
+    playerId?: string;
+    accountId?: string;
+    serverId?: string;
   }
-  next();
-};
+}
 
 // =====================================================================
 // === ROUTES PRINCIPALES ===
@@ -27,9 +27,9 @@ const requireAuth = (req: any, res: any, next: any) => {
  * GET /afk-farming/info
  * Obtenir l'état actuel du farm d'un joueur
  */
-router.get("/info", requireAuth, async (req: any, res: any) => {
+router.get("/info", authMiddleware, async (req: any, res: any) => {
   try {
-    const playerId = req.user.id;
+    const playerId = req.playerId!;
     
     console.log(`📊 GET /afk-farming/info pour ${playerId}`);
 
@@ -60,9 +60,9 @@ router.get("/info", requireAuth, async (req: any, res: any) => {
  * GET /afk-farming/stages
  * Obtenir la liste des stages disponibles pour le farm
  */
-router.get("/stages", requireAuth, async (req: any, res: any) => {
+router.get("/stages", authMiddleware, async (req: any, res: any) => {
   try {
-    const playerId = req.user.id;
+    const playerId = req.playerId!;
     
     console.log(`📋 GET /afk-farming/stages pour ${playerId}`);
 
@@ -98,9 +98,9 @@ router.get("/stages", requireAuth, async (req: any, res: any) => {
  * POST /afk-farming/set
  * Définir un nouveau stage de farm
  */
-router.post("/set", requireAuth, async (req: any, res: any) => {
+router.post("/set", authMiddleware, async (req: any, res: any) => {
   try {
-    const playerId = req.user.id;
+    const playerId = req.playerId!;
     const { world, level, difficulty, reason, targetHeroFragments, validateFirst } = req.body;
     
     console.log(`🎯 POST /afk-farming/set pour ${playerId}: ${world}-${level} (${difficulty})`);
@@ -168,9 +168,9 @@ router.post("/set", requireAuth, async (req: any, res: any) => {
  * POST /afk-farming/reset
  * Revenir au stage de progression actuel (désactiver le farm custom)
  */
-router.post("/reset", requireAuth, async (req: any, res: any) => {
+router.post("/reset", authMiddleware, async (req: any, res: any) => {
   try {
-    const playerId = req.user.id;
+    const playerId = req.playerId!;
     
     console.log(`🔄 POST /afk-farming/reset pour ${playerId}`);
 
@@ -204,9 +204,9 @@ router.post("/reset", requireAuth, async (req: any, res: any) => {
  * GET /afk-farming/rewards/:world/:level/:difficulty
  * Preview des récompenses pour un stage spécifique
  */
-router.get("/rewards/:world/:level/:difficulty", requireAuth, async (req: any, res: any) => {
+router.get("/rewards/:world/:level/:difficulty", authMiddleware, async (req: any, res: any) => {
   try {
-    const playerId = req.user.id;
+    const playerId = req.playerId!;
     const { world, level, difficulty } = req.params;
     
     console.log(`🔮 GET /afk-farming/rewards/${world}/${level}/${difficulty} pour ${playerId}`);
@@ -236,7 +236,7 @@ router.get("/rewards/:world/:level/:difficulty", requireAuth, async (req: any, r
       selectedWorld: worldNum,
       selectedLevel: levelNum,
       selectedDifficulty: difficulty
-    });
+    } as any);
 
     // Calculer des estimations de gains AFK (simulation)
     const baseRates = {
@@ -291,9 +291,9 @@ router.get("/rewards/:world/:level/:difficulty", requireAuth, async (req: any, r
  * GET /afk-farming/effective-stage
  * Obtenir le stage effectivement utilisé pour les calculs AFK
  */
-router.get("/effective-stage", requireAuth, async (req: any, res: any) => {
+router.get("/effective-stage", authMiddleware, async (req: any, res: any) => {
   try {
-    const playerId = req.user.id;
+    const playerId = req.playerId!;
     
     console.log(`⚙️ GET /afk-farming/effective-stage pour ${playerId}`);
 
@@ -326,9 +326,9 @@ router.get("/effective-stage", requireAuth, async (req: any, res: any) => {
  * GET /afk-farming/validate/:world/:level/:difficulty
  * Valider si un stage est accessible pour le joueur
  */
-router.get("/validate/:world/:level/:difficulty", requireAuth, async (req: any, res: any) => {
+router.get("/validate/:world/:level/:difficulty", authMiddleware, async (req: any, res: any) => {
   try {
-    const playerId = req.user.id;
+    const playerId = req.playerId!;
     const { world, level, difficulty } = req.params;
     
     console.log(`✅ GET /afk-farming/validate/${world}/${level}/${difficulty} pour ${playerId}`);
@@ -351,9 +351,9 @@ router.get("/validate/:world/:level/:difficulty", requireAuth, async (req: any, 
       });
     }
 
-    // Récupérer le serverId du joueur
+    // Récupérer le serverId du joueur - CORRECTION ICI
     const Player = require("../models/Player").default;
-    const player = await Player.findById(playerId).select("serverId");
+    const player = await Player.findOne({ playerId: playerId }).select("serverId");
     
     if (!player) {
       return res.status(404).json({
@@ -403,9 +403,9 @@ router.get("/validate/:world/:level/:difficulty", requireAuth, async (req: any, 
  * GET /afk-farming/recommendations
  * Obtenir des recommandations de farm personnalisées
  */
-router.get("/recommendations", requireAuth, async (req: any, res: any) => {
+router.get("/recommendations", authMiddleware, async (req: any, res: any) => {
   try {
-    const playerId = req.user.id;
+    const playerId = req.playerId!;
     
     console.log(`💡 GET /afk-farming/recommendations pour ${playerId}`);
 
