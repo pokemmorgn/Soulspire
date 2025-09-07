@@ -115,7 +115,7 @@ interface IAccountDocument extends Document {
 
 // Schémas secondaires
 const purchaseHistorySchema = new Schema<IPurchaseHistory>({
-  transactionId: { type: String, required: true, unique: true },
+  transactionId: { type: String, required: true }, // ✅ CORRECTION: Pas unique ici
   platform: { 
     type: String, 
     enum: ["android", "ios", "web", "steam"], 
@@ -255,15 +255,26 @@ const accountSchema = new Schema<IAccountDocument>({
   collection: 'accounts'
 });
 
-// Index pour optimiser les requêtes
+// ✅ CORRECTION: Index pour optimiser les requêtes (sans doublons)
 accountSchema.index({ accountId: 1 }, { unique: true });
 accountSchema.index({ username: 1 }, { unique: true });
-accountSchema.index({ email: 1 }, { sparse: true });
+accountSchema.index({ email: 1 }, { sparse: true }); // ✅ sparse pour gérer les null
 accountSchema.index({ accountStatus: 1 });
 accountSchema.index({ lastLoginAt: -1 });
 accountSchema.index({ totalPurchasesUSD: -1 });
 accountSchema.index({ "loginHistory.loginDate": -1 });
 accountSchema.index({ "purchaseHistory.purchaseDate": -1 });
+
+// ✅ CORRECTION: Index unique partiel pour transactionId (évite les doublons null)
+accountSchema.index(
+  { "purchaseHistory.transactionId": 1 }, 
+  { 
+    unique: true, 
+    partialFilterExpression: { 
+      "purchaseHistory.transactionId": { $ne: null, $exists: true } 
+    }
+  }
+);
 
 // Méthodes statiques
 accountSchema.statics.findByUsername = function(username: string) {
