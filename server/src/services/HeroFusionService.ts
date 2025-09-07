@@ -53,7 +53,7 @@ export interface FusionResult {
 
 export interface FusionHistory {
   _id?: string;
-  playerId: string;
+  accountId: string;
   mainHeroId: string;
   fromRarity: string;
   fromStars: number;
@@ -134,12 +134,12 @@ export class HeroFusionService {
   };
 
   public static async getFusionPreview(
-    playerId: string,
+    accountId: string,
     serverId: string,
     heroInstanceId: string
   ): Promise<FusionPreview> {
     try {
-      const player = await Player.findOne({ _id: playerId, serverId }).populate("heroes.heroId");
+      const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
       if (!player) {
         throw new Error("Player not found");
       }
@@ -197,19 +197,18 @@ export class HeroFusionService {
       };
 
     } catch (error: any) {
-      console.error("❌ Erreur getFusionPreview:", error);
       throw error;
     }
   }
 
   public static async fuseHero(
-    playerId: string,
+    accountId: string,
     serverId: string,
     heroInstanceId: string,
     requirements: FusionRequirements
   ): Promise<FusionResult> {
     try {
-      const player = await Player.findOne({ _id: playerId, serverId }).populate("heroes.heroId");
+      const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
       if (!player) {
         return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
       }
@@ -293,7 +292,7 @@ export class HeroFusionService {
       await player.save();
 
       await this.saveFusionHistory({
-        playerId,
+        accountId,
         mainHeroId: heroData._id.toString(),
         fromRarity: currentRarity,
         fromStars: currentStars,
@@ -312,9 +311,7 @@ export class HeroFusionService {
         timestamp: new Date()
       }, serverId, powerGained, heroData.name);
 
-      await this.updateProgressTracking(playerId, serverId, nextLevel.rarity, nextLevel.stars);
-
-      console.log(`🔀 ${heroData.name} fusion: ${currentRarity}${currentStars}★ → ${nextLevel.rarity}${nextLevel.stars}★`);
+      await this.updateProgressTracking(accountId, serverId, nextLevel.rarity, nextLevel.stars);
 
       return {
         success: true,
@@ -343,14 +340,13 @@ export class HeroFusionService {
       };
 
     } catch (error: any) {
-      console.error("❌ Erreur fuseHero:", error);
       return { success: false, error: error.message, code: "FUSION_FAILED" };
     }
   }
 
-  public static async getFusableHeroes(playerId: string, serverId: string) {
+  public static async getFusableHeroes(accountId: string, serverId: string) {
     try {
-      const player = await Player.findOne({ _id: playerId, serverId }).populate("heroes.heroId");
+      const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
       if (!player) {
         throw new Error("Player not found");
       }
@@ -405,14 +401,13 @@ export class HeroFusionService {
       };
 
     } catch (error: any) {
-      console.error("❌ Erreur getFusableHeroes:", error);
       throw error;
     }
   }
 
-  public static async getFusionHistory(playerId: string, serverId: string, limit: number = 20) {
+  public static async getFusionHistory(accountId: string, serverId: string, limit: number = 20) {
     try {
-      const history = await this.loadFusionHistory(playerId, serverId, limit);
+      const history = await this.loadFusionHistory(accountId, serverId, limit);
 
       return {
         success: true,
@@ -425,14 +420,13 @@ export class HeroFusionService {
       };
 
     } catch (error: any) {
-      console.error("❌ Erreur getFusionHistory:", error);
       throw error;
     }
   }
 
-  public static async getOptimalFusionPath(playerId: string, serverId: string, targetHeroId: string) {
+  public static async getOptimalFusionPath(accountId: string, serverId: string, targetHeroId: string) {
     try {
-      const player = await Player.findOne({ _id: playerId, serverId }).populate("heroes.heroId");
+      const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
       if (!player) {
         throw new Error("Player not found");
       }
@@ -496,14 +490,13 @@ export class HeroFusionService {
       };
 
     } catch (error: any) {
-      console.error("❌ Erreur getOptimalFusionPath:", error);
       throw error;
     }
   }
 
-  public static async getFusionStats(playerId: string, serverId: string) {
+  public static async getFusionStats(accountId: string, serverId: string) {
     try {
-      const player = await Player.findOne({ _id: playerId, serverId }).populate("heroes.heroId");
+      const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
       if (!player) {
         throw new Error("Player not found");
       }
@@ -582,7 +575,6 @@ export class HeroFusionService {
       };
 
     } catch (error: any) {
-      console.error("❌ Erreur getFusionStats:", error);
       throw error;
     }
   }
@@ -682,12 +674,12 @@ export class HeroFusionService {
     return totalCost;
   }
 
-  public static async getPlayerFusionAnalytics(playerId: string, serverId: string) {
+  public static async getPlayerFusionAnalytics(accountId: string, serverId: string) {
     try {
       const [stats, trends, topFusions] = await Promise.all([
-        (FusionHistoryModel as any).getPlayerFusionStats(playerId, serverId),
-        (FusionHistoryModel as any).getFusionTrends(playerId, serverId, 30),
-        (FusionHistoryModel as any).getTopFusionsByPower(playerId, serverId, 5)
+        (FusionHistoryModel as any).getPlayerFusionStats(accountId, serverId),
+        (FusionHistoryModel as any).getFusionTrends(accountId, serverId, 30),
+        (FusionHistoryModel as any).getTopFusionsByPower(accountId, serverId, 5)
       ]);
 
       return {
@@ -699,18 +691,13 @@ export class HeroFusionService {
         }
       };
     } catch (error: any) {
-      console.error("❌ Erreur getPlayerFusionAnalytics:", error);
       throw error;
     }
   }
 
-  public static async getHeroSpecificHistory(
-    playerId: string, 
-    serverId: string, 
-    heroId: string
-  ) {
+  public static async getHeroSpecificHistory(accountId: string, serverId: string, heroId: string) {
     try {
-      const history = await (FusionHistoryModel as any).getHeroFusionHistory(playerId, serverId, heroId, 10);
+      const history = await (FusionHistoryModel as any).getHeroFusionHistory(accountId, serverId, heroId, 10);
       
       return {
         success: true,
@@ -722,7 +709,6 @@ export class HeroFusionService {
         }
       };
     } catch (error: any) {
-      console.error("❌ Erreur getHeroSpecificHistory:", error);
       throw error;
     }
   }
@@ -746,7 +732,6 @@ export class HeroFusionService {
         }
       };
     } catch (error: any) {
-      console.error("❌ Erreur getServerFusionLeaderboard:", error);
       throw error;
     }
   }
@@ -986,7 +971,7 @@ export class HeroFusionService {
   ): Promise<void> {
     try {
       const fusionHistory = new FusionHistoryModel({
-        playerId: historyEntry.playerId,
+        accountId: historyEntry.accountId,
         serverId,
         mainHeroId: historyEntry.mainHeroId,
         mainHeroName,
@@ -1006,18 +991,17 @@ export class HeroFusionService {
       });
 
       await fusionHistory.save();
-      console.log(`📖 Fusion history saved to MongoDB: ${historyEntry.fromRarity}${historyEntry.fromStars}★ → ${historyEntry.toRarity}${historyEntry.toStars}★`);
     } catch (error) {
       console.error("❌ Erreur sauvegarde fusion history:", error);
     }
   }
 
-  private static async loadFusionHistory(playerId: string, serverId: string, limit: number): Promise<FusionHistory[]> {
+  private static async loadFusionHistory(accountId: string, serverId: string, limit: number): Promise<FusionHistory[]> {
     try {
-      const history = await (FusionHistoryModel as any).getPlayerFusionHistory(playerId, serverId, limit);
+      const history = await (FusionHistoryModel as any).getPlayerFusionHistory(accountId, serverId, limit);
       return history.map((entry: any) => ({
         _id: entry._id.toString(),
-        playerId: entry.playerId,
+        accountId: entry.accountId,
         mainHeroId: entry.mainHeroId,
         fromRarity: entry.fromRarity,
         fromStars: entry.fromStars,
@@ -1045,7 +1029,7 @@ export class HeroFusionService {
   }
 
   private static async updateProgressTracking(
-    playerId: string,
+    accountId: string,
     serverId: string,
     newRarity: string,
     newStars: number
@@ -1053,22 +1037,20 @@ export class HeroFusionService {
     try {
       await Promise.all([
         MissionService.updateProgress(
-          playerId,
+          accountId,
           serverId,
           "heroes_owned",
           1,
           { rarity: newRarity, stars: newStars }
         ),
         EventService.updatePlayerProgress(
-          playerId,
+          accountId,
           serverId,
           "collect_items",
           1,
           { itemType: "hero_fusion", rarity: newRarity, stars: newStars }
         )
       ]);
-
-      console.log(`📊 Progression fusion mise à jour: ${newRarity} ${newStars}★`);
     } catch (error) {
       console.error("⚠️ Erreur mise à jour progression fusion:", error);
     }
