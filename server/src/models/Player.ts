@@ -48,8 +48,8 @@ interface IVipTransaction {
 }
 
 export interface IPlayer {
-  _id?: string;
-  playerId: string;
+  _id?: string; // PRIMARY KEY = playerId string
+  playerId?: string; // Optionnel, redondant
   accountId: string;
   serverId: string;
   displayName: string;
@@ -108,64 +108,7 @@ export interface IPlayer {
   totalHeroesCollected: number;
 }
 
-interface IPlayerDocument extends Document {
-  playerId: string;
-  accountId: string;
-  serverId: string;
-  displayName: string;
-  avatarId?: string;
-  backgroundId?: string;
-  level: number;
-  experience: number;
-  world: number;
-  stage: number;
-  difficulty: "Normal" | "Hard" | "Nightmare";
-  gold: number;
-  gems: number;
-  paidGems: number;
-  tickets: number;
-  vipLevel: number;
-  vipExperience: number;
-  vipTransactions: IVipTransaction[];
-  heroes: IPlayerHero[];
-  formations: IFormation[];
-  activeFormationId?: string;
-  fragments: Map<string, number>;
-  materials: Map<string, number>;
-  items: Map<string, number>;
-  campaignProgress: {
-    highestWorld: number;
-    highestStage: number;
-    starsEarned: number;
-  };
-  towerProgress: {
-    highestFloor: number;
-    lastResetDate: Date;
-  };
-  arenaProgress: {
-    currentRank: number;
-    highestRank: number;
-    seasonWins: number;
-    seasonLosses: number;
-  };
-  lastSeenAt: Date;
-  lastAfkCollectAt: Date;
-  lastDailyResetAt: Date;
-  playtimeMinutes: number;
-  dailyMissionsCompleted: number;
-  weeklyMissionsCompleted: number;
-  eventParticipations: string[];
-  guildId?: string;
-  friendsList: string[];
-  serverPurchases: IServerPurchase[];
-  totalSpentUSDOnServer: number;
-  isNewPlayer: boolean;
-  tutorialCompleted: boolean;
-  totalBattlesFought: number;
-  totalBattlesWon: number;
-  totalDamageDealt: number;
-  totalHeroesCollected: number;
-  
+interface IPlayerDocument extends Document, IPlayer {
   addHero(heroId: string, level?: number, stars?: number): Promise<IPlayerDocument>;
   removeHero(heroId: string): Promise<IPlayerDocument>;
   upgradeHero(heroId: string, newLevel: number, newStars?: number): Promise<IPlayerDocument>;
@@ -229,11 +172,15 @@ const vipTransactionSchema = new Schema<IVipTransaction>({
 }, { _id: false });
 
 const playerSchema = new Schema<IPlayerDocument>({
-  // ✅ CORRECTION: Aucun index/unique dans les définitions de champs
-  playerId: { 
-    type: String, 
+  _id: { // PRIMARY KEY en string
+    type: String,
     required: true,
     default: () => `PLAYER_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+  },
+  playerId: { // Optionnel, redondant
+    type: String,
+    required: false,
+    default: undefined
   },
   accountId: { type: String, required: true },
   serverId: { type: String, required: true, match: /^S\d+$/ },
@@ -295,17 +242,15 @@ const playerSchema = new Schema<IPlayerDocument>({
   collection: 'players'
 });
 
-// ✅ CORRECTION: Pas de virtuals
+// Pas de virtuals
 playerSchema.set('toJSON', { virtuals: false });
 playerSchema.set('toObject', { virtuals: false });
 
-// ✅ CORRECTION: SEULEMENT 3 index essentiels (pas de doublons)
-playerSchema.index({ playerId: 1 }, { unique: true });
+// Index sur _id automatique (clé primaire), donc inutile sur playerId
 playerSchema.index({ accountId: 1, serverId: 1 });
 playerSchema.index({ serverId: 1 });
 
-// ✅ TOUS LES AUTRES INDEX SUPPRIMÉS pour éviter warnings
-
+// Les statics et methods restent inchangés (tu peux adapter si tu supprimes playerId)
 playerSchema.statics.findByAccount = function(accountId: string, serverId?: string) {
   const query: any = { accountId };
   if (serverId) query.serverId = serverId;
