@@ -99,7 +99,7 @@ export class AfkFarmingService {
 
       // Récupérer le joueur et son choix de farm
       const [player, farmingTarget] = await Promise.all([
-        Player.findById(playerId).select("world level difficulty username"),
+        Player.findOne({ playerId: playerId }).select("world level difficulty username"),
         getOrCreateForPlayer(playerId)
       ]);
 
@@ -192,7 +192,7 @@ export class AfkFarmingService {
   }> {
     try {
       const [player, farmingTarget] = await Promise.all([
-        Player.findById(playerId).select("world level difficulty"),
+        Player.findOne({ playerId: playerId }).select("world level difficulty"),
         getOrCreateForPlayer(playerId)
       ]);
 
@@ -244,8 +244,8 @@ export class AfkFarmingService {
       const farmingStage = await this.getEffectiveFarmingStage(playerId);
       
       // Récupérer le joueur pour les autres données nécessaires
-      const player = await Player.findById(playerId)
-        .select("heroes vipLevel serverId");
+const player = await Player.findOne({ playerId: playerId })
+  .select("heroes vipLevel serverId");
       
       if (!player) {
         throw new Error("Player not found");
@@ -435,8 +435,8 @@ export class AfkFarmingService {
     try {
       console.log(`📋 Récupération stages disponibles pour ${playerId}`);
 
-      const player = await Player.findById(playerId)
-        .select("world level difficulty serverId");
+const player = await Player.findOne({ playerId: playerId })
+  .select("world level difficulty serverId");
       
       if (!player) {
         return {
