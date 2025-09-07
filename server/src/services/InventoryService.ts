@@ -2,7 +2,6 @@ import Inventory from "../models/Inventory";
 import Player from "../models/Player";
 import Item from "../models/Item";
 import { EventService } from "./EventService";
-import { MissionService } from "./MissionService";
 
 export interface InventoryItemResult {
   success: boolean;
@@ -27,25 +26,16 @@ export interface EquipmentResult {
   code?: string;
 }
 
-export interface InventoryStats {
-  totalItems: number;
-  totalValue: number;
-  categoryBreakdown: Record<string, number>;
-  rarityBreakdown: Record<string, number>;
-  equippedCount: number;
-  maxLevelEquipment: number;
-}
-
 export class InventoryService {
 
   // === RÉCUPÉRER L'INVENTAIRE COMPLET D'UN JOUEUR ===
-  public static async getPlayerInventory(playerId: string) {
+  public static async getPlayerInventory(playerId: string, serverId?: string) {
     try {
       console.log(`📦 Récupération inventaire pour ${playerId}`);
 
-      // Récupérer le joueur et son inventaire
+      // ✅ CORRECTION: Utiliser _id au lieu de playerId
       const [player, inventory] = await Promise.all([
-Player.findOne({ playerId }).select("gold gems paidGems tickets fragments materials"),
+        Player.findById(playerId).select("gold gems paidGems tickets fragments materials serverId"),
         Inventory.findOne({ playerId })
       ]);
 
@@ -53,13 +43,40 @@ Player.findOne({ playerId }).select("gold gems paidGems tickets fragments materi
         throw new Error("Player not found");
       }
 
+      // ✅ VÉRIFICATION SERVEUR: S'assurer que le serveur correspond
+      if (serverId && player.serverId !== serverId) {
+        throw new Error("Player not found on this server");
+      }
+
       // Créer l'inventaire s'il n'existe pas
       let playerInventory = inventory;
       if (!playerInventory) {
         playerInventory = await (Inventory as any).createForPlayer(playerId);
+        
+        // ✅ SYNCHRONISER les monnaies depuis Player vers Inventory
+        playerInventory.gold = player.gold;
+        playerInventory.gems = player.gems;
+        playerInventory.paidGems = player.paidGems;
+        playerInventory.tickets = player.tickets;
+        await playerInventory.save();
       }
 
-      // Force TypeScript à comprendre que playerInventory existe maintenant
+      // ✅ VÉRIFIER LA SYNCHRONISATION des monnaies
+      const needsSync = 
+        playerInventory.gold !== player.gold ||
+        playerInventory.gems !== player.gems ||
+        playerInventory.paidGems !== player.paidGems ||
+        playerInventory.tickets !== player.tickets;
+
+      if (needsSync) {
+        console.log("⚠️ Désynchronisation détectée, mise à jour...");
+        playerInventory.gold = player.gold;
+        playerInventory.gems = player.gems;
+        playerInventory.paidGems = player.paidGems;
+        playerInventory.tickets = player.tickets;
+        await playerInventory.save();
+      }
+
       const safeInventory = playerInventory as NonNullable<typeof playerInventory>;
 
       // Convertir les Maps en objets pour la réponse
@@ -105,10 +122,21 @@ Player.findOne({ playerId }).select("gold gems paidGems tickets fragments materi
     itemId: string,
     quantity: number = 1,
     level: number = 1,
-    enhancement: number = 0
+    enhancement: number = 0,
+    serverId?: string
   ): Promise<InventoryItemResult> {
     try {
       console.log(`➕ Ajout ${quantity}x ${itemId} pour ${playerId}`);
+
+      // ✅ VÉRIFICATION PLAYER ET SERVEUR
+      const player = await Player.findById(playerId);
+      if (!player) {
+        return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
+      }
+
+      if (serverId && player.serverId !== serverId) {
+        return { success: false, error: "Player not found on this server", code: "WRONG_SERVER" };
+      }
 
       // Vérifier que l'objet existe
       const itemData = await Item.findOne({ itemId });
@@ -122,7 +150,6 @@ Player.findOne({ playerId }).select("gold gems paidGems tickets fragments materi
         inventory = await (Inventory as any).createForPlayer(playerId);
       }
 
-      // Force TypeScript à comprendre que inventory existe maintenant
       const safeInventory = inventory as NonNullable<typeof inventory>;
 
       // Vérifier la capacité
@@ -154,11 +181,12 @@ Player.findOne({ playerId }).select("gold gems paidGems tickets fragments materi
         await safeInventory.save();
       }
 
-      // Mettre à jour les missions et événements
+      // ✅ METTRE À JOUR les missions et événements avec serverId
       await this.updateProgressTracking(playerId, quantity, {
         itemType: itemData.category,
         rarity: itemData.rarity,
-        itemId: itemId
+        itemId: itemId,
+        serverId: player.serverId
       });
 
       return {
@@ -181,14 +209,95 @@ Player.findOne({ playerId }).select("gold gems paidGems tickets fragments materi
     }
   }
 
+  // === ÉQUIPER UN OBJET SUR UN HÉROS ===
+  public static async equipItem(
+    playerId: string,
+    instanceId: string,
+    heroId: string,
+    serverId?: string
+  ): Promise<EquipmentResult> {
+    try {
+      console.log(`⚔️ Équipement ${instanceId} sur héros ${heroId} pour ${playerId}`);
+
+      // ✅ CORRECTION: Utiliser findById au lieu de findOne({ playerId })
+      const [player, inventory] = await Promise.all([
+        Player.findById(playerId),
+        Inventory.findOne({ playerId })
+      ]);
+
+      if (!player) {
+        return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
+      }
+
+      // ✅ VÉRIFICATION SERVEUR
+      if (serverId && player.serverId !== serverId) {
+        return { success: false, error: "Player not found on this server", code: "WRONG_SERVER" };
+      }
+
+      if (!inventory) {
+        return { success: false, error: "Inventory not found", code: "INVENTORY_NOT_FOUND" };
+      }
+
+      // Vérifier que le joueur possède ce héros
+      const playerHero = player.heroes.find(h => h.heroId.toString() === heroId);
+      if (!playerHero) {
+        return { success: false, error: "Hero not owned", code: "HERO_NOT_OWNED" };
+      }
+
+      // Récupérer l'objet à équiper
+      const itemToEquip = inventory.getItem(instanceId);
+      if (!itemToEquip) {
+        return { success: false, error: "Equipment not found", code: "EQUIPMENT_NOT_FOUND" };
+      }
+
+      // Vérifier que c'est un équipement
+      const itemData = await Item.findOne({ itemId: itemToEquip.itemId });
+      if (!itemData || itemData.category !== "Equipment") {
+        return { success: false, error: "Item is not equipment", code: "NOT_EQUIPMENT" };
+      }
+
+      // Récupérer l'ancien équipement du même slot (s'il existe)
+      const equippedItems = inventory.getEquippedItems(heroId);
+      const oldEquipment = equippedItems.find(item => {
+        // ✅ TODO: Améliorer la logique selon le slot d'équipement
+        return true;
+      });
+
+      // Équiper le nouvel objet
+      const success = await inventory.equipItem(instanceId, heroId);
+      if (!success) {
+        return { success: false, error: "Failed to equip item", code: "EQUIP_FAILED" };
+      }
+
+      return {
+        success: true,
+        newItem: itemToEquip,
+        previousItem: oldEquipment || null
+      };
+
+    } catch (error: any) {
+      console.error("❌ Erreur equipItem:", error);
+      return { success: false, error: error.message, code: "EQUIP_ITEM_FAILED" };
+    }
+  }
+
   // === SUPPRIMER UN OBJET DE L'INVENTAIRE ===
   public static async removeItem(
     playerId: string,
     instanceId: string,
-    quantity?: number
+    quantity?: number,
+    serverId?: string
   ): Promise<InventoryItemResult> {
     try {
       console.log(`➖ Suppression ${quantity || "tout"} de ${instanceId} pour ${playerId}`);
+
+      // ✅ VÉRIFICATION PLAYER ET SERVEUR
+      if (serverId) {
+        const player = await Player.findById(playerId).select("serverId");
+        if (!player || player.serverId !== serverId) {
+          return { success: false, error: "Player not found on this server", code: "WRONG_SERVER" };
+        }
+      }
 
       const inventory = await Inventory.findOne({ playerId });
       if (!inventory) {
@@ -217,220 +326,6 @@ Player.findOne({ playerId }).select("gold gems paidGems tickets fragments materi
     } catch (error: any) {
       console.error("❌ Erreur removeItem:", error);
       return { success: false, error: error.message, code: "REMOVE_ITEM_FAILED" };
-    }
-  }
-
-  // === ÉQUIPER UN OBJET SUR UN HÉROS ===
-  public static async equipItem(
-    playerId: string,
-    instanceId: string,
-    heroId: string
-  ): Promise<EquipmentResult> {
-    try {
-      console.log(`⚔️ Équipement ${instanceId} sur héros ${heroId} pour ${playerId}`);
-
-      const [player, inventory] = await Promise.all([
-Player.findOne({ playerId }),
-        Inventory.findOne({ playerId })
-      ]);
-
-      if (!player) {
-        return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
-      }
-
-      if (!inventory) {
-        return { success: false, error: "Inventory not found", code: "INVENTORY_NOT_FOUND" };
-      }
-
-      // Vérifier que le joueur possède ce héros
-      const playerHero = player.heroes.find(h => h.heroId.toString() === heroId);
-      if (!playerHero) {
-        return { success: false, error: "Hero not owned", code: "HERO_NOT_OWNED" };
-      }
-
-      // Récupérer l'objet à équiper
-      const itemToEquip = inventory.getItem(instanceId);
-      if (!itemToEquip) {
-        return { success: false, error: "Equipment not found", code: "EQUIPMENT_NOT_FOUND" };
-      }
-
-      // Vérifier que c'est un équipement
-      const itemData = await Item.findOne({ itemId: itemToEquip.itemId });
-      if (!itemData || itemData.category !== "Equipment") {
-        return { success: false, error: "Item is not equipment", code: "NOT_EQUIPMENT" };
-      }
-
-      // Récupérer l'ancien équipement du même slot (s'il existe)
-      const equippedItems = inventory.getEquippedItems(heroId);
-      const oldEquipment = equippedItems.find(item => {
-        return true; // Logique à affiner selon vos besoins
-      });
-
-      // Équiper le nouvel objet
-      const success = await inventory.equipItem(instanceId, heroId);
-      if (!success) {
-        return { success: false, error: "Failed to equip item", code: "EQUIP_FAILED" };
-      }
-
-      return {
-        success: true,
-        newItem: itemToEquip,
-        previousItem: oldEquipment || null
-      };
-
-    } catch (error: any) {
-      console.error("❌ Erreur equipItem:", error);
-      return { success: false, error: error.message, code: "EQUIP_ITEM_FAILED" };
-    }
-  }
-
-  // === DÉSÉQUIPER UN OBJET ===
-  public static async unequipItem(
-    playerId: string,
-    instanceId: string
-  ): Promise<EquipmentResult> {
-    try {
-      console.log(`🔓 Déséquipement ${instanceId} pour ${playerId}`);
-
-      const inventory = await Inventory.findOne({ playerId });
-      if (!inventory) {
-        return { success: false, error: "Inventory not found", code: "INVENTORY_NOT_FOUND" };
-      }
-
-      const item = inventory.getItem(instanceId);
-      if (!item) {
-        return { success: false, error: "Equipment not found", code: "EQUIPMENT_NOT_FOUND" };
-      }
-
-      if (!item.isEquipped) {
-        return { success: false, error: "Item is not equipped", code: "NOT_EQUIPPED" };
-      }
-
-      const success = await inventory.unequipItem(instanceId);
-      if (!success) {
-        return { success: false, error: "Failed to unequip item", code: "UNEQUIP_FAILED" };
-      }
-
-      return {
-        success: true,
-        newItem: { ...item, isEquipped: false, equippedTo: undefined }
-      };
-
-    } catch (error: any) {
-      console.error("❌ Erreur unequipItem:", error);
-      return { success: false, error: error.message, code: "UNEQUIP_ITEM_FAILED" };
-    }
-  }
-
-  // === OUVRIR UN COFFRE ===
-  public static async openChest(
-    playerId: string,
-    instanceId: string
-  ): Promise<ChestOpenResult> {
-    try {
-      console.log(`📦 Ouverture coffre ${instanceId} pour ${playerId}`);
-
-      const inventory = await Inventory.findOne({ playerId });
-      if (!inventory) {
-        return { success: false, error: "Inventory not found", code: "INVENTORY_NOT_FOUND" };
-      }
-
-      const chestItem = inventory.getItem(instanceId);
-      if (!chestItem) {
-        return { success: false, error: "Chest not found", code: "CHEST_NOT_FOUND" };
-      }
-
-      // Récupérer les données du coffre
-      const itemData = await Item.findOne({ itemId: chestItem.itemId });
-      if (!itemData || itemData.category !== "Chest") {
-        return { success: false, error: "Item is not a chest", code: "NOT_A_CHEST" };
-      }
-
-      // Ouvrir le coffre
-      const rewards = await itemData.openChest(playerId);
-
-      // Supprimer le coffre de l'inventaire
-      await inventory.removeItem(instanceId, 1);
-
-      // Ajouter les récompenses
-      const addedItems = [];
-      for (const reward of rewards) {
-        if (reward.type === "Item" && reward.itemId) {
-          const addResult = await this.addItem(playerId, reward.itemId, reward.quantity);
-          if (addResult.success) {
-            addedItems.push(addResult.item);
-          }
-        }
-      }
-
-      return {
-        success: true,
-        rewards,
-        addedItems
-      };
-
-    } catch (error: any) {
-      console.error("❌ Erreur openChest:", error);
-      return { success: false, error: error.message, code: "OPEN_CHEST_FAILED" };
-    }
-  }
-
-  // === RÉCUPÉRER LES OBJETS PAR CATÉGORIE ===
-  public static async getItemsByCategory(
-    playerId: string,
-    category: string,
-    subCategory?: string
-  ) {
-    try {
-      const inventory = await Inventory.findOne({ playerId });
-      if (!inventory) {
-        throw new Error("Inventory not found");
-      }
-
-      let items = inventory.getItemsByCategory(category, subCategory);
-      
-      // Enrichir avec les données des objets
-      const enrichedItems = await Promise.all(items.map(async (item) => {
-        const itemData = await Item.findOne({ itemId: item.itemId }).select("name description rarity iconUrl category");
-        return {
-          ...item,
-          itemData
-        };
-      }));
-
-      return {
-        success: true,
-        category,
-        subCategory,
-        items: enrichedItems,
-        count: enrichedItems.length
-      };
-
-    } catch (error: any) {
-      console.error("❌ Erreur getItemsByCategory:", error);
-      throw error;
-    }
-  }
-
-  // === NETTOYER LES OBJETS EXPIRÉS ===
-  public static async cleanupExpiredItems(playerId: string) {
-    try {
-      const inventory = await Inventory.findOne({ playerId });
-      if (!inventory) {
-        throw new Error("Inventory not found");
-      }
-
-      const removedCount = await inventory.cleanupExpiredItems();
-
-      return {
-        success: true,
-        message: "Inventory cleanup completed",
-        removedItems: removedCount
-      };
-
-    } catch (error: any) {
-      console.error("❌ Erreur cleanupExpiredItems:", error);
-      throw error;
     }
   }
 
@@ -463,10 +358,18 @@ Player.findOne({ playerId }),
   private static async autoSellItem(playerId: string, itemData: any, quantity: number) {
     const sellPrice = Math.floor((itemData.sellPrice || 10) * quantity * 0.8); // 80% du prix de vente
     
-const player = await Player.findOne({ playerId });
+    // ✅ CORRECTION: Utiliser findById au lieu de findOne({ playerId })
+    const player = await Player.findById(playerId);
     if (player) {
       player.gold += sellPrice;
       await player.save();
+
+      // ✅ SYNCHRONISER avec l'inventaire
+      const inventory = await Inventory.findOne({ playerId });
+      if (inventory) {
+        inventory.gold = player.gold;
+        await inventory.save();
+      }
     }
 
     return {
@@ -475,7 +378,7 @@ const player = await Player.findOne({ playerId });
   }
 
   // Calculer des statistiques avancées
-  private static async calculateEnhancedStats(inventory: any): Promise<Partial<InventoryStats>> {
+  private static async calculateEnhancedStats(inventory: any): Promise<any> {
     const totalValue = inventory.calculateTotalValue();
     
     return {
@@ -505,7 +408,7 @@ const player = await Player.findOne({ playerId });
       await Promise.all([
         EventService.updatePlayerProgress(
           playerId,
-          "",
+          additionalData?.serverId || "",
           "collect_items",
           value,
           additionalData
@@ -521,19 +424,44 @@ const player = await Player.findOne({ playerId });
   // === MÉTHODES D'ADMINISTRATION ===
 
   // Récupérer les statistiques globales
-  public static async getGlobalStats() {
+  public static async getGlobalStats(serverId?: string) {
     try {
-      const stats = await Inventory.aggregate([
-        { $group: {
+      const pipeline: any[] = [];
+      
+      // ✅ FILTRER par serveur si spécifié
+      if (serverId) {
+        // Joindre avec Player pour filtrer par serverId
+        pipeline.push(
+          {
+            $lookup: {
+              from: "players",
+              localField: "playerId",
+              foreignField: "_id",
+              as: "player"
+            }
+          },
+          {
+            $match: {
+              "player.serverId": serverId
+            }
+          }
+        );
+      }
+
+      pipeline.push({
+        $group: {
           _id: null,
           totalPlayers: { $sum: 1 },
           avgCapacity: { $avg: "$maxCapacity" },
           totalItems: { $sum: { $size: { $ifNull: ["$storage.weapons", []] } } }
-        }}
-      ]);
+        }
+      });
+
+      const stats = await Inventory.aggregate(pipeline);
 
       return {
         success: true,
+        serverId,
         stats: stats[0] || {
           totalPlayers: 0,
           avgCapacity: 0,
@@ -544,6 +472,34 @@ const player = await Player.findOne({ playerId });
     } catch (error: any) {
       console.error("❌ Erreur getGlobalStats:", error);
       throw error;
+    }
+  }
+
+  // ✅ NOUVELLE MÉTHODE: Synchroniser les monnaies Player <-> Inventory
+  public static async syncCurrencies(playerId: string): Promise<boolean> {
+    try {
+      const [player, inventory] = await Promise.all([
+        Player.findById(playerId).select("gold gems paidGems tickets"),
+        Inventory.findOne({ playerId })
+      ]);
+
+      if (!player || !inventory) {
+        return false;
+      }
+
+      // Utiliser Player comme source de vérité
+      inventory.gold = player.gold;
+      inventory.gems = player.gems;
+      inventory.paidGems = player.paidGems;
+      inventory.tickets = player.tickets;
+
+      await inventory.save();
+      console.log(`✅ Monnaies synchronisées pour ${playerId}`);
+      return true;
+
+    } catch (error) {
+      console.error(`❌ Erreur sync monnaies pour ${playerId}:`, error);
+      return false;
     }
   }
 }
