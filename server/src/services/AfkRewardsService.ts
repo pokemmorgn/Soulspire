@@ -52,8 +52,7 @@ export class AfkRewardsService {
   public static async calculatePlayerAfkRewards(playerId: string): Promise<AfkRewardsCalculation> {
     try {
       const player = await Player.findOne({ playerId: playerId })
-
-        .select("world level difficulty heroes vipLevel serverId");
+      .select("world level difficulty heroes vipLevel serverId");
       
       if (!player) {
         throw new Error("Player not found");
@@ -193,7 +192,7 @@ export class AfkRewardsService {
       const { getOrCreateForPlayer } = require("../models/AfkFarmingTarget");
       
       const [player, farmingTarget] = await Promise.all([
-        Player.findById(playerId).select("world level difficulty"),
+       Player.findOne({ playerId: playerId }).select("world level difficulty"),
         getOrCreateForPlayer(playerId)
       ]);
 
@@ -223,7 +222,7 @@ export class AfkRewardsService {
       console.error("Erreur getEffectiveFarmingStage:", error);
       
       // Fallback sécurisé
-      const player = await Player.findById(playerId).select("world level difficulty");
+      const player = await Player.findOne({ playerId: playerId }).select("world level difficulty");
       return {
         world: player?.world || 1,
         level: player?.level || 1,
@@ -550,7 +549,7 @@ export class AfkRewardsService {
     unlockMessages: string[];
   }> {
     try {
-      const player = await Player.findById(playerId).select("world level");
+      const player = await Player.findOne({ playerId: playerId }).select("world level");
       if (!player) throw new Error("Player not found");
 
       const recentUnlocks = AfkUnlockSystem.getRecentUnlocks(
@@ -580,7 +579,7 @@ export class AfkRewardsService {
     progressPercentage: number;
   }> {
     try {
-      const player = await Player.findById(playerId).select("world level");
+      const player = await Player.findOne({ playerId: playerId }).select("world level");
       if (!player) throw new Error("Player not found");
 
       const unlockInfo = AfkUnlockSystem.getUnlockInfo(player.world, player.level);
@@ -625,7 +624,7 @@ export class AfkRewardsService {
     multipliedByTime: number = 1
   ): Promise<void> {
     try {
-      const player = await Player.findById(playerId);
+      const player = await Player.findOne({ playerId: playerId });
       if (!player) throw new Error("Player not found");
 
       for (const reward of rewards) {
@@ -813,8 +812,8 @@ export class AfkRewardsService {
     unlockMeta?: any; // NOUVEAU
   }> {
     try {
-      const player = await Player.findById(playerId)
-        .select("world level difficulty heroes vipLevel serverId");
+const player = await Player.findOne({ playerId: playerId })
+  .select("world level difficulty heroes vipLevel serverId");
       
       if (!player) {
         throw new Error("Player not found");
@@ -862,8 +861,8 @@ export class AfkRewardsService {
     unlockMeta?: any; // NOUVEAU
   }> {
     try {
-      const player = await Player.findById(playerId)
-        .select("world level difficulty heroes vipLevel serverId");
+const player = await Player.findById(playerId)
+  .select("world level difficulty heroes vipLevel serverId");
       
       if (!player) {
         throw new Error("Player not found");
