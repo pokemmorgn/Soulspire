@@ -52,7 +52,7 @@ export interface EvolutionResult {
 export class HeroUpgradeService {
 
   public static async levelUpHero(
-    playerId: string,
+    accountId: string,
     serverId: string,
     heroInstanceId: string,
     targetLevel?: number
@@ -113,7 +113,7 @@ export class HeroUpgradeService {
 
       await player.save();
 
-      await this.updateProgressTracking(player._id.toString(), serverId, "level_up", finalTargetLevel - currentLevel);
+      await this.updateProgressTracking(player._id?.toString() || "", serverId, "level_up", finalTargetLevel - currentLevel);
 
       console.log(`⬆️ ${heroData.name} level ${currentLevel} → ${finalTargetLevel} (${totalCost.gold} gold)`);
 
@@ -147,7 +147,7 @@ export class HeroUpgradeService {
   }
 
   public static async upgradeHeroStars(
-    playerId: string,
+    accountId: string,
     serverId: string,
     heroInstanceId: string
   ): Promise<HeroUpgradeResult> {
@@ -203,7 +203,7 @@ export class HeroUpgradeService {
 
       await player.save();
 
-     await this.updateProgressTracking(player._id.toString(), serverId, "star_upgrade", 1);
+     await this.updateProgressTracking(player._id?.toString() || "", serverId, "star_upgrade", 1);
 
       console.log(`⭐ ${heroData.name} ${currentStars} → ${heroInstance.stars} étoiles (${requiredFragments} fragments)`);
 
@@ -237,7 +237,7 @@ export class HeroUpgradeService {
   }
 
   public static async upgradeHeroSkill(
-    playerId: string,
+    accountId: string,
     serverId: string,
     heroInstanceId: string,
     skillSlot: "spell1" | "spell2" | "spell3" | "ultimate" | "passive"
@@ -320,7 +320,7 @@ export class HeroUpgradeService {
   }
 
   public static async evolveHero(
-    playerId: string,
+    accountId: string,
     serverId: string,
     heroInstanceId: string
   ): Promise<EvolutionResult> {
@@ -390,7 +390,7 @@ export class HeroUpgradeService {
         heroData.save()
       ]);
 
-      await this.updateProgressTracking(player._id.toString(), serverId, "hero_evolution", 1);
+      await this.updateProgressTracking(player._id?.toString() || "", serverId, "hero_evolution", 1);
 
       console.log(`🌟 ${heroData.name} évolution ${oldRarity} → ${newRarity}`);
 
@@ -412,7 +412,7 @@ export class HeroUpgradeService {
   }
 
   public static async getHeroUpgradeInfo(
-    playerId: string,
+    accountId: string,
     serverId: string,
     heroInstanceId: string
   ) {
@@ -495,7 +495,7 @@ export class HeroUpgradeService {
     }
   }
 
-  public static async getPlayerHeroesUpgradeOverview(playerId: string, serverId: string) {
+  public static async getPlayerHeroesUpgradeOverview(accountId: string, serverId: string) {
     try {
       const player = await Player.findOne({ _id: playerId, serverId }).populate("heroes.heroId");
       if (!player) {
@@ -566,7 +566,7 @@ export class HeroUpgradeService {
   }
 
   public static async bulkLevelUpHeroes(
-    playerId: string,
+    accountId: string,
     serverId: string,
     heroInstanceIds: string[],
     maxGoldToSpend?: number
@@ -637,7 +637,7 @@ export class HeroUpgradeService {
       await player.save();
 
       const successfulUpgrades = results.filter(r => r.success).length;
-      await this.updateProgressTracking(player._id.toString(), serverId, "bulk_level_up", successfulUpgrades);
+      await this.updateProgressTracking(player._id?.toString() || "", serverId, "bulk_level_up", successfulUpgrades);
 
       return {
         success: true,
@@ -656,7 +656,7 @@ export class HeroUpgradeService {
   }
 
   public static async autoUpgradeHero(
-    playerId: string,
+    accountId: string,
     serverId: string,
     heroInstanceId: string,
     maxGoldToSpend?: number,
@@ -795,7 +795,7 @@ export class HeroUpgradeService {
     }
   }
 
-  public static async getUpgradeRecommendations(playerId: string, serverId: string) {
+  public static async getUpgradeRecommendations(accountId: string, serverId: string) {
     try {
       const player = await Player.findOne({ _id: playerId, serverId }).populate("heroes.heroId");
       if (!player) {
@@ -860,7 +860,7 @@ export class HeroUpgradeService {
     }
   }
 
-  public static async getHeroUpgradeStats(playerId: string, serverId: string) {
+  public static async getHeroUpgradeStats(accountId: string, serverId: string) {
     try {
       const player = await Player.findOne({ _id: playerId, serverId }).populate("heroes.heroId");
       if (!player) {
@@ -1175,7 +1175,7 @@ export class HeroUpgradeService {
   }
 
   private static async updateProgressTracking(
-    playerId: string,
+    accountId: string,
     serverId: string,
     upgradeType: string,
     value: number
