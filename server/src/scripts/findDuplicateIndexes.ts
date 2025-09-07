@@ -19,6 +19,7 @@ const colors = {
   yellow: "\x1b[33m",
   blue: "\x1b[34m",
   cyan: "\x1b[36m",
+  white: "\x1b[37m"
 };
 const log = (c: string, m: string) => console.log(`${c}${m}${colors.reset}`);
 
