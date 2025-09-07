@@ -52,7 +52,6 @@ export interface IPlayer {
   playerId: string;
   accountId: string;
   serverId: string;
-  username: string;
   displayName: string;
   avatarId?: string;
   backgroundId?: string;
@@ -296,16 +295,15 @@ const playerSchema = new Schema<IPlayerDocument>({
   collection: 'players'
 });
 
-// Virtual pour compatibilité avec l'ancien code
-playerSchema.virtual('username').get(function(this: IPlayerDocument) {
-  return this.displayName;
-}).set(function(this: IPlayerDocument, value: string) {
-  this.displayName = value;
-});
+// ✅ CORRECTION: Suppression du virtual username qui causait les problèmes d'index
+// Virtual supprimé car il créait des conflits avec les index MongoDB
 
-playerSchema.set('toJSON', { virtuals: true });
-playerSchema.set('toObject', { virtuals: true });
+// ✅ CORRECTION: Configuration JSON/Object sans virtuals
+playerSchema.set('toJSON', { virtuals: false });
+playerSchema.set('toObject', { virtuals: false });
 
+// ✅ CORRECTION: Index optimisés sans doublons
+playerSchema.index({ playerId: 1 }, { unique: true });
 playerSchema.index({ accountId: 1, serverId: 1 });
 playerSchema.index({ serverId: 1, level: -1 });
 playerSchema.index({ serverId: 1, vipLevel: -1 });
@@ -314,7 +312,7 @@ playerSchema.index({ serverId: 1, "towerProgress.highestFloor": -1 });
 playerSchema.index({ serverId: 1, "arenaProgress.currentRank": 1 });
 playerSchema.index({ serverId: 1, totalSpentUSDOnServer: -1 });
 playerSchema.index({ serverId: 1, lastSeenAt: -1 });
-playerSchema.index({ guildId: 1 });
+playerSchema.index({ guildId: 1 }, { sparse: true });
 playerSchema.index({ isNewPlayer: 1, createdAt: -1 });
 
 playerSchema.statics.findByAccount = function(accountId: string, serverId?: string) {
