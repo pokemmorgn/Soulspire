@@ -191,6 +191,304 @@ router.post("/add", authMiddleware, async (req: Request, res: Response): Promise
     }
 
     res.json({
+      message: "Equipment unequipped successfully",
+      serverId,
+      ...result
+    });
+
+  } catch (error: any) {
+    console.error("Unequip item error:", error);
+    res.status(500).json({ 
+      error: "Failed to unequip item",
+      code: "UNEQUIP_ITEM_FAILED"
+    });
+  }
+});
+
+/**
+ * POST /api/inventory/chest/open
+ * Ouvrir un coffre
+ */
+router.post("/chest/open", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
+      res.status(401).json({ 
+        error: "User not authenticated",
+        code: "USER_NOT_AUTHENTICATED"
+      });
+      return;
+    }
+
+    const { error, value } = openChestSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ 
+        error: error.details[0].message,
+        code: "VALIDATION_ERROR"
+      });
+      return;
+    }
+
+    const { instanceId } = value;
+
+    const result = await InventoryService.openChest(playerId, instanceId, serverId);
+
+    if (!result.success) {
+      let statusCode = 400;
+      if (result.code === "INVENTORY_NOT_FOUND" || result.code === "CHEST_NOT_FOUND") {
+        statusCode = 404;
+      }
+      if (result.code === "NOT_A_CHEST") statusCode = 422; // Unprocessable Entity
+      if (result.code === "WRONG_SERVER") statusCode = 403; // Forbidden
+
+      res.status(statusCode).json(result);
+      return;
+    }
+
+    res.json({
+      message: "Chest opened successfully",
+      serverId,
+      ...result
+    });
+
+  } catch (error: any) {
+    console.error("Open chest error:", error);
+    res.status(500).json({ 
+      error: "Failed to open chest",
+      code: "OPEN_CHEST_FAILED"
+    });
+  }
+});
+
+/**
+ * GET /api/inventory/equipped/:heroId
+ * Récupérer les objets équipés d'un héros
+ */
+router.get("/equipped/:heroId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
+      res.status(401).json({ 
+        error: "User not authenticated",
+        code: "USER_NOT_AUTHENTICATED"
+      });
+      return;
+    }
+
+    const { heroId } = req.params;
+
+    // ✅ PASSER le serverId au service
+    const inventoryResult = await InventoryService.getPlayerInventory(playerId, serverId);
+    
+    if (!inventoryResult.success) {
+      res.status(404).json({
+        error: "Inventory not found",
+        code: "INVENTORY_NOT_FOUND"
+      });
+      return;
+    }
+
+    // Filtrer les objets équipés pour ce héros
+    const equippedItems: any[] = [];
+    const storage = inventoryResult.inventory.storage as unknown as Record<string, any[]>;
+
+    // Parcourir toutes les catégories d'équipement
+    const equipmentCategories = ['weapons', 'helmets', 'armors', 'boots', 'gloves', 'accessories'];
+    
+    equipmentCategories.forEach(category => {
+      if (storage[category]) {
+        storage[category].forEach((item: any) => {
+          if (item.isEquipped && item.equippedTo === heroId) {
+            equippedItems.push(item);
+          }
+        });
+      }
+    });
+
+    res.json({
+      message: "Equipped items retrieved successfully",
+      serverId,
+      heroId,
+      items: equippedItems,
+      count: equippedItems.length
+    });
+
+  } catch (error: any) {
+    console.error("Get equipped items error:", error);
+    res.status(500).json({ 
+      error: "Failed to retrieve equipped items",
+      code: "GET_EQUIPPED_ITEMS_FAILED"
+    });
+  }
+});
+
+/**
+ * POST /api/inventory/cleanup
+ * Nettoyer les objets expirés
+ */
+router.post("/cleanup", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
+      res.status(401).json({ 
+        error: "User not authenticated",
+        code: "USER_NOT_AUTHENTICATED"
+      });
+      return;
+    }
+
+    const result = await InventoryService.cleanupExpiredItems(playerId);
+
+    res.json({
+      ...result,
+      serverId
+    });
+
+  } catch (error: any) {
+    console.error("Cleanup inventory error:", error);
+    
+    if (error.message === "Inventory not found") {
+      res.status(404).json({
+        error: "Inventory not found",
+        code: "INVENTORY_NOT_FOUND"
+      });
+    } else {
+      res.status(500).json({
+        error: "Failed to cleanup inventory",
+        code: "CLEANUP_FAILED"
+      });
+    }
+  }
+});
+
+/**
+ * GET /api/inventory/stats
+ * Récupérer les statistiques de l'inventaire
+ */
+router.get("/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
+      res.status(401).json({ 
+        error: "User not authenticated",
+        code: "USER_NOT_AUTHENTICATED"
+      });
+      return;
+    }
+
+    const inventoryResult = await InventoryService.getPlayerInventory(playerId, serverId);
+    
+    if (!inventoryResult.success) {
+      res.status(404).json({
+        error: "Inventory not found",
+        code: "INVENTORY_NOT_FOUND"
+      });
+      return;
+    }
+
+    res.json({
+      message: "Inventory statistics retrieved successfully",
+      serverId,
+      stats: inventoryResult.stats,
+      config: inventoryResult.config
+    });
+
+  } catch (error: any) {
+    console.error("Get inventory stats error:", error);
+    res.status(500).json({ 
+      error: "Failed to retrieve inventory statistics",
+      code: "GET_STATS_FAILED"
+    });
+  }
+});
+
+/**
+ * POST /api/inventory/sync-currencies
+ * ✅ NOUVELLE ROUTE: Synchroniser les monnaies Player <-> Inventory
+ */
+router.post("/sync-currencies", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const playerId = req.playerId || req.userId;
+
+    if (!playerId) {
+      res.status(401).json({ 
+        error: "User not authenticated",
+        code: "USER_NOT_AUTHENTICATED"
+      });
+      return;
+    }
+
+    const success = await InventoryService.syncCurrencies(playerId);
+
+    if (!success) {
+      res.status(404).json({
+        error: "Failed to sync currencies - player or inventory not found",
+        code: "SYNC_FAILED"
+      });
+      return;
+    }
+
+    res.json({
+      message: "Currencies synchronized successfully",
+      success: true
+    });
+
+  } catch (error: any) {
+    console.error("Sync currencies error:", error);
+    res.status(500).json({ 
+      error: "Failed to sync currencies",
+      code: "SYNC_CURRENCIES_FAILED"
+    });
+  }
+});
+
+/**
+ * GET /api/inventory/health
+ * Vérifier la santé du système d'inventaire
+ */
+router.get("/health", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const serverId = req.serverId;
+    
+    // ✅ PASSER le serverId pour les statistiques spécifiques au serveur
+    const globalStats = await InventoryService.getGlobalStats(serverId);
+
+    res.json({
+      status: "healthy",
+      timestamp: new Date(),
+      system: "InventoryService",
+      version: "2.0.0",
+      serverId,
+      ...globalStats
+    });
+
+  } catch (error: any) {
+    console.error("Inventory health check error:", error);
+    res.status(503).json({
+      status: "unhealthy",
+      error: error.message,
+      timestamp: new Date(),
+      system: "InventoryService",
+      serverId: req.serverId
+    });
+  }
+});
+
+export default router;") statusCode = 403; // Forbidden
+
+      res.status(statusCode).json(result);
+      return;
+    }
+
+    res.json({
       message: result.item?.autoSold ? "Item auto-sold due to full inventory" : "Item added successfully",
       serverId,
       ...result
