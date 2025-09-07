@@ -2,8 +2,12 @@ import express, { Request, Response } from "express";
 import Joi from "joi";
 import { InventoryService } from "../services/InventoryService";
 import authMiddleware from "../middleware/authMiddleware";
+import serverMiddleware from "../middleware/serverMiddleware";
 
 const router = express.Router();
+
+// ✅ APPLIQUER le middleware serveur à toutes les routes
+router.use(serverMiddleware);
 
 // === SCHÉMAS DE VALIDATION ===
 
@@ -27,11 +31,6 @@ const openChestSchema = Joi.object({
   instanceId: Joi.string().required()
 });
 
-const categorySchema = Joi.object({
-  category: Joi.string().required(),
-  subCategory: Joi.string().optional()
-});
-
 // === ROUTES PRINCIPALES ===
 
 /**
@@ -40,7 +39,11 @@ const categorySchema = Joi.object({
  */
 router.get("/", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.playerId) {
+    // ✅ CORRECTION: Utiliser playerId au lieu de userId si disponible
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
       res.status(401).json({ 
         error: "User not authenticated",
         code: "USER_NOT_AUTHENTICATED"
@@ -48,10 +51,12 @@ router.get("/", authMiddleware, async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const result = await InventoryService.getPlayerInventory(req.playerId);
+    // ✅ PASSER le serverId au service
+    const result = await InventoryService.getPlayerInventory(playerId, serverId);
 
     res.json({
       message: "Inventory retrieved successfully",
+      serverId,
       ...result
     });
 
@@ -62,6 +67,11 @@ router.get("/", authMiddleware, async (req: Request, res: Response): Promise<voi
       res.status(404).json({ 
         error: "Player not found",
         code: "PLAYER_NOT_FOUND"
+      });
+    } else if (error.message === "Player not found on this server") {
+      res.status(404).json({ 
+        error: "Player not found on this server",
+        code: "WRONG_SERVER"
       });
     } else {
       res.status(500).json({ 
@@ -78,7 +88,10 @@ router.get("/", authMiddleware, async (req: Request, res: Response): Promise<voi
  */
 router.get("/category/:category", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.playerId) {
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
       res.status(401).json({ 
         error: "User not authenticated",
         code: "USER_NOT_AUTHENTICATED"
@@ -101,13 +114,14 @@ router.get("/category/:category", authMiddleware, async (req: Request, res: Resp
     }
 
     const result = await InventoryService.getItemsByCategory(
-      req.playerId,
+      playerId,
       category,
       subCategory as string
     );
 
     res.json({
       message: `${category} items retrieved successfully`,
+      serverId,
       ...result
     });
 
@@ -134,7 +148,10 @@ router.get("/category/:category", authMiddleware, async (req: Request, res: Resp
  */
 router.post("/add", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.playerId) {
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
       res.status(401).json({ 
         error: "User not authenticated",
         code: "USER_NOT_AUTHENTICATED"
@@ -153,18 +170,21 @@ router.post("/add", authMiddleware, async (req: Request, res: Response): Promise
 
     const { itemId, quantity, level, enhancement } = value;
 
+    // ✅ PASSER le serverId au service
     const result = await InventoryService.addItem(
-      req.playerId,
+      playerId,
       itemId,
       quantity,
       level,
-      enhancement
+      enhancement,
+      serverId
     );
 
     if (!result.success) {
       let statusCode = 400;
-      if (result.code === "ITEM_NOT_FOUND") statusCode = 404;
+      if (result.code === "ITEM_NOT_FOUND" || result.code === "PLAYER_NOT_FOUND") statusCode = 404;
       if (result.code === "INVENTORY_FULL") statusCode = 409; // Conflict
+      if (result.code === "WRONG_SERVER") statusCode = 403; // Forbidden
 
       res.status(statusCode).json(result);
       return;
@@ -172,6 +192,7 @@ router.post("/add", authMiddleware, async (req: Request, res: Response): Promise
 
     res.json({
       message: result.item?.autoSold ? "Item auto-sold due to full inventory" : "Item added successfully",
+      serverId,
       ...result
     });
 
@@ -190,7 +211,10 @@ router.post("/add", authMiddleware, async (req: Request, res: Response): Promise
  */
 router.delete("/item/:instanceId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.playerId) {
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
       res.status(401).json({ 
         error: "User not authenticated",
         code: "USER_NOT_AUTHENTICATED"
@@ -211,12 +235,16 @@ router.delete("/item/:instanceId", authMiddleware, async (req: Request, res: Res
 
     const { quantity } = value;
 
-    const result = await InventoryService.removeItem(req.playerId, instanceId, quantity);
+    // ✅ PASSER le serverId au service
+    const result = await InventoryService.removeItem(playerId, instanceId, quantity, serverId);
 
     if (!result.success) {
       let statusCode = 400;
       if (result.code === "INVENTORY_NOT_FOUND" || result.code === "ITEM_NOT_FOUND") {
         statusCode = 404;
+      }
+      if (result.code === "WRONG_SERVER") {
+        statusCode = 403;
       }
 
       res.status(statusCode).json(result);
@@ -225,6 +253,7 @@ router.delete("/item/:instanceId", authMiddleware, async (req: Request, res: Res
 
     res.json({
       message: "Item removed successfully",
+      serverId,
       ...result
     });
 
@@ -243,7 +272,10 @@ router.delete("/item/:instanceId", authMiddleware, async (req: Request, res: Res
  */
 router.post("/equip", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.playerId) {
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
       res.status(401).json({ 
         error: "User not authenticated",
         code: "USER_NOT_AUTHENTICATED"
@@ -262,7 +294,8 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
 
     const { instanceId, heroId } = value;
 
-    const result = await InventoryService.equipItem(req.playerId, instanceId, heroId);
+    // ✅ PASSER le serverId au service
+    const result = await InventoryService.equipItem(playerId, instanceId, heroId, serverId);
 
     if (!result.success) {
       let statusCode = 400;
@@ -271,6 +304,7 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
         statusCode = 404;
       }
       if (result.code === "NOT_EQUIPMENT") statusCode = 422; // Unprocessable Entity
+      if (result.code === "WRONG_SERVER") statusCode = 403; // Forbidden
 
       res.status(statusCode).json(result);
       return;
@@ -278,6 +312,7 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
 
     res.json({
       message: "Equipment equipped successfully",
+      serverId,
       ...result
     });
 
@@ -296,7 +331,10 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
  */
 router.post("/unequip/:instanceId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.playerId) {
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
       res.status(401).json({ 
         error: "User not authenticated",
         code: "USER_NOT_AUTHENTICATED"
@@ -306,7 +344,7 @@ router.post("/unequip/:instanceId", authMiddleware, async (req: Request, res: Re
 
     const { instanceId } = req.params;
 
-    const result = await InventoryService.unequipItem(req.playerId, instanceId);
+    const result = await InventoryService.unequipItem(playerId, instanceId, serverId);
 
     if (!result.success) {
       let statusCode = 400;
@@ -314,240 +352,4 @@ router.post("/unequip/:instanceId", authMiddleware, async (req: Request, res: Re
         statusCode = 404;
       }
       if (result.code === "NOT_EQUIPPED") statusCode = 422; // Unprocessable Entity
-
-      res.status(statusCode).json(result);
-      return;
-    }
-
-    res.json({
-      message: "Equipment unequipped successfully",
-      ...result
-    });
-
-  } catch (error: any) {
-    console.error("Unequip item error:", error);
-    res.status(500).json({ 
-      error: "Failed to unequip item",
-      code: "UNEQUIP_ITEM_FAILED"
-    });
-  }
-});
-
-/**
- * POST /api/inventory/chest/open
- * Ouvrir un coffre
- */
-router.post("/chest/open", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    if (!req.playerId) {
-      res.status(401).json({ 
-        error: "User not authenticated",
-        code: "USER_NOT_AUTHENTICATED"
-      });
-      return;
-    }
-
-    const { error, value } = openChestSchema.validate(req.body);
-    if (error) {
-      res.status(400).json({ 
-        error: error.details[0].message,
-        code: "VALIDATION_ERROR"
-      });
-      return;
-    }
-
-    const { instanceId } = value;
-
-    const result = await InventoryService.openChest(req.playerId, instanceId);
-
-    if (!result.success) {
-      let statusCode = 400;
-      if (result.code === "INVENTORY_NOT_FOUND" || result.code === "CHEST_NOT_FOUND") {
-        statusCode = 404;
-      }
-      if (result.code === "NOT_A_CHEST") statusCode = 422; // Unprocessable Entity
-
-      res.status(statusCode).json(result);
-      return;
-    }
-
-    res.json({
-      message: "Chest opened successfully",
-      ...result
-    });
-
-  } catch (error: any) {
-    console.error("Open chest error:", error);
-    res.status(500).json({ 
-      error: "Failed to open chest",
-      code: "OPEN_CHEST_FAILED"
-    });
-  }
-});
-
-/**
- * GET /api/inventory/equipped/:heroId
- * Récupérer les objets équipés d'un héros
- */
-router.get("/equipped/:heroId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    if (!req.playerId) {
-      res.status(401).json({ 
-        error: "User not authenticated",
-        code: "USER_NOT_AUTHENTICATED"
-      });
-      return;
-    }
-
-    const { heroId } = req.params;
-
-    // On utilise la méthode du service pour récupérer l'inventaire complet
-    // puis on filtre les objets équipés
-    const inventoryResult = await InventoryService.getPlayerInventory(req.playerId);
-    
-    if (!inventoryResult.success) {
-      res.status(404).json({
-        error: "Inventory not found",
-        code: "INVENTORY_NOT_FOUND"
-      });
-      return;
-    }
-
-    // Filtrer les objets équipés pour ce héros
-    const equippedItems: any[] = [];
-    // Cast storage to a string-indexed record so we can safely use string keys
-    const storage = inventoryResult.inventory.storage as unknown as Record<string, any[]>;
-
-    // Parcourir toutes les catégories d'équipement
-    const equipmentCategories = ['weapons', 'helmets', 'armors', 'boots', 'gloves', 'accessories'];
-    
-    equipmentCategories.forEach(category => {
-      if (storage[category]) {
-        storage[category].forEach((item: any) => {
-          if (item.isEquipped && item.equippedTo === heroId) {
-            equippedItems.push(item);
-          }
-        });
-      }
-    });
-
-    res.json({
-      message: "Equipped items retrieved successfully",
-      heroId,
-      items: equippedItems,
-      count: equippedItems.length
-    });
-
-  } catch (error: any) {
-    console.error("Get equipped items error:", error);
-    res.status(500).json({ 
-      error: "Failed to retrieve equipped items",
-      code: "GET_EQUIPPED_ITEMS_FAILED"
-    });
-  }
-});
-
-/**
- * POST /api/inventory/cleanup
- * Nettoyer les objets expirés
- */
-router.post("/cleanup", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    if (!req.playerId) {
-      res.status(401).json({ 
-        error: "User not authenticated",
-        code: "USER_NOT_AUTHENTICATED"
-      });
-      return;
-    }
-
-    const result = await InventoryService.cleanupExpiredItems(req.playerId);
-
-    res.json(result);
-
-  } catch (error: any) {
-    console.error("Cleanup inventory error:", error);
-    
-    if (error.message === "Inventory not found") {
-      res.status(404).json({
-        error: "Inventory not found",
-        code: "INVENTORY_NOT_FOUND"
-      });
-    } else {
-      res.status(500).json({
-        error: "Failed to cleanup inventory",
-        code: "CLEANUP_FAILED"
-      });
-    }
-  }
-});
-
-/**
- * GET /api/inventory/stats
- * Récupérer les statistiques de l'inventaire
- */
-router.get("/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    if (!req.playerId) {
-      res.status(401).json({ 
-        error: "User not authenticated",
-        code: "USER_NOT_AUTHENTICATED"
-      });
-      return;
-    }
-
-    const inventoryResult = await InventoryService.getPlayerInventory(req.playerId);
-    
-    if (!inventoryResult.success) {
-      res.status(404).json({
-        error: "Inventory not found",
-        code: "INVENTORY_NOT_FOUND"
-      });
-      return;
-    }
-
-    res.json({
-      message: "Inventory statistics retrieved successfully",
-      stats: inventoryResult.stats,
-      config: inventoryResult.config
-    });
-
-  } catch (error: any) {
-    console.error("Get inventory stats error:", error);
-    res.status(500).json({ 
-      error: "Failed to retrieve inventory statistics",
-      code: "GET_STATS_FAILED"
-    });
-  }
-});
-
-/**
- * GET /api/inventory/health
- * Vérifier la santé du système d'inventaire
- */
-router.get("/health", async (req: Request, res: Response): Promise<void> => {
-  try {
-    // Obtenir les statistiques globales
-    const globalStats = await InventoryService.getGlobalStats();
-
-    res.json({
-      status: "healthy",
-      timestamp: new Date(),
-      system: "InventoryService",
-      version: "1.0.0",
-      ...globalStats
-    });
-
-  } catch (error: any) {
-    console.error("Inventory health check error:", error);
-    res.status(503).json({
-      status: "unhealthy",
-      error: error.message,
-      timestamp: new Date(),
-      system: "InventoryService"
-    });
-  }
-});
-
-export default router;
-
+      if (result.code === "WRONG_SERVER
