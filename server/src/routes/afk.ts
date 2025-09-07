@@ -1,6 +1,6 @@
 import { Router, type RequestHandler } from "express";
 import AfkServiceEnhanced from "../services/AfkService";
-
+import authMiddleware from "../middleware/authMiddleware";
 /**
  * Routes AFK Enhanced - MÊMES NOMS DE ROUTES
  * Compatibilité totale + nouvelles fonctionnalités en arrière-plan
@@ -140,12 +140,6 @@ class AfkNotifier {
 const notifier = AfkNotifier.instance();
 const router = Router();
 
-/** Auth middleware */
-const requireAuth: RequestHandler = (req, res, next) => {
-  if (!req.playerId) return res.status(401).json({ ok: false, error: "Unauthenticated" });
-  next();
-};
-
 // Anti-spam heartbeat
 const lastHeartbeatByPlayer = new Map<string, number>();
 
@@ -206,7 +200,7 @@ const playerId = req.playerId!;
  * POST /start - Compatible enhanced
  */
 const postStart: RequestHandler = async (req, res) => {
-  const playerId = req.user!.id;
+  const playerId = req.playerId!;
   const { deviceId, source } = (req.body || {}) as { deviceId?: string; source?: "idle" | "offline" };
 
   try {
@@ -255,7 +249,7 @@ const postStart: RequestHandler = async (req, res) => {
  * POST /heartbeat - Compatible enhanced
  */
 const postHeartbeat: RequestHandler = async (req, res) => {
-  const playerId = req.user!.id;
+  const playerId = req.playerId!;
 
   // Anti-spam
   const now = Date.now();
@@ -320,7 +314,7 @@ const postHeartbeat: RequestHandler = async (req, res) => {
  * POST /stop - Compatible enhanced
  */
 const postStop: RequestHandler = async (req, res) => {
-  const playerId = req.user!.id;
+  const playerId = req.playerId!;
 
   try {
     const session = await AfkServiceEnhanced.stopSession(playerId);
@@ -365,7 +359,7 @@ const postStop: RequestHandler = async (req, res) => {
  * POST /claim - Version Enhanced (format de retour rétrocompatible)
  */
 const postClaim: RequestHandler = async (req, res) => {
-  const playerId = req.user!.id;
+  const playerId = req.playerId!;
 
   try {
     const result = await AfkServiceEnhanced.claimEnhanced(playerId);
@@ -434,7 +428,7 @@ const postClaim: RequestHandler = async (req, res) => {
  * GET /stream - SSE Enhanced
  */
 const getStream: RequestHandler = async (req, res) => {
-  const playerId = req.user!.id;
+  const playerId = req.playerId!;
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -499,7 +493,7 @@ const getStream: RequestHandler = async (req, res) => {
  * POST /upgrade - Migrer vers le système enhanced (nouvelle route optionnelle)
  */
 const postUpgrade: RequestHandler = async (req, res) => {
-  const playerId = req.user!.id;
+  const playerId = req.playerId!;
 
   try {
     const result = await AfkServiceEnhanced.upgradeToEnhanced(playerId);
@@ -534,7 +528,7 @@ const postUpgrade: RequestHandler = async (req, res) => {
  * GET /rates - Obtenir les taux détaillés (nouvelle route optionnelle)
  */
 const getRates: RequestHandler = async (req, res) => {
-  const playerId = req.user!.id;
+  const playerId = req.playerId!;
 
   try {
     const { AfkRewardsService } = require("../services/AfkRewardsService");
@@ -552,7 +546,7 @@ const getRates: RequestHandler = async (req, res) => {
  * GET /simulate/:hours - Simuler gains pour X heures (nouvelle route optionnelle)
  */
 const getSimulate: RequestHandler = async (req, res) => {
-  const playerId = req.user!.id;
+  const playerId = req.playerId!;
   const hours = parseInt(req.params.hours) || 1;
 
   if (hours < 0 || hours > 48) {
@@ -574,16 +568,15 @@ const getSimulate: RequestHandler = async (req, res) => {
 // === MONTAGE DES ROUTES ===
 
 // Routes existantes (noms identiques)
-router.get("/summary", requireAuth, getSummary);
-router.post("/start", requireAuth, postStart);
-router.post("/heartbeat", requireAuth, postHeartbeat);
-router.post("/stop", requireAuth, postStop);
-router.post("/claim", requireAuth, postClaim);
-router.get("/stream", requireAuth, getStream);
+router.get("/summary", authMiddleware, getSummary);
+router.post("/start", authMiddleware, postStart);
+router.post("/heartbeat", authMiddleware, postHeartbeat);
+router.post("/stop", authMiddleware, postStop);
+router.post("/claim", authMiddleware, postClaim);
+router.get("/stream", authMiddleware, getStream);
+router.post("/upgrade", authMiddleware, postUpgrade);
+router.get("/rates", authMiddleware, getRates);
+router.get("/simulate/:hours", authMiddleware, getSimulate);
 
-// Nouvelles routes optionnelles (pour clients enhanced)
-router.post("/upgrade", requireAuth, postUpgrade);
-router.get("/rates", requireAuth, getRates);
-router.get("/simulate/:hours", requireAuth, getSimulate);
 
 export default router;
