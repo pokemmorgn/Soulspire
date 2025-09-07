@@ -48,8 +48,8 @@ interface IVipTransaction {
 }
 
 export interface IPlayer {
-  _id?: string; // PRIMARY KEY = playerId string
-  playerId?: string; // Optionnel, redondant
+  _id: string;            // PRIMARY KEY = playerId string
+  playerId: string;       // Toujours défini, identique à _id
   accountId: string;
   serverId: string;
   displayName: string;
@@ -172,15 +172,15 @@ const vipTransactionSchema = new Schema<IVipTransaction>({
 }, { _id: false });
 
 const playerSchema = new Schema<IPlayerDocument>({
-  _id: { // PRIMARY KEY en string
+  _id: {
     type: String,
     required: true,
     default: () => `PLAYER_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
   },
-  playerId: { // Optionnel, redondant
+  playerId: {
     type: String,
-    required: false,
-    default: undefined
+    required: true,
+    default: function () { return this._id; }
   },
   accountId: { type: String, required: true },
   serverId: { type: String, required: true, match: /^S\d+$/ },
@@ -242,15 +242,12 @@ const playerSchema = new Schema<IPlayerDocument>({
   collection: 'players'
 });
 
-// Pas de virtuals
 playerSchema.set('toJSON', { virtuals: false });
 playerSchema.set('toObject', { virtuals: false });
 
-// Index sur _id automatique (clé primaire), donc inutile sur playerId
 playerSchema.index({ accountId: 1, serverId: 1 });
 playerSchema.index({ serverId: 1 });
 
-// Les statics et methods restent inchangés (tu peux adapter si tu supprimes playerId)
 playerSchema.statics.findByAccount = function(accountId: string, serverId?: string) {
   const query: any = { accountId };
   if (serverId) query.serverId = serverId;
