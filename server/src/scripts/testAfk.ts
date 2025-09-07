@@ -1,5 +1,6 @@
 import mongoose, { Types } from "mongoose";
 import dotenv from "dotenv";
+import Account from "../models/Account";
 import Player from "../models/Player";
 import AfkState from "../models/AfkState";
 import AfkServiceEnhanced from "../services/AfkService";
@@ -25,34 +26,60 @@ const colors = {
 const log = (c: string, m: string) => console.log(`${c}${m}${colors.reset}`);
 
 async function getOrCreateTestPlayers() {
-  // Joueur de base (monde 1) - système classique
-  let basicPlayer = await Player.findOne({ username: "AfkTestBasic" });
+  // ✅ CORRECTION: Créer/récupérer des comptes d'abord
+  let basicAccount = await Account.findOne({ accountId: "ACC_TEST_BASIC_AFK" });
+  if (!basicAccount) {
+    basicAccount = await Account.create({
+      accountId: "ACC_TEST_BASIC_AFK",
+      username: "AfkTestBasic",
+      email: "basic.afk@test.com",
+      password: "hashed_password_123",
+      accountStatus: "active"
+    });
+    log(colors.yellow, "🆕 Compte Basic créé");
+  }
+
+  let advancedAccount = await Account.findOne({ accountId: "ACC_TEST_ADVANCED_AFK" });
+  if (!advancedAccount) {
+    advancedAccount = await Account.create({
+      accountId: "ACC_TEST_ADVANCED_AFK",
+      username: "AfkTestAdvanced",
+      email: "advanced.afk@test.com",
+      password: "hashed_password_123",
+      accountStatus: "active"
+    });
+    log(colors.yellow, "🆕 Compte Advanced créé");
+  }
+
+  // ✅ CORRECTION: Utiliser findOne avec playerId au lieu de username
+  let basicPlayer = await Player.findOne({ playerId: "PLAYER_TEST_BASIC_AFK" });
   if (!basicPlayer) {
     basicPlayer = new Player({
-      username: "AfkTestBasic",
-      password: "test123",
+      playerId: "PLAYER_TEST_BASIC_AFK",  // ✅ playerId unique
+      accountId: basicAccount.accountId,   // ✅ Lien avec Account
       serverId: "S1",
+      displayName: "AfkTestBasic",
       gold: 1000,
       gems: 50,
       world: 1,
       level: 10,
       vipLevel: 0,
       heroes: [
-        { heroId: "hero_001", level: 5, stars: 1, equipped: true, slot: 1 },
-        { heroId: "hero_002", level: 3, stars: 1, equipped: true, slot: 2 }
+        { heroId: "hero_001", level: 5, stars: 1, equipped: true, slot: 1, experience: 0, ascensionLevel: 0, awakenLevel: 0, acquisitionDate: new Date() },
+        { heroId: "hero_002", level: 3, stars: 1, equipped: true, slot: 2, experience: 0, ascensionLevel: 0, awakenLevel: 0, acquisitionDate: new Date() }
       ]
     });
     await basicPlayer.save();
     log(colors.yellow, "🆕 Joueur Basic créé (monde 1)");
   }
 
-  // Joueur avancé (monde 5) - système enhanced
-  let advancedPlayer = await Player.findOne({ username: "AfkTestAdvanced" });
+  let advancedPlayer = await Player.findOne({ playerId: "PLAYER_TEST_ADVANCED_AFK" });
   if (!advancedPlayer) {
     advancedPlayer = new Player({
-      username: "AfkTestAdvanced",
-      password: "test123",
+      playerId: "PLAYER_TEST_ADVANCED_AFK",  // ✅ playerId unique
+      accountId: advancedAccount.accountId,   // ✅ Lien avec Account
       serverId: "S1",
+      displayName: "AfkTestAdvanced",
       gold: 10000,
       gems: 500,
       world: 5,
@@ -60,10 +87,10 @@ async function getOrCreateTestPlayers() {
       vipLevel: 3,
       difficulty: "Hard",
       heroes: [
-        { heroId: "hero_001", level: 25, stars: 3, equipped: true, slot: 1 },
-        { heroId: "hero_002", level: 22, stars: 2, equipped: true, slot: 2 },
-        { heroId: "hero_003", level: 20, stars: 2, equipped: true, slot: 3 },
-        { heroId: "hero_004", level: 18, stars: 1, equipped: true, slot: 4 }
+        { heroId: "hero_001", level: 25, stars: 3, equipped: true, slot: 1, experience: 0, ascensionLevel: 0, awakenLevel: 0, acquisitionDate: new Date() },
+        { heroId: "hero_002", level: 22, stars: 2, equipped: true, slot: 2, experience: 0, ascensionLevel: 0, awakenLevel: 0, acquisitionDate: new Date() },
+        { heroId: "hero_003", level: 20, stars: 2, equipped: true, slot: 3, experience: 0, ascensionLevel: 0, awakenLevel: 0, acquisitionDate: new Date() },
+        { heroId: "hero_004", level: 18, stars: 1, equipped: true, slot: 4, experience: 0, ascensionLevel: 0, awakenLevel: 0, acquisitionDate: new Date() }
       ]
     });
     await advancedPlayer.save();
@@ -165,8 +192,9 @@ async function testAfkEnhanced(): Promise<void> {
     log(colors.green, "✅ Connecté à MongoDB");
 
     const { basicPlayer, advancedPlayer } = await getOrCreateTestPlayers();
-    const basicId = (basicPlayer._id as Types.ObjectId).toString();
-    const advancedId = (advancedPlayer._id as Types.ObjectId).toString();
+    // ✅ CORRECTION: Utiliser playerId au lieu de _id
+    const basicId = basicPlayer.playerId;
+    const advancedId = advancedPlayer.playerId;
 
     // =============================================
     // TEST 1: Joueur basique (système classique)
@@ -219,6 +247,7 @@ async function testAfkEnhanced(): Promise<void> {
       });
     } catch (error: any) {
       log(colors.red, `❌ Erreur calcul taux: ${error.message}`);
+      console.error("Stack trace:", error.stack);
     }
 
     // Simulation AFK court avec enhanced
@@ -282,6 +311,7 @@ async function testAfkEnhanced(): Promise<void> {
       });
     } catch (error: any) {
       log(colors.red, `❌ Erreur simulation gains: ${error.message}`);
+      console.error("Stack trace:", error.stack);
     }
 
     // =============================================
@@ -302,6 +332,7 @@ async function testAfkEnhanced(): Promise<void> {
       });
     } catch (error: any) {
       log(colors.red, `❌ Erreur comparaison améliorations: ${error.message}`);
+      console.error("Stack trace:", error.stack);
     }
 
     // =============================================
@@ -314,13 +345,36 @@ async function testAfkEnhanced(): Promise<void> {
       console.table(usageStats);
     } catch (error: any) {
       log(colors.red, `❌ Erreur statistiques usage: ${error.message}`);
+      console.error("Stack trace:", error.stack);
+    }
+
+    // =============================================
+    // TEST 7: Nettoyage des données de test
+    // =============================================
+    log(colors.bright, "\n🧹 === NETTOYAGE DONNÉES DE TEST ===");
+    
+    try {
+      await Account.deleteMany({ accountId: { $regex: /TEST/ } });
+      await Player.deleteMany({ playerId: { $regex: /TEST/ } });
+      await AfkState.deleteMany({ playerId: { $regex: /TEST/ } });
+      await AfkSession.deleteMany({ playerId: { $regex: /TEST/ } });
+      log(colors.green, "✅ Données de test nettoyées");
+    } catch (error: any) {
+      log(colors.yellow, `⚠️ Erreur nettoyage: ${error.message}`);
     }
 
     log(colors.cyan, "\n🎉 === TESTS AFK ENHANCED TERMINÉS ===\n");
 
   } catch (err: any) {
     log(colors.red, `❌ Erreur test AFK Enhanced: ${err.message}`);
-    console.error(err);
+    console.error("Stack trace complet:", err.stack);
+    
+    // Diagnostic spécifique
+    if (err.message.includes("findById")) {
+      log(colors.red, "\n🔍 DIAGNOSTIC: Erreur findById détectée!");
+      log(colors.yellow, "➡️ Vérifiez que toutes les requêtes Player utilisent findOne({ playerId })");
+    }
+    
   } finally {
     await mongoose.disconnect();
     log(colors.green, "🔌 Déconnecté de MongoDB");
@@ -336,7 +390,8 @@ async function testCompatibility(): Promise<void> {
     await mongoose.connect(MONGO_URI);
     
     const { basicPlayer } = await getOrCreateTestPlayers();
-    const playerId = (basicPlayer._id as Types.ObjectId).toString();
+    // ✅ CORRECTION: Utiliser playerId
+    const playerId = basicPlayer.playerId;
 
     // Test avec les ANCIENNES méthodes
     log(colors.blue, "📋 Test méthodes classiques...");
@@ -359,7 +414,14 @@ async function testCompatibility(): Promise<void> {
 
   } catch (err: any) {
     log(colors.red, `❌ Erreur test compatibilité: ${err.message}`);
-    console.error(err);
+    console.error("Stack trace:", err.stack);
+    
+    // Diagnostic spécifique
+    if (err.message.includes("findById")) {
+      log(colors.red, "\n🔍 DIAGNOSTIC: Erreur findById détectée dans test compatibilité!");
+      log(colors.yellow, "➡️ Vérifiez les corrections dans AfkService.ts");
+    }
+    
   } finally {
     await mongoose.disconnect();
   }
@@ -376,9 +438,10 @@ function showUsage() {
   console.log("• ⏰ Caps d'accumulation VIP");
   console.log("• 📈 Simulations et comparaisons d'améliorations");
   console.log("• 🔄 Tests de compatibilité totale");
+  console.log("• ✅ Compatible avec nouveau système Account/Player");
   console.log("\nLancement:");
-  console.log("npx ts-node src/scripts/testAfkEnhanced.ts");
-  console.log("npx ts-node src/scripts/testAfkEnhanced.ts --compat (test compatibilité)");
+  console.log("npx ts-node server/src/scripts/testAfk.ts");
+  console.log("npx ts-node server/src/scripts/testAfk.ts --compat (test compatibilité)");
   console.log("");
 }
 
