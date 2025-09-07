@@ -28,6 +28,10 @@ async function resetIndexes() {
 
     const db = mongoose.connection.db;
     
+    if (!db) {
+      throw new Error("Database connection not established");
+    }
+    
     // =============================================
     // SUPPRIMER LES INDEX PROBLÉMATIQUES
     // =============================================
