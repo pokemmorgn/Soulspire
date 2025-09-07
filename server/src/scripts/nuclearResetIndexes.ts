@@ -173,4 +173,4 @@ if (require.main === module) {
   nuclearResetIndexes().then(() => process.exit(0));
 }
 
-export default nuclearResetIndexe
+export default nuclearResetIndexes;
