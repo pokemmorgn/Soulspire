@@ -1085,3 +1085,4 @@ export class HeroFusionService {
     return recommendations;
   }
 }
+export default HeroUpgradeService;
