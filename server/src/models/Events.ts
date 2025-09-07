@@ -323,7 +323,6 @@ const eventSchema = new Schema<IEventDocument>({
   eventId: { 
     type: String, 
     required: true, 
-    unique: true,
     match: /^[a-zA-Z0-9_-]+$/
   },
   name: { 
