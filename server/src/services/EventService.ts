@@ -4,7 +4,6 @@ import Hero from "../models/Hero";
 
 export class EventService {
 
-  // === RÉCUPÉRER LES ÉVÉNEMENTS ACTIFS POUR UN SERVEUR ===
   public static async getActiveEvents(serverId: string) {
     try {
       console.log(`📅 Récupération événements actifs pour serveur ${serverId}`);
@@ -20,7 +19,6 @@ export class EventService {
         ]
       }).sort({ priority: -1, startTime: 1 });
 
-      // Enrichir avec les données du joueur si nécessaire
       const enrichedEvents = events.map(event => ({
         eventId: event.eventId,
         name: event.name,
@@ -55,44 +53,38 @@ export class EventService {
     }
   }
 
-  // === REJOINDRE UN ÉVÉNEMENT ===
   public static async joinEvent(
     eventId: string, 
-    playerId: string, 
+    accountId: string, 
     serverId: string
   ) {
     try {
-      console.log(`🎪 ${playerId} tente de rejoindre l'événement ${eventId}`);
+      console.log(`🎪 ${accountId} tente de rejoindre l'événement ${eventId}`);
 
-      // Récupérer l'événement
       const event = await Event.findOne({ eventId, isVisible: true });
       if (!event) {
         throw new Error("Event not found");
       }
 
-      // Vérifier que l'événement accepte ce serveur
       if (!event.serverConfig.allowedServers.includes(serverId) && 
           !event.serverConfig.allowedServers.includes("ALL")) {
         throw new Error("Server not allowed for this event");
       }
 
-      // Récupérer le joueur avec ses données
-      const player = await Player.findOne({ _id: playerId, serverId });
+      const player = await Player.findOne({ accountId, serverId });
       if (!player) {
         throw new Error("Player not found");
       }
 
-      // Préparer les données du joueur pour la validation
       const playerData = {
         level: player.level,
         world: player.world,
         heroes_owned: player.heroes.length,
-        vip_level: 0, // TODO: Implémenter système VIP
-       server_age: Math.floor((Date.now() - ((player as any).createdAt?.getTime() || 0)) / (1000 * 60 * 60 * 24))
+        vip_level: player.vipLevel || 0,
+        server_age: Math.floor((Date.now() - ((player as any).createdAt?.getTime() || 0)) / (1000 * 60 * 60 * 24))
       };
 
-      // Vérifier si le joueur peut rejoindre
-      const eligibility = await event.canPlayerJoin(playerId, playerData);
+      const eligibility = await event.canPlayerJoin(accountId, playerData);
       if (!eligibility.canJoin) {
         return {
           success: false,
@@ -101,8 +93,7 @@ export class EventService {
         };
       }
 
-      // Ajouter le joueur à l'événement
-      await event.addParticipant(playerId, player.displayName, serverId);
+      await event.addParticipant(accountId, player.displayName, serverId);
 
       console.log(`✅ ${player.displayName} a rejoint l'événement ${event.name}`);
 
@@ -129,23 +120,21 @@ export class EventService {
     }
   }
 
-  // === METTRE À JOUR LA PROGRESSION D'UN JOUEUR ===
   public static async updatePlayerProgress(
-    playerId: string, 
+    accountId: string, 
     serverId: string, 
     progressType: "battle_wins" | "tower_floors" | "gacha_pulls" | "login_days" | "gold_spent" | "collect_items",
     value: number,
     additionalData?: any
   ) {
     try {
-      console.log(`📈 Mise à jour progression événements ${playerId}: ${progressType} +${value}`);
+      console.log(`📈 Mise à jour progression événements ${accountId}: ${progressType} +${value}`);
 
-      // Trouver tous les événements actifs où le joueur participe
       const activeEvents = await Event.find({
         status: "active",
         startTime: { $lte: new Date() },
         endTime: { $gte: new Date() },
-        "participants.playerId": playerId,
+        "participants.playerId": accountId,
         $or: [
           { "serverConfig.allowedServers": serverId },
           { "serverConfig.allowedServers": "ALL" }
@@ -156,19 +145,13 @@ export class EventService {
       const completedObjectives: any[] = [];
 
       for (const event of activeEvents) {
-        // Vérifier si cet événement a des objectifs correspondants
         const relevantObjectives = event.objectives.filter((obj: any) => obj.type === progressType);
         
         if (relevantObjectives.length > 0) {
-          const participant = event.participants.find((p: any) => p.playerId === playerId);
+          const participant = event.participants.find((p: any) => p.playerId === accountId);
           
           if (participant) {
-            // Récupérer les objectifs complétés avant la mise à jour
-            const previousCompletedCount = participant.objectives.filter((obj: any) => obj.completedAt).length;
-            
-            // Mettre à jour chaque objectif correspondant
             for (const eventObjective of relevantObjectives) {
-              // Vérifier les conditions spécifiques de l'objectif
               if (this.objectiveMatchesCondition(eventObjective, progressType, additionalData)) {
                 const participantObjective = participant.objectives.find((obj: any) => 
                   obj.objectiveId === eventObjective.objectiveId
@@ -180,11 +163,9 @@ export class EventService {
                     eventObjective.targetValue
                   );
                   
-                  // Vérifier si l'objectif est maintenant complété
                   if (participantObjective.currentValue >= eventObjective.targetValue) {
                     participantObjective.completedAt = new Date();
                     
-                    // Calculer les points pour le classement
                     const points = Math.floor(eventObjective.targetValue * 0.1);
                     participant.totalPoints += points;
                     
@@ -202,7 +183,6 @@ export class EventService {
               }
             }
             
-            // Mettre à jour la dernière activité
             participant.lastActivityAt = new Date();
             await event.save();
             updatedEvents++;
@@ -223,7 +203,6 @@ export class EventService {
 
     } catch (error: any) {
       console.error("❌ Erreur updatePlayerProgress:", error);
-      // Ne pas faire échouer l'action principale, juste logger
       return {
         success: false,
         error: error.message,
@@ -233,11 +212,10 @@ export class EventService {
     }
   }
 
-  // === RÉCUPÉRER LA PROGRESSION D'UN JOUEUR DANS LES ÉVÉNEMENTS ===
-  public static async getPlayerEventProgress(playerId: string, serverId: string) {
+  public static async getPlayerEventProgress(accountId: string, serverId: string) {
     try {
       const playerEvents = await Event.find({
-        "participants.playerId": playerId,
+        "participants.playerId": accountId,
         $or: [
           { "serverConfig.allowedServers": serverId },
           { "serverConfig.allowedServers": "ALL" }
@@ -245,7 +223,7 @@ export class EventService {
       }).sort({ startTime: -1 });
 
       const eventProgress = playerEvents.map(event => {
-        const participant = event.participants.find((p: any) => p.playerId === playerId);
+        const participant = event.participants.find((p: any) => p.playerId === accountId);
         
         return {
           eventId: event.eventId,
@@ -292,7 +270,6 @@ export class EventService {
     }
   }
 
-  // === RÉCUPÉRER LE CLASSEMENT D'UN ÉVÉNEMENT ===
   public static async getEventLeaderboard(
     eventId: string, 
     serverId: string, 
@@ -304,21 +281,17 @@ export class EventService {
         throw new Error("Event not found");
       }
 
-      // Vérifier l'accès au serveur
       if (!event.serverConfig.allowedServers.includes(serverId) && 
           !event.serverConfig.allowedServers.includes("ALL")) {
         throw new Error("Server not allowed for this event");
       }
 
-      // Calculer les classements si nécessaire
       await event.calculateRankings();
 
-      // Filtrer par serveur si pas de classement cross-server
       let participants = event.participants;
       if (!event.serverConfig.crossServerRanking) {
         participants = participants.filter((p: any) => p.serverId === serverId);
         
-        // Re-calculer les rangs pour ce serveur uniquement
         participants.sort((a: any, b: any) => 
           b.totalPoints - a.totalPoints || a.joinedAt.getTime() - b.joinedAt.getTime()
         );
@@ -354,22 +327,21 @@ export class EventService {
     }
   }
 
-  // === RÉCLAMER LES RÉCOMPENSES D'OBJECTIF ===
   public static async claimObjectiveRewards(
     eventId: string,
-    playerId: string,
+    accountId: string,
     serverId: string,
     objectiveId: string
   ) {
     try {
-      console.log(`🎁 ${playerId} réclame récompenses objectif ${objectiveId} événement ${eventId}`);
+      console.log(`🎁 ${accountId} réclame récompenses objectif ${objectiveId} événement ${eventId}`);
 
       const event = await Event.findOne({ eventId, isVisible: true });
       if (!event) {
         throw new Error("Event not found");
       }
 
-      const participant = event.participants.find((p: any) => p.playerId === playerId);
+      const participant = event.participants.find((p: any) => p.playerId === accountId);
       if (!participant) {
         throw new Error("Player not participating in this event");
       }
@@ -387,14 +359,12 @@ export class EventService {
         throw new Error("Rewards already claimed for this objective");
       }
 
-      // Récupérer les récompenses de l'objectif
       const eventObjective = event.objectives.find((obj: any) => obj.objectiveId === objectiveId);
       if (!eventObjective) {
         throw new Error("Event objective not found");
       }
 
-      // Appliquer les récompenses au joueur
-      const player = await Player.findOne({ _id: playerId, serverId });
+      const player = await Player.findOne({ accountId, serverId });
       if (!player) {
         throw new Error("Player not found");
       }
@@ -410,7 +380,6 @@ export class EventService {
         });
       }
 
-      // Marquer les récompenses comme réclamées
       objectiveProgress.rewardsClaimed = true;
       event.stats.rewardsDistributed += eventObjective.rewards.length;
       
@@ -433,7 +402,6 @@ export class EventService {
     }
   }
 
-  // === FINALISER UN ÉVÉNEMENT ET DISTRIBUER LES RÉCOMPENSES DE CLASSEMENT ===
   public static async finalizeEvent(eventId: string) {
     try {
       console.log(`🏁 Finalisation de l'événement ${eventId}`);
@@ -447,13 +415,9 @@ export class EventService {
         throw new Error("Event is not active");
       }
 
-      // Calculer les classements finaux
       await event.calculateRankings();
-
-      // Distribuer les récompenses de classement
       const distributionResult = await event.distributeRankingRewards();
 
-      // Marquer l'événement comme terminé
       event.status = "completed";
       await event.save();
 
@@ -478,32 +442,25 @@ export class EventService {
     }
   }
 
-  // === MÉTHODES UTILITAIRES PRIVÉES ===
-
-  // Vérifier si un objectif d'événement correspond aux conditions
   private static objectiveMatchesCondition(
     objective: any,
     progressType: string,
     additionalData?: any
   ): boolean {
     
-    // Vérifications spécifiques selon le type de progression
     switch (progressType) {
       case "battle_wins":
         if (objective.battleConditions) {
           const { battleType, difficulty, winRequired } = objective.battleConditions;
           
-          // Vérifier le type de combat
           if (battleType && additionalData?.battleType !== battleType) {
             return false;
           }
           
-          // Vérifier la difficulté
           if (difficulty && additionalData?.difficulty !== difficulty) {
             return false;
           }
           
-          // Vérifier si une victoire est requise
           if (winRequired && !additionalData?.victory) {
             return false;
           }
@@ -514,17 +471,14 @@ export class EventService {
         if (objective.collectConditions) {
           const { itemType, rarity, specificIds } = objective.collectConditions;
           
-          // Vérifier le type d'item
           if (itemType && additionalData?.itemType !== itemType) {
             return false;
           }
           
-          // Vérifier la rareté
           if (rarity && additionalData?.rarity !== rarity) {
             return false;
           }
           
-          // Vérifier les IDs spécifiques
           if (specificIds && specificIds.length > 0) {
             if (!additionalData?.itemId || !specificIds.includes(additionalData.itemId)) {
               return false;
@@ -533,20 +487,17 @@ export class EventService {
         }
         break;
         
-      // Pour les autres types, pas de conditions supplémentaires pour l'instant
       case "tower_floors":
       case "gacha_pulls":
       case "login_days":
       case "gold_spent":
       default:
-        // Pas de conditions supplémentaires, accepter directement
         break;
     }
     
     return true;
   }
 
-  // Appliquer une récompense à un joueur
   private static async applyRewardToPlayer(player: any, reward: IEventReward) {
     switch (reward.type) {
       case "currency":
@@ -567,7 +518,6 @@ export class EventService {
               equipped: false
             });
           } else {
-            // Convertir en fragments si déjà possédé
             const fragments = reward.heroData.guaranteed ? 50 : 25;
             const currentFragments = player.fragments.get(reward.heroData.heroId) || 0;
             player.fragments.set(reward.heroData.heroId, currentFragments + fragments);
@@ -582,16 +532,12 @@ export class EventService {
         }
         break;
         
-      // TODO: Implémenter equipment, title, avatar
       default:
         console.warn(`⚠️ Type de récompense non implémenté: ${reward.type}`);
         break;
     }
   }
 
-  // === MÉTHODES D'ADMINISTRATION ===
-
-  // Créer un nouvel événement (admin uniquement)
   public static async createEvent(eventData: Partial<IEvent>) {
     try {
       const event = new Event(eventData);
@@ -611,7 +557,6 @@ export class EventService {
     }
   }
 
-  // Démarrer manuellement un événement
   public static async startEvent(eventId: string) {
     try {
       const event = await Event.findOne({ eventId });
