@@ -3,10 +3,14 @@ import Joi from "joi";
 import Hero from "../models/Hero";
 import Player from "../models/Player";
 import authMiddleware, { optionalAuthMiddleware } from "../middleware/authMiddleware";
+import serverMiddleware from "../middleware/serverMiddleware";
 import { requireFeature } from "../middleware/featureMiddleware";
 import { HeroUpgradeService } from "../services/HeroUpgradeService";
 
 const router = express.Router();
+
+// ✅ APPLIQUER le middleware serveur à toutes les routes
+router.use(serverMiddleware);
 
 function slugify(s: string): string {
   return (s || "")
@@ -131,6 +135,7 @@ router.get("/catalog", optionalAuthMiddleware, async (req: Request, res: Respons
 
     res.json({
       message: "Heroes catalog retrieved successfully",
+      serverId: req.serverId,
       heroes: payload,
       pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) },
     });
@@ -163,6 +168,7 @@ router.get("/catalog/:heroId", async (req: Request, res: Response): Promise<void
 
     res.json({
       message: "Hero details retrieved successfully",
+      serverId: req.serverId,
       hero: {
         _id: obj._id,
         heroId: keys.heroId,
@@ -192,19 +198,41 @@ router.get("/catalog/:heroId", async (req: Request, res: Response): Promise<void
 
 router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
+    // ✅ CORRECTION: Utiliser playerId et serverId
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
+      res.status(401).json({ 
+        error: "User not authenticated",
+        code: "USER_NOT_AUTHENTICATED"
+      });
+      return;
+    }
+
     const { error } = heroFilterSchema.validate(req.query);
     if (error) {
       res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
       return;
     }
 
-    const player = await Player.findById(req.userId).populate({
+    // ✅ CORRECTION: Recherche avec _id et vérification serveur
+    const player = await Player.findById(playerId).populate({
       path: "heroes.heroId",
       select: "_id heroId name role element rarity baseStats spells",
     });
 
     if (!player) {
       res.status(404).json({ error: "Player not found", code: "PLAYER_NOT_FOUND" });
+      return;
+    }
+
+    // ✅ VÉRIFICATION SERVEUR
+    if (serverId && player.serverId !== serverId) {
+      res.status(403).json({ 
+        error: "Player not found on this server",
+        code: "WRONG_SERVER"
+      });
       return;
     }
 
@@ -256,6 +284,7 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
 
     res.json({
       message: "Player heroes retrieved successfully",
+      serverId,
       heroes: enriched,
       summary: {
         total: enriched.length,
@@ -272,11 +301,22 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
 
 router.get("/my/overview", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const serverId = req.headers['x-server-id'] as string || "S1";
-    const result = await HeroUpgradeService.getPlayerHeroesUpgradeOverview(req.userId!, serverId);
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
+      res.status(401).json({ 
+        error: "User not authenticated",
+        code: "USER_NOT_AUTHENTICATED"
+      });
+      return;
+    }
+    
+    const result = await HeroUpgradeService.getPlayerHeroesUpgradeOverview(playerId, serverId);
     
     res.json({
       message: "Heroes upgrade overview retrieved successfully",
+      serverId,
       ...result
     });
   } catch (err) {
@@ -287,11 +327,22 @@ router.get("/my/overview", authMiddleware, async (req: Request, res: Response): 
 
 router.get("/my/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const serverId = req.headers['x-server-id'] as string || "S1";
-    const result = await HeroUpgradeService.getHeroUpgradeStats(req.userId!, serverId);
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
+      res.status(401).json({ 
+        error: "User not authenticated",
+        code: "USER_NOT_AUTHENTICATED"
+      });
+      return;
+    }
+    
+    const result = await HeroUpgradeService.getHeroUpgradeStats(playerId, serverId);
     
     res.json({
       message: "Hero upgrade stats retrieved successfully",
+      serverId,
       ...result
     });
   } catch (err) {
@@ -304,13 +355,24 @@ router.get("/my/stats", authMiddleware, async (req: Request, res: Response): Pro
 
 router.get("/upgrade/:heroInstanceId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
+      res.status(401).json({ 
+        error: "User not authenticated",
+        code: "USER_NOT_AUTHENTICATED"
+      });
+      return;
+    }
+
     const { heroInstanceId } = req.params;
-    const serverId = req.headers['x-server-id'] as string || "S1";
     
-    const result = await HeroUpgradeService.getHeroUpgradeInfo(req.userId!, serverId, heroInstanceId);
+    const result = await HeroUpgradeService.getHeroUpgradeInfo(playerId, serverId, heroInstanceId);
     
     res.json({
       message: "Hero upgrade info retrieved successfully",
+      serverId,
       ...result
     });
   } catch (err) {
@@ -321,6 +383,17 @@ router.get("/upgrade/:heroInstanceId", authMiddleware, async (req: Request, res:
 
 router.post("/upgrade/level", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
+      res.status(401).json({ 
+        error: "User not authenticated",
+        code: "USER_NOT_AUTHENTICATED"
+      });
+      return;
+    }
+
     const { error } = levelUpSchema.validate(req.body);
     if (error) {
       res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
@@ -328,9 +401,8 @@ router.post("/upgrade/level", authMiddleware, requireFeature("hero_upgrade"), as
     }
 
     const { heroInstanceId, targetLevel } = req.body;
-    const serverId = req.headers['x-server-id'] as string || "S1";
     
-    const result = await HeroUpgradeService.levelUpHero(req.userId!, serverId, heroInstanceId, targetLevel);
+    const result = await HeroUpgradeService.levelUpHero(playerId, serverId, heroInstanceId, targetLevel);
     
     if (!result.success) {
       res.status(400).json({ error: result.error, code: result.code });
@@ -339,6 +411,7 @@ router.post("/upgrade/level", authMiddleware, requireFeature("hero_upgrade"), as
 
     res.json({
       message: "Hero level upgraded successfully",
+      serverId,
       ...result
     });
   } catch (err) {
@@ -349,6 +422,17 @@ router.post("/upgrade/level", authMiddleware, requireFeature("hero_upgrade"), as
 
 router.post("/upgrade/stars", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
+      res.status(401).json({ 
+        error: "User not authenticated",
+        code: "USER_NOT_AUTHENTICATED"
+      });
+      return;
+    }
+
     const { error } = starUpgradeSchema.validate(req.body);
     if (error) {
       res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
@@ -356,9 +440,8 @@ router.post("/upgrade/stars", authMiddleware, requireFeature("hero_upgrade"), as
     }
 
     const { heroInstanceId } = req.body;
-    const serverId = req.headers['x-server-id'] as string || "S1";
     
-    const result = await HeroUpgradeService.upgradeHeroStars(req.userId!, serverId, heroInstanceId);
+    const result = await HeroUpgradeService.upgradeHeroStars(playerId, serverId, heroInstanceId);
     
     if (!result.success) {
       res.status(400).json({ error: result.error, code: result.code });
@@ -367,6 +450,7 @@ router.post("/upgrade/stars", authMiddleware, requireFeature("hero_upgrade"), as
 
     res.json({
       message: "Hero stars upgraded successfully",
+      serverId,
       ...result
     });
   } catch (err) {
@@ -377,6 +461,17 @@ router.post("/upgrade/stars", authMiddleware, requireFeature("hero_upgrade"), as
 
 router.post("/upgrade/skill", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
+      res.status(401).json({ 
+        error: "User not authenticated",
+        code: "USER_NOT_AUTHENTICATED"
+      });
+      return;
+    }
+
     const { error } = skillUpgradeSchema.validate(req.body);
     if (error) {
       res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
@@ -384,9 +479,8 @@ router.post("/upgrade/skill", authMiddleware, requireFeature("hero_upgrade"), as
     }
 
     const { heroInstanceId, skillSlot } = req.body;
-    const serverId = req.headers['x-server-id'] as string || "S1";
     
-    const result = await HeroUpgradeService.upgradeHeroSkill(req.userId!, serverId, heroInstanceId, skillSlot);
+    const result = await HeroUpgradeService.upgradeHeroSkill(playerId, serverId, heroInstanceId, skillSlot);
     
     if (!result.success) {
       res.status(400).json({ error: result.error, code: "SKILL_UPGRADE_FAILED" });
@@ -395,6 +489,7 @@ router.post("/upgrade/skill", authMiddleware, requireFeature("hero_upgrade"), as
 
     res.json({
       message: "Hero skill upgraded successfully",
+      serverId,
       ...result
     });
   } catch (err) {
@@ -405,6 +500,17 @@ router.post("/upgrade/skill", authMiddleware, requireFeature("hero_upgrade"), as
 
 router.post("/upgrade/evolve", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
+      res.status(401).json({ 
+        error: "User not authenticated",
+        code: "USER_NOT_AUTHENTICATED"
+      });
+      return;
+    }
+
     const { error } = evolutionSchema.validate(req.body);
     if (error) {
       res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
@@ -412,9 +518,8 @@ router.post("/upgrade/evolve", authMiddleware, requireFeature("hero_upgrade"), a
     }
 
     const { heroInstanceId } = req.body;
-    const serverId = req.headers['x-server-id'] as string || "S1";
     
-    const result = await HeroUpgradeService.evolveHero(req.userId!, serverId, heroInstanceId);
+    const result = await HeroUpgradeService.evolveHero(playerId, serverId, heroInstanceId);
     
     if (!result.success) {
       res.status(400).json({ error: result.error, code: "EVOLUTION_FAILED" });
@@ -423,6 +528,7 @@ router.post("/upgrade/evolve", authMiddleware, requireFeature("hero_upgrade"), a
 
     res.json({
       message: "Hero evolved successfully",
+      serverId,
       ...result
     });
   } catch (err) {
@@ -433,6 +539,17 @@ router.post("/upgrade/evolve", authMiddleware, requireFeature("hero_upgrade"), a
 
 router.post("/upgrade/auto", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
+      res.status(401).json({ 
+        error: "User not authenticated",
+        code: "USER_NOT_AUTHENTICATED"
+      });
+      return;
+    }
+
     const { error } = autoUpgradeSchema.validate(req.body);
     if (error) {
       res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
@@ -440,10 +557,9 @@ router.post("/upgrade/auto", authMiddleware, requireFeature("hero_upgrade"), asy
     }
 
     const { heroInstanceId, maxGoldToSpend, upgradeStars } = req.body;
-    const serverId = req.headers['x-server-id'] as string || "S1";
     
     const result = await HeroUpgradeService.autoUpgradeHero(
-      req.userId!, 
+      playerId, 
       serverId, 
       heroInstanceId, 
       maxGoldToSpend, 
@@ -452,6 +568,7 @@ router.post("/upgrade/auto", authMiddleware, requireFeature("hero_upgrade"), asy
     
     res.json({
       message: "Hero auto-upgraded successfully",
+      serverId,
       ...result
     });
   } catch (err) {
@@ -462,6 +579,17 @@ router.post("/upgrade/auto", authMiddleware, requireFeature("hero_upgrade"), asy
 
 router.post("/upgrade/bulk-level", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
+      res.status(401).json({ 
+        error: "User not authenticated",
+        code: "USER_NOT_AUTHENTICATED"
+      });
+      return;
+    }
+
     const { error } = bulkLevelUpSchema.validate(req.body);
     if (error) {
       res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
@@ -469,10 +597,9 @@ router.post("/upgrade/bulk-level", authMiddleware, requireFeature("hero_upgrade"
     }
 
     const { heroInstanceIds, maxGoldToSpend } = req.body;
-    const serverId = req.headers['x-server-id'] as string || "S1";
     
     const result = await HeroUpgradeService.bulkLevelUpHeroes(
-      req.userId!, 
+      playerId, 
       serverId, 
       heroInstanceIds, 
       maxGoldToSpend
@@ -480,6 +607,7 @@ router.post("/upgrade/bulk-level", authMiddleware, requireFeature("hero_upgrade"
     
     res.json({
       message: "Heroes bulk level up completed successfully",
+      serverId,
       ...result
     });
   } catch (err) {
@@ -490,11 +618,22 @@ router.post("/upgrade/bulk-level", authMiddleware, requireFeature("hero_upgrade"
 
 router.get("/upgrade/recommendations", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const serverId = req.headers['x-server-id'] as string || "S1";
-    const result = await HeroUpgradeService.getUpgradeRecommendations(req.userId!, serverId);
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
+      res.status(401).json({ 
+        error: "User not authenticated",
+        code: "USER_NOT_AUTHENTICATED"
+      });
+      return;
+    }
+    
+    const result = await HeroUpgradeService.getUpgradeRecommendations(playerId, serverId);
     
     res.json({
       message: "Upgrade recommendations retrieved successfully",
+      serverId,
       ...result
     });
   } catch (err) {
@@ -507,6 +646,17 @@ router.get("/upgrade/recommendations", authMiddleware, async (req: Request, res:
 
 router.post("/equip", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
+    const playerId = req.playerId || req.userId;
+    const serverId = req.serverId;
+
+    if (!playerId) {
+      res.status(401).json({ 
+        error: "User not authenticated",
+        code: "USER_NOT_AUTHENTICATED"
+      });
+      return;
+    }
+
     const { error } = equipHeroSchema.validate(req.body);
     if (error) {
       res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
@@ -515,9 +665,18 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
 
     const { heroId, equipped } = req.body;
 
-    const player = await Player.findById(req.userId);
+    const player = await Player.findById(playerId);
     if (!player) {
       res.status(404).json({ error: "Player not found", code: "PLAYER_NOT_FOUND" });
+      return;
+    }
+
+    // ✅ VÉRIFICATION SERVEUR
+    if (serverId && player.serverId !== serverId) {
+      res.status(403).json({ 
+        error: "Player not found on this server",
+        code: "WRONG_SERVER"
+      });
       return;
     }
 
@@ -540,6 +699,7 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
 
     res.json({
       message: `Hero ${equipped ? "equipped" : "unequipped"} successfully`,
+      serverId,
       heroId,
       equipped: playerHero.equipped,
       totalEquipped: player.heroes.filter((h: any) => h.equipped).length,
@@ -551,4 +711,3 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
 });
 
 export default router;
-
