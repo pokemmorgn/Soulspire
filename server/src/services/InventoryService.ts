@@ -26,6 +26,15 @@ export interface EquipmentResult {
   code?: string;
 }
 
+export interface InventoryStats {
+  totalItems: number;
+  totalValue: number;
+  categoryBreakdown: Record<string, number>;
+  rarityBreakdown: Record<string, number>;
+  equippedCount: number;
+  maxLevelEquipment: number;
+}
+
 export class InventoryService {
 
   // === RÉCUPÉRER L'INVENTAIRE COMPLET D'UN JOUEUR ===
@@ -54,27 +63,31 @@ export class InventoryService {
         playerInventory = await (Inventory as any).createForPlayer(playerId);
         
         // ✅ SYNCHRONISER les monnaies depuis Player vers Inventory
-        playerInventory.gold = player.gold;
-        playerInventory.gems = player.gems;
-        playerInventory.paidGems = player.paidGems;
-        playerInventory.tickets = player.tickets;
-        await playerInventory.save();
+        if (playerInventory) {
+          playerInventory.gold = player.gold;
+          playerInventory.gems = player.gems;
+          playerInventory.paidGems = player.paidGems;
+          playerInventory.tickets = player.tickets;
+          await playerInventory.save();
+        }
       }
 
       // ✅ VÉRIFIER LA SYNCHRONISATION des monnaies
-      const needsSync = 
-        playerInventory.gold !== player.gold ||
-        playerInventory.gems !== player.gems ||
-        playerInventory.paidGems !== player.paidGems ||
-        playerInventory.tickets !== player.tickets;
+      if (playerInventory) {
+        const needsSync = 
+          playerInventory.gold !== player.gold ||
+          playerInventory.gems !== player.gems ||
+          playerInventory.paidGems !== player.paidGems ||
+          playerInventory.tickets !== player.tickets;
 
-      if (needsSync) {
-        console.log("⚠️ Désynchronisation détectée, mise à jour...");
-        playerInventory.gold = player.gold;
-        playerInventory.gems = player.gems;
-        playerInventory.paidGems = player.paidGems;
-        playerInventory.tickets = player.tickets;
-        await playerInventory.save();
+        if (needsSync) {
+          console.log("⚠️ Désynchronisation détectée, mise à jour...");
+          playerInventory.gold = player.gold;
+          playerInventory.gems = player.gems;
+          playerInventory.paidGems = player.paidGems;
+          playerInventory.tickets = player.tickets;
+          await playerInventory.save();
+        }
       }
 
       const safeInventory = playerInventory as NonNullable<typeof playerInventory>;
@@ -209,6 +222,100 @@ export class InventoryService {
     }
   }
 
+  // === RÉCUPÉRER LES OBJETS PAR CATÉGORIE ===
+  public static async getItemsByCategory(
+    playerId: string,
+    category: string,
+    subCategory?: string,
+    serverId?: string
+  ) {
+    try {
+      // ✅ VÉRIFICATION PLAYER ET SERVEUR
+      if (serverId) {
+        const player = await Player.findById(playerId).select("serverId");
+        if (!player || player.serverId !== serverId) {
+          throw new Error("Player not found on this server");
+        }
+      }
+
+      const inventory = await Inventory.findOne({ playerId });
+      if (!inventory) {
+        throw new Error("Inventory not found");
+      }
+
+      let items = inventory.getItemsByCategory(category, subCategory);
+      
+      // Enrichir avec les données des objets
+      const enrichedItems = await Promise.all(items.map(async (item) => {
+        const itemData = await Item.findOne({ itemId: item.itemId }).select("name description rarity iconUrl category");
+        return {
+          ...item,
+          itemData
+        };
+      }));
+
+      return {
+        success: true,
+        category,
+        subCategory,
+        items: enrichedItems,
+        count: enrichedItems.length
+      };
+
+    } catch (error: any) {
+      console.error("❌ Erreur getItemsByCategory:", error);
+      throw error;
+    }
+  }
+
+  // === SUPPRIMER UN OBJET DE L'INVENTAIRE ===
+  public static async removeItem(
+    playerId: string,
+    instanceId: string,
+    quantity?: number,
+    serverId?: string
+  ): Promise<InventoryItemResult> {
+    try {
+      console.log(`➖ Suppression ${quantity || "tout"} de ${instanceId} pour ${playerId}`);
+
+      // ✅ VÉRIFICATION PLAYER ET SERVEUR
+      if (serverId) {
+        const player = await Player.findById(playerId).select("serverId");
+        if (!player || player.serverId !== serverId) {
+          return { success: false, error: "Player not found on this server", code: "WRONG_SERVER" };
+        }
+      }
+
+      const inventory = await Inventory.findOne({ playerId });
+      if (!inventory) {
+        return { success: false, error: "Inventory not found", code: "INVENTORY_NOT_FOUND" };
+      }
+
+      // Récupérer l'objet avant suppression pour les logs
+      const item = inventory.getItem(instanceId);
+      if (!item) {
+        return { success: false, error: "Item not found", code: "ITEM_NOT_FOUND" };
+      }
+
+      const removed = await inventory.removeItem(instanceId, quantity);
+      if (!removed) {
+        return { success: false, error: "Failed to remove item", code: "REMOVE_FAILED" };
+      }
+
+      return {
+        success: true,
+        item: {
+          instanceId,
+          removedQuantity: quantity || item.quantity
+        }
+      };
+
+    } catch (error: any) {
+      console.error("❌ Erreur removeItem:", error);
+      return { success: false, error: error.message, code: "REMOVE_ITEM_FAILED" };
+    }
+  }
+
   // === ÉQUIPER UN OBJET SUR UN HÉROS ===
   public static async equipItem(
     playerId: string,
@@ -281,15 +388,14 @@ export class InventoryService {
     }
   }
 
-  // === SUPPRIMER UN OBJET DE L'INVENTAIRE ===
-  public static async removeItem(
+  // === DÉSÉQUIPER UN OBJET ===
+  public static async unequipItem(
     playerId: string,
     instanceId: string,
-    quantity?: number,
     serverId?: string
-  ): Promise<InventoryItemResult> {
+  ): Promise<EquipmentResult> {
     try {
-      console.log(`➖ Suppression ${quantity || "tout"} de ${instanceId} pour ${playerId}`);
+      console.log(`🔓 Déséquipement ${instanceId} pour ${playerId}`);
 
       // ✅ VÉRIFICATION PLAYER ET SERVEUR
       if (serverId) {
@@ -304,28 +410,122 @@ export class InventoryService {
         return { success: false, error: "Inventory not found", code: "INVENTORY_NOT_FOUND" };
       }
 
-      // Récupérer l'objet avant suppression pour les logs
       const item = inventory.getItem(instanceId);
       if (!item) {
-        return { success: false, error: "Item not found", code: "ITEM_NOT_FOUND" };
+        return { success: false, error: "Equipment not found", code: "EQUIPMENT_NOT_FOUND" };
       }
 
-      const removed = await inventory.removeItem(instanceId, quantity);
-      if (!removed) {
-        return { success: false, error: "Failed to remove item", code: "REMOVE_FAILED" };
+      if (!item.isEquipped) {
+        return { success: false, error: "Item is not equipped", code: "NOT_EQUIPPED" };
+      }
+
+      const success = await inventory.unequipItem(instanceId);
+      if (!success) {
+        return { success: false, error: "Failed to unequip item", code: "UNEQUIP_FAILED" };
       }
 
       return {
         success: true,
-        item: {
-          instanceId,
-          removedQuantity: quantity || item.quantity
-        }
+        newItem: { ...item, isEquipped: false, equippedTo: undefined }
       };
 
     } catch (error: any) {
-      console.error("❌ Erreur removeItem:", error);
-      return { success: false, error: error.message, code: "REMOVE_ITEM_FAILED" };
+      console.error("❌ Erreur unequipItem:", error);
+      return { success: false, error: error.message, code: "UNEQUIP_ITEM_FAILED" };
+    }
+  }
+
+  // === OUVRIR UN COFFRE ===
+  public static async openChest(
+    playerId: string,
+    instanceId: string,
+    serverId?: string
+  ): Promise<ChestOpenResult> {
+    try {
+      console.log(`📦 Ouverture coffre ${instanceId} pour ${playerId}`);
+
+      // ✅ VÉRIFICATION PLAYER ET SERVEUR
+      const player = await Player.findById(playerId).select("serverId");
+      if (!player) {
+        return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
+      }
+
+      if (serverId && player.serverId !== serverId) {
+        return { success: false, error: "Player not found on this server", code: "WRONG_SERVER" };
+      }
+
+      const inventory = await Inventory.findOne({ playerId });
+      if (!inventory) {
+        return { success: false, error: "Inventory not found", code: "INVENTORY_NOT_FOUND" };
+      }
+
+      const chestItem = inventory.getItem(instanceId);
+      if (!chestItem) {
+        return { success: false, error: "Chest not found", code: "CHEST_NOT_FOUND" };
+      }
+
+      // Récupérer les données du coffre
+      const itemData = await Item.findOne({ itemId: chestItem.itemId });
+      if (!itemData || itemData.category !== "Chest") {
+        return { success: false, error: "Item is not a chest", code: "NOT_A_CHEST" };
+      }
+
+      // Ouvrir le coffre
+      const rewards = await itemData.openChest(playerId);
+
+      // Supprimer le coffre de l'inventaire
+      await inventory.removeItem(instanceId, 1);
+
+      // Ajouter les récompenses
+      const addedItems = [];
+      for (const reward of rewards) {
+        if (reward.type === "Item" && reward.itemId) {
+          const addResult = await this.addItem(playerId, reward.itemId, reward.quantity, 1, 0, serverId);
+          if (addResult.success) {
+            addedItems.push(addResult.item);
+          }
+        }
+      }
+
+      return {
+        success: true,
+        rewards,
+        addedItems
+      };
+
+    } catch (error: any) {
+      console.error("❌ Erreur openChest:", error);
+      return { success: false, error: error.message, code: "OPEN_CHEST_FAILED" };
+    }
+  }
+
+  // === NETTOYER LES OBJETS EXPIRÉS ===
+  public static async cleanupExpiredItems(playerId: string, serverId?: string) {
+    try {
+      // ✅ VÉRIFICATION PLAYER ET SERVEUR
+      if (serverId) {
+        const player = await Player.findById(playerId).select("serverId");
+        if (!player || player.serverId !== serverId) {
+          throw new Error("Player not found on this server");
+        }
+      }
+
+      const inventory = await Inventory.findOne({ playerId });
+      if (!inventory) {
+        throw new Error("Inventory not found");
+      }
+
+      const removedCount = await inventory.cleanupExpiredItems();
+
+      return {
+        success: true,
+        message: "Inventory cleanup completed",
+        removedItems: removedCount
+      };
+
+    } catch (error: any) {
+      console.error("❌ Erreur cleanupExpiredItems:", error);
+      throw error;
     }
   }
 
@@ -405,15 +605,16 @@ export class InventoryService {
     additionalData?: any
   ) {
     try {
-      await Promise.all([
-        EventService.updatePlayerProgress(
+      // Vérifier si EventService existe avant de l'utiliser
+      if (typeof EventService !== 'undefined' && EventService.updatePlayerProgress) {
+        await EventService.updatePlayerProgress(
           playerId,
           additionalData?.serverId || "",
           "collect_items",
           value,
           additionalData
-        )
-      ]);
+        );
+      }
 
       console.log(`📊 Progression événements mise à jour: +${value} objets collectés`);
     } catch (error) {
@@ -500,6 +701,221 @@ export class InventoryService {
     } catch (error) {
       console.error(`❌ Erreur sync monnaies pour ${playerId}:`, error);
       return false;
+    }
+  }
+
+  // ✅ MÉTHODE DE VALIDATION: Vérifier la cohérence des données
+  public static async validateInventoryConsistency(playerId: string): Promise<{
+    valid: boolean;
+    issues: string[];
+    suggestions: string[];
+  }> {
+    const issues: string[] = [];
+    const suggestions: string[] = [];
+    
+    try {
+      const [player, inventory] = await Promise.all([
+        Player.findById(playerId),
+        Inventory.findOne({ playerId })
+      ]);
+      
+      if (!player) {
+        issues.push("Player not found");
+        return { valid: false, issues, suggestions };
+      }
+      
+      if (!inventory) {
+        issues.push("Inventory not found");
+        suggestions.push("Create inventory for player");
+        return { valid: false, issues, suggestions };
+      }
+      
+      // Vérifier la synchronisation des monnaies
+      if (inventory.gold !== player.gold) {
+        issues.push("Gold desynchronized");
+        suggestions.push(`Sync gold: Player(${player.gold}) != Inventory(${inventory.gold})`);
+      }
+      
+      if (inventory.gems !== player.gems) {
+        issues.push("Gems desynchronized");
+        suggestions.push(`Sync gems: Player(${player.gems}) != Inventory(${inventory.gems})`);
+      }
+      
+      if (inventory.paidGems !== player.paidGems) {
+        issues.push("Paid gems desynchronized");
+        suggestions.push(`Sync paid gems: Player(${player.paidGems}) != Inventory(${inventory.paidGems})`);
+      }
+      
+      if (inventory.tickets !== player.tickets) {
+        issues.push("Tickets desynchronized");
+        suggestions.push(`Sync tickets: Player(${player.tickets}) != Inventory(${inventory.tickets})`);
+      }
+      
+      // Vérifier la cohérence des objets équipés
+      const equippedItems = inventory.getEquippedItems();
+      for (const item of equippedItems) {
+        const heroExists = player.heroes.some(h => h.heroId.toString() === item.equippedTo);
+        if (!heroExists) {
+          issues.push(`Item ${item.instanceId} equipped to non-existent hero ${item.equippedTo}`);
+          suggestions.push(`Unequip item ${item.instanceId}`);
+        }
+      }
+      
+      return {
+        valid: issues.length === 0,
+        issues,
+        suggestions
+      };
+      
+    } catch (error: any) {
+      issues.push(`Validation error: ${error.message}`);
+      return { valid: false, issues, suggestions };
+    }
+  }
+
+  // ✅ MÉTHODE DE MIGRATION: Migrer les inventaires vers la nouvelle architecture
+  public static async migrateInventories(): Promise<{
+    migrated: number;
+    errors: number;
+    details: string[];
+  }> {
+    console.log("🔄 Début migration inventaires...");
+    
+    const details: string[] = [];
+    let migrated = 0;
+    let errors = 0;
+    
+    try {
+      // Récupérer tous les inventaires
+      const inventories = await Inventory.find({});
+      details.push(`Trouvé ${inventories.length} inventaires à vérifier`);
+      
+      for (const inventory of inventories) {
+        try {
+          // Vérifier si le playerId correspond à un Player._id valide
+          const player = await Player.findById(inventory.playerId);
+          
+          if (!player) {
+            details.push(`⚠️ Player non trouvé pour inventory ${inventory.playerId} - suppression`);
+            // Supprimer l'inventaire orphelin
+            await Inventory.deleteOne({ _id: inventory._id });
+            continue;
+          }
+          
+          // Synchroniser les monnaies
+          let needsUpdate = false;
+          
+          if (inventory.gold !== player.gold) {
+            inventory.gold = player.gold;
+            needsUpdate = true;
+          }
+          
+          if (inventory.gems !== player.gems) {
+            inventory.gems = player.gems;
+            needsUpdate = true;
+          }
+          
+          if (inventory.paidGems !== player.paidGems) {
+            inventory.paidGems = player.paidGems;
+            needsUpdate = true;
+          }
+          
+          if (inventory.tickets !== player.tickets) {
+            inventory.tickets = player.tickets;
+            needsUpdate = true;
+          }
+          
+          if (needsUpdate) {
+            await inventory.save();
+            details.push(`✅ Synchronisé inventory ${inventory.playerId}`);
+          }
+          
+          migrated++;
+          
+        } catch (error: any) {
+          details.push(`❌ Erreur migration inventory ${inventory.playerId}: ${error.message}`);
+          errors++;
+        }
+      }
+      
+      details.push(`✅ Migration terminée: ${migrated} inventaires migrés, ${errors} erreurs`);
+      console.log(`✅ Migration terminée: ${migrated} inventaires migrés, ${errors} erreurs`);
+      
+      return { migrated, errors, details };
+      
+    } catch (error: any) {
+      const errorMsg = `❌ Erreur migration globale: ${error.message}`;
+      details.push(errorMsg);
+      console.error(errorMsg);
+      throw error;
+    }
+  }
+
+  // ✅ MÉTHODE UTILITAIRE: Créer un inventaire complet pour un nouveau joueur
+  public static async createInventoryForNewPlayer(playerId: string): Promise<any> {
+    try {
+      console.log(`🆕 Création inventaire pour nouveau joueur ${playerId}`);
+      
+      // Vérifier que le joueur existe
+      const player = await Player.findById(playerId);
+      if (!player) {
+        throw new Error("Player not found");
+      }
+      
+      // Créer l'inventaire
+      const inventory = await (Inventory as any).createForPlayer(playerId);
+      
+      // Synchroniser les monnaies initiales
+      inventory.gold = player.gold;
+      inventory.gems = player.gems;
+      inventory.paidGems = player.paidGems;
+      inventory.tickets = player.tickets;
+      
+      await inventory.save();
+      
+      console.log(`✅ Inventaire créé pour ${playerId}`);
+      return inventory;
+      
+    } catch (error: any) {
+      console.error(`❌ Erreur création inventaire pour ${playerId}:`, error);
+      throw error;
+    }
+  }
+
+  // ✅ MÉTHODE DE MAINTENANCE: Nettoyer tous les inventaires orphelins
+  public static async cleanupOrphanedInventories(): Promise<{
+    deleted: number;
+    details: string[];
+  }> {
+    console.log("🧹 Nettoyage inventaires orphelins...");
+    
+    const details: string[] = [];
+    let deleted = 0;
+    
+    try {
+      const inventories = await Inventory.find({});
+      details.push(`Vérification de ${inventories.length} inventaires`);
+      
+      for (const inventory of inventories) {
+        const player = await Player.findById(inventory.playerId);
+        
+        if (!player) {
+          await Inventory.deleteOne({ _id: inventory._id });
+          details.push(`🗑️ Supprimé inventaire orphelin: ${inventory.playerId}`);
+          deleted++;
+        }
+      }
+      
+      details.push(`✅ Nettoyage terminé: ${deleted} inventaires orphelins supprimés`);
+      console.log(`✅ Nettoyage terminé: ${deleted} inventaires orphelins supprimés`);
+      
+      return { deleted, details };
+      
+    } catch (error: any) {
+      const errorMsg = `❌ Erreur nettoyage: ${error.message}`;
+      details.push(errorMsg);
+      console.error(errorMsg);
+      throw error;
     }
   }
 }
