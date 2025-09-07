@@ -106,16 +106,11 @@ export class HeroUpgradeService {
         atk: newStats.atk - oldStats.atk,
         def: newStats.def - oldStats.def,
         vitesse: newStats.vitesse - oldStats.vitesse,
-        intelligence: newStats.intelligence - oldStats.intelligence,
-        force: newStats.force - oldStats.force,
         moral: newStats.moral - oldStats.moral
       };
 
       await player.save();
-
-      await this.updateProgressTracking(player._id?.toString() || "", serverId, "level_up", finalTargetLevel - currentLevel);
-
-      console.log(`⬆️ ${heroData.name} level ${currentLevel} → ${finalTargetLevel} (${totalCost.gold} gold)`);
+      await this.updateProgressTracking(accountId, serverId, "level_up", finalTargetLevel - currentLevel);
 
       return {
         success: true,
@@ -141,7 +136,6 @@ export class HeroUpgradeService {
       };
 
     } catch (error: any) {
-      console.error("❌ Erreur levelUpHero:", error);
       return { success: false, error: error.message, code: "LEVEL_UP_FAILED" };
     }
   }
@@ -196,16 +190,11 @@ export class HeroUpgradeService {
         atk: newStats.atk - oldStats.atk,
         def: newStats.def - oldStats.def,
         vitesse: newStats.vitesse - oldStats.vitesse,
-        intelligence: newStats.intelligence - oldStats.intelligence,
-        force: newStats.force - oldStats.force,
         moral: newStats.moral - oldStats.moral
       };
 
       await player.save();
-
-     await this.updateProgressTracking(player._id?.toString() || "", serverId, "star_upgrade", 1);
-
-      console.log(`⭐ ${heroData.name} ${currentStars} → ${heroInstance.stars} étoiles (${requiredFragments} fragments)`);
+      await this.updateProgressTracking(accountId, serverId, "star_upgrade", 1);
 
       return {
         success: true,
@@ -231,7 +220,6 @@ export class HeroUpgradeService {
       };
 
     } catch (error: any) {
-      console.error("❌ Erreur upgradeHeroStars:", error);
       return { success: false, error: error.message, code: "STAR_UPGRADE_FAILED" };
     }
   }
@@ -298,8 +286,6 @@ export class HeroUpgradeService {
 
       await player.save();
 
-      console.log(`🔮 ${heroData.name} ${skillSlot} level ${currentSkillLevel} → ${currentSkillLevel + 1}`);
-
       return {
         success: true,
         skill: {
@@ -314,7 +300,6 @@ export class HeroUpgradeService {
       };
 
     } catch (error: any) {
-      console.error("❌ Erreur upgradeHeroSkill:", error);
       return { success: false, error: error.message };
     }
   }
@@ -390,9 +375,7 @@ export class HeroUpgradeService {
         heroData.save()
       ]);
 
-      await this.updateProgressTracking(player._id?.toString() || "", serverId, "hero_evolution", 1);
-
-      console.log(`🌟 ${heroData.name} évolution ${oldRarity} → ${newRarity}`);
+      await this.updateProgressTracking(accountId, serverId, "hero_evolution", 1);
 
       return {
         success: true,
@@ -406,7 +389,6 @@ export class HeroUpgradeService {
       };
 
     } catch (error: any) {
-      console.error("❌ Erreur evolveHero:", error);
       return { success: false, error: error.message };
     }
   }
@@ -490,14 +472,13 @@ export class HeroUpgradeService {
       };
 
     } catch (error: any) {
-      console.error("❌ Erreur getHeroUpgradeInfo:", error);
       throw error;
     }
   }
 
   public static async getPlayerHeroesUpgradeOverview(accountId: string, serverId: string) {
     try {
-      const player = await Player.findOne({ _id: playerId, serverId }).populate("heroes.heroId");
+      const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
       if (!player) {
         throw new Error("Player not found");
       }
@@ -560,7 +541,6 @@ export class HeroUpgradeService {
       };
 
     } catch (error: any) {
-      console.error("❌ Erreur getPlayerHeroesUpgradeOverview:", error);
       throw error;
     }
   }
@@ -618,7 +598,7 @@ export class HeroUpgradeService {
 
           results.push({
             heroInstanceId,
-            heroName: heroData.name, // heroData est maintenant correctement typé
+            heroName: heroData.name,
             success: true,
             oldLevel,
             newLevel: targetLevel,
@@ -637,7 +617,7 @@ export class HeroUpgradeService {
       await player.save();
 
       const successfulUpgrades = results.filter(r => r.success).length;
-      await this.updateProgressTracking(player._id?.toString() || "", serverId, "bulk_level_up", successfulUpgrades);
+      await this.updateProgressTracking(accountId, serverId, "bulk_level_up", successfulUpgrades);
 
       return {
         success: true,
@@ -650,7 +630,6 @@ export class HeroUpgradeService {
       };
 
     } catch (error: any) {
-      console.error("❌ Erreur bulkLevelUpHeroes:", error);
       throw error;
     }
   }
@@ -790,14 +769,13 @@ export class HeroUpgradeService {
       };
 
     } catch (error: any) {
-      console.error("❌ Erreur autoUpgradeHero:", error);
       throw error;
     }
   }
 
   public static async getUpgradeRecommendations(accountId: string, serverId: string) {
     try {
-      const player = await Player.findOne({ _id: playerId, serverId }).populate("heroes.heroId");
+      const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
       if (!player) {
         throw new Error("Player not found");
       }
@@ -807,7 +785,7 @@ export class HeroUpgradeService {
       const unequippedHeroes = player.heroes.filter((h: any) => !h.equipped);
 
       for (const heroInstance of equippedHeroes) {
-        const heroData = heroInstance.heroId as any; // Cast pour accéder aux propriétés après populate
+        const heroData = heroInstance.heroId as any;
         const priority = this.calculateUpgradePriority(heroInstance, heroData, player, true);
         
         if (priority.score > 0) {
@@ -823,7 +801,7 @@ export class HeroUpgradeService {
       }
 
       for (const heroInstance of unequippedHeroes.slice(0, 10)) {
-        const heroData = heroInstance.heroId as any; // Cast pour accéder aux propriétés après populate
+        const heroData = heroInstance.heroId as any;
         const priority = this.calculateUpgradePriority(heroInstance, heroData, player, false);
         
         if (priority.score > 0) {
@@ -855,14 +833,13 @@ export class HeroUpgradeService {
       };
 
     } catch (error: any) {
-      console.error("❌ Erreur getUpgradeRecommendations:", error);
       throw error;
     }
   }
 
   public static async getHeroUpgradeStats(accountId: string, serverId: string) {
     try {
-      const player = await Player.findOne({ _id: playerId, serverId }).populate("heroes.heroId");
+      const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
       if (!player) {
         throw new Error("Player not found");
       }
@@ -922,12 +899,9 @@ export class HeroUpgradeService {
       };
 
     } catch (error: any) {
-      console.error("❌ Erreur getHeroUpgradeStats:", error);
       throw error;
     }
   }
-
-  // === MÉTHODES PRIVÉES ===
 
   private static calculateLevelUpCost(currentLevel: number, targetLevel: number, rarity: string) {
     let totalGold = 0;
@@ -988,8 +962,6 @@ export class HeroUpgradeService {
       atk: Math.floor(heroData.baseStats.atk * totalMultiplier),
       def: Math.floor(heroData.baseStats.def * totalMultiplier),
       vitesse: Math.floor((heroData.baseStats.vitesse || 80) * Math.min(2.0, totalMultiplier * 0.6 + 0.4)),
-      intelligence: Math.floor((heroData.baseStats.intelligence || 70) * totalMultiplier),
-      force: Math.floor((heroData.baseStats.force || 80) * totalMultiplier),
       moral: Math.floor((heroData.baseStats.moral || 60) * totalMultiplier * 0.8 + 0.2)
     };
   }
@@ -1057,12 +1029,7 @@ export class HeroUpgradeService {
     };
   }
 
-  private static calculateUpgradePriority(
-    heroInstance: any,
-    heroData: any,
-    player: any,
-    isEquipped: boolean
-  ) {
+  private static calculateUpgradePriority(heroInstance: any, heroData: any, player: any, isEquipped: boolean) {
     let score = 0;
     const recommendations: string[] = [];
     let estimatedCost = { gold: 0, fragments: 0 };
@@ -1174,31 +1141,12 @@ export class HeroUpgradeService {
     return skillsInfo;
   }
 
-  private static async updateProgressTracking(
-    accountId: string,
-    serverId: string,
-    upgradeType: string,
-    value: number
-  ) {
+  private static async updateProgressTracking(accountId: string, serverId: string, upgradeType: string, value: number) {
     try {
       await Promise.all([
-        MissionService.updateProgress(
-          playerId,
-          serverId,
-          "heroes_owned",
-          value,
-          { upgradeType }
-        ),
-        EventService.updatePlayerProgress(
-          playerId,
-          serverId,
-          "collect_items",
-          value,
-          { itemType: "hero_upgrade", upgradeType }
-        )
+        MissionService.updateProgress(accountId, serverId, "heroes_owned", value, { upgradeType }),
+        EventService.updatePlayerProgress(accountId, serverId, "collect_items", value, { itemType: "hero_upgrade", upgradeType })
       ]);
-
-      console.log(`📊 Progression missions/événements mise à jour: ${upgradeType} +${value}`);
     } catch (error) {
       console.error("⚠️ Erreur mise à jour progression héros:", error);
     }
