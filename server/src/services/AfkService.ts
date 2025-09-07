@@ -181,7 +181,7 @@ const player = await Player.findOne({ playerId: playerId }).session(session);
       claimed = state.claim();
       await state.save();
 
-      const player = await Player.findById(playerId);
+      const player = await Player.findOne({ playerId: playerId });
       if (!player) throw new Error("Player not found");
       player.gold += claimed;
       await player.save();
@@ -300,7 +300,7 @@ const player = await Player.findOne({ playerId: playerId }).session(session);
         await state.save({ session });
 
         // 3. Obtenir le joueur
-        const player = await Player.findById(playerId).session(session);
+        const player = await Player.findOne({ playerId: playerId }).session(session);
         if (!player) throw new Error("Player not found");
 
         // 4. Appliquer les récompenses
@@ -429,7 +429,7 @@ const player = await Player.findOne({ playerId: playerId }).session(session);
    */
   static async canUseEnhancedSystem(playerId: string): Promise<boolean> {
     try {
-      const player = await Player.findById(playerId).select("world level");
+     const player = await Player.findOne({ playerId: playerId }).select("world level");
       if (!player) return false;
       
       // Conditions pour débloquer : monde 3+ OU niveau 50+
@@ -500,7 +500,7 @@ const player = await Player.findOne({ playerId: playerId }).session(session);
 
   private static async settleOfflineIfNeeded(playerId: string): Promise<void> {
     const [player, state] = await Promise.all([
-      Player.findById(playerId).select("lastSeenAt createdAt"),
+      Player.findOne({ playerId: playerId }).select("lastSeenAt createdAt"),
       AfkState.findOne({ playerId }),
     ]);
 
