@@ -2,10 +2,13 @@ import express, { Request, Response } from "express";
 import Joi from "joi";
 import { EventService } from "../services/EventService";
 import authMiddleware from "../middleware/authMiddleware";
+import serverMiddleware from "../middleware/serverMiddleware";
 
 const router = express.Router();
 
-// Schémas de validation
+// Appliquer serverMiddleware à toutes les routes
+router.use(serverMiddleware);
+
 const joinEventSchema = Joi.object({
   eventId: Joi.string().required().messages({
     'any.required': 'Event ID is required'
@@ -57,19 +60,17 @@ const createEventSchema = Joi.object({
   })).min(1).required()
 });
 
-// === RÉCUPÉRER LES ÉVÉNEMENTS ACTIFS ===
 router.get("/active", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    console.log(`📅 ${req.userId} récupère événements actifs serveur ${req.serverId}`);
-
-    const result = await EventService.getActiveEvents(req.serverId!);
+    const serverId = req.serverId!;
+    const result = await EventService.getActiveEvents(serverId);
 
     res.json({
       message: "Active events retrieved successfully",
       events: result.events,
       count: result.count,
       serverInfo: {
-        serverId: req.serverId,
+        serverId,
         timestamp: new Date().toISOString()
       }
     });
@@ -83,7 +84,6 @@ router.get("/active", authMiddleware, async (req: Request, res: Response): Promi
   }
 });
 
-// === REJOINDRE UN ÉVÉNEMENT ===
 router.post("/join", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = joinEventSchema.validate(req.body);
@@ -96,14 +96,10 @@ router.post("/join", authMiddleware, async (req: Request, res: Response): Promis
     }
 
     const { eventId } = req.body;
-    
-    console.log(`🎪 ${req.userId} tente de rejoindre événement ${eventId}`);
+    const accountId = req.userId!;
+    const serverId = req.serverId!;
 
-    const result = await EventService.joinEvent(
-      eventId,
-      req.userId!,
-      req.serverId!
-    );
+    const result = await EventService.joinEvent(eventId, accountId, serverId);
 
     if (!result.success) {
       res.status(400).json({ 
@@ -152,13 +148,12 @@ router.post("/join", authMiddleware, async (req: Request, res: Response): Promis
   }
 });
 
-// === RÉCUPÉRER LA PROGRESSION DES ÉVÉNEMENTS DU JOUEUR ===
 router.get("/my-progress", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const result = await EventService.getPlayerEventProgress(
-      req.userId!,
-      req.serverId!
-    );
+    const accountId = req.userId!;
+    const serverId = req.serverId!;
+
+    const result = await EventService.getPlayerEventProgress(accountId, serverId);
 
     res.json({
       message: "Player event progress retrieved successfully",
@@ -179,7 +174,6 @@ router.get("/my-progress", authMiddleware, async (req: Request, res: Response): 
   }
 });
 
-// === RÉCUPÉRER LE CLASSEMENT D'UN ÉVÉNEMENT ===
 router.get("/:eventId/leaderboard", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { eventId } = req.params;
@@ -195,12 +189,9 @@ router.get("/:eventId/leaderboard", authMiddleware, async (req: Request, res: Re
 
     const { limit } = req.query;
     const limitNum = parseInt(limit as string) || 50;
+    const serverId = req.serverId!;
 
-    const result = await EventService.getEventLeaderboard(
-      eventId,
-      req.serverId!,
-      limitNum
-    );
+    const result = await EventService.getEventLeaderboard(eventId, serverId, limitNum);
 
     res.json({
       message: "Event leaderboard retrieved successfully",
@@ -242,7 +233,6 @@ router.get("/:eventId/leaderboard", authMiddleware, async (req: Request, res: Re
   }
 });
 
-// === RÉCLAMER LES RÉCOMPENSES D'UN OBJECTIF ===
 router.post("/claim-rewards", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = claimRewardsSchema.validate(req.body);
@@ -255,15 +245,10 @@ router.post("/claim-rewards", authMiddleware, async (req: Request, res: Response
     }
 
     const { eventId, objectiveId } = req.body;
-    
-    console.log(`🎁 ${req.userId} réclame récompenses ${objectiveId} événement ${eventId}`);
+    const accountId = req.userId!;
+    const serverId = req.serverId!;
 
-    const result = await EventService.claimObjectiveRewards(
-      eventId,
-      req.userId!,
-      req.serverId!,
-      objectiveId
-    );
+    const result = await EventService.claimObjectiveRewards(eventId, accountId, serverId, objectiveId);
 
     res.json({
       message: result.message,
@@ -317,19 +302,19 @@ router.post("/claim-rewards", authMiddleware, async (req: Request, res: Response
   }
 });
 
-// === RÉCUPÉRER LES DÉTAILS D'UN ÉVÉNEMENT SPÉCIFIQUE ===
 router.get("/:eventId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { eventId } = req.params;
+    const serverId = req.serverId!;
+    const accountId = req.userId!;
     
-    // Pour cette route, on va chercher l'événement directement
     const Event = (await import("../models/Events")).default;
     
     const event = await Event.findOne({ 
       eventId, 
       isVisible: true,
       $or: [
-        { "serverConfig.allowedServers": req.serverId },
+        { "serverConfig.allowedServers": serverId },
         { "serverConfig.allowedServers": "ALL" }
       ]
     });
@@ -342,8 +327,7 @@ router.get("/:eventId", authMiddleware, async (req: Request, res: Response): Pro
       return;
     }
 
-    // Récupérer les données du joueur s'il participe
-    const playerParticipation = event.participants.find((p: any) => p.playerId === req.userId);
+    const playerParticipation = event.participants.find((p: any) => p.playerId === accountId);
 
     res.json({
       message: "Event details retrieved successfully",
@@ -387,13 +371,8 @@ router.get("/:eventId", authMiddleware, async (req: Request, res: Response): Pro
   }
 });
 
-// === ROUTES ADMIN (TODO: Ajouter middleware admin) ===
-
-// Créer un nouvel événement
 router.post("/admin/create", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // TODO: Vérifier les droits admin
-    
     const { error } = createEventSchema.validate(req.body);
     if (error) {
       res.status(400).json({ 
@@ -418,7 +397,7 @@ router.post("/admin/create", authMiddleware, async (req: Request, res: Response)
   } catch (err: any) {
     console.error("Create event error:", err);
     
-    if (err.code === 11000) { // Duplicate eventId
+    if (err.code === 11000) {
       res.status(400).json({ 
         error: "Event ID already exists",
         code: "DUPLICATE_EVENT_ID"
@@ -433,13 +412,9 @@ router.post("/admin/create", authMiddleware, async (req: Request, res: Response)
   }
 });
 
-// Démarrer un événement manuellement
 router.post("/admin/:eventId/start", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // TODO: Vérifier les droits admin
-    
     const { eventId } = req.params;
-    
     const result = await EventService.startEvent(eventId);
 
     res.json({
@@ -465,13 +440,9 @@ router.post("/admin/:eventId/start", authMiddleware, async (req: Request, res: R
   }
 });
 
-// Finaliser un événement
 router.post("/admin/:eventId/finalize", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // TODO: Vérifier les droits admin
-    
     const { eventId } = req.params;
-    
     const result = await EventService.finalizeEvent(eventId);
 
     res.json({
@@ -506,7 +477,6 @@ router.post("/admin/:eventId/finalize", authMiddleware, async (req: Request, res
   }
 });
 
-// === ROUTE DE TEST (développement uniquement) ===
 router.post("/test/progress", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     if (process.env.NODE_ENV === "production") {
@@ -514,9 +484,9 @@ router.post("/test/progress", authMiddleware, async (req: Request, res: Response
       return;
     }
 
-    console.log(`🧪 Test progression événements pour ${req.userId}`);
+    const accountId = req.userId!;
+    const serverId = req.serverId!;
 
-    // Tester différents types de progression
     const testResults = [];
 
     const progressTypes = [
@@ -528,8 +498,8 @@ router.post("/test/progress", authMiddleware, async (req: Request, res: Response
 
     for (const test of progressTypes) {
       const result = await EventService.updatePlayerProgress(
-        req.userId!,
-        req.serverId!,
+        accountId,
+        serverId,
         test.type as any,
         test.value,
         test.data
