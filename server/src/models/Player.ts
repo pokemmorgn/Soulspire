@@ -1,5 +1,6 @@
 import mongoose, { Document, Schema } from "mongoose";
 
+// ----- Sous-interfaces -----
 export interface IPlayerHero {
   heroId: string;
   level: number;
@@ -47,9 +48,9 @@ interface IVipTransaction {
   levelAfter: number;
 }
 
+// ----- Interface principale SANS _id -----
 export interface IPlayer {
-  _id: string;            // PRIMARY KEY = playerId string
-  playerId: string;       // Toujours défini, identique à _id
+  playerId: string;
   accountId: string;
   serverId: string;
   displayName: string;
@@ -108,7 +109,9 @@ export interface IPlayer {
   totalHeroesCollected: number;
 }
 
-interface IPlayerDocument extends Document, IPlayer {
+// ----- Document Mongoose -----
+export interface IPlayerDocument extends Document, IPlayer {
+  _id: string;
   addHero(heroId: string, level?: number, stars?: number): Promise<IPlayerDocument>;
   removeHero(heroId: string): Promise<IPlayerDocument>;
   upgradeHero(heroId: string, newLevel: number, newStars?: number): Promise<IPlayerDocument>;
@@ -127,6 +130,7 @@ interface IPlayerDocument extends Document, IPlayer {
   performDailyReset(): Promise<IPlayerDocument>;
 }
 
+// ----- Schémas des sous-documents -----
 const playerHeroSchema = new Schema<IPlayerHero>({
   heroId: { type: String, required: true },
   level: { type: Number, default: 1, min: 1, max: 100 },
@@ -171,6 +175,7 @@ const vipTransactionSchema = new Schema<IVipTransaction>({
   levelAfter: { type: Number, required: true, min: 0 }
 }, { _id: false });
 
+// ----- Schéma principal -----
 const playerSchema = new Schema<IPlayerDocument>({
   _id: {
     type: String,
@@ -242,12 +247,13 @@ const playerSchema = new Schema<IPlayerDocument>({
   collection: 'players'
 });
 
+// ----- Options et index -----
 playerSchema.set('toJSON', { virtuals: false });
 playerSchema.set('toObject', { virtuals: false });
-
 playerSchema.index({ accountId: 1, serverId: 1 });
 playerSchema.index({ serverId: 1 });
 
+// ----- Statics -----
 playerSchema.statics.findByAccount = function(accountId: string, serverId?: string) {
   const query: any = { accountId };
   if (serverId) query.serverId = serverId;
@@ -275,6 +281,7 @@ playerSchema.statics.getActivePlayersOnServer = function(serverId: string, hours
   return this.find({ serverId, lastSeenAt: { $gte: cutoff } });
 };
 
+// ----- Méthodes -----
 playerSchema.methods.addHero = function(heroId: string, level: number = 1, stars: number = 1) {
   const existingHero = this.heroes.find((h: IPlayerHero) => h.heroId === heroId);
   if (existingHero) {
