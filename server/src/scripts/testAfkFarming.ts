@@ -386,8 +386,8 @@ async function testAfkFarming(): Promise<void> {
     await createTestCampaignData();
     const { beginnerPlayer, advancedPlayer } = await getOrCreateFarmingTestPlayers();
     
-    const beginnerId = (beginnerPlayer._id as Types.ObjectId).toString();
-    const advancedId = (advancedPlayer._id as Types.ObjectId).toString();
+const beginnerId = beginnerPlayer._id;
+const advancedId = advancedPlayer._id;
 
     // Test 1: Preview des récompenses
     await testRewardsPreview();
