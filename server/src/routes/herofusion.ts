@@ -1,9 +1,13 @@
 import express, { Request, Response } from "express";
 import Joi from "joi";
 import authMiddleware from "../middleware/authMiddleware";
+import serverMiddleware from "../middleware/serverMiddleware";
 import { HeroFusionService } from "../services/HeroFusionService";
 
 const router = express.Router();
+
+// ✅ CORRECTION: Ajouter serverMiddleware
+router.use(serverMiddleware);
 
 const fusionPreviewSchema = Joi.object({
   heroInstanceId: Joi.string().required(),
@@ -39,16 +43,19 @@ router.get("/preview/:heroInstanceId", authMiddleware, async (req: Request, res:
     }
 
     const { heroInstanceId } = req.params;
-    const serverId = req.headers['x-server-id'] as string || "S1";
+    // ✅ CORRECTION: Utiliser accountId et serverId du middleware
+    const accountId = req.userId!;
+    const serverId = req.serverId!;
 
     const preview = await HeroFusionService.getFusionPreview(
-      req.userId!,
+      accountId,
       serverId,
       heroInstanceId
     );
 
     res.json({
       message: "Fusion preview retrieved successfully",
+      serverId,
       ...preview
     });
   } catch (err) {
@@ -66,10 +73,12 @@ router.post("/execute", authMiddleware, async (req: Request, res: Response): Pro
     }
 
     const { heroInstanceId, requirements } = req.body;
-    const serverId = req.headers['x-server-id'] as string || "S1";
+    // ✅ CORRECTION: Utiliser accountId et serverId du middleware
+    const accountId = req.userId!;
+    const serverId = req.serverId!;
 
     const result = await HeroFusionService.fuseHero(
-      req.userId!,
+      accountId,
       serverId,
       heroInstanceId,
       requirements
@@ -85,6 +94,7 @@ router.post("/execute", authMiddleware, async (req: Request, res: Response): Pro
 
     res.json({
       message: "Hero fusion completed successfully",
+      serverId,
       ...result
     });
   } catch (err) {
@@ -95,15 +105,18 @@ router.post("/execute", authMiddleware, async (req: Request, res: Response): Pro
 
 router.get("/fusable", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const serverId = req.headers['x-server-id'] as string || "S1";
+    // ✅ CORRECTION: Utiliser accountId et serverId du middleware
+    const accountId = req.userId!;
+    const serverId = req.serverId!;
 
     const result = await HeroFusionService.getFusableHeroes(
-      req.userId!,
+      accountId,
       serverId
     );
 
     res.json({
       message: "Fusable heroes retrieved successfully",
+      serverId,
       ...result
     });
   } catch (err) {
@@ -121,16 +134,19 @@ router.get("/history", authMiddleware, async (req: Request, res: Response): Prom
     }
 
     const { limit } = req.query as any;
-    const serverId = req.headers['x-server-id'] as string || "S1";
+    // ✅ CORRECTION: Utiliser accountId et serverId du middleware
+    const accountId = req.userId!;
+    const serverId = req.serverId!;
 
     const result = await HeroFusionService.getFusionHistory(
-      req.userId!,
+      accountId,
       serverId,
       parseInt(limit) || 20
     );
 
     res.json({
       message: "Fusion history retrieved successfully",
+      serverId,
       ...result
     });
   } catch (err) {
@@ -141,15 +157,18 @@ router.get("/history", authMiddleware, async (req: Request, res: Response): Prom
 
 router.get("/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const serverId = req.headers['x-server-id'] as string || "S1";
+    // ✅ CORRECTION: Utiliser accountId et serverId du middleware
+    const accountId = req.userId!;
+    const serverId = req.serverId!;
 
     const result = await HeroFusionService.getFusionStats(
-      req.userId!,
+      accountId,
       serverId
     );
 
     res.json({
       message: "Fusion stats retrieved successfully",
+      serverId,
       ...result
     });
   } catch (err) {
@@ -161,16 +180,19 @@ router.get("/stats", authMiddleware, async (req: Request, res: Response): Promis
 router.get("/path/:targetHeroId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { targetHeroId } = req.params;
-    const serverId = req.headers['x-server-id'] as string || "S1";
+    // ✅ CORRECTION: Utiliser accountId et serverId du middleware
+    const accountId = req.userId!;
+    const serverId = req.serverId!;
 
     const result = await HeroFusionService.getOptimalFusionPath(
-      req.userId!,
+      accountId,
       serverId,
       targetHeroId
     );
 
     res.json({
       message: "Optimal fusion path calculated successfully",
+      serverId,
       ...result
     });
   } catch (err) {
@@ -181,15 +203,18 @@ router.get("/path/:targetHeroId", authMiddleware, async (req: Request, res: Resp
 
 router.get("/analytics", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const serverId = req.headers['x-server-id'] as string || "S1";
+    // ✅ CORRECTION: Utiliser accountId et serverId du middleware
+    const accountId = req.userId!;
+    const serverId = req.serverId!;
 
     const result = await HeroFusionService.getPlayerFusionAnalytics(
-      req.userId!,
+      accountId,
       serverId
     );
 
     res.json({
       message: "Fusion analytics retrieved successfully",
+      serverId,
       ...result
     });
   } catch (err) {
@@ -201,16 +226,19 @@ router.get("/analytics", authMiddleware, async (req: Request, res: Response): Pr
 router.get("/hero-history/:heroId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { heroId } = req.params;
-    const serverId = req.headers['x-server-id'] as string || "S1";
+    // ✅ CORRECTION: Utiliser accountId et serverId du middleware
+    const accountId = req.userId!;
+    const serverId = req.serverId!;
 
     const result = await HeroFusionService.getHeroSpecificHistory(
-      req.userId!,
+      accountId,
       serverId,
       heroId
     );
 
     res.json({
       message: "Hero fusion history retrieved successfully",
+      serverId,
       ...result
     });
   } catch (err) {
@@ -227,7 +255,8 @@ router.get("/leaderboard", authMiddleware, async (req: Request, res: Response): 
       return;
     }
 
-    const serverId = req.headers['x-server-id'] as string || "S1";
+    // ✅ CORRECTION: Utiliser serverId du middleware
+    const serverId = req.serverId!;
     const { timeframe, limit } = req.query as any;
 
     const result = await HeroFusionService.getServerFusionLeaderboard(
@@ -238,6 +267,7 @@ router.get("/leaderboard", authMiddleware, async (req: Request, res: Response): 
 
     res.json({
       message: "Fusion leaderboard retrieved successfully",
+      serverId,
       ...result
     });
   } catch (err) {
@@ -291,6 +321,7 @@ router.post("/simulate", authMiddleware, async (req: Request, res: Response): Pr
 
     res.json({
       message: "Fusion simulation completed successfully",
+      serverId: req.serverId,
       simulation
     });
   } catch (err) {
@@ -325,6 +356,7 @@ router.post("/cost-calculator", authMiddleware, async (req: Request, res: Respon
 
     res.json({
       message: "Ascension cost calculated successfully",
+      serverId: req.serverId,
       from: `${fromRarity} ${fromStars}★`,
       to: `${toRarity} ${toStars}★`,
       totalCost,
