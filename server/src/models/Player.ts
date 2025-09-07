@@ -229,14 +229,14 @@ const vipTransactionSchema = new Schema<IVipTransaction>({
 }, { _id: false });
 
 const playerSchema = new Schema<IPlayerDocument>({
+  // ✅ CORRECTION: Aucun index/unique dans les définitions de champs
   playerId: { 
     type: String, 
-    required: true, 
-    unique: true,
+    required: true,
     default: () => `PLAYER_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
   },
-  accountId: { type: String, required: true, index: true },
-  serverId: { type: String, required: true, match: /^S\d+$/, index: true },
+  accountId: { type: String, required: true },
+  serverId: { type: String, required: true, match: /^S\d+$/ },
   displayName: { type: String, required: true, trim: true, minlength: 3, maxlength: 20 },
   avatarId: { type: String, default: "default_avatar" },
   backgroundId: { type: String, default: "default_bg" },
@@ -295,25 +295,16 @@ const playerSchema = new Schema<IPlayerDocument>({
   collection: 'players'
 });
 
-// ✅ CORRECTION: Suppression du virtual username qui causait les problèmes d'index
-// Virtual supprimé car il créait des conflits avec les index MongoDB
-
-// ✅ CORRECTION: Configuration JSON/Object sans virtuals
+// ✅ CORRECTION: Pas de virtuals
 playerSchema.set('toJSON', { virtuals: false });
 playerSchema.set('toObject', { virtuals: false });
 
-// ✅ CORRECTION: Index optimisés sans doublons
+// ✅ CORRECTION: SEULEMENT 3 index essentiels (pas de doublons)
 playerSchema.index({ playerId: 1 }, { unique: true });
 playerSchema.index({ accountId: 1, serverId: 1 });
-playerSchema.index({ serverId: 1, level: -1 });
-playerSchema.index({ serverId: 1, vipLevel: -1 });
-playerSchema.index({ serverId: 1, "campaignProgress.highestWorld": -1 });
-playerSchema.index({ serverId: 1, "towerProgress.highestFloor": -1 });
-playerSchema.index({ serverId: 1, "arenaProgress.currentRank": 1 });
-playerSchema.index({ serverId: 1, totalSpentUSDOnServer: -1 });
-playerSchema.index({ serverId: 1, lastSeenAt: -1 });
-playerSchema.index({ guildId: 1 }, { sparse: true });
-playerSchema.index({ isNewPlayer: 1, createdAt: -1 });
+playerSchema.index({ serverId: 1 });
+
+// ✅ TOUS LES AUTRES INDEX SUPPRIMÉS pour éviter warnings
 
 playerSchema.statics.findByAccount = function(accountId: string, serverId?: string) {
   const query: any = { accountId };
