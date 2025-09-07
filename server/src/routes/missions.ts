@@ -2,10 +2,14 @@ import express, { Request, Response } from "express";
 import Joi from "joi";
 import { MissionService } from "../services/MissionService";
 import authMiddleware from "../middleware/authMiddleware";
+import serverMiddleware from "../middleware/serverMiddleware";
 import { requireFeature } from "../middleware/featureMiddleware";
+
 const router = express.Router();
 
-// Schémas de validation
+// Appliquer serverMiddleware à toutes les routes
+router.use(serverMiddleware);
+
 const claimRewardsSchema = Joi.object({
   missionId: Joi.string().required().messages({
     'any.required': 'Mission ID is required'
@@ -57,15 +61,12 @@ const statsQuerySchema = Joi.object({
   serverId: Joi.string().pattern(/^S\d+$/)
 });
 
-// === RÉCUPÉRER LES MISSIONS DU JOUEUR ===
 router.get("/", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    console.log(`🎯 ${req.userId} récupère ses missions sur serveur ${req.serverId}`);
+    const accountId = req.userId!;
+    const serverId = req.serverId!;
 
-    const result = await MissionService.getPlayerMissions(
-      req.userId!,
-      req.serverId!
-    );
+    const result = await MissionService.getPlayerMissions(accountId, serverId);
 
     res.json({
       message: "Player missions retrieved successfully",
@@ -74,7 +75,7 @@ router.get("/", authMiddleware, async (req: Request, res: Response): Promise<voi
       progress: result.progress,
       timeRemaining: result.timeRemaining,
       serverInfo: {
-        serverId: req.serverId,
+        serverId,
         timestamp: new Date().toISOString()
       }
     });
@@ -97,15 +98,12 @@ router.get("/", authMiddleware, async (req: Request, res: Response): Promise<voi
   }
 });
 
-// === INITIALISER LES MISSIONS D'UN JOUEUR ===
 router.post("/initialize", authMiddleware, requireFeature("bounty_board"), async (req: Request, res: Response): Promise<void> => {
   try {
-    console.log(`🎯 Initialisation missions pour ${req.userId}`);
+    const accountId = req.userId!;
+    const serverId = req.serverId!;
 
-    const result = await MissionService.initializePlayerMissions(
-      req.userId!,
-      req.serverId!
-    );
+    const result = await MissionService.initializePlayerMissions(accountId, serverId);
 
     if (result.existing) {
       res.json({
@@ -144,7 +142,6 @@ router.post("/initialize", authMiddleware, requireFeature("bounty_board"), async
   }
 });
 
-// === RÉCLAMER LES RÉCOMPENSES D'UNE MISSION ===
 router.post("/claim", authMiddleware, requireFeature("bounty_board"), async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = claimRewardsSchema.validate(req.body);
@@ -157,14 +154,10 @@ router.post("/claim", authMiddleware, requireFeature("bounty_board"), async (req
     }
 
     const { missionId } = req.body;
-    
-    console.log(`🎁 ${req.userId} réclame récompenses mission ${missionId}`);
+    const accountId = req.userId!;
+    const serverId = req.serverId!;
 
-    const result = await MissionService.claimMissionRewards(
-      req.userId!,
-      req.serverId!,
-      missionId
-    );
+    const result = await MissionService.claimMissionRewards(accountId, serverId, missionId);
 
     if (!result.success) {
       res.status(400).json({ 
@@ -211,16 +204,12 @@ router.post("/claim", authMiddleware, requireFeature("bounty_board"), async (req
   }
 });
 
-// === RÉCLAMER TOUTES LES RÉCOMPENSES DISPONIBLES ===
 router.post("/claim-all", authMiddleware, requireFeature("bounty_board"), async (req: Request, res: Response): Promise<void> => {
-
   try {
-    console.log(`🎁 ${req.userId} réclame toutes les récompenses disponibles`);
+    const accountId = req.userId!;
+    const serverId = req.serverId!;
 
-    const result = await MissionService.claimAllAvailableRewards(
-      req.userId!,
-      req.serverId!
-    );
+    const result = await MissionService.claimAllAvailableRewards(accountId, serverId);
 
     res.json({
       message: result.message,
@@ -250,12 +239,9 @@ router.post("/claim-all", authMiddleware, requireFeature("bounty_board"), async 
   }
 });
 
-// === RÉCUPÉRER LES STATISTIQUES DES MISSIONS ===
 router.get("/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // Pour l'instant, utiliser le serverId de la requête
     const targetServerId = req.serverId!;
-
     const result = await MissionService.getMissionStats(targetServerId);
 
     res.json({
@@ -274,13 +260,8 @@ router.get("/stats", authMiddleware, async (req: Request, res: Response): Promis
   }
 });
 
-// === ROUTES ADMIN (TODO: Ajouter middleware admin) ===
-
-// Créer un template de mission
 router.post("/admin/templates", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // TODO: Vérifier les droits admin
-    
     const { error } = createTemplateSchema.validate(req.body);
     if (error) {
       res.status(400).json({ 
@@ -305,7 +286,7 @@ router.post("/admin/templates", authMiddleware, async (req: Request, res: Respon
   } catch (err: any) {
     console.error("Create mission template error:", err);
     
-    if (err.code === 11000) { // Duplicate missionId
+    if (err.code === 11000) {
       res.status(400).json({ 
         error: "Mission ID already exists",
         code: "DUPLICATE_MISSION_ID"
@@ -320,10 +301,8 @@ router.post("/admin/templates", authMiddleware, async (req: Request, res: Respon
   }
 });
 
-// Forcer le reset des missions (admin/test)
 router.post("/admin/force-reset", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // TODO: Vérifier les droits admin ou mode développement
     if (process.env.NODE_ENV === "production") {
       res.status(403).json({ 
         error: "Force reset not available in production",
@@ -342,14 +321,10 @@ router.post("/admin/force-reset", authMiddleware, async (req: Request, res: Resp
     }
 
     const { resetType } = req.body;
-    
-    console.log(`🔄 ${req.userId} force le reset ${resetType}`);
+    const accountId = req.userId!;
+    const serverId = req.serverId!;
 
-    const result = await MissionService.forceResetMissions(
-      req.userId!,
-      req.serverId!,
-      resetType
-    );
+    const result = await MissionService.forceResetMissions(accountId, serverId, resetType);
 
     res.json({
       message: result.message,
@@ -375,15 +350,11 @@ router.post("/admin/force-reset", authMiddleware, async (req: Request, res: Resp
   }
 });
 
-// Récupérer les templates de missions (admin)
 router.get("/admin/templates", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // TODO: Vérifier les droits admin
-    
     const type = req.query.type as string;
     const category = req.query.category as string;
     
-    // Import dynamique pour éviter les dépendances circulaires
     const { MissionTemplate } = await import("../models/Missions");
     
     let filter: any = { isActive: true };
@@ -410,7 +381,6 @@ router.get("/admin/templates", authMiddleware, async (req: Request, res: Respons
   }
 });
 
-// === ROUTE DE TEST (développement uniquement) ===
 router.post("/test/progress", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     if (process.env.NODE_ENV === "production") {
@@ -418,9 +388,9 @@ router.post("/test/progress", authMiddleware, async (req: Request, res: Response
       return;
     }
 
-    console.log(`🧪 Test progression missions pour ${req.userId}`);
+    const accountId = req.userId!;
+    const serverId = req.serverId!;
 
-    // Tester différents types de progression
     const testResults = [];
 
     const progressTypes = [
@@ -433,8 +403,8 @@ router.post("/test/progress", authMiddleware, async (req: Request, res: Response
 
     for (const test of progressTypes) {
       const result = await MissionService.updateProgress(
-        req.userId!,
-        req.serverId!,
+        accountId,
+        serverId,
         test.type as any,
         test.value,
         test.data
@@ -465,7 +435,6 @@ router.post("/test/progress", authMiddleware, async (req: Request, res: Response
   }
 });
 
-// === ROUTE D'INFORMATION SUR LES TYPES DE MISSIONS ===
 router.get("/info/types", async (req: Request, res: Response): Promise<void> => {
   try {
     const missionInfo = {
