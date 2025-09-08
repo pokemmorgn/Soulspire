@@ -133,14 +133,18 @@ async function migratePlayers(): Promise<number> {
     const newPlayerId = generatePlayerId();
 
     try {
-      // Prépare le nouveau document
-      const migrated: any = {
+      // Prépare le nouveau document avec type any pour éviter les conflits TypeScript
+      const migrated = {
         ...player,
         _id: newPlayerId,
         playerId: newPlayerId,
         oldPlayerId: oldPlayerId // Backup pour rollback
-      };
-      delete migrated.__v;
+      } as any;
+      
+      // Supprime le champ de versioning Mongoose s'il existe
+      if (migrated.__v !== undefined) {
+        delete migrated.__v;
+      }
 
       // Migre les transactions VIP avec UUID si nécessaire
       if (migrated.vipTransactions && Array.isArray(migrated.vipTransactions)) {
