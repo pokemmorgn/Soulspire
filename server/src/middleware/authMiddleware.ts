@@ -115,24 +115,30 @@ const authMiddleware = (req: Request, res: Response, next: NextFunction): void =
 
     next();
   } catch (err) {
-    console.error("Auth middleware error:", err);
-    
-    if (err instanceof jwt.JsonWebTokenError) {
-      res.status(403).json({ 
-        error: "Invalid or expired token",
-        code: "TOKEN_INVALID"
-      });
-      return;
-    }
+    // ✅ CORRECTION: Gestion spécifique des erreurs JWT sans pollution des logs
     
     if (err instanceof jwt.TokenExpiredError) {
+      // ✅ Token expiré = comportement normal, pas un "log d'erreur"
+      console.log(`🔒 Token expired (expiredAt: ${err.expiredAt}) - User needs to login again`);
       res.status(403).json({ 
         error: "Token expired",
         code: "TOKEN_EXPIRED"
       });
       return;
     }
+    
+    if (err instanceof jwt.JsonWebTokenError) {
+      // ✅ Token invalide = info level plutôt qu'erreur
+      console.log(`🔒 Invalid JWT token: ${err.message}`);
+      res.status(403).json({ 
+        error: "Invalid or expired token",
+        code: "TOKEN_INVALID"
+      });
+      return;
+    }
 
+    // ✅ Seules les VRAIES erreurs sont loggées comme erreurs
+    console.error("🚨 Auth middleware error:", err);
     res.status(500).json({ 
       error: "Authentication failed",
       code: "AUTH_FAILED"
@@ -140,7 +146,7 @@ const authMiddleware = (req: Request, res: Response, next: NextFunction): void =
   }
 };
 
-// Middleware optionnel
+// Middleware optionnel (encore plus silencieux)
 const optionalAuthMiddleware = (req: Request, res: Response, next: NextFunction): void => {
   const authHeader = req.headers.authorization;
   
@@ -173,7 +179,12 @@ const optionalAuthMiddleware = (req: Request, res: Response, next: NextFunction)
       }
     }
   } catch (err) {
-    console.warn("Optional auth failed:", err);
+    // ✅ Middleware optionnel = encore plus silencieux
+    if (err instanceof jwt.TokenExpiredError || err instanceof jwt.JsonWebTokenError) {
+      // Token expiré/invalide en mode optionnel = totalement normal, pas de log
+    } else {
+      console.warn("⚠️ Optional auth failed:", err);
+    }
   }
   
   next();
