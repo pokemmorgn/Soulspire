@@ -120,7 +120,7 @@ export class WebSocketService {
     });
 
     // Gestion de la déconnexion
-    socket.on('disconnect', (reason) => {
+    socket.on('disconnect', (reason: string) => {
       console.log(`🔌 WebSocket disconnected: ${playerName} (${reason})`);
       
       this.connectedPlayers.delete(playerId);
