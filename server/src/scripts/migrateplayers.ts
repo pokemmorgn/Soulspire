@@ -1,26 +1,62 @@
-const mongoose = require('mongoose');
-const { v4: uuidv4 } = require('uuid');
+import mongoose from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
 
-// Générateur d'IDs UUID v4 (version simplifiée pour le script)
-function generatePlayerId() {
+// Types pour TypeScript
+interface Transaction {
+  transactionId?: string;
+  [key: string]: any;
+}
+
+interface Purchase {
+  transactionId?: string;
+  [key: string]: any;
+}
+
+interface MigrationStatus {
+  totalAccounts: number;
+  migratedAccounts: number;
+  totalPlayers: number;
+  migratedPlayers: number;
+  needsMigration: boolean;
+}
+
+interface PlayerDocument {
+  _id: any;
+  playerId?: string;
+  displayName?: string;
+  username?: string;
+  vipTransactions?: Transaction[];
+  serverPurchases?: Purchase[];
+  [key: string]: any;
+}
+
+interface AccountDocument {
+  _id: any;
+  accountId?: string;
+  username?: string;
+  [key: string]: any;
+}
+
+// Générateur d'IDs UUID v4
+function generatePlayerId(): string {
   return `PLAYER_${uuidv4().replace(/-/g, '')}`;
 }
 
-function generateAccountId() {
+function generateAccountId(): string {
   return `ACC_${uuidv4().replace(/-/g, '')}`;
 }
 
-function generateTransactionId() {
+function generateTransactionId(): string {
   return `TXN_${uuidv4().replace(/-/g, '')}`;
 }
 
 // Validation UUID format
-function isOldFormat(id) {
+function isOldFormat(id: string | undefined | null): boolean {
   // Détecte l'ancien format: PLAYER_timestamp_random ou pas de préfixe
-  return !id || id.match(/^PLAYER_\d+_[a-z0-9]+$/) || !id.startsWith('PLAYER_');
+  return !id || id.match(/^PLAYER_\d+_[a-z0-9]+$/) !== null || !id.startsWith('PLAYER_');
 }
 
-async function migrateAccounts() {
+async function migrateAccounts(): Promise<number> {
   console.log('🔍 Migration des comptes...');
   const db = mongoose.connection;
   let migratedCount = 0;
@@ -33,7 +69,9 @@ async function migrateAccounts() {
   });
 
   while (await cursor.hasNext()) {
-    const account = await cursor.next();
+    const account = await cursor.next() as AccountDocument | null;
+    if (!account) continue;
+
     const oldAccountId = account.accountId || account._id;
     const newAccountId = generateAccountId();
 
@@ -66,7 +104,8 @@ async function migrateAccounts() {
       migratedCount++;
 
     } catch (error) {
-      console.error(`❌ Erreur migration compte ${oldAccountId}:`, error.message);
+      const err = error as Error;
+      console.error(`❌ Erreur migration compte ${oldAccountId}:`, err.message);
     }
   }
 
@@ -74,7 +113,7 @@ async function migrateAccounts() {
   return migratedCount;
 }
 
-async function migratePlayers() {
+async function migratePlayers(): Promise<number> {
   console.log('🔍 Migration des joueurs...');
   const db = mongoose.connection;
   let migratedCount = 0;
@@ -87,7 +126,9 @@ async function migratePlayers() {
   });
 
   while (await cursor.hasNext()) {
-    const player = await cursor.next();
+    const player = await cursor.next() as PlayerDocument | null;
+    if (!player) continue;
+
     const oldPlayerId = player.playerId || player._id;
     const newPlayerId = generatePlayerId();
 
@@ -103,7 +144,7 @@ async function migratePlayers() {
 
       // Migre les transactions VIP avec UUID si nécessaire
       if (migrated.vipTransactions && Array.isArray(migrated.vipTransactions)) {
-        migrated.vipTransactions = migrated.vipTransactions.map(transaction => ({
+        migrated.vipTransactions = migrated.vipTransactions.map((transaction: Transaction) => ({
           ...transaction,
           transactionId: transaction.transactionId && transaction.transactionId.startsWith('TXN_') 
             ? transaction.transactionId 
@@ -113,7 +154,7 @@ async function migratePlayers() {
 
       // Migre les achats serveur avec UUID si nécessaire
       if (migrated.serverPurchases && Array.isArray(migrated.serverPurchases)) {
-        migrated.serverPurchases = migrated.serverPurchases.map(purchase => ({
+        migrated.serverPurchases = migrated.serverPurchases.map((purchase: Purchase) => ({
           ...purchase,
           transactionId: purchase.transactionId && purchase.transactionId.startsWith('TXN_')
             ? purchase.transactionId
@@ -129,7 +170,8 @@ async function migratePlayers() {
       migratedCount++;
 
     } catch (error) {
-      console.error(`❌ Erreur migration joueur ${oldPlayerId}:`, error.message);
+      const err = error as Error;
+      console.error(`❌ Erreur migration joueur ${oldPlayerId}:`, err.message);
     }
   }
 
@@ -137,7 +179,7 @@ async function migratePlayers() {
   return migratedCount;
 }
 
-async function checkMigrationStatus() {
+async function checkMigrationStatus(): Promise<MigrationStatus | null> {
   console.log('📊 Vérification du statut de migration...');
   const db = mongoose.connection;
 
@@ -164,12 +206,13 @@ async function checkMigrationStatus() {
     return { totalAccounts, migratedAccounts, totalPlayers, migratedPlayers, needsMigration };
 
   } catch (error) {
-    console.error('❌ Erreur vérification statut:', error.message);
+    const err = error as Error;
+    console.error('❌ Erreur vérification statut:', err.message);
     return null;
   }
 }
 
-async function cleanupOldFields() {
+async function cleanupOldFields(): Promise<void> {
   console.log('🧹 Nettoyage des champs temporaires...');
   const db = mongoose.connection;
 
@@ -190,11 +233,12 @@ async function cleanupOldFields() {
     console.log(`   Joueurs: ${playersUpdated.modifiedCount} documents\n`);
 
   } catch (error) {
-    console.error('❌ Erreur nettoyage:', error.message);
+    const err = error as Error;
+    console.error('❌ Erreur nettoyage:', err.message);
   }
 }
 
-async function migrate() {
+async function migrate(): Promise<void> {
   console.log('🚀 Démarrage de la migration UUID v4...\n');
   
   try {
@@ -234,7 +278,8 @@ async function migrate() {
     }
 
   } catch (error) {
-    console.error('💥 Erreur fatale:', error.message);
+    const err = error as Error;
+    console.error('💥 Erreur fatale:', err.message);
   } finally {
     await mongoose.disconnect();
     console.log('\n🔌 Connexion fermée');
@@ -249,10 +294,10 @@ async function main(): Promise<void> {
     console.log(`
 🔧 MIGRATION UUID v4 - Utilisation:
 
-  npx ts-node migrate-player-uuid.ts           # Migration complète
-  npx ts-node migrate-player-uuid.ts --check   # Vérifier le statut seulement  
-  npx ts-node migrate-player-uuid.ts --cleanup # Nettoyer les champs temporaires
-  npx ts-node migrate-player-uuid.ts --help    # Afficher cette aide
+  npx ts-node src/scripts/migrateplayers.ts           # Migration complète
+  npx ts-node src/scripts/migrateplayers.ts --check   # Vérifier le statut seulement  
+  npx ts-node src/scripts/migrateplayers.ts --cleanup # Nettoyer les champs temporaires
+  npx ts-node src/scripts/migrateplayers.ts --help    # Afficher cette aide
 
 📋 Prérequis:
   npm install uuid @types/uuid
@@ -266,16 +311,25 @@ async function main(): Promise<void> {
 
   await mongoose.connect('mongodb://localhost:27017/unity-gacha-game');
 
-  if (args.includes('--check')) {
-    await checkMigrationStatus();
-  } else if (args.includes('--cleanup')) {
-    await cleanupOldFields();
-  } else {
-    await migrate();
-    return; // migrate() gère déjà la déconnexion
+  try {
+    if (args.includes('--check')) {
+      await checkMigrationStatus();
+    } else if (args.includes('--cleanup')) {
+      await cleanupOldFields();
+    } else {
+      await migrate();
+      return; // migrate() gère déjà la déconnexion
+    }
+  } finally {
+    await mongoose.disconnect();
   }
-
-  await mongoose.disconnect();
 }
 
-main().catch(console.error);
+// Exécution du script
+if (require.main === module) {
+  main().catch((error) => {
+    const err = error as Error;
+    console.error('💥 Erreur fatale:', err.message);
+    process.exit(1);
+  });
+}
