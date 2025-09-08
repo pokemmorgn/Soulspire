@@ -106,7 +106,8 @@ export class ArenaCombat {
       await this.handlePostMatchEvents(attacker, defender, battleResult.result.victory, promotionInfo);
 
       // Étape 9: Mettre à jour les classements
-      await this.updateArenaRankings(serverId);
+      const { ArenaCache } = await import('./ArenaCache');
+      ArenaCache.invalidateAfterMatch(attackerId, defenderId, serverId);
 
       console.log(`✅ Combat avancé terminé: ${battleResult.result.victory ? "Victoire" : "Défaite"} (${combatResults.pointsExchange.attacker} pts)`);
 
