@@ -242,20 +242,20 @@ async function migrate() {
 }
 
 // Point d'entrée avec arguments
-async function main() {
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
   
   if (args.includes('--help')) {
     console.log(`
 🔧 MIGRATION UUID v4 - Utilisation:
 
-  node migrate-player-uuid.js           # Migration complète
-  node migrate-player-uuid.js --check   # Vérifier le statut seulement  
-  node migrate-player-uuid.js --cleanup # Nettoyer les champs temporaires
-  node migrate-player-uuid.js --help    # Afficher cette aide
+  npx ts-node migrate-player-uuid.ts           # Migration complète
+  npx ts-node migrate-player-uuid.ts --check   # Vérifier le statut seulement  
+  npx ts-node migrate-player-uuid.ts --cleanup # Nettoyer les champs temporaires
+  npx ts-node migrate-player-uuid.ts --help    # Afficher cette aide
 
 📋 Prérequis:
-  npm install uuid
+  npm install uuid @types/uuid
 
 🚨 IMPORTANT: 
   - Faire un backup avant migration !
