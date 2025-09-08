@@ -105,12 +105,56 @@ export class ArenaCombat {
       // Étape 8: Notifications et missions
       await this.handlePostMatchEvents(attacker, defender, battleResult.result.victory, promotionInfo);
 
-      // Étape 9: Mettre à jour les classements
+      // Étape 10: Invalider le cache
       const { ArenaCache } = await import('./ArenaCache');
       ArenaCache.invalidateAfterMatch(attackerId, defenderId, serverId);
-
+      
+      // 🔥 ÉTAPE 11: Notifications WebSocket temps réel
+      try {
+        const { WebSocketService } = await import('../WebSocketService');
+      
+        // Notifier l'attaquant du résultat
+        WebSocketService.notifyArenaMatchResult(attackerId, {
+          victory: battleResult.result.victory,
+          newRank: attacker.currentRank,
+          newPoints: attacker.arenaPoints,
+          newLeague: attacker.currentLeague,
+          pointsChange: combatResults.pointsExchange.attacker,
+          opponentName: matchData.defenderData.playerName,
+          duration: battleResult.result.battleDuration,
+          rewards: battleResult.result.victory ? combatResults.rewards.winner : combatResults.rewards.loser
+        });
+      
+        // Notifier le défenseur qu'il a été attaqué
+        WebSocketService.notifyArenaDefenseAttacked(defenderId, {
+          attackerName: matchData.attackerData.playerName,
+          result: battleResult.result.victory ? 'defeat' : 'victory',
+          pointsChange: combatResults.pointsExchange.defender,
+          newRank: defender.currentRank,
+          revengeAvailable: true,
+          matchId: arenaMatch.matchId
+        });
+      
+        // Notifier promotion si applicable
+        if (promotionInfo?.promoted) {
+          WebSocketService.notifyArenaPromotion(attackerId, {
+            promoted: true,
+            newLeague: promotionInfo.newLeague,
+            oldLeague: attacker.currentLeague, // Utiliser la ligue avant promotion
+            newRank: attacker.currentRank,
+            bonusRewards: promotionInfo.bonusRewards
+          });
+        }
+      
+        console.log(`🔌 Notifications WebSocket envoyées pour combat ${arenaMatch.matchId}`);
+        
+      } catch (error) {
+        console.error('⚠️ Erreur notifications WebSocket:', error);
+        // Ne pas bloquer le combat si WebSocket échoue
+      }
+      
       console.log(`✅ Combat avancé terminé: ${battleResult.result.victory ? "Victoire" : "Défaite"} (${combatResults.pointsExchange.attacker} pts)`);
-
+      
       return {
         success: true,
         data: {
