@@ -6,8 +6,17 @@ import { ArenaService } from "../services/arena";
 import { ArenaLeague, ArenaMatchType } from "../types/ArenaTypes";
 import authMiddleware from "../middleware/authMiddleware";
 import { requireFeature } from "../middleware/featureMiddleware";
+import { 
+  arenaMatchLimit, 
+  arenaSearchLimit, 
+  arenaRewardsLimit, 
+  arenaGeneralLimit 
+} from "../middleware/arenaRateLimit";
 
 const router = express.Router();
+
+// 🔒 Rate limiting général pour toutes les routes d'arène
+router.use(arenaGeneralLimit);
 
 // ===== SCHÉMAS DE VALIDATION =====
 
@@ -183,7 +192,7 @@ router.get("/combat-stats", authMiddleware, requireFeature("arena"), async (req:
  * GET /api/arena/opponents
  * Recherche d'adversaires avec filtres
  */
-router.get("/opponents", authMiddleware, requireFeature("arena"), async (req: Request, res: Response): Promise<void> => {
+router.get("/opponents", authMiddleware, arenaSearchLimit, requireFeature("arena"), async (req: Request, res: Response): Promise<void> => {
   try {
     const { error, value } = opponentSearchSchema.validate(req.query);
     if (error) {
@@ -235,7 +244,7 @@ router.get("/opponents", authMiddleware, requireFeature("arena"), async (req: Re
  * GET /api/arena/opponents/recommended
  * Obtenir un adversaire recommandé
  */
-router.get("/opponents/recommended", authMiddleware, requireFeature("arena"), async (req: Request, res: Response): Promise<void> => {
+router.get("/opponents/recommended", authMiddleware, arenaSearchLimit, requireFeature("arena"), async (req: Request, res: Response): Promise<void> => {
   try {
     const result = await ArenaService.getRecommendedOpponent(req.userId!, req.serverId!);
 
@@ -265,7 +274,7 @@ router.get("/opponents/recommended", authMiddleware, requireFeature("arena"), as
  * GET /api/arena/opponents/online
  * Recherche adversaires en ligne seulement
  */
-router.get("/opponents/online", authMiddleware, requireFeature("arena"), async (req: Request, res: Response): Promise<void> => {
+router.get("/opponents/online", authMiddleware, arenaSearchLimit, requireFeature("arena"), async (req: Request, res: Response): Promise<void> => {
   try {
     const limit = Math.min(parseInt(req.query.limit as string) || 8, 20);
 
@@ -299,7 +308,7 @@ router.get("/opponents/online", authMiddleware, requireFeature("arena"), async (
  * POST /api/arena/match
  * Démarrer un combat d'arène
  */
-router.post("/match", authMiddleware, requireFeature("arena"), async (req: Request, res: Response): Promise<void> => {
+router.post("/match", authMiddleware, arenaMatchLimit, requireFeature("arena"), async (req: Request, res: Response): Promise<void> => {
   try {
     const { error, value } = matchSchema.validate(req.body);
     if (error) {
@@ -347,7 +356,7 @@ router.post("/match", authMiddleware, requireFeature("arena"), async (req: Reque
  * POST /api/arena/match/revenge
  * Combat de vengeance
  */
-router.post("/match/revenge", authMiddleware, requireFeature("arena"), async (req: Request, res: Response): Promise<void> => {
+router.post("/match/revenge", authMiddleware, arenaMatchLimit, requireFeature("arena"), async (req: Request, res: Response): Promise<void> => {
   try {
     const { error, value } = revengeMatchSchema.validate(req.body);
     if (error) {
@@ -718,7 +727,7 @@ router.get("/rewards", authMiddleware, requireFeature("arena"), async (req: Requ
  * POST /api/arena/rewards/daily/claim
  * Réclamer récompenses quotidiennes
  */
-router.post("/rewards/daily/claim", authMiddleware, requireFeature("arena"), async (req: Request, res: Response): Promise<void> => {
+router.post("/rewards/daily/claim", authMiddleware, arenaRewardsLimit, requireFeature("arena"), async (req: Request, res: Response): Promise<void> => {
   try {
     console.log(`💰 Réclamation récompenses quotidiennes: ${req.userId} sur ${req.serverId}`);
 
@@ -781,7 +790,7 @@ router.get("/rewards/daily/preview", authMiddleware, requireFeature("arena"), as
  * POST /api/arena/rewards/weekly/claim
  * Réclamer récompenses hebdomadaires
  */
-router.post("/rewards/weekly/claim", authMiddleware, requireFeature("arena"), async (req: Request, res: Response): Promise<void> => {
+router.post("/rewards/weekly/claim", authMiddleware, arenaRewardsLimit, requireFeature("arena"), async (req: Request, res: Response): Promise<void> => {
   try {
     console.log(`🏆 Réclamation récompenses hebdomadaires: ${req.userId} sur ${req.serverId}`);
 
@@ -814,7 +823,7 @@ router.post("/rewards/weekly/claim", authMiddleware, requireFeature("arena"), as
  * POST /api/arena/rewards/season/claim
  * Réclamer récompenses de fin de saison
  */
-router.post("/rewards/season/claim", authMiddleware, requireFeature("arena"), async (req: Request, res: Response): Promise<void> => {
+router.post("/rewards/season/claim", authMiddleware, arenaRewardsLimit, requireFeature("arena"), async (req: Request, res: Response): Promise<void> => {
   try {
     const { error, value } = seasonRewardsSchema.validate(req.body);
     if (error) {
