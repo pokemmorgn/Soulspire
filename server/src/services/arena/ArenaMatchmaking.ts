@@ -47,7 +47,7 @@ export class ArenaMatchmaking {
       // Vérifier si le joueur peut combattre
       const canFight = arenaPlayer.canStartMatch();
       if (!canFight.allowed) {
-        return this.createEmptyResponse(playerId, serverId, arenaPlayer, canFight.reason, options);
+        return this.createEmptyResponse(playerId, serverId, arenaPlayer, canFight.reason || "Cannot fight", options);
       }
 
       // Configuration de recherche
@@ -87,7 +87,7 @@ export class ArenaMatchmaking {
           playerInfo: {
             currentRank: arenaPlayer.currentRank,
             currentPoints: arenaPlayer.arenaPoints,
-            dailyMatchesRemaining: arenaPlayer.getMaxDailyMatches() - arenaPlayer.dailyMatchesUsed
+            dailyMatchesRemaining: this.getMaxDailyMatches(arenaPlayer.currentLeague) - arenaPlayer.dailyMatchesUsed
           }
         },
         meta: {
@@ -448,6 +448,21 @@ export class ArenaMatchmaking {
     };
   }
 
+  /**
+   * Obtenir le nombre maximum de combats quotidiens selon la ligue
+   */
+  private static getMaxDailyMatches(league: ArenaLeague): number {
+    const limits: Record<ArenaLeague, number> = {
+      [ArenaLeague.BRONZE]: 10,
+      [ArenaLeague.SILVER]: 12,
+      [ArenaLeague.GOLD]: 15,
+      [ArenaLeague.DIAMOND]: 18,
+      [ArenaLeague.MASTER]: 20,
+      [ArenaLeague.LEGENDARY]: 25
+    };
+    return limits[league] || 10;
+  }
+
   // ===== MÉTHODES DE RÉPONSE =====
 
   /**
@@ -474,7 +489,7 @@ export class ArenaMatchmaking {
         playerInfo: {
           currentRank: arenaPlayer.currentRank,
           currentPoints: arenaPlayer.arenaPoints,
-          dailyMatchesRemaining: arenaPlayer.getMaxDailyMatches() - arenaPlayer.dailyMatchesUsed
+          dailyMatchesRemaining: this.getMaxDailyMatches(arenaPlayer.currentLeague) - arenaPlayer.dailyMatchesUsed
         }
       }
     };
