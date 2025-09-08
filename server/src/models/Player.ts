@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
+import { IdGenerator } from "../utils/idGenerator"; // 🔥 NOUVEAU IMPORT
 
 // ----- Sous-interfaces -----
 export interface IPlayerHero {
@@ -154,7 +155,11 @@ const formationSchema = new Schema<IFormation>({
 }, { _id: true });
 
 const serverPurchaseSchema = new Schema<IServerPurchase>({
-  transactionId: { type: String, required: true },
+  transactionId: { 
+    type: String, 
+    required: true,
+    default: () => IdGenerator.generateTransactionId() // 🔥 NOUVEAU: UUID pour transactions
+  },
   productId: { type: String, required: true },
   productName: { type: String, required: true },
   priceUSD: { type: Number, required: true, min: 0 },
@@ -166,7 +171,11 @@ const serverPurchaseSchema = new Schema<IServerPurchase>({
 }, { _id: false });
 
 const vipTransactionSchema = new Schema<IVipTransaction>({
-  transactionId: { type: String, required: true },
+  transactionId: { 
+    type: String, 
+    required: true,
+    default: () => IdGenerator.generateTransactionId() // 🔥 NOUVEAU: UUID pour VIP transactions
+  },
   expGained: { type: Number, required: true, min: 0 },
   source: { type: String, enum: ["purchase", "event", "admin_grant"], required: true },
   cost: { type: Number, default: 0, min: 0 },
@@ -180,7 +189,7 @@ const playerSchema = new Schema<IPlayerDocument>({
   _id: {
     type: String,
     required: true,
-    default: () => `PLAYER_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    default: () => IdGenerator.generatePlayerId() // 🔥 NOUVEAU: UUID au lieu de timestamp
   },
   playerId: {
     type: String,
@@ -381,7 +390,7 @@ playerSchema.methods.addVipExp = function(amount: number, source: string = "purc
   this.vipLevel = newLevel;
   
   this.vipTransactions.push({
-    transactionId: `vip_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+    transactionId: IdGenerator.generateTransactionId(), // 🔥 NOUVEAU: UUID
     expGained: amount,
     source: source as any,
     cost,
