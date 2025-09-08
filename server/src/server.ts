@@ -32,7 +32,7 @@ import mailRoutes from "./routes/mail";
 import afkFarmingRoutes from "./routes/afkFarming";
 import notificationRoutes from "./routes/notifications";
 import tutorialRoutes from "./routes/tutorials";
-
+import arenaRoutes from "./routes/arena";
 // Import des services
 import { ShopService } from "./services/ShopService";
 import { SchedulerService } from "./services/SchedulerService";
@@ -207,6 +207,7 @@ app.use("/api/mail", mailRoutes);
 app.use("/api/afk-farming", afkFarmingRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/tutorials", tutorialRoutes);
+app.use("/api/arena", arenaRoutes);
 // Route de santé de l'API
 app.get("/", (req: Request, res: Response) => {
   res.json({
