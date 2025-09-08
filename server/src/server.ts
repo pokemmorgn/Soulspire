@@ -33,9 +33,11 @@ import afkFarmingRoutes from "./routes/afkFarming";
 import notificationRoutes from "./routes/notifications";
 import tutorialRoutes from "./routes/tutorials";
 import arenaRoutes from "./routes/arena";
+
 // Import des services
 import { ShopService } from "./services/ShopService";
 import { SchedulerService } from "./services/SchedulerService";
+import { ArenaCache } from './services/arena/ArenaCache';
 
 // Configuration de l'environnement
 dotenv.config();
@@ -86,6 +88,17 @@ const gachaLimiter = rateLimit({
     code: "GACHA_RATE_LIMIT_EXCEEDED"
   }
 });
+
+// Nettoyage automatique toutes les 10 minutes
+setInterval(() => {
+  ArenaCache.performMaintenance();
+}, 10 * 60 * 1000);
+
+// Stats du cache toutes les heures (optionnel)
+setInterval(() => {
+  const stats = ArenaCache.getCacheStats();
+  console.log(`📊 Cache Arena: ${stats.entries} entrées, ${stats.stats.hitRate}% hit rate`);
+}, 60 * 60 * 1000);
 
 // Middlewares globaux
 app.use(cors(corsOptions));
