@@ -65,7 +65,9 @@ export class ArenaCombat {
         throw new Error(validation.error);
       }
 
-      const { attacker, defender, season } = validation.data;
+    const attacker = validation.data.attacker;
+    const defender = validation.data.defender;
+    const season = validation.data.season;
 
       // Étape 2: Préparer les données du match
       const matchData = await this.prepareMatchData(attacker, defender, season, matchType);
@@ -116,7 +118,11 @@ export class ArenaCombat {
           newPoints: attacker.arenaPoints,
           newLeague: attacker.currentLeague,
           rewards: combatResults.rewards,
-          promotionInfo
+          promotionInfo: promotionInfo ? {
+            promoted: promotionInfo.promoted,
+            newLeague: promotionInfo.newLeague,
+            bonusRewards: promotionInfo.bonusRewards
+          } : undefined
         },
         message: `Arena match completed - ${battleResult.result.victory ? "Victory" : "Defeat"}`,
         meta: {
@@ -198,7 +204,8 @@ export class ArenaCombat {
 
       // Marquer comme vengeance et lier au match original
       if (result.success && result.data.match) {
-        await ArenaMatch.findByIdAndUpdate(result.data.match._id, {
+      const matchDoc = result.data.match as any;
+      await ArenaMatch.findByIdAndUpdate(matchDoc._id, {
           isRevenge: true,
           originalMatchId
         });
@@ -278,7 +285,7 @@ export class ArenaCombat {
       return {
         success: true,
         data: { attacker, defender, season }
-      };
+      } as any;
 
     } catch (error: any) {
       return { success: false, error: error.message };
