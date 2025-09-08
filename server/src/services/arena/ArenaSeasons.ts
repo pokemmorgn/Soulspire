@@ -41,38 +41,9 @@ export class ArenaSeasons {
   /**
    * Obtenir la saison actuelle ou en créer une nouvelle
    */
-  public static async getCurrentSeason(serverId: string): Promise<IArenaSeason | null> {
-    try {
-      // Chercher la saison active
-      let currentSeason = await ArenaSeason.findOne({ 
-        serverId, 
-        status: ArenaSeasonStatus.ACTIVE 
-      });
-      
-      if (!currentSeason) {
-        console.log(`🆕 Aucune saison active trouvée pour ${serverId}, création d'une nouvelle`);
-        currentSeason = await this.createNewSeason(serverId);
-      } else {
-        // Vérifier si la saison doit se terminer
-        const daysRemaining = currentSeason.daysRemaining();
-        if (daysRemaining <= 0) {
-          console.log(`🔚 Saison ${currentSeason.seasonNumber} expirée pour ${serverId}`);
-          await this.endCurrentSeason(currentSeason);
-          currentSeason = await this.createNewSeason(serverId);
-        } else if (daysRemaining <= 7 && currentSeason.status === ArenaSeasonStatus.ACTIVE) {
-          // Marquer comme "ending" dans les 7 derniers jours
-          currentSeason.status = ArenaSeasonStatus.ENDING;
-          await currentSeason.save();
-          console.log(`⏰ Saison ${currentSeason.seasonNumber} entre en phase finale (${daysRemaining} jours restants)`);
-        }
-      }
-
-      return currentSeason ? currentSeason.toObject() : null;
-
-    } catch (error: any) {
-      console.error("❌ Erreur getCurrentSeason:", error);
-      return null;
-    }
+   public static async getCurrentSeason(serverId: string): Promise<IArenaSeason | null> {
+    const { ArenaCache } = await import('./ArenaCache');
+    return ArenaCache.getSeasonData(serverId);
   }
 
   /**
