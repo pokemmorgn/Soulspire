@@ -45,18 +45,20 @@ async function migrateAccounts(): Promise<number> {
     const newAccountId = generateAccountId();
 
     try {
-      // ✅ Création du nouveau document avec String _id
-      const migratedAccount = {
+      // ✅ Utilisation d'any pour éviter tous les conflits TypeScript
+      const migratedAccount: any = {
         ...account,
-        _id: newAccountId,              // ✅ String UUID
-        accountId: newAccountId,        // ✅ Synchronisé
-        oldAccountId: oldAccountId      // ✅ Backup pour rollback
+        _id: newAccountId,              
+        accountId: newAccountId,        
+        oldAccountId: oldAccountId      
       };
       
-      // Nettoyage
-      delete migratedAccount.__v;
+      // Nettoyage - maintenant possible avec any
+      if (migratedAccount.__v !== undefined) {
+        delete migratedAccount.__v;
+      }
 
-      // ✅ Insertion simple - Plus de conflit de types !
+      // ✅ Insertion avec any - Plus de conflit !
       await db.collection('accounts').insertOne(migratedAccount);
       await db.collection('accounts').deleteOne({ _id: oldId });
 
@@ -107,16 +109,18 @@ async function migratePlayers(): Promise<number> {
     const newPlayerId = generatePlayerId();
 
     try {
-      // ✅ Création du nouveau document avec String _id
-      const migratedPlayer = {
+      // ✅ Utilisation d'any pour éviter tous les conflits TypeScript
+      const migratedPlayer: any = {
         ...player,
-        _id: newPlayerId,               // ✅ String UUID
-        playerId: newPlayerId,          // ✅ Synchronisé
-        oldPlayerId: oldPlayerId        // ✅ Backup pour rollback
+        _id: newPlayerId,               
+        playerId: newPlayerId,          
+        oldPlayerId: oldPlayerId        
       };
       
-      // Nettoyage
-      delete migratedPlayer.__v;
+      // Nettoyage - maintenant possible avec any
+      if (migratedPlayer.__v !== undefined) {
+        delete migratedPlayer.__v;
+      }
 
       // Migration des transactions VIP avec UUID
       if (migratedPlayer.vipTransactions && Array.isArray(migratedPlayer.vipTransactions)) {
@@ -138,7 +142,7 @@ async function migratePlayers(): Promise<number> {
         }));
       }
 
-      // ✅ Insertion simple - Plus de conflit de types !
+      // ✅ Insertion avec any - Plus de conflit !
       await db.collection('players').insertOne(migratedPlayer);
       await db.collection('players').deleteOne({ _id: oldId });
 
