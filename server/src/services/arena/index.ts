@@ -57,7 +57,8 @@ export class ArenaService {
    * Obtenir les statistiques d'un joueur
    */
   static async getPlayerStats(playerId: string, serverId: string) {
-    return ArenaCore.getPlayerStats(playerId, serverId);
+    const { ArenaCache } = await import('./ArenaCache');
+    return ArenaCache.getPlayerStats(playerId, serverId);
   }
 
   // ===== RECHERCHE D'ADVERSAIRES =====
@@ -225,13 +226,14 @@ export class ArenaService {
   /**
    * Classement de la saison actuelle
    */
-  static async getCurrentSeasonLeaderboard(
-    serverId: string,
-    league?: ArenaLeague,
-    limit?: number
-  ) {
-    return ArenaSeasons.getCurrentSeasonLeaderboard(serverId, league, limit);
-  }
+    static async getCurrentSeasonLeaderboard(
+      serverId: string,
+      league?: ArenaLeague,
+      limit?: number
+    ) {
+      const { ArenaCache } = await import('./ArenaCache');
+      return ArenaCache.getLeaderboard(serverId, league, limit);
+    }
 
   /**
    * Forcer la fin d'une saison (admin)
@@ -349,37 +351,8 @@ export class ArenaService {
    * Obtenir un aperçu complet du système d'arène pour un joueur
    */
   static async getPlayerArenaOverview(playerId: string, serverId: string): Promise<ArenaServiceResponse> {
-    try {
-      console.log(`📊 Récupération aperçu arène complet pour ${playerId} sur ${serverId}`);
-
-      const [stats, opponents, rewards, season] = await Promise.allSettled([
-        this.getPlayerStats(playerId, serverId),
-        this.findSimpleOpponents(playerId, serverId, 3),
-        this.getRewardsSummary(playerId, serverId),
-        this.getCurrentSeason(serverId)
-      ]);
-
-      const overview = {
-        playerStats: stats.status === 'fulfilled' ? stats.value.data : null,
-        quickOpponents: opponents.status === 'fulfilled' ? opponents.value.data?.opponents : [],
-        rewardsSummary: rewards.status === 'fulfilled' ? rewards.value.data : null,
-        currentSeason: season.status === 'fulfilled' ? season.value : null,
-        lastUpdated: new Date()
-      };
-
-      return {
-        success: true,
-        data: overview,
-        message: "Player arena overview retrieved successfully"
-      };
-
-    } catch (error: any) {
-      console.error("❌ Erreur getPlayerArenaOverview:", error);
-      return {
-        success: false,
-        error: error.message
-      };
-    }
+    const { ArenaCache } = await import('./ArenaCache');
+    return ArenaCache.getPlayerOverview(playerId, serverId);
   }
 
   /**
