@@ -754,7 +754,7 @@ arenaPlayerSchema.methods.getLeagueRank = function(league: ArenaLeague): number 
 };
 
 arenaPlayerSchema.methods.getMaxDailyMatches = function(): number {
-  const limits = {
+  const limits: Record<ArenaLeague, number> = {
     [ArenaLeague.BRONZE]: 10,
     [ArenaLeague.SILVER]: 12,
     [ArenaLeague.GOLD]: 15,
@@ -762,7 +762,7 @@ arenaPlayerSchema.methods.getMaxDailyMatches = function(): number {
     [ArenaLeague.MASTER]: 20,
     [ArenaLeague.LEGENDARY]: 25
   };
-  return limits[this.currentLeague] || 10;
+  return limits[this.currentLeague as ArenaLeague] || 10;
 };
 
 arenaPlayerSchema.methods.calculateDailyRewards = function() {
