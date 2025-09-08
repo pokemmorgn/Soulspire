@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 
-// Générateur d'IDs UUID v4
+// Générateurs UUID v4
 function generatePlayerId(): string {
   return `PLAYER_${uuidv4().replace(/-/g, '')}`;
 }
@@ -27,10 +27,12 @@ async function migrateAccounts(): Promise<number> {
   const db = mongoose.connection;
   let migratedCount = 0;
 
+  // Trouve les comptes avec ancien format d'ID
   const cursor = db.collection('accounts').find({
     $or: [
       { accountId: { $exists: false } },
-      { accountId: { $regex: /^ACC_\d+_[a-z0-9]+$/ } } // Ancien format
+      { accountId: { $regex: /^ACC_\d+_[a-z0-9]+$/ } }, // Ancien format timestamp
+      { _id: { $type: "objectId" } } // ObjectId existants
     ]
   });
 
@@ -38,26 +40,25 @@ async function migrateAccounts(): Promise<number> {
     const account = await cursor.next();
     if (!account) continue;
 
-    const oldAccountId = account.accountId || account._id;
+    const oldAccountId = account.accountId || account._id.toString();
+    const oldId = account._id;
     const newAccountId = generateAccountId();
 
     try {
-      // Copie complète avec spread operator
-      const migrated = { ...account };
+      // ✅ Création du nouveau document avec String _id
+      const migratedAccount = {
+        ...account,
+        _id: newAccountId,              // ✅ String UUID
+        accountId: newAccountId,        // ✅ Synchronisé
+        oldAccountId: oldAccountId      // ✅ Backup pour rollback
+      };
       
-      // Modification des champs nécessaires
-      migrated._id = newAccountId;
-      migrated.accountId = newAccountId;
-      migrated.oldAccountId = oldAccountId;
-      
-      // Suppression du champ de versioning Mongoose
-      if ('__v' in migrated) {
-        delete (migrated as any).__v;
-      }
+      // Nettoyage
+      delete migratedAccount.__v;
 
-      // Insertion et suppression
-      await db.collection('accounts').insertOne(migrated as any);
-      await db.collection('accounts').deleteOne({ _id: account._id });
+      // ✅ Insertion simple - Plus de conflit de types !
+      await db.collection('accounts').insertOne(migratedAccount);
+      await db.collection('accounts').deleteOne({ _id: oldId });
 
       // Mise à jour des références dans les joueurs
       await db.collection('players').updateMany(
@@ -88,10 +89,12 @@ async function migratePlayers(): Promise<number> {
   const db = mongoose.connection;
   let migratedCount = 0;
 
+  // Trouve les joueurs avec ancien format d'ID
   const cursor = db.collection('players').find({
     $or: [
       { playerId: { $exists: false } },
-      { playerId: { $regex: /^PLAYER_\d+_[a-z0-9]+$/ } } // Ancien format
+      { playerId: { $regex: /^PLAYER_\d+_[a-z0-9]+$/ } }, // Ancien format timestamp
+      { _id: { $type: "objectId" } } // ObjectId existants
     ]
   });
 
@@ -99,26 +102,25 @@ async function migratePlayers(): Promise<number> {
     const player = await cursor.next();
     if (!player) continue;
 
-    const oldPlayerId = player.playerId || player._id;
+    const oldPlayerId = player.playerId || player._id.toString();
+    const oldId = player._id;
     const newPlayerId = generatePlayerId();
 
     try {
-      // Copie complète avec spread operator
-      const migrated: any = { ...player };
+      // ✅ Création du nouveau document avec String _id
+      const migratedPlayer = {
+        ...player,
+        _id: newPlayerId,               // ✅ String UUID
+        playerId: newPlayerId,          // ✅ Synchronisé
+        oldPlayerId: oldPlayerId        // ✅ Backup pour rollback
+      };
       
-      // Modification des champs nécessaires
-      migrated._id = newPlayerId;
-      migrated.playerId = newPlayerId;
-      migrated.oldPlayerId = oldPlayerId;
-      
-      // Suppression du champ de versioning Mongoose
-      if ('__v' in migrated) {
-        delete migrated.__v;
-      }
+      // Nettoyage
+      delete migratedPlayer.__v;
 
-      // Migration des transactions VIP avec UUID si nécessaire
-      if (migrated.vipTransactions && Array.isArray(migrated.vipTransactions)) {
-        migrated.vipTransactions = migrated.vipTransactions.map((transaction: any) => ({
+      // Migration des transactions VIP avec UUID
+      if (migratedPlayer.vipTransactions && Array.isArray(migratedPlayer.vipTransactions)) {
+        migratedPlayer.vipTransactions = migratedPlayer.vipTransactions.map((transaction: any) => ({
           ...transaction,
           transactionId: transaction.transactionId && transaction.transactionId.startsWith('TXN_') 
             ? transaction.transactionId 
@@ -126,9 +128,9 @@ async function migratePlayers(): Promise<number> {
         }));
       }
 
-      // Migration des achats serveur avec UUID si nécessaire
-      if (migrated.serverPurchases && Array.isArray(migrated.serverPurchases)) {
-        migrated.serverPurchases = migrated.serverPurchases.map((purchase: any) => ({
+      // Migration des achats serveur avec UUID
+      if (migratedPlayer.serverPurchases && Array.isArray(migratedPlayer.serverPurchases)) {
+        migratedPlayer.serverPurchases = migratedPlayer.serverPurchases.map((purchase: any) => ({
           ...purchase,
           transactionId: purchase.transactionId && purchase.transactionId.startsWith('TXN_')
             ? purchase.transactionId
@@ -136,9 +138,9 @@ async function migratePlayers(): Promise<number> {
         }));
       }
 
-      // Insertion et suppression
-      await db.collection('players').insertOne(migrated);
-      await db.collection('players').deleteOne({ _id: player._id });
+      // ✅ Insertion simple - Plus de conflit de types !
+      await db.collection('players').insertOne(migratedPlayer);
+      await db.collection('players').deleteOne({ _id: oldId });
 
       console.log(`✅ Joueur migré: ${player.displayName || player.username || 'Unknown'} (${oldPlayerId} -> ${newPlayerId})`);
       migratedCount++;
@@ -161,13 +163,19 @@ async function checkMigrationStatus(): Promise<MigrationStatus | null> {
     // Comptes
     const totalAccounts = await db.collection('accounts').countDocuments();
     const migratedAccounts = await db.collection('accounts').countDocuments({
-      accountId: { $regex: /^ACC_[a-f0-9]{32}$/ }
+      $and: [
+        { accountId: { $regex: /^ACC_[a-f0-9]{32}$/ } }, // Format UUID
+        { _id: { $type: "string" } } // _id est String
+      ]
     });
 
     // Joueurs  
     const totalPlayers = await db.collection('players').countDocuments();
     const migratedPlayers = await db.collection('players').countDocuments({
-      playerId: { $regex: /^PLAYER_[a-f0-9]{32}$/ }
+      $and: [
+        { playerId: { $regex: /^PLAYER_[a-f0-9]{32}$/ } }, // Format UUID
+        { _id: { $type: "string" } } // _id est String
+      ]
     });
 
     console.log('📈 STATUT DE MIGRATION:');
@@ -212,8 +220,61 @@ async function cleanupOldFields(): Promise<void> {
   }
 }
 
+async function validateMigration(): Promise<boolean> {
+  console.log('🔍 Validation post-migration...');
+  const db = mongoose.connection;
+
+  try {
+    // Vérifier qu'il n'y a plus d'ObjectId en _id
+    const accountsWithObjectId = await db.collection('accounts').countDocuments({
+      _id: { $type: "objectId" }
+    });
+
+    const playersWithObjectId = await db.collection('players').countDocuments({
+      _id: { $type: "objectId" }
+    });
+
+    // Vérifier que tous les IDs sont au bon format
+    const invalidAccountIds = await db.collection('accounts').countDocuments({
+      $or: [
+        { accountId: { $not: /^ACC_[a-f0-9]{32}$/ } },
+        { _id: { $not: /^ACC_[a-f0-9]{32}$/ } }
+      ]
+    });
+
+    const invalidPlayerIds = await db.collection('players').countDocuments({
+      $or: [
+        { playerId: { $not: /^PLAYER_[a-f0-9]{32}$/ } },
+        { _id: { $not: /^PLAYER_[a-f0-9]{32}$/ } }
+      ]
+    });
+
+    console.log('🔎 VALIDATION:');
+    console.log(`   Comptes avec ObjectId: ${accountsWithObjectId}`);
+    console.log(`   Joueurs avec ObjectId: ${playersWithObjectId}`);
+    console.log(`   Comptes avec IDs invalides: ${invalidAccountIds}`);
+    console.log(`   Joueurs avec IDs invalides: ${invalidPlayerIds}\n`);
+
+    const isValid = accountsWithObjectId === 0 && playersWithObjectId === 0 && 
+                   invalidAccountIds === 0 && invalidPlayerIds === 0;
+
+    if (isValid) {
+      console.log('✅ Validation réussie - Tous les IDs sont au format UUID String !');
+    } else {
+      console.log('❌ Validation échouée - Des IDs non conformes détectés');
+    }
+
+    return isValid;
+
+  } catch (error) {
+    const err = error as Error;
+    console.error('❌ Erreur validation:', err.message);
+    return false;
+  }
+}
+
 async function migrate(): Promise<void> {
-  console.log('🚀 Démarrage de la migration UUID v4...\n');
+  console.log('🚀 Démarrage de la migration vers String UUID...\n');
   
   try {
     await mongoose.connect('mongodb://localhost:27017/unity-gacha-game');
@@ -224,7 +285,7 @@ async function migrate(): Promise<void> {
     if (!statusBefore) return;
 
     if (!statusBefore.needsMigration) {
-      console.log('🎉 Aucune migration nécessaire - Tous les IDs sont déjà en UUID !');
+      console.log('🎉 Aucune migration nécessaire - Tous les IDs sont déjà en UUID String !');
       await mongoose.disconnect();
       return;
     }
@@ -235,20 +296,24 @@ async function migrate(): Promise<void> {
     // Étape 2: Migrer les joueurs  
     const playersMigrated = await migratePlayers();
 
-    // Vérification finale
-    console.log('🔍 Vérification post-migration...');
+    // Étape 3: Validation
+    console.log('🔍 Validation post-migration...');
+    const isValid = await validateMigration();
+
+    // Vérification finale du statut
     const statusAfter = await checkMigrationStatus();
 
     // Résumé final
     console.log('🎯 RÉSUMÉ FINAL:');
-    console.log(`   ✅ ${accountsMigrated} comptes migrés vers UUID`);
-    console.log(`   ✅ ${playersMigrated} joueurs migrés vers UUID`);
+    console.log(`   ✅ ${accountsMigrated} comptes migrés vers UUID String`);
+    console.log(`   ✅ ${playersMigrated} joueurs migrés vers UUID String`);
+    console.log(`   ${isValid ? '✅' : '❌'} Validation: ${isValid ? 'RÉUSSIE' : 'ÉCHOUÉE'}`);
     
-    if (statusAfter && !statusAfter.needsMigration) {
-      console.log('   🎉 Migration 100% réussie !');
+    if (statusAfter && !statusAfter.needsMigration && isValid) {
+      console.log('   🎉 Migration 100% réussie et validée !');
       console.log('\n💡 Conseil: Lancez avec --cleanup dans quelques jours pour nettoyer les champs temporaires');
     } else {
-      console.log('   ⚠️ Migration incomplète - Relancez le script');
+      console.log('   ⚠️ Migration incomplète ou validation échouée - Vérifiez les erreurs');
     }
 
   } catch (error) {
@@ -265,19 +330,26 @@ async function main(): Promise<void> {
   
   if (args.includes('--help')) {
     console.log(`
-🔧 MIGRATION UUID v4 - Utilisation:
+🔧 MIGRATION UUID STRING - Utilisation:
 
   npx ts-node src/scripts/migrateplayers.ts           # Migration complète
   npx ts-node src/scripts/migrateplayers.ts --check   # Vérifier le statut seulement  
+  npx ts-node src/scripts/migrateplayers.ts --validate # Valider la migration
   npx ts-node src/scripts/migrateplayers.ts --cleanup # Nettoyer les champs temporaires
   npx ts-node src/scripts/migrateplayers.ts --help    # Afficher cette aide
 
 📋 Prérequis:
   npm install uuid @types/uuid
-
+  
 🚨 IMPORTANT: 
+  - Mettre à jour les schemas Account.ts et Player.ts AVANT migration !
   - Faire un backup avant migration !
   - Tester d'abord sur une copie de la DB
+
+🎯 Cette migration convertit:
+  - ObjectId _id → String UUID _id  
+  - Ancien format timestamp → UUID v4
+  - Synchronise _id et accountId/playerId
     `);
     return;
   }
@@ -287,6 +359,8 @@ async function main(): Promise<void> {
   try {
     if (args.includes('--check')) {
       await checkMigrationStatus();
+    } else if (args.includes('--validate')) {
+      await validateMigration();
     } else if (args.includes('--cleanup')) {
       await cleanupOldFields();
     } else {
