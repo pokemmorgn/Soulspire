@@ -1,6 +1,7 @@
 // src/services/SchedulerService.ts
 import * as cron from 'node-cron';
 import { ShopService } from './ShopService';
+import { ArenaService } from './arena';
 
 export class SchedulerService {
   private static scheduledTasks: Map<string, any> = new Map();
@@ -27,7 +28,59 @@ export class SchedulerService {
       await ShopService.processShopResets();
     });
 
-    // Vérification générale - toutes les heures
+    // Maintenance quotidienne de l'arène - tous les jours à 1h du matin
+    this.scheduleTask('arena-daily-maintenance', '0 1 * * *', async () => {
+      console.log("🏟️ Maintenance quotidienne de l'arène...");
+      try {
+        // Maintenance pour tous les serveurs actifs (adapte selon tes serveurs)
+        const servers = ['S1', 'S2', 'S3']; // Remplace par ta liste de serveurs
+        
+        for (const serverId of servers) {
+          await ArenaService.performDailyMaintenance(serverId);
+        }
+        
+        console.log("✅ Maintenance arène terminée pour tous les serveurs");
+      } catch (error) {
+        console.error("❌ Erreur maintenance arène:", error);
+      }
+    });
+
+    // Reset classements arène - tous les jours à 2h du matin
+    this.scheduleTask('arena-rankings-update', '0 2 * * *', async () => {
+      console.log("📊 Mise à jour des classements d'arène...");
+      try {
+        const servers = ['S1', 'S2', 'S3'];
+        
+        for (const serverId of servers) {
+          // Force une mise à jour des classements si nécessaire
+          await ArenaService.getServerArenaStats(serverId);
+        }
+        
+        console.log("✅ Classements arène mis à jour");
+      } catch (error) {
+        console.error("❌ Erreur mise à jour classements arène:", error);
+      }
+    });
+
+    // Événements spéciaux arène - vérification toutes les 6 heures
+    this.scheduleTask('arena-events-check', '0 */6 * * *', async () => {
+      console.log("🎉 Vérification événements spéciaux arène...");
+      try {
+        // Exemple : activer double récompenses le weekend
+        const now = new Date();
+        const isWeekend = now.getDay() === 0 || now.getDay() === 6;
+        
+        await ArenaService.toggleSpecialEvent("bonusWeekend", isWeekend);
+        
+        if (isWeekend) {
+          console.log("🎮 Bonus weekend arène activé");
+        }
+      } catch (error) {
+        console.error("❌ Erreur événements arène:", error);
+      }
+    });
+
+    // Vérification générale boutiques - toutes les heures
     this.scheduleTask('shop-health-check', '0 * * * *', async () => {
       console.log("🔍 Vérification santé des boutiques...");
       try {
@@ -117,6 +170,18 @@ export class SchedulerService {
       case 'monthly-shop-reset':
         console.log("📆 Reset mensuel manuel...");
         await ShopService.processShopResets();
+        break;
+      case 'arena-daily-maintenance':
+        console.log("🏟️ Maintenance arène manuelle...");
+        await ArenaService.performDailyMaintenance('S1'); // Serveur de test
+        break;
+      case 'arena-rankings-update':
+        console.log("📊 Mise à jour classements manuelle...");
+        await ArenaService.getServerArenaStats('S1');
+        break;
+      case 'arena-events-check':
+        console.log("🎉 Vérification événements arène manuelle...");
+        await ArenaService.toggleSpecialEvent("doubleRewards", true);
         break;
       default:
         throw new Error(`Tâche inconnue: ${taskName}`);
