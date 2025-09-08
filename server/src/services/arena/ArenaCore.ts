@@ -460,40 +460,75 @@ export class ArenaCore {
     return currentSeason;
   }
 
-  /**
-   * Créer la formation initiale d'un joueur
-   */
-  private static async createInitialFormation(player: any): Promise<IArenaFormation | null> {
-    const equippedHeroes = player.heroes.filter((h: any) => h.equipped);
-    if (equippedHeroes.length === 0) {
+/**
+ * Créer la formation initiale d'un joueur
+ */
+private static async createInitialFormation(player: any): Promise<IArenaFormation | null> {
+  let equippedHeroes = player.heroes.filter((h: any) => h.equipped);
+  
+  // 🔥 FIX CRITIQUE : Si pas de héros équipés, auto-équiper les premiers
+  if (equippedHeroes.length === 0) {
+    console.log(`🛠️ Aucun héros équipé pour ${player.displayName}, auto-équipement...`);
+    
+    // Prendre les premiers héros disponibles (max 5)
+    const availableHeroes = player.heroes.slice(0, Math.min(5, player.heroes.length));
+    
+    if (availableHeroes.length === 0) {
+      console.error(`❌ ${player.displayName} n'a aucun héros ! Impossible de créer une formation.`);
       return null;
     }
-
-    let totalPower = 0;
-    const heroSlots = equippedHeroes.map((hero: any, index: number) => {
-      const heroPower = this.calculateHeroPower(hero);
-      totalPower += heroPower;
-      
-      return {
-        slot: index + 1,
-        heroId: hero.heroId._id || hero.heroId,
-        level: hero.level,
-        stars: hero.stars,
-        power: heroPower
-      };
-    });
-
-    return {
-      formationId: `formation_${Date.now()}`,
-      name: "Default Formation",
-      heroSlots,
-      totalPower,
-      isActive: true,
-      lastUsedAt: new Date(),
-      createdAt: new Date()
-    };
+    
+    // Les marquer comme équipés
+    for (let i = 0; i < availableHeroes.length; i++) {
+      availableHeroes[i].equipped = true;
+      availableHeroes[i].slot = i + 1;
+    }
+    
+    // Sauvegarder les changements
+    try {
+      await player.save();
+      console.log(`✅ Auto-équipement de ${availableHeroes.length} héros pour ${player.displayName}`);
+    } catch (error) {
+      console.error(`❌ Erreur sauvegarde auto-équipement pour ${player.displayName}:`, error);
+    }
+    
+    equippedHeroes = availableHeroes;
   }
 
+  let totalPower = 0;
+  const heroSlots = equippedHeroes.map((hero: any, index: number) => {
+    const heroPower = this.calculateHeroPower(hero);
+    totalPower += heroPower;
+    
+    return {
+      slot: hero.slot || (index + 1), // Utiliser le slot existant ou calculer
+      heroId: hero.heroId._id || hero.heroId,
+      level: hero.level,
+      stars: hero.stars,
+      power: heroPower
+    };
+  });
+
+  // 🔥 SÉCURITÉ : Assurer une puissance minimale
+  if (totalPower === 0) {
+    totalPower = 1000; // Puissance de base pour éviter division par zéro
+    console.warn(`⚠️ Puissance totale = 0 pour ${player.displayName}, appliqué puissance de base: ${totalPower}`);
+  }
+
+  const formation: IArenaFormation = {
+    formationId: `formation_${Date.now()}_${player._id}`,
+    name: "Formation par défaut",
+    heroSlots,
+    totalPower,
+    isActive: true,
+    lastUsedAt: new Date(),
+    createdAt: new Date()
+  };
+
+  console.log(`🎯 Formation créée pour ${player.displayName}: ${heroSlots.length} héros, ${totalPower} puissance`);
+
+  return formation;
+}
   /**
    * Calculer la puissance d'un héros (version simplifiée)
    */
