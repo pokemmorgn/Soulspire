@@ -1,5 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
-import { IdGenerator } from "../utils/idGenerator"; // 🔥 NOUVEAU IMPORT
+import { IdGenerator } from "../utils/idGenerator";
 
 // Interface pour l'historique des achats premium (ANALYTICS SEULEMENT)
 interface IPurchaseHistory {
@@ -27,7 +27,7 @@ interface ILoginHistory {
 
 // Interface principale du compte (AUTHENTIFICATION + ANALYTICS SEULEMENT)
 export interface IAccount {
-  _id?: string;
+  _id?: string; // ✅ String maintenant
   accountId: string; // UUID unique global
   username: string; // Unique globalement
   email?: string;
@@ -74,6 +74,7 @@ export interface IAccount {
 }
 
 interface IAccountDocument extends Document {
+  _id: string; // ✅ String maintenant
   accountId: string;
   username: string;
   email?: string;
@@ -116,7 +117,11 @@ interface IAccountDocument extends Document {
 
 // Schémas secondaires
 const purchaseHistorySchema = new Schema<IPurchaseHistory>({
-  transactionId: { type: String, required: true }, // ✅ CORRECTION: Pas unique ici
+  transactionId: { 
+    type: String, 
+    required: true,
+    default: () => IdGenerator.generateTransactionId()
+  },
   platform: { 
     type: String, 
     enum: ["android", "ios", "web", "steam"], 
@@ -148,13 +153,18 @@ const loginHistorySchema = new Schema<ILoginHistory>({
   country: { type: String, maxlength: 2 } // Code pays ISO
 }, { _id: false });
 
-// Schéma principal Account
+// ✅ Schéma principal Account avec String _id
 const accountSchema = new Schema<IAccountDocument>({
+  _id: { 
+    type: String, 
+    required: true,
+    default: () => IdGenerator.generateAccountId()
+  },
   accountId: { 
     type: String, 
     required: true, 
     unique: true,
-    default: () => IdGenerator.generateAccountId() // 🔥 NOUVEAU: UUID au lieu de timestamp
+    default: function(this: IAccountDocument) { return this._id; }
   },
   username: { 
     type: String, 
@@ -253,20 +263,35 @@ const accountSchema = new Schema<IAccountDocument>({
   }]
 }, {
   timestamps: true,
-  collection: 'accounts'
+  collection: 'accounts',
+  _id: false // ✅ Désactive l'auto-génération d'ObjectId par Mongoose
 });
 
-// ✅ CORRECTION: Index pour optimiser les requêtes (sans doublons)
+// ✅ Hook pour s'assurer que _id et accountId sont synchronisés
+accountSchema.pre('save', function(next) {
+  // Si pas d'_id, en générer un
+  if (!this._id) {
+    this._id = IdGenerator.generateAccountId();
+  }
+  // Synchroniser accountId avec _id
+  if (!this.accountId || this.accountId !== this._id) {
+    this.accountId = this._id;
+  }
+  next();
+});
+
+// ✅ Index optimisés pour String IDs
+accountSchema.index({ _id: 1 }, { unique: true });
 accountSchema.index({ accountId: 1 }, { unique: true });
 accountSchema.index({ username: 1 }, { unique: true });
-accountSchema.index({ email: 1 }, { sparse: true }); // ✅ sparse pour gérer les null
+accountSchema.index({ email: 1 }, { sparse: true });
 accountSchema.index({ accountStatus: 1 });
 accountSchema.index({ lastLoginAt: -1 });
 accountSchema.index({ totalPurchasesUSD: -1 });
 accountSchema.index({ "loginHistory.loginDate": -1 });
 accountSchema.index({ "purchaseHistory.purchaseDate": -1 });
 
-// ✅ CORRECTION: Index unique partiel pour transactionId (évite les doublons null)
+// Index unique pour transactionId
 accountSchema.index(
   { "purchaseHistory.transactionId": 1 }, 
   { 
@@ -296,6 +321,11 @@ accountSchema.statics.getSpendingAccounts = function(minSpent: number = 1) {
 
 // Méthodes d'instance
 accountSchema.methods.addPurchaseRecord = function(purchase: IPurchaseHistory) {
+  // Générer un transactionId si pas fourni
+  if (!purchase.transactionId) {
+    purchase.transactionId = IdGenerator.generateTransactionId();
+  }
+  
   // Ajouter l'achat à l'historique (ANALYTICS SEULEMENT)
   this.purchaseHistory.push(purchase);
   
