@@ -522,25 +522,152 @@ const arenaSeasonSchema = new Schema<IArenaSeasonDocument>({
 
 // Index pour ArenaPlayer
 arenaPlayerSchema.index({ playerId: 1, serverId: 1 }, { unique: true });
-arenaPlayerSchema.index({ serverId: 1, currentLeague: 1, arenaPoints: -1 });
-arenaPlayerSchema.index({ serverId: 1, currentRank: 1 });
-arenaPlayerSchema.index({ seasonId: 1, seasonWins: -1 });
-arenaPlayerSchema.index({ lastMatchAt: -1 });
-arenaPlayerSchema.index({ unclaimedDailyRewards: 1 });
+
+// 🔥 NOUVEAUX INDEX CRITIQUES POUR PERFORMANCE
+// Index principal pour recherche d'adversaires (LE PLUS IMPORTANT)
+arenaPlayerSchema.index({ 
+  serverId: 1, 
+  currentLeague: 1, 
+  arenaPoints: -1,
+  playerId: 1
+}, { 
+  name: "arena_matchmaking_primary",
+  background: true
+});
+
+// Index pour classements temps réel
+arenaPlayerSchema.index({ 
+  serverId: 1, 
+  arenaPoints: -1, 
+  seasonWins: -1,
+  seasonWinStreak: -1
+}, {
+  name: "arena_leaderboard",
+  background: true
+});
+
+// Index pour recherche par rang
+arenaPlayerSchema.index({ 
+  serverId: 1, 
+  currentRank: 1 
+}, {
+  name: "arena_by_rank",
+  background: true
+});
+
+// Index pour filtres de matchmaking
+arenaPlayerSchema.index({ 
+  serverId: 1,
+  currentLeague: 1,
+  "defensiveFormation.totalPower": 1,
+  arenaPoints: -1
+}, {
+  name: "arena_power_matchmaking",
+  background: true
+});
+
+// Index pour saison et récompenses
+arenaPlayerSchema.index({ 
+  seasonId: 1, 
+  seasonWins: -1,
+  arenaPoints: -1
+}, {
+  name: "arena_season_ranking",
+  background: true
+});
+
+// Index pour cooldowns et limitations
+arenaPlayerSchema.index({ 
+  serverId: 1,
+  lastMatchAt: -1,
+  dailyMatchesUsed: 1
+}, {
+  name: "arena_cooldowns",
+  background: true
+});
+
+// Index pour récompenses non réclamées
+arenaPlayerSchema.index({ 
+  serverId: 1,
+  unclaimedDailyRewards: 1 
+}, {
+  name: "arena_unclaimed_rewards",
+  background: true
+});
 
 // Index pour ArenaMatch
 arenaMatchSchema.index({ matchId: 1 }, { unique: true });
-arenaMatchSchema.index({ serverId: 1, seasonId: 1 });
-arenaMatchSchema.index({ attackerId: 1, createdAt: -1 });
-arenaMatchSchema.index({ defenderId: 1, createdAt: -1 });
-arenaMatchSchema.index({ battleId: 1 });
-arenaMatchSchema.index({ isRevenge: 1, originalMatchId: 1 });
+
+// 🔥 NOUVEAUX INDEX POUR HISTORIQUE DES MATCHS
+// Index pour historique attaquant
+arenaMatchSchema.index({ 
+  serverId: 1, 
+  attackerId: 1, 
+  createdAt: -1 
+}, {
+  name: "arena_attacker_history",
+  background: true
+});
+
+// Index pour historique défenseur
+arenaMatchSchema.index({ 
+  serverId: 1, 
+  defenderId: 1, 
+  createdAt: -1 
+}, {
+  name: "arena_defender_history",
+  background: true
+});
+
+// Index pour combats de vengeance
+arenaMatchSchema.index({ 
+  serverId: 1,
+  defenderId: 1,
+  isRevenge: 1,
+  createdAt: -1
+}, {
+  name: "arena_revenge_matches",
+  background: true
+});
+
+// Index pour statistiques de combat
+arenaMatchSchema.index({ 
+  serverId: 1,
+  seasonId: 1,
+  "battleResult.victory": 1,
+  createdAt: -1
+}, {
+  name: "arena_battle_stats",
+  background: true
+});
+
+// Index pour recherche par battle ID
+arenaMatchSchema.index({ 
+  battleId: 1,
+  serverId: 1
+}, {
+  name: "arena_battle_lookup",
+  background: true
+});
 
 // Index pour ArenaSeason
 arenaSeasonSchema.index({ seasonId: 1 }, { unique: true });
-arenaSeasonSchema.index({ serverId: 1, status: 1 });
-arenaSeasonSchema.index({ startDate: 1, endDate: 1 });
-arenaSeasonSchema.index({ seasonNumber: -1 });
+arenaSeasonSchema.index({ 
+  serverId: 1, 
+  status: 1,
+  startDate: -1
+}, {
+  name: "arena_season_active",
+  background: true
+});
+
+arenaSeasonSchema.index({ 
+  serverId: 1,
+  seasonNumber: -1 
+}, {
+  name: "arena_season_history",
+  background: true
+});
 
 // ===== MÉTHODES STATIQUES =====
 
