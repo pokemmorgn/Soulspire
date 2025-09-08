@@ -1489,8 +1489,10 @@ export class ArenaService {
       
       const revengeOpponents = [];
       for (const match of revengeMatches) {
-        const attacker = await ArenaPlayer.findByPlayer(match.attackerId, serverId)
-          .populate('playerId', 'displayName level');
+        const attacker = await ArenaPlayer.findOne({ 
+          playerId: match.attackerId, 
+          serverId 
+        }).populate('playerId', 'displayName level');
         
         if (attacker) {
           revengeOpponents.push({
