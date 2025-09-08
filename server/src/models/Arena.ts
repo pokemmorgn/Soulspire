@@ -766,6 +766,7 @@ arenaPlayerSchema.methods.getMaxDailyMatches = function(): number {
 };
 
 arenaPlayerSchema.methods.calculateDailyRewards = function() {
+  const currentLeague = this.currentLeague as ArenaLeague;
   const rewards: Record<ArenaLeague, { gold: number; gems: number; seasonTokens: number }> = {
     [ArenaLeague.BRONZE]: { gold: 100, gems: 5, seasonTokens: 10 },
     [ArenaLeague.SILVER]: { gold: 200, gems: 10, seasonTokens: 20 },
@@ -774,7 +775,7 @@ arenaPlayerSchema.methods.calculateDailyRewards = function() {
     [ArenaLeague.MASTER]: { gold: 750, gems: 40, seasonTokens: 75 },
     [ArenaLeague.LEGENDARY]: { gold: 1000, gems: 60, seasonTokens: 100 }
   };
-  return rewards[this.currentLeague as ArenaLeague] || rewards[ArenaLeague.BRONZE];
+  return rewards[currentLeague] || rewards[ArenaLeague.BRONZE];
 };
 
 arenaPlayerSchema.methods.getNextDailyReset = function(): Date {
