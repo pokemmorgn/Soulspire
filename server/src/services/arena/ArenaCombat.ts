@@ -519,7 +519,7 @@ export class ArenaCombat {
    * Obtenir les victoires consécutives requises pour promotion
    */
   private static getPromotionRequiredWins(league: ArenaLeague): number {
-    const requirements = {
+    const requirements: Partial<Record<ArenaLeague, number>> = {
       [ArenaLeague.SILVER]: 3,
       [ArenaLeague.GOLD]: 4,
       [ArenaLeague.DIAMOND]: 5,
