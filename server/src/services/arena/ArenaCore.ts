@@ -623,4 +623,19 @@ export class ArenaCore {
       console.error("❌ Erreur updatePlayerRanking:", error);
     }
   }
+
+  /**
+   * Obtenir le nombre maximum de combats quotidiens selon la ligue
+   */
+  private static getMaxDailyMatches(league: ArenaLeague): number {
+    const limits: Record<ArenaLeague, number> = {
+      [ArenaLeague.BRONZE]: 10,
+      [ArenaLeague.SILVER]: 12,
+      [ArenaLeague.GOLD]: 15,
+      [ArenaLeague.DIAMOND]: 18,
+      [ArenaLeague.MASTER]: 20,
+      [ArenaLeague.LEGENDARY]: 25
+    };
+    return limits[league] || 10;
+  }
 }
