@@ -1,4 +1,5 @@
 import express, { Application, Request, Response, NextFunction } from "express";
+import { createServer } from "http";
 import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -38,11 +39,12 @@ import arenaRoutes from "./routes/arena";
 import { ShopService } from "./services/ShopService";
 import { SchedulerService } from "./services/SchedulerService";
 import { ArenaCache } from './services/arena/ArenaCache';
-
+import { WebSocketService } from './services/WebSocketService';
 // Configuration de l'environnement
 dotenv.config();
 
 const app: Application = express();
+const httpServer = createServer(app);
 const PORT: number = parseInt(process.env.PORT || "3000", 10);
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/unity-gacha-game";
 const NODE_ENV = process.env.NODE_ENV || "development";
@@ -332,13 +334,23 @@ const startServer = async (): Promise<void> => {
     }
     
     // Démarrage du serveur
-    const server = app.listen(PORT, "0.0.0.0", () => {
+    // 🔥 Initialiser WebSocket AVANT de démarrer le serveur
+    console.log("🔌 Initialisation WebSocket...");
+    try {
+      WebSocketService.initialize(httpServer);
+      console.log("✅ WebSocket Server initialisé");
+    } catch (error) {
+      console.warn("⚠️ WebSocket indisponible:", error);
+    }
+    
+    // Démarrage du serveur
+    const server = httpServer.listen(PORT, "0.0.0.0", () => {
       const publicIP = process.env.SERVER_IP || "88.99.61.188";
 
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`🌐 Environment: ${NODE_ENV}`);
       console.log(`📊 API Health: http://${publicIP}:${PORT}/health`);
-      
+      console.log(`🔌 WebSocket available at ws://${publicIP}:${PORT}`);
       // Affichage du statut des services après démarrage
       setTimeout(async () => {
         try {
@@ -377,6 +389,15 @@ const startServer = async (): Promise<void> => {
         console.log("✅ Tâches programmées arrêtées");
       } catch (error) {
         console.error("⚠️ Erreur arrêt scheduler:", error);
+      }
+      
+      // 🔥 Arrêt WebSocket
+      try {
+        console.log("🔌 Fermeture WebSocket...");
+        WebSocketService.close();
+        console.log("✅ WebSocket fermé");
+      } catch (error) {
+        console.error("⚠️ Erreur fermeture WebSocket:", error);
       }
       
       server.close(async () => {
