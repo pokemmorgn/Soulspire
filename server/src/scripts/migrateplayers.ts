@@ -104,7 +104,7 @@ async function migratePlayers(): Promise<number> {
 
     try {
       // Copie complète avec spread operator
-      const migrated = { ...player };
+      const migrated: any = { ...player };
       
       // Modification des champs nécessaires
       migrated._id = newPlayerId;
@@ -113,7 +113,7 @@ async function migratePlayers(): Promise<number> {
       
       // Suppression du champ de versioning Mongoose
       if ('__v' in migrated) {
-        delete (migrated as any).__v;
+        delete migrated.__v;
       }
 
       // Migration des transactions VIP avec UUID si nécessaire
@@ -137,7 +137,7 @@ async function migratePlayers(): Promise<number> {
       }
 
       // Insertion et suppression
-      await db.collection('players').insertOne(migrated as any);
+      await db.collection('players').insertOne(migrated);
       await db.collection('players').deleteOne({ _id: player._id });
 
       console.log(`✅ Joueur migré: ${player.displayName || player.username || 'Unknown'} (${oldPlayerId} -> ${newPlayerId})`);
