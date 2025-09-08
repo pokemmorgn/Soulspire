@@ -36,70 +36,8 @@ export class ArenaMatchmaking {
     serverId: string,
     options: Partial<IArenaOpponentSearch> = {}
   ): Promise<ArenaOpponentsResponse> {
-    try {
-      console.log(`🎯 Recherche avancée adversaires pour ${playerId} sur ${serverId}`);
-
-      const arenaPlayer = await ArenaPlayer.findOne({ playerId, serverId });
-      if (!arenaPlayer) {
-        throw new Error("Player not found in arena");
-      }
-
-      // Vérifier si le joueur peut combattre
-      const canFight = arenaPlayer.canStartMatch();
-      if (!canFight.allowed) {
-        return this.createEmptyResponse(playerId, serverId, arenaPlayer, canFight.reason || "Cannot fight", options);
-      }
-
-      // Configuration de recherche
-      const searchConfig: IArenaOpponentSearch = {
-        playerId,
-        serverId,
-        filters: {
-          league: options.filters?.league || arenaPlayer.currentLeague,
-          minPower: options.filters?.minPower,
-          maxPower: options.filters?.maxPower,
-          difficulty: options.filters?.difficulty,
-          excludeRecent: options.filters?.excludeRecent ?? true,
-          onlineOnly: options.filters?.onlineOnly ?? false
-        },
-        limit: Math.min(options.limit || 10, 20)
-      };
-
-      // Étape 1: Recherche de base
-      const potentialOpponents = await this.searchBasicOpponents(arenaPlayer, searchConfig);
-      
-      // Étape 2: Filtrage avancé
-      const filteredOpponents = await this.applyAdvancedFilters(arenaPlayer, potentialOpponents, searchConfig);
-      
-      // Étape 3: Enrichissement des données
-      const enrichedOpponents = await this.enrichOpponentData(arenaPlayer, filteredOpponents);
-      
-      // Étape 4: Tri et sélection finale
-      const finalOpponents = this.sortAndSelectOpponents(enrichedOpponents, searchConfig);
-
-      console.log(`✅ ${finalOpponents.length} adversaires trouvés avec filtres avancés`);
-
-      return {
-        success: true,
-        data: {
-          opponents: finalOpponents,
-          searchCriteria: searchConfig,
-          playerInfo: {
-            currentRank: arenaPlayer.currentRank,
-            currentPoints: arenaPlayer.arenaPoints,
-            dailyMatchesRemaining: this.getMaxDailyMatches(arenaPlayer.currentLeague) - arenaPlayer.dailyMatchesUsed
-          }
-        },
-        meta: {
-          timestamp: new Date(),
-          serverId
-        }
-      };
-
-    } catch (error: any) {
-      console.error("❌ Erreur findAdvancedOpponents:", error);
-      return this.createErrorResponse(error.message, playerId, serverId, options);
-    }
+    const { ArenaCache } = await import('./ArenaCache');
+    return ArenaCache.getOpponents(playerId, serverId, options);
   }
 
   /**
