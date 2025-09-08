@@ -134,7 +134,7 @@ async function migratePlayers(): Promise<number> {
 
     try {
       // Prépare le nouveau document
-      const migrated = {
+      const migrated: any = {
         ...player,
         _id: newPlayerId,
         playerId: newPlayerId,
