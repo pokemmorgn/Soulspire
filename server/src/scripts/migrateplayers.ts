@@ -1,42 +1,6 @@
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 
-// Types pour TypeScript
-interface Transaction {
-  transactionId?: string;
-  [key: string]: any;
-}
-
-interface Purchase {
-  transactionId?: string;
-  [key: string]: any;
-}
-
-interface MigrationStatus {
-  totalAccounts: number;
-  migratedAccounts: number;
-  totalPlayers: number;
-  migratedPlayers: number;
-  needsMigration: boolean;
-}
-
-interface PlayerDocument {
-  _id: any;
-  playerId?: string;
-  displayName?: string;
-  username?: string;
-  vipTransactions?: Transaction[];
-  serverPurchases?: Purchase[];
-  [key: string]: any;
-}
-
-interface AccountDocument {
-  _id: any;
-  accountId?: string;
-  username?: string;
-  [key: string]: any;
-}
-
 // Générateur d'IDs UUID v4
 function generatePlayerId(): string {
   return `PLAYER_${uuidv4().replace(/-/g, '')}`;
@@ -50,10 +14,12 @@ function generateTransactionId(): string {
   return `TXN_${uuidv4().replace(/-/g, '')}`;
 }
 
-// Validation UUID format
-function isOldFormat(id: string | undefined | null): boolean {
-  // Détecte l'ancien format: PLAYER_timestamp_random ou pas de préfixe
-  return !id || id.match(/^PLAYER_\d+_[a-z0-9]+$/) !== null || !id.startsWith('PLAYER_');
+interface MigrationStatus {
+  totalAccounts: number;
+  migratedAccounts: number;
+  totalPlayers: number;
+  migratedPlayers: number;
+  needsMigration: boolean;
 }
 
 async function migrateAccounts(): Promise<number> {
@@ -69,27 +35,31 @@ async function migrateAccounts(): Promise<number> {
   });
 
   while (await cursor.hasNext()) {
-    const account = await cursor.next() as AccountDocument | null;
+    const account = await cursor.next();
     if (!account) continue;
 
     const oldAccountId = account.accountId || account._id;
     const newAccountId = generateAccountId();
 
     try {
-      // Prépare le nouveau document
-      const migrated = {
-        ...account,
-        _id: newAccountId,
-        accountId: newAccountId,
-        oldAccountId: oldAccountId // Backup pour rollback
-      };
-      delete migrated.__v;
+      // Copie complète avec spread operator
+      const migrated = { ...account };
+      
+      // Modification des champs nécessaires
+      migrated._id = newAccountId;
+      migrated.accountId = newAccountId;
+      migrated.oldAccountId = oldAccountId;
+      
+      // Suppression du champ de versioning Mongoose
+      if ('__v' in migrated) {
+        delete (migrated as any).__v;
+      }
 
-      // Insère le nouveau, supprime l'ancien
-      await db.collection('accounts').insertOne(migrated);
+      // Insertion et suppression
+      await db.collection('accounts').insertOne(migrated as any);
       await db.collection('accounts').deleteOne({ _id: account._id });
 
-      // Met à jour les références dans les joueurs
+      // Mise à jour des références dans les joueurs
       await db.collection('players').updateMany(
         { accountId: oldAccountId },
         { 
@@ -126,29 +96,29 @@ async function migratePlayers(): Promise<number> {
   });
 
   while (await cursor.hasNext()) {
-    const player = await cursor.next() as PlayerDocument | null;
+    const player = await cursor.next();
     if (!player) continue;
 
     const oldPlayerId = player.playerId || player._id;
     const newPlayerId = generatePlayerId();
 
     try {
-      // Prépare le nouveau document avec type any pour éviter les conflits TypeScript
-      const migrated = {
-        ...player,
-        _id: newPlayerId,
-        playerId: newPlayerId,
-        oldPlayerId: oldPlayerId // Backup pour rollback
-      } as any;
+      // Copie complète avec spread operator
+      const migrated = { ...player };
       
-      // Supprime le champ de versioning Mongoose s'il existe
-      if (migrated.__v !== undefined) {
-        delete migrated.__v;
+      // Modification des champs nécessaires
+      migrated._id = newPlayerId;
+      migrated.playerId = newPlayerId;
+      migrated.oldPlayerId = oldPlayerId;
+      
+      // Suppression du champ de versioning Mongoose
+      if ('__v' in migrated) {
+        delete (migrated as any).__v;
       }
 
-      // Migre les transactions VIP avec UUID si nécessaire
+      // Migration des transactions VIP avec UUID si nécessaire
       if (migrated.vipTransactions && Array.isArray(migrated.vipTransactions)) {
-        migrated.vipTransactions = migrated.vipTransactions.map((transaction: Transaction) => ({
+        migrated.vipTransactions = migrated.vipTransactions.map((transaction: any) => ({
           ...transaction,
           transactionId: transaction.transactionId && transaction.transactionId.startsWith('TXN_') 
             ? transaction.transactionId 
@@ -156,9 +126,9 @@ async function migratePlayers(): Promise<number> {
         }));
       }
 
-      // Migre les achats serveur avec UUID si nécessaire
+      // Migration des achats serveur avec UUID si nécessaire
       if (migrated.serverPurchases && Array.isArray(migrated.serverPurchases)) {
-        migrated.serverPurchases = migrated.serverPurchases.map((purchase: Purchase) => ({
+        migrated.serverPurchases = migrated.serverPurchases.map((purchase: any) => ({
           ...purchase,
           transactionId: purchase.transactionId && purchase.transactionId.startsWith('TXN_')
             ? purchase.transactionId
@@ -166,8 +136,8 @@ async function migratePlayers(): Promise<number> {
         }));
       }
 
-      // Insère le nouveau doc, supprime l'ancien
-      await db.collection('players').insertOne(migrated);
+      // Insertion et suppression
+      await db.collection('players').insertOne(migrated as any);
       await db.collection('players').deleteOne({ _id: player._id });
 
       console.log(`✅ Joueur migré: ${player.displayName || player.username || 'Unknown'} (${oldPlayerId} -> ${newPlayerId})`);
@@ -290,7 +260,6 @@ async function migrate(): Promise<void> {
   }
 }
 
-// Point d'entrée avec arguments
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   
