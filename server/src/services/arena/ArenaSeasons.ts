@@ -530,56 +530,8 @@ export class ArenaSeasons {
     league?: ArenaLeague,
     limit: number = 50
   ): Promise<ArenaServiceResponse> {
-    try {
-      const currentSeason = await this.getCurrentSeason(serverId);
-      if (!currentSeason) {
-        return { success: false, error: "No active season found" };
-      }
-
-      const query: any = { serverId, seasonId: currentSeason.seasonId };
-      if (league) {
-        query.currentLeague = league;
-      }
-
-      const players = await ArenaPlayer.find(query)
-        .sort({ arenaPoints: -1, seasonWins: -1, seasonWinStreak: -1 })
-        .limit(limit)
-        .populate('playerId', 'displayName level')
-        .lean();
-
-      const leaderboard = players.map((player, index) => ({
-        rank: index + 1,
-        playerId: player.playerId,
-        playerName: (player.playerId as any)?.displayName || "Unknown",
-        level: (player.playerId as any)?.level || 1,
-        league: player.currentLeague,
-        arenaPoints: player.arenaPoints,
-        seasonWins: player.seasonWins,
-        seasonLosses: player.seasonLosses,
-        winRate: player.seasonWins + player.seasonLosses > 0 
-          ? Math.round((player.seasonWins / (player.seasonWins + player.seasonLosses)) * 100)
-          : 0,
-        winStreak: player.seasonWinStreak
-      }));
-
-      return {
-        success: true,
-        data: {
-          season: currentSeason,
-          leaderboard,
-          league: league || "All",
-          totalPlayers: await ArenaPlayer.countDocuments(query)
-        },
-        message: "Current season leaderboard retrieved"
-      };
-
-    } catch (error: any) {
-      console.error("❌ Erreur getCurrentSeasonLeaderboard:", error);
-      return {
-        success: false,
-        error: error.message
-      };
-    }
+    const { ArenaCache } = await import('./ArenaCache');
+    return ArenaCache.getLeaderboard(serverId, league, limit);
   }
 
   /**
