@@ -67,7 +67,7 @@ export class ArenaSeasons {
         }
       }
 
-      return currentSeason.toObject();
+      return currentSeason ? currentSeason.toObject() : null;
 
     } catch (error: any) {
       console.error("❌ Erreur getCurrentSeason:", error);
