@@ -182,7 +182,7 @@ export class ArenaCore {
       if (!canFight.allowed) {
         return {
           success: false,
-          error: canFight.reason,
+          error: canFight.reason || "Cannot fight",
           data: {
             opponents: [],
             searchCriteria: {
@@ -194,7 +194,7 @@ export class ArenaCore {
             playerInfo: {
               currentRank: arenaPlayer.currentRank,
               currentPoints: arenaPlayer.arenaPoints,
-              dailyMatchesRemaining: arenaPlayer.getMaxDailyMatches() - arenaPlayer.dailyMatchesUsed
+              dailyMatchesRemaining: this.getMaxDailyMatches(arenaPlayer.currentLeague) - arenaPlayer.dailyMatchesUsed
             }
           }
         };
@@ -267,7 +267,7 @@ export class ArenaCore {
           playerInfo: {
             currentRank: arenaPlayer.currentRank,
             currentPoints: arenaPlayer.arenaPoints,
-            dailyMatchesRemaining: arenaPlayer.getMaxDailyMatches() - arenaPlayer.dailyMatchesUsed
+            dailyMatchesRemaining: this.getMaxDailyMatches(arenaPlayer.currentLeague) - arenaPlayer.dailyMatchesUsed
           }
         },
         meta: {
@@ -326,7 +326,7 @@ export class ArenaCore {
       // Vérifications pré-combat
       const canFight = attacker.canStartMatch();
       if (!canFight.allowed) {
-        throw new Error(canFight.reason);
+        throw new Error(canFight.reason || "Cannot fight");
       }
 
       // Obtenir la saison actuelle
