@@ -43,7 +43,11 @@ const updateGuildSettingsSchema = Joi.object({
   minimumLevel: Joi.number().min(1).max(1000).optional(),
   minimumPower: Joi.number().min(0).optional(),
   language: Joi.string().valid("en", "fr", "es", "de", "ja", "ko", "zh").optional(),
-  requiredActivity: Joi.string().valid("low", "medium", "high").optional()
+  requiredActivity: Joi.string().valid("low", "medium", "high").optional(),
+  
+  // 🔥 NOUVEAU: Validation auto-kick
+  autoKickInactiveMembers: Joi.boolean().optional(),
+  inactivityThresholdDays: Joi.number().min(3).max(30).optional()
 });
 
 const applyToGuildSchema = Joi.object({
