@@ -290,48 +290,55 @@ export class GuildMemberService {
     }
   }
 
-  static async promoteMember(guildId: string, targetPlayerId: string, newRole: "officer" | "leader", promotedBy: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      const guild = await Guild.findById(guildId);
-      if (!guild) {
-        return { success: false, error: "Guild not found" };
-      }
-
-      if (newRole === "leader" && !guild.isLeader(promotedBy)) {
-        return { success: false, error: "Only leader can promote to leader" };
-      }
-
-      if (newRole === "officer" && !guild.canManageMembers(promotedBy)) {
-        return { success: false, error: "Insufficient permissions" };
-      }
-
-      const targetMember = guild.getMember(targetPlayerId);
-      const oldRole = targetMember?.role || 'member';
-      const promoter = guild.getMember(promotedBy);
-
-      if (newRole === "leader") {
-        await guild.demoteMember(promotedBy);
-      }
-
-      await guild.promoteMember(targetPlayerId, newRole);
-
-      // 🔥 NOUVEAU: Notifier changement de rôle
-      WebSocketService.notifyGuildMemberRoleChanged(guildId, {
-        playerId: targetPlayerId,
-        playerName: targetMember?.playerName || 'Unknown',
-        oldRole: oldRole,
-        newRole: newRole,
-        changedBy: promotedBy,
-        changedByName: promoter?.playerName || 'System'
-      });
-
-      return { success: true };
-
-    } catch (error) {
-      console.error("❌ Error promoting member:", error);
-      return { success: false, error: "Failed to promote member" };
+static async promoteMember(guildId: string, targetPlayerId: string, newRole: "elite" | "officer" | "leader", promotedBy: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const guild = await Guild.findById(guildId);
+    if (!guild) {
+      return { success: false, error: "Guild not found" };
     }
+
+    // Vérifications de permissions selon le nouveau rôle
+    if (newRole === "leader" && !guild.isLeader(promotedBy)) {
+      return { success: false, error: "Only leader can promote to leader" };
+    }
+
+    if (newRole === "officer" && !guild.isLeader(promotedBy)) {
+      return { success: false, error: "Only leader can promote to officer" };
+    }
+
+    // 🔥 NOUVEAU: Elite peut être promu par Officer ou Leader
+    if (newRole === "elite" && !guild.isOfficer(promotedBy)) {
+      return { success: false, error: "Officer or leader required to promote to elite" };
+    }
+
+    const targetMember = guild.getMember(targetPlayerId);
+    const oldRole = targetMember?.role || 'member';
+    const promoter = guild.getMember(promotedBy);
+
+    // Logique spéciale pour leader
+    if (newRole === "leader") {
+      await guild.demoteMember(promotedBy);
+    }
+
+    await guild.promoteMember(targetPlayerId, newRole);
+
+    // 🔥 Notification avec nouveau rôle
+    WebSocketService.notifyGuildMemberRoleChanged(guildId, {
+      playerId: targetPlayerId,
+      playerName: targetMember?.playerName || 'Unknown',
+      oldRole: oldRole,
+      newRole: newRole,
+      changedBy: promotedBy,
+      changedByName: promoter?.playerName || 'System'
+    });
+
+    return { success: true };
+
+  } catch (error) {
+    console.error("❌ Error promoting member:", error);
+    return { success: false, error: "Failed to promote member" };
   }
+}
 
   static async demoteMember(guildId: string, targetPlayerId: string, demotedBy: string): Promise<{ success: boolean; error?: string }> {
     try {
