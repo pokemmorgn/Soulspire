@@ -1,5 +1,6 @@
 import Guild, { IGuildDocument } from "../../models/Guild";
 import Player from "../../models/Player";
+import { WebSocketService } from '../WebSocketService';
 
 export interface GuildCreationResult {
   success: boolean;
@@ -80,7 +81,15 @@ export class GuildManagementService {
       await guild.save();
 
       console.log(`🏛️ Guild created: ${guild.name} [${guild.tag}] by ${player.displayName} on ${serverId}`);
-      
+      WebSocketService.notifyGuildCreated(creatorId, serverId, {
+        guildId: guild._id,
+        name: guild.name,
+        tag: guild.tag,
+        level: guild.level
+      });
+
+    // 🔥 NOUVEAU: Faire rejoindre le créateur à la room de guilde
+    WebSocketService.joinGuildRoom(creatorId, guild._id);
       return { success: true, guild };
 
     } catch (error) {
@@ -107,6 +116,17 @@ export class GuildManagementService {
           await player.save();
         }
       }
+      WebSocketService.notifyGuildDisbanded(guild.members, {
+        guildName: guild.name,
+        guildTag: guild.tag,
+        reason: reason || "Disbanded by leader",
+        disbandedBy: playerId
+      });
+      
+      // 🔥 NOUVEAU: Faire quitter tous les membres des rooms
+      guild.members.forEach(member => {
+        WebSocketService.leaveGuildRoom(member.playerId, guild._id);
+      });
 
       guild.status = "disbanded";
       guild.disbandedAt = new Date();
@@ -302,4 +322,36 @@ export class GuildManagementService {
       };
     }
   }
+  /**
+ * Notifier mise à jour de la puissance de guilde
+ */
+public static async notifyGuildPowerUpdate(guildId: string, serverId: string): Promise<void> {
+  try {
+    const guild = await Guild.findById(guildId);
+    if (!guild) return;
+
+    await guild.updateStats();
+    
+    // Vérifier si c'est un nouveau record serveur
+    const serverGuilds = await Guild.find({ serverId, status: "active" })
+      .sort({ "stats.totalPower": -1 })
+      .limit(10);
+    
+    const guildRank = serverGuilds.findIndex(g => g._id === guildId) + 1;
+    
+    // Notifier seulement si dans le top 5
+    if (guildRank > 0 && guildRank <= 5) {
+      WebSocketService.notifyGuildPowerRecord(guildId, serverId, {
+        guildName: guild.name,
+        guildTag: guild.tag,
+        newTotalPower: guild.stats.totalPower,
+        oldRecord: 0, // Sera calculé selon ta logique métier
+        serverRank: guildRank,
+        powerIncrease: 0 // Sera calculé selon ta logique métier
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error notifying guild power update:', error);
+  }
+}
 }
