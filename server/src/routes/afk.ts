@@ -1,6 +1,8 @@
 import { Router, type RequestHandler } from "express";
 import AfkServiceEnhanced from "../services/AfkService";
 import authMiddleware from "../middleware/authMiddleware";
+import { WebSocketService } from "../services/WebSocketService";
+
 /**
  * Routes AFK Enhanced - MÊMES NOMS DE ROUTES
  * Compatibilité totale + nouvelles fonctionnalités en arrière-plan
@@ -232,6 +234,21 @@ const postStart: RequestHandler = async (req, res) => {
       canUpgrade: summary.canUpgrade
     };
 
+    // 🔥 NOTIFICATION WEBSOCKET : Farming démarré
+    try {
+      WebSocketService.notifyAfkFarmingStarted(playerId, {
+        location: "Current AFK Location",
+        expectedDuration: summary.maxAccrualSeconds * 1000,
+        estimatedRewards: { 
+          gold: summary.baseGoldPerMinute * (summary.maxAccrualSeconds / 60),
+          totalValue: summary.totalValue || 0
+        },
+        farmingType: 'progression'
+      });
+    } catch (wsError) {
+      console.error('❌ Erreur notification farming started:', wsError);
+    }
+
     notifier.notify(playerId, {
       type: "summary",
       data: responseData,
@@ -282,6 +299,39 @@ const postHeartbeat: RequestHandler = async (req, res) => {
         activeMultipliers: summary.activeMultipliers
       })
     };
+
+    // 🔥 NOTIFICATION WEBSOCKET : Progression farming en temps réel
+    try {
+      // Notifier progression toutes les 30 secondes si farming actif
+      const shouldNotifyProgress = summary.accumulatedSinceClaimSec > 0 && 
+                                  summary.accumulatedSinceClaimSec % 30 === 0;
+      
+      if (shouldNotifyProgress) {
+        WebSocketService.notifyAfkFarmingProgress(playerId, {
+          elapsed: summary.accumulatedSinceClaimSec * 1000,
+          totalDuration: summary.maxAccrualSeconds * 1000,
+          currentRewards: {
+            gold: summary.pendingGold,
+            totalValue: summary.totalValue || 0
+          },
+          progressPercentage: Math.min(100, (summary.accumulatedSinceClaimSec / summary.maxAccrualSeconds) * 100),
+          location: "Current AFK Location"
+        });
+      }
+
+      // Alerte si proche du cap (1h restante)
+      if (timeUntilCap <= 3600 && timeUntilCap > 3590) {
+        WebSocketService.notifyAfkIdleRewardsAvailable(playerId, {
+          pendingRewards: summary.pendingRewards || [],
+          timeAccumulated: summary.accumulatedSinceClaimSec,
+          canClaim: true,
+          timeUntilCap
+        });
+      }
+
+    } catch (wsError) {
+      console.error('❌ Erreur notification heartbeat farming:', wsError);
+    }
 
     notifier.notify(playerId, {
       type: "summary",
@@ -397,6 +447,21 @@ const postClaim: RequestHandler = async (req, res) => {
         todayClaimedRewards: summary.todayClaimedRewards
       })
     };
+
+    // 🔥 NOTIFICATION WEBSOCKET : Récompenses disponibles après claim
+    try {
+      // Si nouvelles récompenses disponibles après 5min
+      if (summary.accumulatedSinceClaimSec > 300) {
+        WebSocketService.notifyAfkIdleRewardsAvailable(playerId, {
+          pendingRewards: summary.pendingRewards,
+          timeAccumulated: summary.accumulatedSinceClaimSec,
+          canClaim: summary.pendingGold > 0 || summary.pendingRewards.length > 0,
+          timeUntilCap: Math.max(0, summary.maxAccrualSeconds - summary.accumulatedSinceClaimSec)
+        });
+      }
+    } catch (wsError) {
+      console.error('❌ Erreur notification idle rewards:', wsError);
+    }
 
     notifier.notify(playerId, {
       type: "summary",
@@ -565,6 +630,105 @@ const getSimulate: RequestHandler = async (req, res) => {
   }
 };
 
+/**
+ * GET /check-progress - Vérification intelligente de progression (PRODUCTION)
+ */
+const getCheckProgress: RequestHandler = async (req, res) => {
+  const playerId = req.playerId!;
+
+  try {
+    const [summary, player] = await Promise.all([
+      AfkServiceEnhanced.getSummaryEnhanced(playerId, true),
+      require("../models/Player").default.findOne({ playerId }).select("world level lastSeenAt heroes")
+    ]);
+
+    if (!player) {
+      return res.status(404).json({ ok: false, error: "Player not found" });
+    }
+
+    const responseData = {
+      currentProgress: {
+        world: player.world,
+        level: player.level,
+        afkEfficiency: summary.activeMultipliers?.total || 1.0,
+        timeAccumulated: summary.accumulatedSinceClaimSec
+      },
+      suggestions: [] as any[],
+      canOptimize: false
+    };
+
+    // 🔥 LOGIQUE INTELLIGENTE DE SUGGESTIONS
+
+    // 1. Vérifier si bloqué (pas de progression récente)
+    const lastSeen = player.lastSeenAt || new Date();
+    const stuckTime = Date.now() - lastSeen.getTime();
+    
+    if (stuckTime > 6 * 3600 * 1000) { // 6h sans progression
+      responseData.suggestions.push({
+        type: 'progress_optimization',
+        priority: 'high',
+        title: 'Progression Stuck Detected',
+        description: `No progress for ${Math.floor(stuckTime / 3600000)} hours`,
+        action: 'upgrade_heroes'
+      });
+
+      // 🔥 NOTIFICATION WEBSOCKET
+      try {
+        WebSocketService.notifyAfkProgressStuck(playerId, {
+          currentStage: `${player.world}-${player.level}`,
+          timeStuck: stuckTime,
+          recommendations: [
+            {
+              type: 'upgrade',
+              description: 'Upgrade heroes to increase power',
+              priority: 'high',
+              cost: 5000
+            },
+            {
+              type: 'formation',
+              description: 'Optimize team formation',
+              priority: 'medium'
+            }
+          ],
+          canAutoFix: summary.useEnhancedRewards
+        });
+      } catch (wsError) {
+        console.error('❌ Erreur notification progress stuck:', wsError);
+      }
+    }
+
+    // 2. Vérifier efficacité AFK
+    if (summary.activeMultipliers?.total < 1.5) {
+      responseData.suggestions.push({
+        type: 'afk_efficiency',
+        priority: 'medium',
+        title: 'Low AFK Efficiency',
+        description: 'Consider upgrading to Enhanced AFK system',
+        action: summary.canUpgrade ? 'upgrade_enhanced' : 'improve_team'
+      });
+      responseData.canOptimize = true;
+    }
+
+    // 3. Vérifier si proche du cap
+    const timeUntilCap = summary.maxAccrualSeconds - summary.accumulatedSinceClaimSec;
+    if (timeUntilCap < 3600) { // Moins de 1h
+      responseData.suggestions.push({
+        type: 'reward_management',
+        priority: 'high',
+        title: 'AFK Rewards Nearly Capped',
+        description: `Only ${Math.floor(timeUntilCap / 60)} minutes until reward cap`,
+        action: 'claim_rewards'
+      });
+    }
+
+    res.json({ ok: true, data: responseData });
+
+  } catch (error: any) {
+    console.error("❌ Erreur getCheckProgress:", error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+};
+
 // === MONTAGE DES ROUTES ===
 
 // Routes existantes (noms identiques)
@@ -577,6 +741,6 @@ router.get("/stream", authMiddleware, getStream);
 router.post("/upgrade", authMiddleware, postUpgrade);
 router.get("/rates", authMiddleware, getRates);
 router.get("/simulate/:hours", authMiddleware, getSimulate);
-
+router.get("/check-progress", authMiddleware, getCheckProgress);
 
 export default router;
