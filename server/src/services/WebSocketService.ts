@@ -165,15 +165,27 @@ export class WebSocketService {
       console.log(`🚪 ${socket.playerName} left Campaign room`);
     });
 
-        // Gestionnaire de souscription aux fonctionnalités gacha
-    socket.on('gacha_subscribe', (data: { bannerId?: string }) => {
-      this.handleGachaSubscription(socket, data);
+    // Événements Gacha
+    socket.on('gacha:join_room', () => {
+      socket.join(`gacha:${socket.serverId}`);
+      console.log(`🎰 ${socket.playerName} joined Gacha room`);
     });
     
-    // Gestionnaire de désouscription gacha
-    socket.on('gacha_unsubscribe', () => {
-      this.handleGachaUnsubscription(socket);
+    socket.on('gacha:leave_room', () => {
+      socket.leave(`gacha:${socket.serverId}`);
+      console.log(`🚪 ${socket.playerName} left Gacha room`);
     });
+    
+    socket.on('gacha:subscribe_banner', (data: { bannerId: string }) => {
+      socket.join(`banner:${data.bannerId}`);
+      console.log(`🎲 ${socket.playerName} subscribed to banner ${data.bannerId}`);
+    });
+    
+    socket.on('gacha:unsubscribe_banner', (data: { bannerId: string }) => {
+      socket.leave(`banner:${data.bannerId}`);
+      console.log(`🚪 ${socket.playerName} unsubscribed from banner ${data.bannerId}`);
+    });
+    
     // Événements génériques
     socket.on('ping', () => {
       socket.emit('pong', { timestamp: Date.now() });
@@ -418,6 +430,106 @@ export class WebSocketService {
   public static notifyCampaignProgressBlocked(playerId: string, blockedData: any): void {
     WebSocketCampaign.notifyProgressBlocked(playerId, blockedData);
   }
+  // ===== MÉTHODES GACHA (DÉLÉGATION) =====
+
+/**
+ * Notifier le résultat d'un pull simple
+ */
+public static notifyGachaPullResult(playerId: string, pullData: any): void {
+  WebSocketGacha.notifyPullResult(playerId, pullData);
+}
+
+/**
+ * Notifier le résultat d'un multi-pull
+ */
+public static notifyGachaMultiPullResult(playerId: string, multiPullData: any): void {
+  WebSocketGacha.notifyMultiPullResult(playerId, multiPullData);
+}
+
+/**
+ * Notifier un drop légendaire
+ */
+public static notifyGachaLegendaryDrop(playerId: string, serverId: string, legendaryData: any): void {
+  WebSocketGacha.notifyLegendaryDrop(playerId, serverId, legendaryData);
+}
+
+/**
+ * Notifier progression du pity
+ */
+public static notifyGachaPityProgress(playerId: string, pityData: any): void {
+  WebSocketGacha.notifyPityProgress(playerId, pityData);
+}
+
+/**
+ * Notifier que le pity a été triggé
+ */
+public static notifyGachaPityTriggered(playerId: string, pityResult: any): void {
+  WebSocketGacha.notifyPityTriggered(playerId, pityResult);
+}
+
+/**
+ * Notifier streak de chance
+ */
+public static notifyGachaLuckyStreak(playerId: string, streakData: any): void {
+  WebSocketGacha.notifyLuckyStreak(playerId, streakData);
+}
+
+/**
+ * Notifier drop ultra-rare
+ */
+public static notifyGachaUltraRareDrop(playerId: string, serverId: string, ultraRareData: any): void {
+  WebSocketGacha.notifyUltraRareDrop(playerId, serverId, ultraRareData);
+}
+
+/**
+ * Notifier événement rate-up (broadcast serveur)
+ */
+public static notifyGachaRateUpEvent(serverId: string, eventData: any): void {
+  WebSocketGacha.notifyRateUpEvent(serverId, eventData);
+}
+
+/**
+ * Notifier événement pulls gratuits (broadcast serveur)
+ */
+public static notifyGachaFreePullsEvent(serverId: string, eventData: any): void {
+  WebSocketGacha.notifyFreePullsEvent(serverId, eventData);
+}
+
+/**
+ * Notifier bannière spéciale (broadcast serveur)
+ */
+public static notifyGachaSpecialBanner(serverId: string, bannerData: any): void {
+  WebSocketGacha.notifySpecialBannerLive(serverId, bannerData);
+}
+
+/**
+ * Notifier nouveau héros obtenu
+ */
+public static notifyGachaNewHeroObtained(playerId: string, newHeroData: any): void {
+  WebSocketGacha.notifyNewHeroObtained(playerId, newHeroData);
+}
+
+/**
+ * Notifier collection complétée
+ */
+public static notifyGachaCollectionCompleted(playerId: string, collectionData: any): void {
+  WebSocketGacha.notifyCollectionCompleted(playerId, collectionData);
+}
+
+/**
+ * Notifier recommandation intelligente
+ */
+public static notifyGachaSmartRecommendation(playerId: string, recommendation: any): void {
+  WebSocketGacha.notifySmartRecommendation(playerId, recommendation);
+}
+
+/**
+ * Notifier optimisation des ressources
+ */
+public static notifyGachaResourceOptimization(playerId: string, optimizationData: any): void {
+  WebSocketGacha.notifyResourceOptimization(playerId, optimizationData);
+}
+  
   // ===== MÉTHODES UTILITAIRES =====
 
   /**
