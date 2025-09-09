@@ -1106,9 +1106,9 @@ export class ShopService {
       // Générer preview avec ItemGenerator
       const preview = await ItemGenerator.previewGeneration(shopItem.itemId, {
         level: shopItem.content.level,
-        tier: shopItem.content.tier || 1,
+        tier: (shopItem as any).extendedContent?.tier || 1,
         enhancementLevel: shopItem.content.enhancement || 0,
-        factionAlignment: shopItem.factionAlignment,
+        factionAlignment: (shopItem as any).extendedContent?.factionAlignment,
         seed: `preview_${instanceId}`
       });
 
