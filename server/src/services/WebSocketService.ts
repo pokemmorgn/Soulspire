@@ -7,6 +7,7 @@ import { WebSocketArena } from './websocket/WebSocketArena';
 import { WebSocketAFK } from './websocket/WebSocketAFK';
 import { WebSocketCampaign } from './websocket/WebSocketCampaign';
 import { WebSocketGacha } from './websocket/WebSocketGacha';
+import { WebSocketShop } from './websocket/WebSocketShop';
 /**
  * SERVICE WEBSOCKET GLOBAL
  * Point d'entrée principal qui délègue aux modules spécialisés
@@ -72,6 +73,7 @@ export class WebSocketService {
     WebSocketAFK.initialize(this.io);
     WebSocketCampaign.initialize(this.io);
     WebSocketGacha.initialize(this.io);
+    WebSocketShop.initialize(this.io);
     console.log('✅ WebSocket Server initialized with specialized modules');
   }
 
@@ -185,7 +187,26 @@ export class WebSocketService {
       socket.leave(`banner:${data.bannerId}`);
       console.log(`🚪 ${socket.playerName} unsubscribed from banner ${data.bannerId}`);
     });
+    // Événements Shop - AJOUTER CETTE SECTION
+    socket.on('shop:join_room', () => {
+      socket.join(`shop:${socket.serverId}`);
+      console.log(`🛒 ${socket.playerName} joined Shop room`);
+    });
     
+    socket.on('shop:leave_room', () => {
+      socket.leave(`shop:${socket.serverId}`);
+      console.log(`🚪 ${socket.playerName} left Shop room`);
+    });
+    
+    socket.on('shop:subscribe_type', (data: { shopType: string }) => {
+      socket.join(`shop:${data.shopType}:${socket.serverId}`);
+      console.log(`🏪 ${socket.playerName} subscribed to ${data.shopType} shop`);
+    });
+    
+    socket.on('shop:unsubscribe_type', (data: { shopType: string }) => {
+      socket.leave(`shop:${data.shopType}:${socket.serverId}`);
+      console.log(`🚪 ${socket.playerName} unsubscribed from ${data.shopType} shop`);
+    });
     // Événements génériques
     socket.on('ping', () => {
       socket.emit('pong', { timestamp: Date.now() });
@@ -529,6 +550,64 @@ public static notifyGachaSmartRecommendation(playerId: string, recommendation: a
 public static notifyGachaResourceOptimization(playerId: string, optimizationData: any): void {
   WebSocketGacha.notifyResourceOptimization(playerId, optimizationData);
 }
+
+  // ===== MÉTHODES SHOP (DÉLÉGATION) =====
+
+/**
+ * Notifier succès d'achat
+ */
+public static notifyShopPurchaseSuccess(playerId: string, purchaseData: any): void {
+  WebSocketShop.notifyPurchaseSuccess(playerId, purchaseData);
+}
+
+/**
+ * Notifier échec d'achat  
+ */
+public static notifyShopPurchaseFailure(playerId: string, failureData: any): void {
+  WebSocketShop.notifyPurchaseFailure(playerId, failureData);
+}
+
+/**
+ * Notifier refresh de boutique
+ */
+public static notifyShopRefreshed(playerId: string, refreshData: any): void {
+  WebSocketShop.notifyShopRefreshed(playerId, refreshData);
+}
+
+/**
+ * Notifier reset automatique de boutique (broadcast serveur)
+ */
+public static notifyShopAutoReset(serverId: string, resetData: any): void {
+  WebSocketShop.notifyShopAutoReset(serverId, resetData);
+}
+
+/**
+ * Notifier nouvelle boutique disponible
+ */
+public static notifyNewShopAvailable(playerId: string, shopData: any): void {
+  WebSocketShop.notifyNewShopAvailable(playerId, shopData);
+}
+
+/**
+ * Notifier offre flash limitée
+ */
+public static notifyFlashOffer(playerId: string, offerData: any): void {
+  WebSocketShop.notifyFlashOffer(playerId, offerData);
+}
+
+/**
+ * Notifier événement boutique spécial (broadcast serveur)
+ */
+public static notifyShopEvent(serverId: string, eventData: any): void {
+  WebSocketShop.notifyShopEvent(serverId, eventData);
+}
+
+/**
+ * Notifier recommandation intelligente
+ */
+public static notifyShopSmartRecommendation(playerId: string, recommendation: any): void {
+  WebSocketShop.notifySmartRecommendation(playerId, recommendation);
+}
   
   // ===== MÉTHODES UTILITAIRES =====
 
@@ -594,7 +673,8 @@ public static notifyGachaResourceOptimization(playerId: string, optimizationData
         arena: WebSocketArena.isAvailable(),
         afk: WebSocketAFK.isAvailable(),
         campaign: WebSocketCampaign.isAvailable(),
-        gacha: WebSocketGacha.isAvailable()
+        gacha: WebSocketGacha.isAvailable(),
+        shop: WebSocketShop.isAvailable()
         // TODO: Ajouter d'autres modules
       }
     };
