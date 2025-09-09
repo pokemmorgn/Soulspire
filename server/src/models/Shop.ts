@@ -31,11 +31,6 @@ interface IShopItem {
     gems?: number;
     paidGems?: number;
     tickets?: number;
-    arenaCoins?: number;    // Monnaies spéciales
-    clanCoins?: number;
-    eventTokens?: number;
-    labTokens?: number;
-    guildCoins?: number;
   };
   
   // Propriétés de vente
@@ -66,20 +61,12 @@ interface IShopItem {
   tags: string[];          // "new", "hot", "limited", etc.
 }
 
-// Types de shops comme AFK Arena
+// Types de shops simplifiés
 type ShopType = 
-  | "General"        // Shop général (toujours disponible)
-  | "Arena"         // Boutique arène
-  | "Clan"          // Boutique de clan/guilde
-  | "Labyrinth"     // Boutique du labyrinthe
-  | "Event"         // Boutique d'événement
-  | "VIP"           // Boutique VIP
-  | "Daily"         // Offres quotidiennes
-  | "Weekly"        // Offres hebdomadaires
-  | "Monthly"       // Offres mensuelles
-  | "Flash"         // Ventes flash
-  | "Bundle"        // Packs spéciaux
-  | "Seasonal";     // Boutique saisonnière
+  | "Daily"         // Shop quotidien (reset 24h)
+  | "Weekly"        // Shop hebdomadaire (reset 7j)  
+  | "Monthly"       // Shop mensuel (reset 30j) - NOUVEAU
+  | "Premium";      // Shop premium (€) - NOUVEAU
 
 // Document principal du shop
 interface IShopDocument extends Document {
@@ -127,12 +114,11 @@ interface IShopDocument extends Document {
   getPlayerPurchaseHistory(playerId: string): IShopItem["purchaseHistory"];
   generateDailyItems(): Promise<void>;
   generateWeeklyItems(): Promise<void>;
+  generateMonthlyItems(): Promise<void>; // NOUVEAU
+  generatePremiumItems(): Promise<void>; // NOUVEAU
   applyDiscount(instanceId: string, discountPercent: number): boolean;
   calculateNextResetTime(): void;
   generateItemsForShopType(): Promise<void>;
-  generateGeneralItems(): Promise<void>;
-  generateArenaItems(): Promise<void>;
-  generateClanItems(): Promise<void>;
 }
 
 // === SCHÉMAS MONGOOSE ===
@@ -182,12 +168,7 @@ const shopItemSchema = new Schema<IShopItem>({
     gold: { type: Number, min: 0, default: 0 },
     gems: { type: Number, min: 0, default: 0 },
     paidGems: { type: Number, min: 0, default: 0 },
-    tickets: { type: Number, min: 0, default: 0 },
-    arenaCoins: { type: Number, min: 0, default: 0 },
-    clanCoins: { type: Number, min: 0, default: 0 },
-    eventTokens: { type: Number, min: 0, default: 0 },
-    labTokens: { type: Number, min: 0, default: 0 },
-    guildCoins: { type: Number, min: 0, default: 0 }
+    tickets: { type: Number, min: 0, default: 0 }
   },
   
   // Propriétés
@@ -203,7 +184,7 @@ const shopItemSchema = new Schema<IShopItem>({
   maxStock: { type: Number, default: -1 },
   currentStock: { 
     type: Number,
-    default: function() {
+    default: function(this: IShopItem) {
       return this.maxStock === -1 ? 999999 : this.maxStock;
     }
   },
@@ -230,7 +211,7 @@ const shopItemSchema = new Schema<IShopItem>({
 const shopSchema = new Schema<IShopDocument>({
   shopType: { 
     type: String, 
-    enum: ["General", "Arena", "Clan", "Labyrinth", "Event", "VIP", "Daily", "Weekly", "Monthly", "Flash", "Bundle", "Seasonal"],
+    enum: ["Daily", "Weekly", "Monthly", "Premium"], // CORRIGÉ
     required: true 
   },
   name: { 
@@ -358,86 +339,43 @@ shopSchema.statics.getShopsToReset = function() {
   });
 };
 
-// Créer shop prédéfini
+// Créer shop prédéfini - CONFIGURATION CORRIGÉE
 shopSchema.statics.createPredefinedShop = function(shopType: ShopType) {
   const shopConfigs: Record<ShopType, any> = {
-    General: {
-      name: "GENERAL_SHOP_NAME",
-      resetFrequency: "never",
-      maxItemsShown: 12,
-      freeRefreshCount: 3,
-      refreshCost: { gems: 50 }
-    },
-    Arena: {
-      name: "ARENA_SHOP_NAME", 
-      resetFrequency: "daily",
-      maxItemsShown: 8,
-      levelRequirement: 10
-    },
-    Clan: {
-      name: "CLAN_SHOP_NAME",
-      resetFrequency: "weekly", 
-      maxItemsShown: 6,
-      levelRequirement: 15
-    },
     Daily: {
-      name: "DAILY_OFFERS_NAME",
+      name: "DAILY_SHOP_NAME",
       resetFrequency: "daily",
-      maxItemsShown: 4,
-      priority: 90
-    },
-    VIP: {
-      name: "VIP_SHOP_NAME",
-      resetFrequency: "weekly",
-      maxItemsShown: 10,
-      vipLevelRequirement: 1,
-      priority: 95
-    },
-    Labyrinth: {
-      name: "LABYRINTH_SHOP_NAME",
-      resetFrequency: "weekly",
-      maxItemsShown: 6,
-      levelRequirement: 20
-    },
-    Event: {
-      name: "EVENT_SHOP_NAME",
-      resetFrequency: "event",
       maxItemsShown: 8,
-      levelRequirement: 5
+      freeRefreshCount: 2,
+      refreshCost: { gems: 50 },
+      priority: 90
     },
     Weekly: {
       name: "WEEKLY_SHOP_NAME",
-      resetFrequency: "weekly",
-      maxItemsShown: 6,
+      resetFrequency: "weekly", 
+      maxItemsShown: 12,
+      freeRefreshCount: 1,
+      refreshCost: { gems: 100 },
       priority: 80
     },
     Monthly: {
       name: "MONTHLY_SHOP_NAME",
       resetFrequency: "monthly",
-      maxItemsShown: 10,
+      maxItemsShown: 16,
+      freeRefreshCount: 0,
+      refreshCost: { gems: 200 },
       priority: 85
     },
-    Flash: {
-      name: "FLASH_SHOP_NAME",
-      resetFrequency: "daily",
-      maxItemsShown: 4,
-      priority: 100
-    },
-    Bundle: {
-      name: "BUNDLE_SHOP_NAME",
+    Premium: {
+      name: "PREMIUM_SHOP_NAME",
       resetFrequency: "never",
-      maxItemsShown: 8,
-      priority: 90
-    },
-    Seasonal: {
-      name: "SEASONAL_SHOP_NAME",
-      resetFrequency: "event",
-      maxItemsShown: 12,
+      maxItemsShown: 10,
+      freeRefreshCount: 0,
       priority: 95
     }
   };
   
-  const config = shopConfigs[shopType] || shopConfigs.General;
+  const config = shopConfigs[shopType];
   const now = new Date();
   let nextReset = new Date(now);
   
@@ -453,6 +391,10 @@ shopSchema.statics.createPredefinedShop = function(shopType: ShopType) {
     case "monthly":
       nextReset.setMonth(now.getMonth() + 1, 1);
       nextReset.setHours(0, 0, 0, 0);
+      break;
+    case "never":
+    default:
+      nextReset.setFullYear(now.getFullYear() + 1);
       break;
   }
   
@@ -510,31 +452,29 @@ shopSchema.methods.calculateNextResetTime = function() {
 
 // Générer objets selon le type de shop
 shopSchema.methods.generateItemsForShopType = async function() {
-  const Item = mongoose.model('Item');
-  
   // Logique de génération selon le type de shop
   switch (this.shopType) {
-    case "General":
-      await this.generateGeneralItems();
-      break;
-    case "Arena":
-      await this.generateArenaItems();
-      break;
-    case "Clan":
-      await this.generateClanItems();
-      break;
     case "Daily":
       await this.generateDailyItems();
+      break;
+    case "Weekly":
+      await this.generateWeeklyItems();
+      break;
+    case "Monthly":
+      await this.generateMonthlyItems();
+      break;
+    case "Premium":
+      await this.generatePremiumItems();
       break;
     default:
       await this.generateDefaultItems();
   }
 };
 
-// Générer objets du shop général
-shopSchema.methods.generateGeneralItems = async function() {
+// Générer objets quotidiens
+shopSchema.methods.generateDailyItems = async function() {
   const Item = mongoose.model('Item');
-  const items = await Item.find({ category: { $in: ["Equipment", "Consumable"] } }).limit(20);
+  const items = await Item.find({ category: "Consumable" }).limit(15);
   
   for (const item of items.slice(0, this.maxItemsShown)) {
     this.addItem({
@@ -550,18 +490,18 @@ shopSchema.methods.generateGeneralItems = async function() {
   }
 };
 
-// Générer objets du shop arène
-shopSchema.methods.generateArenaItems = async function() {
+// Générer objets hebdomadaires
+shopSchema.methods.generateWeeklyItems = async function() {
   const Item = mongoose.model('Item');
-  const items = await Item.find({ rarity: { $in: ["Rare", "Epic"] } }).limit(15);
+  const items = await Item.find({ rarity: { $in: ["Rare", "Epic"] } }).limit(20);
   
   for (const item of items.slice(0, this.maxItemsShown)) {
     this.addItem({
       itemId: item.itemId,
-      type: "Item", 
+      type: "Item",
       name: item.name,
       content: { itemId: item.itemId, quantity: 1 },
-      cost: { arenaCoins: Math.floor(item.sellPrice * 0.5) },
+      cost: { gems: Math.floor(item.sellPrice * 0.8) },
       rarity: item.rarity,
       maxStock: 3,
       maxPurchasePerPlayer: 2,
@@ -570,44 +510,52 @@ shopSchema.methods.generateArenaItems = async function() {
   }
 };
 
-// Générer objets du shop clan
-shopSchema.methods.generateClanItems = async function() {
+// Générer objets mensuels - NOUVEAU
+shopSchema.methods.generateMonthlyItems = async function() {
   const Item = mongoose.model('Item');
-  const items = await Item.find({ rarity: { $in: ["Epic", "Legendary"] } }).limit(10);
-  
-  for (const item of items.slice(0, this.maxItemsShown)) {
-    this.addItem({
-      itemId: item.itemId,
-      type: "Item", 
-      name: item.name,
-      content: { itemId: item.itemId, quantity: 1 },
-      cost: { clanCoins: Math.floor(item.sellPrice * 0.3) },
-      rarity: item.rarity,
-      maxStock: 2,
-      maxPurchasePerPlayer: 1,
-      weight: 50
-    });
-  }
-};
-
-// Générer objets quotidiens
-shopSchema.methods.generateDailyItems = async function() {
-  const Item = mongoose.model('Item');
-  const items = await Item.find({ category: "Consumable" }).limit(8);
+  const items = await Item.find({ rarity: { $in: ["Epic", "Legendary"] } }).limit(25);
   
   for (const item of items.slice(0, this.maxItemsShown)) {
     this.addItem({
       itemId: item.itemId,
       type: "Item",
       name: item.name,
-      content: { itemId: item.itemId, quantity: 3 },
-      cost: { gems: Math.floor(item.sellPrice * 0.8) },
+      content: { itemId: item.itemId, quantity: 1 },
+      cost: { gems: Math.floor(item.sellPrice * 0.6) },
       rarity: item.rarity,
       maxStock: 1,
       maxPurchasePerPlayer: 1,
-      weight: 80,
+      weight: 40,
       isPromotional: true,
-      discountPercent: 20
+      discountPercent: 25
+    });
+  }
+};
+
+// Générer objets premium - NOUVEAU
+shopSchema.methods.generatePremiumItems = async function() {
+  const Item = mongoose.model('Item');
+  const items = await Item.find({ rarity: "Legendary" }).limit(15);
+  
+  for (const item of items.slice(0, this.maxItemsShown)) {
+    this.addItem({
+      itemId: item.itemId,
+      type: "Bundle",
+      name: `Premium Pack: ${item.name}`,
+      content: { 
+        bundleItems: [
+          { type: "Item", itemId: item.itemId, quantity: 1 },
+          { type: "Currency", itemId: "gems", quantity: 500 },
+          { type: "Currency", itemId: "gold", quantity: 10000 }
+        ]
+      },
+      cost: { paidGems: 999 }, // Prix en euros via paidGems
+      rarity: "Legendary",
+      maxStock: -1, // Illimité
+      maxPurchasePerPlayer: 5, // Limité par joueur
+      weight: 100,
+      isFeatured: true,
+      tags: ["premium", "value", "limited"]
     });
   }
 };
@@ -631,8 +579,8 @@ shopSchema.methods.generateDefaultItems = async function() {
   }
 };
 
-// Ajouter un objet
-shopSchema.methods.addItem = function(itemData: Partial<IShopItem>) {
+// Ajouter un objet - CORRECTION TYPAGE
+shopSchema.methods.addItem = function(itemData: Partial<IShopItem>): IShopDocument {
   const newItem: IShopItem = {
     itemId: itemData.itemId || "",
     instanceId: new mongoose.Types.ObjectId().toString(),
@@ -659,7 +607,7 @@ shopSchema.methods.addItem = function(itemData: Partial<IShopItem>) {
   };
   
   this.items.push(newItem);
-  return this;
+  return this; // Retourner le document Shop
 };
 
 // Supprimer un objet
@@ -704,11 +652,11 @@ shopSchema.methods.canPlayerPurchase = async function(instanceId: string, player
     return { canPurchase: false, reason: "OUT_OF_STOCK" };
   }
   
-  // Vérifier les achats par joueur
+  // Vérifier les achats par joueur - CORRECTION TYPAGE
   if (item.maxPurchasePerPlayer !== -1) {
     const playerPurchases = item.purchaseHistory
-      .filter((p: any) => p.playerId === playerId)
-      .reduce((sum: number, p: any) => sum + p.quantity, 0);
+      .filter((p: { playerId: string; quantity: number; purchaseDate: Date }) => p.playerId === playerId)
+      .reduce((sum: number, p: { quantity: number }) => sum + p.quantity, 0);
     
     if (playerPurchases >= item.maxPurchasePerPlayer) {
       return { canPurchase: false, reason: "PURCHASE_LIMIT_REACHED" };
