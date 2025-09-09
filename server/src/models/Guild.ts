@@ -175,6 +175,8 @@ export interface IGuild {
     language: string;
     timezone: string;
     requiredActivity: "low" | "medium" | "high";
+    autoKickInactiveMembers: { type: Boolean, default: false },
+    inactivityThresholdDays: { type: Number, default: 7, min: 3, max: 30 }
   };
   members: IGuildMember[];
   maxMembers: number;
