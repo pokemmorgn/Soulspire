@@ -4,14 +4,14 @@ import { ShopService } from "../services/ShopService";
 import authMiddleware from "../middleware/authMiddleware";
 import { requireFeature } from "../middleware/featureMiddleware";
 import { FeatureUnlockService } from "../services/FeatureUnlockService";
+
 const router = express.Router();
 
 // === SCHÉMAS DE VALIDATION ===
 
 const shopFilterSchema = Joi.object({
   shopType: Joi.string().valid(
-    "General", "Arena", "Clan", "Labyrinth", "Event", 
-    "VIP", "Daily", "Weekly", "Monthly", "Flash", "Bundle", "Seasonal"
+    "Daily", "Weekly", "Monthly", "Premium" // Types corrigés
   ).optional(),
   page: Joi.number().min(1).default(1),
   limit: Joi.number().min(1).max(50).default(10)
@@ -27,7 +27,7 @@ const historySchema = Joi.object({
   limit: Joi.number().min(1).max(100).default(20)
 });
 
-// === ROUTES PUBLIQUES ===
+// === ROUTES PRINCIPALES ===
 
 /**
  * GET /api/shops
@@ -84,10 +84,7 @@ router.get("/:shopType", authMiddleware, async (req: Request, res: Response): Pr
     }
 
     const { shopType } = req.params;
-    const validShopTypes = [
-      "General", "Arena", "Clan", "Labyrinth", "Event", 
-      "VIP", "Daily", "Weekly", "Monthly", "Flash", "Bundle", "Seasonal"
-    ];
+    const validShopTypes = ["Daily", "Weekly", "Monthly", "Premium"];
 
     if (!validShopTypes.includes(shopType)) {
       res.status(400).json({
@@ -155,8 +152,8 @@ router.post("/:shopType/purchase", authMiddleware, async (req: Request, res: Res
 
     const { shopType } = req.params;
     
-    // Protection shop_premium (niveau 20) pour certaines boutiques
-    if (["VIP", "Bundle", "Monthly", "Premium"].includes(shopType)) {
+    // Protection shop_premium (niveau 20) pour Premium et Monthly
+    if (["Premium", "Monthly"].includes(shopType)) {
       try {
         await FeatureUnlockService.validateFeatureAccess(req.userId, req.serverId!, "shop_premium");
       } catch (error: any) {
