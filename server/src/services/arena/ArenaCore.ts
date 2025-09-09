@@ -634,7 +634,7 @@ private static async createInitialFormation(player: any): Promise<IArenaFormatio
   /**
    * Mettre à jour les classements des joueurs
    */
-  private static async updatePlayerRanking(serverId: string) {
+private static async updatePlayerRanking(serverId: string) {
     try {
       // Obtenir tous les joueurs du serveur triés par points
       const allPlayers = await ArenaPlayer.find({ serverId })
@@ -644,11 +644,30 @@ private static async createInitialFormation(player: any): Promise<IArenaFormatio
       for (let i = 0; i < allPlayers.length; i++) {
         const newRank = i + 1;
         if (allPlayers[i].currentRank !== newRank) {
+          const oldRank = allPlayers[i].currentRank;
           allPlayers[i].currentRank = newRank;
           if (newRank < allPlayers[i].highestRank) {
             allPlayers[i].highestRank = newRank;
           }
           await allPlayers[i].save();
+
+          // 🔌 Notification WebSocket si top 10 atteint
+          if (newRank <= 10 && newRank < oldRank) {
+            try {
+              const { WebSocketArena } = await import('../websocket/WebSocketArena');
+              WebSocketArena.notifyTopRankAchieved(
+                allPlayers[i].playerId,
+                serverId,
+                {
+                  newRank,
+                  league: allPlayers[i].currentLeague,
+                  isNewRecord: newRank === allPlayers[i].highestRank
+                }
+              );
+            } catch (error) {
+              console.error('⚠️ Erreur WebSocket top rank:', error);
+            }
+          }
         }
       }
 
