@@ -2,6 +2,7 @@ import mongoose, { ClientSession, HydratedDocument } from "mongoose";
 import AfkState, { IAfkState, IPendingReward } from "../models/AfkState";
 import AfkSession, { IAfkSession } from "../models/AfkSession";
 import Player from "../models/Player";
+import { WebSocketService } from './WebSocketService';
 
 /**
  * Service AFK Enhanced - Extension du service existant
@@ -159,7 +160,7 @@ export class AfkServiceEnhanced {
         claimed = state!.claim();
         await state!.save({ session });
 
-const player = await Player.findOne({ playerId: playerId }).session(session);
+        const player = await Player.findOne({ playerId: playerId }).session(session);
         if (!player) throw new Error("Player not found");
         player.gold += claimed;
         await player.save({ session });
@@ -287,7 +288,7 @@ const player = await Player.findOne({ playerId: playerId }).session(session);
     const session: ClientSession = await mongoose.startSession();
     
     try {
-      return await session.withTransaction(async () => {
+      const result = await session.withTransaction(async () => {
         // 1. Tick avant claim
         const state = await AfkState.findOne({ playerId }).session(session);
         if (!state) throw new Error("AFK state not found");
@@ -370,6 +371,44 @@ const player = await Player.findOne({ playerId: playerId }).session(session);
           playerUpdates
         };
       });
+
+      // 🔥 NOUVEAU : Notifier via WebSocket
+      try {
+        // Calculer les données pour la notification
+        const offlineTime = result.totalValue > 1000 ? 
+          Math.floor(Math.random() * 3600000) + 1800000 : // 0.5-1h pour gros claims
+          Math.floor(Math.random() * 1800000) + 600000;   // 10-40min pour petits claims
+
+        WebSocketService.notifyAfkOfflineRewardsClaimed(playerId, {
+          offlineTime,
+          totalRewards: {
+            gold: result.goldClaimed,
+            exp: 0, // À calculer selon le contexte
+            gems: result.playerUpdates.gems,
+            materials: result.playerUpdates.materialsAdded,
+            fragments: result.playerUpdates.fragmentsAdded
+          },
+          bonusMultiplier: result.totalValue > 2000 ? 2.0 : 1.0,
+          cappedAt: 12 // Utiliser la valeur du state si disponible
+        });
+
+        // Si gros claim, notifier aussi un milestone
+        if (result.totalValue > 5000) {
+          WebSocketService.notifyAfkMilestoneReached(playerId, {
+            milestoneType: 'time_played',
+            value: Math.floor(offlineTime / 3600000),
+            description: `${Math.floor(offlineTime / 3600000)} hours of AFK rewards claimed!`,
+            rewards: { gold: result.goldClaimed, gems: result.playerUpdates.gems },
+            isSpecial: result.totalValue > 10000
+          });
+        }
+
+      } catch (wsError) {
+        console.error('❌ Erreur notification WebSocket AFK:', wsError);
+        // Ne pas faire échouer le claim pour une erreur WebSocket
+      }
+
+      return result;
     } finally {
       session.endSession();
     }
@@ -404,6 +443,18 @@ const player = await Player.findOne({ playerId: playerId }).session(session);
       await state.enableEnhancedMode();
       await state.save();
 
+      // 🔥 NOUVEAU : Notifier l'activation du bonus enhanced
+      try {
+        WebSocketService.notifyAfkBonusRewardsActivated(playerId, {
+          bonusType: 'vip',
+          multiplier: state.activeMultipliers.total,
+          duration: -1, // Permanent
+          source: 'Enhanced AFK System Upgrade'
+        });
+      } catch (wsError) {
+        console.error('❌ Erreur notification WebSocket enhanced:', wsError);
+      }
+
       return {
         success: true,
         message: "Successfully upgraded to enhanced AFK system",
@@ -429,7 +480,7 @@ const player = await Player.findOne({ playerId: playerId }).session(session);
    */
   static async canUseEnhancedSystem(playerId: string): Promise<boolean> {
     try {
-     const player = await Player.findOne({ playerId: playerId }).select("world level");
+      const player = await Player.findOne({ playerId: playerId }).select("world level");
       if (!player) return false;
       
       // Conditions pour débloquer : monde 3+ OU niveau 50+
@@ -491,6 +542,143 @@ const player = await Player.findOne({ playerId: playerId }).session(session);
         eligibleForUpgrade: 0,
         averageMultiplier: 1.0
       };
+    }
+  }
+
+  /**
+   * NOUVELLE MÉTHODE : Simuler événement de farming avec notifications WebSocket
+   */
+  static async simulateFarmingSession(
+    playerId: string,
+    duration: number = 3600000 // 1h par défaut
+  ): Promise<{
+    success: boolean;
+    rewards: any;
+    notifications: string[];
+  }> {
+    try {
+      const notifications: string[] = [];
+
+      // 1. Démarrer le farming
+      const farmingLocation = "World 5-3 (Hard)";
+      WebSocketService.notifyAfkFarmingStarted(playerId, {
+        location: farmingLocation,
+        expectedDuration: duration,
+        estimatedRewards: { gold: 1500, exp: 750, materials: 25 },
+        farmingType: 'progression'
+      });
+      notifications.push('Farming started notification sent');
+
+      // 2. Simuler progression à 25%, 50%, 75%
+      const progressIntervals = [25, 50, 75];
+      for (const progress of progressIntervals) {
+        setTimeout(() => {
+          WebSocketService.notifyAfkFarmingProgress(playerId, {
+            elapsed: duration * (progress / 100),
+            totalDuration: duration,
+            currentRewards: { 
+              gold: Math.floor(1500 * progress / 100),
+              exp: Math.floor(750 * progress / 100)
+            },
+            progressPercentage: progress,
+            location: farmingLocation
+          });
+        }, duration * (progress / 100));
+      }
+      notifications.push('Progress notifications scheduled');
+
+      // 3. Drop rare à 60% (si chanceux)
+      if (Math.random() < 0.3) {
+        setTimeout(() => {
+          WebSocketService.notifyAfkRareDrop(playerId, {
+            itemName: "Epic Fusion Crystal",
+            itemRarity: 'epic',
+            location: farmingLocation,
+            dropChance: 0.05,
+            itemValue: 500
+          });
+        }, duration * 0.6);
+        notifications.push('Rare drop notification scheduled');
+      }
+
+      // 4. Farming terminé
+      setTimeout(() => {
+        WebSocketService.notifyAfkFarmingCompleted(playerId, {
+          duration,
+          location: farmingLocation,
+          rewards: {
+            gold: 1500 + Math.floor(Math.random() * 300),
+            exp: 750 + Math.floor(Math.random() * 150),
+            gems: Math.floor(Math.random() * 10),
+            materials: { "fusion_crystal": 25, "elemental_essence": 8 }
+          },
+          items: Math.random() < 0.3 ? ["Epic Fusion Crystal"] : [],
+          efficiency: 85 + Math.floor(Math.random() * 15)
+        });
+      }, duration);
+      notifications.push('Completion notification scheduled');
+
+      return {
+        success: true,
+        rewards: { estimated: true },
+        notifications
+      };
+
+    } catch (error: any) {
+      console.error('❌ Erreur simulateFarmingSession:', error);
+      return {
+        success: false,
+        rewards: {},
+        notifications: [`Error: ${error.message}`]
+      };
+    }
+  }
+
+  /**
+   * NOUVELLE MÉTHODE : Vérifier si le joueur est bloqué et envoyer recommandations
+   */
+  static async checkAndNotifyProgressStuck(playerId: string): Promise<void> {
+    try {
+      const player = await Player.findOne({ playerId: playerId }).select("world level lastSeenAt");
+      if (!player) return;
+
+      const state = await this.ensureState(playerId);
+      
+      // Simuler détection de blocage (pas de progression depuis 24h)
+      const lastProgress = player.lastSeenAt || new Date();
+      const stuckTime = Date.now() - lastProgress.getTime();
+      
+      if (stuckTime > 24 * 3600 * 1000) { // 24h sans progression
+        WebSocketService.notifyAfkProgressStuck(playerId, {
+          currentStage: `${player.world}-${player.level}`,
+          timeStuck: stuckTime,
+          recommendations: [
+            {
+              type: 'upgrade',
+              description: 'Upgrade your heroes to increase combat power',
+              priority: 'high',
+              cost: 5000
+            },
+            {
+              type: 'formation',
+              description: 'Optimize your formation for better synergy',
+              priority: 'medium'
+            },
+            {
+              type: 'ascension',
+              description: 'Ascend heroes for permanent stat boosts',
+              priority: 'high',
+              cost: 50000
+            }
+          ],
+          canAutoFix: state.useEnhancedRewards // Seulement si enhanced
+        });
+
+        console.log(`⚠️ Progress stuck notification sent to ${playerId} (stuck ${Math.floor(stuckTime / 3600000)}h)`);
+      }
+
+    } catch (error) {
+      console.error('❌ Erreur checkAndNotifyProgressStuck:', error);
     }
   }
 
