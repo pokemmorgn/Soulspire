@@ -65,8 +65,11 @@ interface IShopItem {
 type ShopType = 
   | "Daily"         // Shop quotidien (reset 24h)
   | "Weekly"        // Shop hebdomadaire (reset 7j)  
-  | "Monthly"       // Shop mensuel (reset 30j) - NOUVEAU
-  | "Premium";      // Shop premium (€) - NOUVEAU
+  | "Monthly"       // Shop mensuel (reset 30j)
+  | "Arena"         // Shop arène
+  | "Clan"          // Shop clan/guilde
+  | "VIP"           // Shop VIP
+  | "Premium";      // Shop premium (€)
 
 // Document principal du shop
 interface IShopDocument extends Document {
