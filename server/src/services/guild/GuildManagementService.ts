@@ -180,47 +180,81 @@ export class GuildManagementService {
     }
   }
 
-  static async updateGuildSettings(
-    guildId: string,
-    playerId: string,
-    settings: {
-      description?: string;
-      iconId?: string;
-      isPublic?: boolean;
-      autoAccept?: boolean;
-      minimumLevel?: number;
-      minimumPower?: number;
-      language?: string;
-      requiredActivity?: "low" | "medium" | "high";
-    }
-  ): Promise<{ success: boolean; error?: string }> {
-    try {
-      const guild = await Guild.findById(guildId);
-      if (!guild) {
-        return { success: false, error: "Guild not found" };
-      }
-
-      if (!guild.isLeader(playerId)) {
-        return { success: false, error: "Only leader can update settings" };
-      }
-
-      if (settings.description !== undefined) guild.description = settings.description;
-      if (settings.iconId !== undefined) guild.iconId = settings.iconId;
-      if (settings.isPublic !== undefined) guild.settings.isPublic = settings.isPublic;
-      if (settings.autoAccept !== undefined) guild.settings.autoAccept = settings.autoAccept;
-      if (settings.minimumLevel !== undefined) guild.settings.minimumLevel = settings.minimumLevel;
-      if (settings.minimumPower !== undefined) guild.settings.minimumPower = settings.minimumPower;
-      if (settings.language !== undefined) guild.settings.language = settings.language;
-      if (settings.requiredActivity !== undefined) guild.settings.requiredActivity = settings.requiredActivity;
-
-      await guild.save();
-      return { success: true };
-
-    } catch (error) {
-      console.error("❌ Error updating guild settings:", error);
-      return { success: false, error: "Failed to update settings" };
-    }
+static async updateGuildSettings(
+  guildId: string,
+  playerId: string,
+  settings: {
+    description?: string;
+    iconId?: string;
+    isPublic?: boolean;
+    autoAccept?: boolean;
+    minimumLevel?: number;
+    minimumPower?: number;
+    language?: string;
+    requiredActivity?: "low" | "medium" | "high";
+    
+    // 🔥 NOUVEAU: Paramètres auto-kick
+    autoKickInactiveMembers?: boolean;
+    inactivityThresholdDays?: number;
   }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const guild = await Guild.findById(guildId);
+    if (!guild) {
+      return { success: false, error: "Guild not found" };
+    }
+
+    if (!guild.isLeader(playerId)) {
+      return { success: false, error: "Only leader can update settings" };
+    }
+
+    // Paramètres existants
+    if (settings.description !== undefined) guild.description = settings.description;
+    if (settings.iconId !== undefined) guild.iconId = settings.iconId;
+    if (settings.isPublic !== undefined) guild.settings.isPublic = settings.isPublic;
+    if (settings.autoAccept !== undefined) guild.settings.autoAccept = settings.autoAccept;
+    if (settings.minimumLevel !== undefined) guild.settings.minimumLevel = settings.minimumLevel;
+    if (settings.minimumPower !== undefined) guild.settings.minimumPower = settings.minimumPower;
+    if (settings.language !== undefined) guild.settings.language = settings.language;
+    if (settings.requiredActivity !== undefined) guild.settings.requiredActivity = settings.requiredActivity;
+
+    // 🔥 NOUVEAU: Paramètres auto-kick
+    if (settings.autoKickInactiveMembers !== undefined) {
+      const oldSetting = guild.settings.autoKickInactiveMembers;
+      guild.settings.autoKickInactiveMembers = settings.autoKickInactiveMembers;
+      
+      // Log du changement
+      if (oldSetting !== settings.autoKickInactiveMembers) {
+        await guild.addActivityLog({
+          type: "settings_changed",
+          playerId: playerId,
+          playerName: "Leader",
+          details: { 
+            setting: "autoKickInactiveMembers",
+            oldValue: oldSetting,
+            newValue: settings.autoKickInactiveMembers,
+            changedAt: new Date()
+          }
+        });
+        
+        console.log(`⚙️ ${guild.name}: Auto-kick ${settings.autoKickInactiveMembers ? 'activé' : 'désactivé'} par le leader`);
+      }
+    }
+    
+    if (settings.inactivityThresholdDays !== undefined) {
+      // Validation du seuil (3-30 jours)
+      const threshold = Math.max(3, Math.min(30, settings.inactivityThresholdDays));
+      guild.settings.inactivityThresholdDays = threshold;
+    }
+
+    await guild.save();
+    return { success: true };
+
+  } catch (error) {
+    console.error("❌ Error updating guild settings:", error);
+    return { success: false, error: "Failed to update settings" };
+  }
+}
 
   static async getGuildActivityLogs(guildId: string, limit: number = 50): Promise<any[]> {
     try {
