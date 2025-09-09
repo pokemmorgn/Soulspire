@@ -2,6 +2,32 @@
 import { IdGenerator } from "./idGenerator";
 import Item from "../models/Item";
 
+// Import de l'interface IItemStats depuis le modèle Item
+interface IItemStats {
+  // Stats de base
+  hp: number;
+  atk: number;
+  def: number;
+
+  // Stats avancées
+  crit: number;        // Chance de critique (%)
+  critDamage: number;  // Dégâts critiques (%)
+  critResist: number;  // Résistance aux critiques (%)
+  dodge: number;       // Esquive (%)
+  accuracy: number;    // Précision (%)
+
+  // Stats spécialisées
+  vitesse: number;
+  moral: number;
+  reductionCooldown: number; // Réduction de CD (%)
+  healthleech: number;       // Vol de vie (%)
+
+  // Bonus spéciaux
+  healingBonus: number;    // Bonus aux soins (%)
+  shieldBonus: number;     // Bonus aux boucliers (%)
+  energyRegen: number;     // Régénération d'énergie (valeur plate)
+}
+
 // === INTERFACES POUR LA GÉNÉRATION ===
 
 interface IStatVariance {
