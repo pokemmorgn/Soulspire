@@ -306,7 +306,7 @@ export class CampaignService {
             battleStats: {
               duration: battleResult.result.battleDuration || 30000,
               totalTurns: battleResult.result.totalTurns || 5,
-              damageDealt: battleResult.result.stats?.totalDamage || 1000,
+              damageDealt: battleResult.result.stats?.totalDamageDealt || 1000,
               criticalHits: battleResult.result.stats?.criticalHits || 2
             },
             progression: {
