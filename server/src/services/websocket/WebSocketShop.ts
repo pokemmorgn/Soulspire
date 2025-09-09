@@ -178,6 +178,28 @@ export class WebSocketShop {
     console.log(`🏪 Shop auto-reset notification sent to ${serverId}: ${resetData.shopType} renewed with ${resetData.newItemsCount} items`);
   }
 
+    /**
+   * Notifier reset global de boutique (broadcast serveur)
+   */
+  public static notifyGlobalShopReset(resetData: {
+    shopType: string;
+    shopName: string;
+    newItemsCount: number;
+    resetTime: Date;
+  }): void {
+    if (!this.io) return;
+  
+    this.io.emit('shop:global_reset', {
+      type: 'global_shop_reset',
+      data: resetData,
+      timestamp: new Date(),
+      animation: 'shop_renewal',
+      priority: 'high'
+    });
+  
+    console.log(`🌍 Global shop reset: ${resetData.shopType} with ${resetData.newItemsCount} items`);
+  }
+  
   /**
    * Notifier nouvelle boutique disponible
    */
