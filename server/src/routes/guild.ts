@@ -1408,7 +1408,8 @@ router.post("/admin/maintenance/:serverId", async (req: Request, res: Response):
     res.json({
       message: "Guild maintenance completed successfully",
       serverId,
-      ...result
+      maintenanceType: result.type,
+      details: result.message
     });
 
   } catch (error: any) {
