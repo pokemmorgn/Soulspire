@@ -1,6 +1,6 @@
 import Guild, { IGuildDocument, IGuildMember } from "../../models/Guild";
-import { WebSocketService } from '../WebSocketService';
 import Player from "../../models/Player";
+import { WebSocketService } from '../WebSocketService';
 
 export interface GuildJoinResult {
   success: boolean;
@@ -91,12 +91,12 @@ export class GuildMemberService {
             playerPower: player.calculatePowerScore(),
             joinMethod: 'application'
           });
-      
+
           // 🔥 NOUVEAU: Faire rejoindre la room
           WebSocketService.joinGuildRoom(applicantId, guild._id);
         }
       }
-      
+
       return { success: true };
 
     } catch (error) {
@@ -159,11 +159,11 @@ export class GuildMemberService {
         if (player.guildId) {
           return { success: false, error: "Already in a guild", code: "ALREADY_IN_GUILD" };
         }
-      
+
         await guild.addMember(playerId, player.displayName, player.level, player.calculatePowerScore());
         player.guildId = guild._id;
         await player.save();
-      
+
         // 🔥 NOUVEAU: Notifier nouveau membre
         WebSocketService.notifyGuildMemberJoined(guild._id, {
           playerId: playerId,
@@ -172,13 +172,15 @@ export class GuildMemberService {
           playerPower: player.calculatePowerScore(),
           joinMethod: 'invitation'
         });
-      
+
         // 🔥 NOUVEAU: Faire rejoindre la room
         WebSocketService.joinGuildRoom(playerId, guild._id);
-      
+
         const member = guild.getMember(playerId);
         return { success: true, guild, member: member || undefined };
       }
+
+      return { success: true };
 
     } catch (error) {
       console.error("❌ Error processing invitation:", error);
@@ -203,30 +205,29 @@ export class GuildMemberService {
       }
 
       const guildId = player.guildId; // Sauvegarder avant suppression
-      const guildName = guild.name;
-      
+
       await guild.removeMember(playerId, "left");
-      
+
       // 🔥 NOUVEAU: Notifier départ
       WebSocketService.notifyGuildMemberLeft(guildId, {
         playerId: playerId,
         playerName: player.displayName,
         reason: 'left'
       });
-      
+
       // 🔥 NOUVEAU: Faire quitter la room
       WebSocketService.leaveGuildRoom(playerId, guildId);
-      
+
       player.guildId = undefined;
       await player.save();
-      
+
       if (guild.memberCount === 0) {
         guild.status = "disbanded";
         guild.disbandedAt = new Date();
         guild.disbandReason = "Last member left";
         await guild.save();
       }
-      
+
       return { success: true };
 
     } catch (error) {
@@ -261,9 +262,9 @@ export class GuildMemberService {
       }
 
       const kickerMember = guild.getMember(kickedBy);
-      
+
       await guild.removeMember(targetPlayerId, "kicked");
-      
+
       // 🔥 NOUVEAU: Notifier exclusion
       WebSocketService.notifyGuildMemberLeft(guildId, {
         playerId: targetPlayerId,
@@ -271,16 +272,16 @@ export class GuildMemberService {
         reason: 'kicked',
         kickedBy: kickerMember?.playerName
       });
-      
+
       // 🔥 NOUVEAU: Faire quitter la room
       WebSocketService.leaveGuildRoom(targetPlayerId, guildId);
-      
+
       const player = await Player.findById(targetPlayerId);
       if (player) {
         player.guildId = undefined;
         await player.save();
       }
-      
+
       return { success: true };
 
     } catch (error) {
@@ -304,16 +305,16 @@ export class GuildMemberService {
         return { success: false, error: "Insufficient permissions" };
       }
 
+      const targetMember = guild.getMember(targetPlayerId);
+      const oldRole = targetMember?.role || 'member';
+      const promoter = guild.getMember(promotedBy);
+
       if (newRole === "leader") {
         await guild.demoteMember(promotedBy);
       }
 
-      const targetMember = guild.getMember(targetPlayerId);
-      const oldRole = targetMember?.role || 'member';
-      const promoter = guild.getMember(promotedBy);
-      
       await guild.promoteMember(targetPlayerId, newRole);
-      
+
       // 🔥 NOUVEAU: Notifier changement de rôle
       WebSocketService.notifyGuildMemberRoleChanged(guildId, {
         playerId: targetPlayerId,
@@ -323,7 +324,7 @@ export class GuildMemberService {
         changedBy: promotedBy,
         changedByName: promoter?.playerName || 'System'
       });
-      
+
       return { success: true };
 
     } catch (error) {
@@ -349,9 +350,9 @@ export class GuildMemberService {
       }
 
       const demoter = guild.getMember(demotedBy);
-      
+
       await guild.demoteMember(targetPlayerId);
-      
+
       // 🔥 NOUVEAU: Notifier rétrogradation
       WebSocketService.notifyGuildMemberRoleChanged(guildId, {
         playerId: targetPlayerId,
@@ -361,7 +362,7 @@ export class GuildMemberService {
         changedBy: demotedBy,
         changedByName: demoter?.playerName || 'System'
       });
-      
+
       return { success: true };
 
     } catch (error) {
