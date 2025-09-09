@@ -7,7 +7,7 @@ export interface IGuildMember {
   playerName: string;
   playerLevel: number;
   playerPower: number;
-  role: "leader" | "officer" | "member";
+  role: "leader" | "officer" | "elite" | "member";
   joinedAt: Date;
   lastActiveAt: Date;
   contributionDaily: number;
@@ -250,7 +250,7 @@ const guildMemberSchema = new Schema<IGuildMember>({
   playerName: { type: String, required: true },
   playerLevel: { type: Number, required: true, min: 1 },
   playerPower: { type: Number, required: true, min: 0 },
-  role: { type: String, enum: ["leader", "officer", "member"], default: "member" },
+  role: { type: String, enum: ["leader", "officer", "elite", "member"], default: "member" },
   joinedAt: { type: Date, default: Date.now },
   lastActiveAt: { type: Date, default: Date.now },
   contributionDaily: { type: Number, default: 0, min: 0 },
@@ -978,8 +978,22 @@ guildSchema.methods.isOfficer = function(playerId: string) {
   return role === "officer" || role === "leader";
 };
 
+guildSchema.methods.isEliteOrAbove = function(playerId: string) {
+  const role = this.getPlayerRole(playerId);
+  return role === "elite" || role === "officer" || role === "leader";
+};
+
 guildSchema.methods.canManageMembers = function(playerId: string) {
   return this.isOfficer(playerId);
+};
+
+guildSchema.methods.canInviteMembers = function(playerId: string) {
+  return this.isEliteOrAbove(playerId);
+};
+
+// 🔥 NOUVELLE MÉTHODE: Peut démarrer des quêtes spéciales (Elite+)
+guildSchema.methods.canStartSpecialQuests = function(playerId: string) {
+  return this.isEliteOrAbove(playerId);
 };
 
 guildSchema.methods.addActivityLog = function(logData: Partial<IGuildActivityLog>) {
