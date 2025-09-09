@@ -235,7 +235,20 @@ export class ArenaRewards {
       await arenaPlayer.save();
 
       console.log(`✅ Récompenses hebdomadaires réclamées: ${JSON.stringify(weeklyRewards)}`);
-
+      
+       // 🔌 Notification WebSocket temps réel
+        try {
+          const { WebSocketArena } = await import('../websocket/WebSocketArena');
+          WebSocketArena.notifyWeeklyRewardsClaimed(playerId, {
+            gold: weeklyRewards.gold,
+            gems: weeklyRewards.gems,
+            seasonTokens: weeklyRewards.seasonTokens,
+            weeklyStats
+          });
+        } catch (error) {
+          console.error('⚠️ Erreur WebSocket weekly rewards:', error);
+        }
+      
       return {
         success: true,
         data: {
