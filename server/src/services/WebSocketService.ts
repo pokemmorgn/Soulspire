@@ -581,7 +581,7 @@ public static notifyShopAutoReset(serverId: string, resetData: any): void {
   WebSocketShop.notifyShopAutoReset(serverId, resetData);
 }
 /**
- * Notifier reset global de boutique (broadcast serveur)
+ * Notifier reset global de boutique
  */
 public static notifyGlobalShopReset(resetData: {
   shopType: string;
@@ -589,17 +589,7 @@ public static notifyGlobalShopReset(resetData: {
   newItemsCount: number;
   resetTime: Date;
 }): void {
-  if (!this.io) return;
-
-  this.io.emit('shop:global_reset', {
-    type: 'global_shop_reset',
-    data: resetData,
-    timestamp: new Date(),
-    animation: 'shop_renewal',
-    priority: 'high'
-  });
-
-  console.log(`🌍 Global shop reset: ${resetData.shopType} with ${resetData.newItemsCount} items`);
+  WebSocketShop.notifyGlobalShopReset(resetData);
 }
 /**
  * Notifier nouvelle boutique disponible
