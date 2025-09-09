@@ -4,7 +4,7 @@ import { ShopService } from './ShopService';
 import { ArenaService } from './arena';
 import { GuildManagementService } from './guild/GuildManagementService';
 import { GuildActivityService } from './guild/GuildActivityService';
-import { WebSocketGuild } from './websocket/WebSocketGuild';
+import { WebSocketService } from './WebSocketService';
 import Guild from '../models/Guild';
 import { IdGenerator } from '../utils/idGenerator';
 
@@ -94,7 +94,8 @@ export class SchedulerService {
           guildsProcessed: 0,
           inactiveMembersRemoved: 0,
           expiredInvitationsCleared: 0,
-          dailyRewardsReset: 0
+          dailyRewardsReset: 0,
+          leadershipTransfers: 0
         };
         
         for (const serverId of servers) {
@@ -103,11 +104,41 @@ export class SchedulerService {
           totalResults.inactiveMembersRemoved += result.inactiveMembersRemoved;
           totalResults.expiredInvitationsCleared += result.expiredInvitationsCleared;
           totalResults.dailyRewardsReset += result.dailyRewardsReset;
+          totalResults.leadershipTransfers += result.leadershipTransfers;
         }
         
-        console.log(`✅ Maintenance guildes terminée: ${totalResults.guildsProcessed} guildes, ${totalResults.inactiveMembersRemoved} membres inactifs supprimés`);
+        console.log(`✅ Maintenance guildes terminée: ${totalResults.guildsProcessed} guildes, ${totalResults.inactiveMembersRemoved} membres inactifs supprimés, ${totalResults.leadershipTransfers} transferts de leadership`);
       } catch (error) {
         console.error("❌ Erreur maintenance guildes:", error);
+      }
+    });
+
+    // 🔥 NOUVEAU: Vérification leadership toutes les 12h (midi et minuit)
+    this.scheduleTask('guild-leadership-check', '0 0,12 * * *', async () => {
+      console.log("👑 Vérification automatique des leaders inactifs...");
+      try {
+        const servers = ['S1', 'S2', 'S3'];
+        let totalTransfers = 0;
+        
+        for (const serverId of servers) {
+          const leadershipCheck = await GuildManagementService.checkAllInactiveLeadersOnServer(serverId);
+          totalTransfers += leadershipCheck.transfersPerformed;
+          
+          if (leadershipCheck.transfersPerformed > 0) {
+            console.log(`👑 ${serverId}: ${leadershipCheck.transfersPerformed} transferts de leadership effectués`);
+            
+            // Notifier via WebSocket pour monitoring
+            WebSocketService.broadcastToServer(serverId, 'guild:leadership_transfers_completed', {
+              serverTransfers: leadershipCheck.transfersPerformed,
+              guildsChecked: leadershipCheck.guildsChecked,
+              transfers: leadershipCheck.transfers
+            });
+          }
+        }
+        
+        console.log(`✅ Vérification leadership terminée: ${totalTransfers} transferts au total`);
+      } catch (error) {
+        console.error("❌ Erreur vérification leadership:", error);
       }
     });
 
@@ -178,19 +209,21 @@ export class SchedulerService {
   // ===== MÉTHODES GUILDES =====
 
   /**
-   * Maintenance quotidienne des guildes pour un serveur
+   * 🔥 MISE À JOUR: Maintenance quotidienne des guildes avec transfert de leadership
    */
   private static async performGuildDailyMaintenance(serverId: string): Promise<{
     guildsProcessed: number;
     inactiveMembersRemoved: number;
     expiredInvitationsCleared: number;
     dailyRewardsReset: number;
+    leadershipTransfers: number;
   }> {
     try {
       const guilds = await Guild.find({ serverId, status: "active" });
       let inactiveMembersRemoved = 0;
       let expiredInvitationsCleared = 0;
       let dailyRewardsReset = 0;
+      let leadershipTransfers = 0;
 
       for (const guild of guilds) {
         // 1. Nettoyer les invitations expirées
@@ -199,7 +232,18 @@ export class SchedulerService {
         const invitationsAfter = guild.invitations.length;
         expiredInvitationsCleared += (invitationsBefore - invitationsAfter);
 
-        // 2. Supprimer les membres inactifs (sauf leaders)
+        // 2. 👑 NOUVEAU: Vérifier et transférer leadership si nécessaire
+        try {
+          const leadershipResult = await GuildManagementService.checkAndTransferInactiveLeadership(guild._id);
+          if (leadershipResult.success && leadershipResult.transferred) {
+            leadershipTransfers++;
+            console.log(`👑 Leadership transféré dans ${guild.name}: ${leadershipResult.oldLeader?.playerName} → ${leadershipResult.newLeader?.playerName}`);
+          }
+        } catch (error) {
+          console.error(`❌ Erreur transfert leadership pour ${guild.name}:`, error);
+        }
+
+        // 3. Supprimer les membres inactifs (sauf leaders)
         const inactiveMembers = guild.members.filter((member: any) => {
           const daysSinceActive = (Date.now() - member.lastActiveAt.getTime()) / (1000 * 60 * 60 * 24);
           return daysSinceActive > 7 && member.role !== "leader";
@@ -209,7 +253,7 @@ export class SchedulerService {
           await guild.removeMember(member.playerId, "inactive");
           
           // Notifier via WebSocket
-          WebSocketGuild.notifyMemberLeft(guild._id, {
+          WebSocketService.notifyGuildMemberLeft(guild._id, {
             playerId: member.playerId,
             playerName: member.playerName,
             reason: 'inactive'
@@ -218,19 +262,19 @@ export class SchedulerService {
           inactiveMembersRemoved++;
         }
 
-        // 3. Reset des récompenses quotidiennes
+        // 4. Reset des récompenses quotidiennes
         await guild.resetDailyProgress();
         dailyRewardsReset++;
 
         // Notifier les nouvelles récompenses disponibles
-        WebSocketGuild.notifyDailyRewards(guild._id, {
+        WebSocketService.notifyGuildDailyRewards(guild._id, {
           rewardType: 'daily',
           totalEligibleMembers: guild.memberCount,
           claimedBy: 0,
           rewards: guild.rewards.dailyRewards.rewards
         });
 
-        // 4. Mettre à jour les statistiques
+        // 5. Mettre à jour les statistiques
         await guild.updateStats();
       }
 
@@ -238,7 +282,8 @@ export class SchedulerService {
         guildsProcessed: guilds.length,
         inactiveMembersRemoved,
         expiredInvitationsCleared,
-        dailyRewardsReset
+        dailyRewardsReset,
+        leadershipTransfers
       };
 
     } catch (error) {
@@ -247,7 +292,8 @@ export class SchedulerService {
         guildsProcessed: 0,
         inactiveMembersRemoved: 0,
         expiredInvitationsCleared: 0,
-        dailyRewardsReset: 0
+        dailyRewardsReset: 0,
+        leadershipTransfers: 0
       };
     }
   }
@@ -284,7 +330,7 @@ export class SchedulerService {
         const result = await GuildActivityService.startGuildQuest(guild._id, 'daily', randomTemplate);
         if (result.success && result.quest) {
           // Notifier via WebSocket
-          WebSocketGuild.notifyQuestStarted(guild._id, {
+          WebSocketService.notifyGuildQuestStarted(guild._id, {
             questId: result.quest.questId,
             name: result.quest.name,
             description: result.quest.description,
@@ -326,7 +372,7 @@ export class SchedulerService {
             guild.currentRaid.status = "failed";
             
             // Notifier les participants
-            WebSocketGuild.broadcastToGuild(guild._id, 'guild:raid_expired', {
+            WebSocketService.sendToPlayer(guild.currentRaid.participants[0]?.playerId || 'system', 'guild:raid_expired', {
               raidName: guild.currentRaid.name,
               reason: 'timeout'
             });
@@ -356,7 +402,7 @@ export class SchedulerService {
       
       for (const serverId of servers) {
         // Activer bonus contributions weekend
-        WebSocketGuild.notifyGuildEvent(serverId, {
+        WebSocketService.notifyGuildEvent(serverId, {
           eventType: 'bonus_contributions',
           eventName: 'Weekend Bonus',
           description: 'Double contribution points during weekend!',
@@ -463,10 +509,15 @@ export class SchedulerService {
         console.log("🎉 Vérification événements arène manuelle...");
         await ArenaService.toggleSpecialEvent("doubleRewards", true);
         break;
-      // ===== NOUVELLES TÂCHES GUILDES =====
+      // ===== TÂCHES GUILDES =====
       case 'guild-daily-maintenance':
         console.log("🏛️ Maintenance guildes manuelle...");
         await this.performGuildDailyMaintenance('S1');
+        break;
+      case 'guild-leadership-check':
+        console.log("👑 Vérification leadership manuelle...");
+        const result = await GuildManagementService.checkAllInactiveLeadersOnServer('S1');
+        console.log(`✅ ${result.transfersPerformed} transferts effectués sur ${result.guildsChecked} guildes`);
         break;
       case 'guild-daily-quests':
         console.log("📋 Démarrage quêtes quotidiennes manuel...");
