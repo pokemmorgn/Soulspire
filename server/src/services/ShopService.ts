@@ -860,10 +860,11 @@ export class ShopService {
             });
             
             // Ajouter l'objet généré à l'inventaire
-            const ownedItem = await inventory.addGeneratedItem(
-              generatedItem,
-              shopItem.content.quantity * quantity
-            );
+          const ownedItem = await inventory.addItem(
+            generatedItem.itemId, // Utiliser l'ID de l'instance générée
+            shopItem.content.quantity * quantity,
+            generatedItem.level
+          );
             
             rewards.push({
               type: "Item",
