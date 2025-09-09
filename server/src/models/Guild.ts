@@ -280,7 +280,11 @@ const guildInvitationSchema = new Schema<IGuildInvitation>({
 }, { _id: false });
 
 const guildActivityLogSchema = new Schema<IGuildActivityLog>({
-  type: { type: String, enum: ["join", "leave", "kick", "promote", "demote", "contribution", "raid_start", "raid_complete", "level_up"], required: true },
+  type: { 
+    type: String, 
+    enum: ["join", "leave", "kick", "promote", "demote", "contribution", "raid_start", "raid_complete", "level_up", "settings_changed"], 
+    required: true 
+  },
   playerId: { type: String, required: true },
   playerName: { type: String, required: true },
   targetPlayerId: { type: String },
