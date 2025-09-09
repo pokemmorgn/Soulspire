@@ -1094,7 +1094,7 @@ guildSchema.methods.completeRaid = function(raidId: string) {
 // Méthodes de nettoyage
 guildSchema.methods.cleanupExpiredInvitations = function() {
   const now = new Date();
-  this.invitations = this.invitations.filter(inv => {
+  this.invitations = this.invitations.filter((inv: IGuildInvitation) => {
     if (inv.status === "pending" && inv.expiresAt < now) {
       inv.status = "expired";
       return false;
@@ -1106,7 +1106,7 @@ guildSchema.methods.cleanupExpiredInvitations = function() {
 };
 
 guildSchema.methods.resetDailyProgress = function() {
-  this.members.forEach(member => {
+  this.members.forEach((member: IGuildMember) => {
     member.contributionDaily = 0;
   });
   
@@ -1118,7 +1118,7 @@ guildSchema.methods.resetDailyProgress = function() {
 };
 
 guildSchema.methods.resetWeeklyProgress = function() {
-  this.members.forEach(member => {
+  this.members.forEach((member: IGuildMember) => {
     member.contributionWeekly = 0;
   });
   
@@ -1127,7 +1127,7 @@ guildSchema.methods.resetWeeklyProgress = function() {
   this.rewards.weeklyRewards.lastClaimTime = new Date();
   
   // Nettoyer les quêtes expirées
-  this.currentQuests = this.currentQuests.filter(quest => 
+  this.currentQuests = this.currentQuests.filter((quest: IGuildQuest) => 
     !quest.isCompleted && quest.endDate > new Date()
   );
   
