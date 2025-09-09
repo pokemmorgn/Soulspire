@@ -87,8 +87,8 @@ export class GuildActivityService {
 
       guild.guildBank.gold += cost.gold;
       for (const [material, amount] of Object.entries(cost.materials)) {
-        const currentGuildMaterial = guild.guildBank.materials.get(material) || 0;
-        guild.guildBank.materials.set(material, currentGuildMaterial + amount);
+        const currentGuildMaterial = (guild.guildBank.materials as any).get(material) || 0;
+        (guild.guildBank.materials as any).set(material, currentGuildMaterial + amount);
       }
       guild.guildBank.lastDonation = new Date();
 
@@ -251,11 +251,13 @@ export class GuildActivityService {
         return { success: false, error: "Guild level 5 required for raids" };
       }
 
+      const { getRaidTemplate } = await import("./templates/GuildRaidTemplates");
       const baseTemplate = getRaidTemplate(raidType, templateId);
       if (!baseTemplate) {
         return { success: false, error: "Invalid raid template" };
       }
 
+      const { calculateRaidRewards } = await import("./templates/GuildRaidTemplates");
       const template = calculateRaidRewards(baseTemplate, difficulty);
 
       const raidData = {
@@ -397,7 +399,7 @@ export class GuildActivityService {
           player.gold += tierReward.rewards.gold;
           player.gems += tierReward.rewards.gems;
           
-          for (const [material, amount] of tierReward.rewards.materials.entries()) {
+      for (const [material, amount] of Object.entries(tierReward.rewards.materials)) {
             const current = player.materials.get(material) || 0;
             player.materials.set(material, current + amount);
           }
