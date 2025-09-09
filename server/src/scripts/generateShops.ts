@@ -75,7 +75,8 @@ function calculateItemPrice(
 ): Record<string, number> {
   const baseCost = templateItem.sellPrice || 100;
   const powerMultiplier = 1 + (generatedItem.generatedStats.powerScore / 1000) * 0.1;
-  const rarityMultiplier = { "Common": 1, "Rare": 2, "Epic": 4, "Legendary": 8 }[templateItem.rarity] || 1;
+  const rarityMultipliers: Record<string, number> = { "Common": 1, "Rare": 2, "Epic": 4, "Legendary": 8 };
+  const rarityMultiplier = rarityMultipliers[templateItem.rarity] || 1;
   
   const finalCost = Math.round(baseCost * powerMultiplier * rarityMultiplier);
   
