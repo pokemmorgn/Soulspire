@@ -1,6 +1,7 @@
 import Guild, { IGuildDocument, IGuildQuest, IGuildRaid } from "../../models/Guild";
 import Player from "../../models/Player";
 import { IdGenerator } from "../../utils/idGenerator";
+import { WebSocketService } from '../WebSocketService';
 
 export interface GuildQuestProgress {
   questId: string;
@@ -178,6 +179,18 @@ export class GuildActivityService {
       await guild.startQuest(questData);
       
       const quest = guild.currentQuests[guild.currentQuests.length - 1];
+
+      // 🔥 NOUVEAU: Notifier nouvelle quête
+      WebSocketService.notifyGuildQuestStarted(guildId, {
+        questId: quest.questId,
+        name: quest.name,
+        description: quest.description,
+        questType: quest.questType,
+        targetValue: quest.targetValue,
+        endDate: quest.endDate,
+        rewards: quest.rewards
+      });
+
       return { success: true, quest };
 
     } catch (error) {
@@ -203,6 +216,39 @@ export class GuildActivityService {
       
       const questAfter = guild.currentQuests.find((q: IGuildQuest) => q.questId === questId);
       const questCompleted = questAfter ? questAfter.isCompleted && !wasCompleted : false;
+
+      // 🔥 NOUVEAU: Notifier progression
+      if (questAfter) {
+        const progressPercentage = Math.min(100, (questAfter.currentProgress / questAfter.targetValue) * 100);
+        const player = await Player.findById(playerId);
+        
+        WebSocketService.notifyGuildQuestProgress(guildId, {
+          questId: questId,
+          questName: questAfter.name,
+          currentProgress: questAfter.currentProgress,
+          targetValue: questAfter.targetValue,
+          progressPercentage: progressPercentage,
+          contributorName: player?.displayName || 'Unknown',
+          contributionAmount: progress,
+          isCompleted: questAfter.isCompleted
+        });
+
+        // 🔥 NOUVEAU: Notifier contribution personnelle
+        if (player) {
+          const contributor = questAfter.contributors.find((c: any) => c.playerId === playerId);
+          const totalContribution = contributor?.contribution || 0;
+          const rank = questAfter.contributors
+            .sort((a: any, b: any) => b.contribution - a.contribution)
+            .findIndex((c: any) => c.playerId === playerId) + 1;
+
+          WebSocketService.notifyGuildQuestContribution(playerId, {
+            questName: questAfter.name,
+            contribution: progress,
+            totalContribution: totalContribution,
+            rank: rank
+          });
+        }
+      }
 
       return { success: true, questCompleted };
 
@@ -273,6 +319,21 @@ export class GuildActivityService {
       };
 
       await guild.startRaid(raidData);
+
+      // 🔥 NOUVEAU: Notifier nouveau raid
+      if (guild.currentRaid) {
+        WebSocketService.notifyGuildRaidStarted(guildId, {
+          raidId: guild.currentRaid.raidId,
+          name: guild.currentRaid.name,
+          description: guild.currentRaid.description,
+          raidType: guild.currentRaid.raidType,
+          difficultyLevel: guild.currentRaid.difficultyLevel,
+          maxParticipants: guild.currentRaid.maxParticipants,
+          duration: Math.floor((guild.currentRaid.endTime.getTime() - guild.currentRaid.startTime.getTime()) / (1000 * 60 * 60)),
+          rewards: guild.currentRaid.rewards
+        });
+      }
+
       return { success: true, raid: guild.currentRaid };
 
     } catch (error) {
@@ -298,6 +359,18 @@ export class GuildActivityService {
       }
 
       await guild.joinRaid(raidId, playerId, player.displayName);
+
+      // 🔥 NOUVEAU: Notifier participation
+      if (guild.currentRaid) {
+        WebSocketService.notifyGuildRaidParticipantJoined(guildId, {
+          raidId: raidId,
+          raidName: guild.currentRaid.name,
+          playerName: player.displayName,
+          currentParticipants: guild.currentRaid.currentParticipants,
+          maxParticipants: guild.currentRaid.maxParticipants
+        });
+      }
+
       return { success: true };
 
     } catch (error) {
@@ -325,6 +398,41 @@ export class GuildActivityService {
       const healthBefore = guild.currentRaid.bossHealth.current;
       await guild.updateRaidProgress(raidId, playerId, damage);
       const raidCompleted = guild.currentRaid.bossHealth.current <= 0 && healthBefore > 0;
+
+      // 🔥 NOUVEAU: Notifier progression raid
+      if (guild.currentRaid) {
+        const bossHealthPercentage = Math.max(0, (guild.currentRaid.bossHealth.current / guild.currentRaid.bossHealth.max) * 100);
+        const isCriticalPhase = bossHealthPercentage <= 25;
+        const player = await Player.findById(playerId);
+        
+        WebSocketService.notifyGuildRaidProgress(guildId, {
+          raidId: raidId,
+          raidName: guild.currentRaid.name,
+          bossHealthPercentage: bossHealthPercentage,
+          totalDamage: damage,
+          recentAttacker: player?.displayName || 'Unknown',
+          recentDamage: damage,
+          isCriticalPhase: isCriticalPhase
+        });
+
+        // 🔥 NOUVEAU: Si raid terminé, notifier complétion
+        if (raidCompleted) {
+          const participants = guild.currentRaid.participants;
+          const mvp = participants.sort((a: any, b: any) => b.damageDealt - a.damageDealt)[0];
+          const duration = Date.now() - guild.currentRaid.startTime.getTime();
+
+          WebSocketService.notifyGuildRaidCompleted(guildId, {
+            raidId: raidId,
+            raidName: guild.currentRaid.name,
+            duration: duration,
+            participantCount: participants.length,
+            mvpPlayer: mvp?.playerName || 'Unknown',
+            mvpDamage: mvp?.damageDealt || 0,
+            totalRewards: guild.currentRaid.rewards,
+            isServerFirst: false // À implémenter selon la logique métier
+          });
+        }
+      }
 
       if (raidCompleted) {
         await this.distributeRaidRewards(guild);
@@ -399,7 +507,7 @@ export class GuildActivityService {
           player.gold += tierReward.rewards.gold;
           player.gems += tierReward.rewards.gems;
           
-      for (const [material, amount] of Object.entries(tierReward.rewards.materials)) {
+          for (const [material, amount] of Object.entries(tierReward.rewards.materials)) {
             const current = player.materials.get(material) || 0;
             player.materials.set(material, current + amount);
           }
@@ -461,6 +569,15 @@ export class GuildActivityService {
       }
       
       await guild.save();
+
+      // 🔥 NOUVEAU: Notifier récompense personnelle
+      WebSocketService.notifyGuildPersonalRewardClaimed(playerId, {
+        rewardType: 'daily',
+        guildName: guild.name,
+        rewards: finalRewards,
+        bonusMultiplier: vipMultiplier,
+        nextRewardAvailable: new Date(Date.now() + 24 * 60 * 60 * 1000)
+      });
 
       return { success: true, rewards: finalRewards };
 
@@ -525,6 +642,15 @@ export class GuildActivityService {
       }
       
       await guild.save();
+
+      // 🔥 NOUVEAU: Notifier récompense personnelle
+      WebSocketService.notifyGuildPersonalRewardClaimed(playerId, {
+        rewardType: 'weekly',
+        guildName: guild.name,
+        rewards: finalRewards,
+        bonusMultiplier: contributionBonus,
+        nextRewardAvailable: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+      });
 
       return { success: true, rewards: finalRewards };
 
