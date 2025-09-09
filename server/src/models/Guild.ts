@@ -557,19 +557,6 @@ guildSchema.methods.addMember = function(playerId: string, playerName: string, p
     playerName,
     timestamp: new Date()
   });
-    if (typeof WebSocketService !== 'undefined' && WebSocketService.notifyGuildLevelUp) {
-    WebSocketService.notifyGuildLevelUp(this._id, {
-      oldLevel: oldLevel,
-      newLevel: this.level,
-      guildName: this.name,
-      unlockedFeatures: this.level % 10 === 0 ? ['Max members increased'] : [],
-      newMaxMembers: this.maxMembers,
-      celebrationRewards: {
-        guildCoins: this.level * 100,
-        guildExp: 0
-      }
-    });
-  }
   return this.save();
 };
 
@@ -742,6 +729,20 @@ guildSchema.methods.addExperience = function(amount: number, source: string) {
       details: { oldLevel, newLevel: this.level, source },
       timestamp: new Date()
     });
+        // 🔥 NOUVEAU: Notifier montée de niveau via WebSocket
+    if (typeof WebSocketService !== 'undefined' && WebSocketService.notifyGuildLevelUp) {
+      WebSocketService.notifyGuildLevelUp(this._id, {
+        oldLevel: oldLevel,
+        newLevel: this.level,
+        guildName: this.name,
+        unlockedFeatures: this.level % 10 === 0 ? ['Max members increased'] : [],
+        newMaxMembers: this.maxMembers,
+        celebrationRewards: {
+          guildCoins: this.level * 100,
+          guildExp: 0
+        }
+      });
+    }
   }
   
   return this.save().then(() => ({ leveledUp, newLevel }));
