@@ -79,7 +79,22 @@ export class ArenaCombat {
         defenderId,
         battleOptions
       );
-
+      
+      // 🔌 Notification WebSocket début de combat (pour spectateurs)
+      try {
+        const { WebSocketArena } = await import('../websocket/WebSocketArena');
+        WebSocketArena.notifyMatchStarted(serverId, {
+          attackerName: matchData.attackerData.playerName,
+          defenderName: matchData.defenderData.playerName,
+          attackerLeague: attacker.currentLeague,
+          defenderLeague: defender.currentLeague,
+          matchId: `temp_${Date.now()}`, // Sera remplacé par le vrai ID après création
+          estimatedDuration: 30000 // 30 secondes estimées
+        });
+      } catch (error) {
+        console.error('⚠️ Erreur WebSocket match started:', error);
+      }
+      
       // Étape 4: Calculer les résultats
       const combatResults = this.calculateCombatResults(
         attacker,
