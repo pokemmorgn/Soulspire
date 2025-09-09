@@ -7,13 +7,14 @@
 
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import { GuildManagementService } from '../src/services/guild/GuildManagementService';
-import { GuildMemberService } from '../src/services/guild/GuildMemberService';
-import { GuildActivityService } from '../src/services/guild/GuildActivityService';
-import { GuildSearchService } from '../src/services/guild/GuildSearchService';
-import Guild from '../src/models/Guild';
-import Player from '../src/models/Player';
-import { IdGenerator } from '../src/utils/idGenerator';
+// 🔥 CORRECTION: Imports corrigés pour la structure réelle
+import { GuildManagementService } from '../services/guild/GuildManagementService';
+import { GuildMemberService } from '../services/guild/GuildMemberService';
+import { GuildActivityService } from '../services/guild/GuildActivityService';
+import { GuildSearchService } from '../services/guild/GuildSearchService';
+import Guild from '../models/Guild';
+import Player from '../models/Player';
+import { IdGenerator } from '../utils/idGenerator';
 
 // Configuration
 dotenv.config();
@@ -419,7 +420,7 @@ class GuildSystemTester {
 
       // Vérifier la progression
       const questProgress = await GuildActivityService.getGuildQuestProgress(this.testGuild._id);
-      const activeQuest = questProgress.find(q => q.questId === quest!.questId);
+      const activeQuest = questProgress.find((q: any) => q.questId === quest!.questId);
 
       if (!activeQuest || activeQuest.currentProgress !== 1000) {
         throw new Error("Progression de quête incorrecte");
@@ -569,8 +570,8 @@ class GuildSystemTester {
 
       // Vérifier le transfert
       const updatedGuild = await Guild.findById(this.testGuild._id);
-      const newLeader = updatedGuild?.members.find(m => m.role === "leader");
-      const oldLeader = updatedGuild?.members.find(m => m.playerId === this.testPlayers[0]._id);
+      const newLeader = updatedGuild?.members.find((m: any) => m.role === "leader");
+      const oldLeader = updatedGuild?.members.find((m: any) => m.playerId === this.testPlayers[0]._id);
 
       if (!newLeader || newLeader.playerId === this.testPlayers[0]._id) {
         throw new Error("Leadership non transféré");
