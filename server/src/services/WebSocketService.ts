@@ -6,6 +6,7 @@ import Player from '../models/Player';
 import { WebSocketArena } from './websocket/WebSocketArena';
 import { WebSocketAFK } from './websocket/WebSocketAFK';
 import { WebSocketCampaign } from './websocket/WebSocketCampaign';
+import { WebSocketGacha } from './websocket/WebSocketGacha';
 /**
  * SERVICE WEBSOCKET GLOBAL
  * Point d'entrée principal qui délègue aux modules spécialisés
@@ -70,6 +71,7 @@ export class WebSocketService {
     WebSocketArena.initialize(this.io);
     WebSocketAFK.initialize(this.io);
     WebSocketCampaign.initialize(this.io);
+    WebSocketGacha.initialize(this.io);
     console.log('✅ WebSocket Server initialized with specialized modules');
   }
 
@@ -162,11 +164,21 @@ export class WebSocketService {
       socket.leave(`campaign:${socket.serverId}`);
       console.log(`🚪 ${socket.playerName} left Campaign room`);
     });
+
+        // Gestionnaire de souscription aux fonctionnalités gacha
+    socket.on('gacha_subscribe', (data: { bannerId?: string }) => {
+      this.handleGachaSubscription(socket, data);
+    });
     
+    // Gestionnaire de désouscription gacha
+    socket.on('gacha_unsubscribe', () => {
+      this.handleGachaUnsubscription(socket);
+    });
     // Événements génériques
     socket.on('ping', () => {
       socket.emit('pong', { timestamp: Date.now() });
     });
+
 
     // TODO: Ajouter d'autres gestionnaires pour AFK, Campaign, etc.
   }
@@ -469,7 +481,8 @@ export class WebSocketService {
       modules: {
         arena: WebSocketArena.isAvailable(),
         afk: WebSocketAFK.isAvailable(),
-        campaign: WebSocketCampaign.isAvailable()
+        campaign: WebSocketCampaign.isAvailable(),
+        gacha: WebSocketGacha.isAvailable()
         // TODO: Ajouter d'autres modules
       }
     };
