@@ -238,6 +238,7 @@ export interface IGuildDocument extends Document, IGuild {
   isLeader(playerId: string): boolean;
   isOfficer(playerId: string): boolean;
   canManageMembers(playerId: string): boolean;
+  canInviteMembers(playerId: string): boolean;
   updateStats(): Promise<IGuildDocument>;
   addActivityLog(logData: Partial<IGuildActivityLog>): Promise<IGuildDocument>;
   cleanupExpiredInvitations(): Promise<IGuildDocument>;
