@@ -344,39 +344,60 @@ shopSchema.statics.getShopsToReset = function() {
 
 // Créer shop prédéfini - CONFIGURATION CORRIGÉE
 shopSchema.statics.createPredefinedShop = function(shopType: ShopType) {
-  const shopConfigs: Record<ShopType, any> = {
-    Daily: {
-      name: "DAILY_SHOP_NAME",
-      resetFrequency: "daily",
-      maxItemsShown: 8,
-      freeRefreshCount: 2,
-      refreshCost: { gems: 50 },
-      priority: 90
-    },
-    Weekly: {
-      name: "WEEKLY_SHOP_NAME",
-      resetFrequency: "weekly", 
-      maxItemsShown: 12,
-      freeRefreshCount: 1,
-      refreshCost: { gems: 100 },
-      priority: 80
-    },
-    Monthly: {
-      name: "MONTHLY_SHOP_NAME",
-      resetFrequency: "monthly",
-      maxItemsShown: 16,
-      freeRefreshCount: 0,
-      refreshCost: { gems: 200 },
-      priority: 85
-    },
-    Premium: {
-      name: "PREMIUM_SHOP_NAME",
-      resetFrequency: "never",
-      maxItemsShown: 10,
-      freeRefreshCount: 0,
-      priority: 95
-    }
-  };
+const shopConfigs: Record<ShopType, any> = {
+  Daily: {
+    name: "DAILY_SHOP_NAME",
+    resetFrequency: "daily",
+    maxItemsShown: 8,
+    freeRefreshCount: 2,
+    refreshCost: { gems: 50 },
+    priority: 90
+  },
+  Weekly: {
+    name: "WEEKLY_SHOP_NAME",
+    resetFrequency: "weekly", 
+    maxItemsShown: 12,
+    freeRefreshCount: 1,
+    refreshCost: { gems: 100 },
+    priority: 80
+  },
+  Monthly: {
+    name: "MONTHLY_SHOP_NAME",
+    resetFrequency: "monthly",
+    maxItemsShown: 16,
+    freeRefreshCount: 0,
+    refreshCost: { gems: 200 },
+    priority: 85
+  },
+  Arena: {
+    name: "ARENA_SHOP_NAME",
+    resetFrequency: "daily",
+    maxItemsShown: 8,
+    levelRequirement: 10,
+    priority: 70
+  },
+  Clan: {
+    name: "CLAN_SHOP_NAME",
+    resetFrequency: "weekly",
+    maxItemsShown: 6,
+    levelRequirement: 15,
+    priority: 75
+  },
+  VIP: {
+    name: "VIP_SHOP_NAME",
+    resetFrequency: "weekly",
+    maxItemsShown: 10,
+    vipLevelRequirement: 1,
+    priority: 95
+  },
+  Premium: {
+    name: "PREMIUM_SHOP_NAME",
+    resetFrequency: "never",
+    maxItemsShown: 10,
+    freeRefreshCount: 0,
+    priority: 95
+  }
+};
   
   const config = shopConfigs[shopType];
   const now = new Date();
