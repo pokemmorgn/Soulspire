@@ -8,6 +8,7 @@ import { WebSocketAFK } from './websocket/WebSocketAFK';
 import { WebSocketCampaign } from './websocket/WebSocketCampaign';
 import { WebSocketGacha } from './websocket/WebSocketGacha';
 import { WebSocketShop } from './websocket/WebSocketShop';
+import { WebSocketGuild } from './websocket/WebSocketGuild';
 /**
  * SERVICE WEBSOCKET GLOBAL
  * Point d'entrée principal qui délègue aux modules spécialisés
@@ -74,6 +75,7 @@ export class WebSocketService {
     WebSocketCampaign.initialize(this.io);
     WebSocketGacha.initialize(this.io);
     WebSocketShop.initialize(this.io);
+    WebSocketGuild.initialize(this.io);
     console.log('✅ WebSocket Server initialized with specialized modules');
   }
 
@@ -206,6 +208,30 @@ export class WebSocketService {
     socket.on('shop:unsubscribe_type', (data: { shopType: string }) => {
       socket.leave(`shop:${data.shopType}:${socket.serverId}`);
       console.log(`🚪 ${socket.playerName} unsubscribed from ${data.shopType} shop`);
+    });
+    // Événements Guild
+    socket.on('guild:join_room', (data: { guildId: string }) => {
+      if (data.guildId) {
+        socket.join(`guild:${data.guildId}`);
+        console.log(`🏛️ ${socket.playerName} joined guild room ${data.guildId}`);
+      }
+    });
+    
+    socket.on('guild:leave_room', (data: { guildId: string }) => {
+      if (data.guildId) {
+        socket.leave(`guild:${data.guildId}`);
+        console.log(`🚪 ${socket.playerName} left guild room ${data.guildId}`);
+      }
+    });
+    
+    socket.on('guild:subscribe_notifications', () => {
+      socket.join(`guild_notifications:${socket.serverId}`);
+      console.log(`🔔 ${socket.playerName} subscribed to guild notifications`);
+    });
+    
+    socket.on('guild:unsubscribe_notifications', () => {
+      socket.leave(`guild_notifications:${socket.serverId}`);
+      console.log(`🔕 ${socket.playerName} unsubscribed from guild notifications`);
     });
     // Événements génériques
     socket.on('ping', () => {
@@ -618,7 +644,139 @@ public static notifyShopEvent(serverId: string, eventData: any): void {
 public static notifyShopSmartRecommendation(playerId: string, recommendation: any): void {
   WebSocketShop.notifySmartRecommendation(playerId, recommendation);
 }
-  
+
+  /**
+ * Notifier création de guilde
+ */
+public static notifyGuildCreated(creatorId: string, serverId: string, guildData: any): void {
+  WebSocketGuild.notifyGuildCreated(creatorId, serverId, guildData);
+}
+
+/**
+ * Notifier dissolution de guilde
+ */
+public static notifyGuildDisbanded(guildMembers: any[], guildData: any): void {
+  WebSocketGuild.notifyGuildDisbanded(guildMembers, guildData);
+}
+
+/**
+ * Notifier qu'un nouveau membre a rejoint
+ */
+public static notifyGuildMemberJoined(guildId: string, newMember: any): void {
+  WebSocketGuild.notifyMemberJoined(guildId, newMember);
+}
+
+/**
+ * Notifier qu'un membre a quitté/été exclu
+ */
+public static notifyGuildMemberLeft(guildId: string, memberData: any): void {
+  WebSocketGuild.notifyMemberLeft(guildId, memberData);
+}
+
+/**
+ * Notifier promotion/rétrogradation de membre
+ */
+public static notifyGuildMemberRoleChanged(guildId: string, roleChangeData: any): void {
+  WebSocketGuild.notifyMemberRoleChanged(guildId, roleChangeData);
+}
+
+/**
+ * Notifier nouvelle quête de guilde
+ */
+public static notifyGuildQuestStarted(guildId: string, questData: any): void {
+  WebSocketGuild.notifyQuestStarted(guildId, questData);
+}
+
+/**
+ * Notifier progression de quête
+ */
+public static notifyGuildQuestProgress(guildId: string, progressData: any): void {
+  WebSocketGuild.notifyQuestProgress(guildId, progressData);
+}
+
+/**
+ * Notifier contribution individuelle à une quête
+ */
+public static notifyGuildQuestContribution(playerId: string, contributionData: any): void {
+  WebSocketGuild.notifyQuestContribution(playerId, contributionData);
+}
+
+/**
+ * Notifier nouveau raid de guilde
+ */
+public static notifyGuildRaidStarted(guildId: string, raidData: any): void {
+  WebSocketGuild.notifyRaidStarted(guildId, raidData);
+}
+
+/**
+ * Notifier participation au raid
+ */
+public static notifyGuildRaidParticipantJoined(guildId: string, participantData: any): void {
+  WebSocketGuild.notifyRaidParticipantJoined(guildId, participantData);
+}
+
+/**
+ * Notifier progression du raid en temps réel
+ */
+public static notifyGuildRaidProgress(guildId: string, progressData: any): void {
+  WebSocketGuild.notifyRaidProgress(guildId, progressData);
+}
+
+/**
+ * Notifier complétion du raid
+ */
+public static notifyGuildRaidCompleted(guildId: string, completionData: any): void {
+  WebSocketGuild.notifyRaidCompleted(guildId, completionData);
+}
+
+/**
+ * Notifier montée de niveau de guilde
+ */
+public static notifyGuildLevelUp(guildId: string, levelUpData: any): void {
+  WebSocketGuild.notifyGuildLevelUp(guildId, levelUpData);
+}
+
+/**
+ * Notifier nouveau record de puissance
+ */
+public static notifyGuildPowerRecord(guildId: string, serverId: string, recordData: any): void {
+  WebSocketGuild.notifyPowerRecord(guildId, serverId, recordData);
+}
+
+/**
+ * Notifier distribution de récompenses quotidiennes
+ */
+public static notifyGuildDailyRewards(guildId: string, rewardsData: any): void {
+  WebSocketGuild.notifyDailyRewards(guildId, rewardsData);
+}
+
+/**
+ * Notifier récompense personnelle réclamée
+ */
+public static notifyGuildPersonalRewardClaimed(playerId: string, rewardData: any): void {
+  WebSocketGuild.notifyPersonalRewardClaimed(playerId, rewardData);
+}
+
+/**
+ * Notifier événement de guilde spécial (broadcast serveur)
+ */
+public static notifyGuildEvent(serverId: string, eventData: any): void {
+  WebSocketGuild.notifyGuildEvent(serverId, eventData);
+}
+
+/**
+ * Faire rejoindre un joueur à la room de sa guilde
+ */
+public static joinGuildRoom(playerId: string, guildId: string): void {
+  WebSocketGuild.joinGuildRoom(playerId, guildId);
+}
+
+/**
+ * Faire quitter un joueur de la room de sa guilde
+ */
+public static leaveGuildRoom(playerId: string, guildId: string): void {
+  WebSocketGuild.leaveGuildRoom(playerId, guildId);
+}
   // ===== MÉTHODES UTILITAIRES =====
 
   /**
@@ -684,7 +842,8 @@ public static notifyShopSmartRecommendation(playerId: string, recommendation: an
         afk: WebSocketAFK.isAvailable(),
         campaign: WebSocketCampaign.isAvailable(),
         gacha: WebSocketGacha.isAvailable(),
-        shop: WebSocketShop.isAvailable()
+        shop: WebSocketShop.isAvailable(),
+        guild: WebSocketGuild.isAvailable()
         // TODO: Ajouter d'autres modules
       }
     };
