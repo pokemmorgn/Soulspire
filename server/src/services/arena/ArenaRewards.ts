@@ -111,6 +111,20 @@ export class ArenaRewards {
         }
       );
 
+      // 🔌 Notification WebSocket temps réel
+      try {
+        const { WebSocketArena } = await import('../websocket/WebSocketArena');
+        WebSocketArena.notifyDailyRewardsClaimed(playerId, {
+          gold: finalRewards.gold,
+          gems: finalRewards.gems,
+          seasonTokens: finalRewards.seasonTokens,
+          bonusMultiplier: bonusMultiplier.multiplier,
+          streakInfo: bonusMultiplier.streakInfo
+        });
+      } catch (error) {
+        console.error('⚠️ Erreur WebSocket daily rewards:', error);
+      }
+      
       return {
         success: true,
         data: {
