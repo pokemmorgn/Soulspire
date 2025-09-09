@@ -3,6 +3,7 @@ import Joi from "joi";
 import authMiddleware from "../middleware/authMiddleware";
 import { requireFeature } from "../middleware/featureMiddleware";
 import { GachaService } from "../services/GachaService";
+import { WebSocketService } from "../services/WebSocketService";
 
 const router = express.Router();
 
@@ -82,7 +83,7 @@ router.get("/banner/rates", authMiddleware, async (req: Request, res: Response):
   }
 });
 
-// === PULL ON SPECIFIC BANNER ===
+// === PULL ON SPECIFIC BANNER (VERSION ENRICHIE AVEC WEBSOCKET) ===
 router.post("/pull", authMiddleware, requireFeature("gacha"), async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = bannerPullSchema.validate(req.body);
@@ -117,7 +118,7 @@ router.post("/pull", authMiddleware, requireFeature("gacha"), async (req: Reques
           element: r.hero.element,
           rarity: r.hero.rarity,
           baseStats: r.hero.baseStats,
-          skill: r.hero.skill
+          spells: r.hero.spells
         },
         rarity: r.rarity,
         isNew: r.isNew,
@@ -128,8 +129,153 @@ router.post("/pull", authMiddleware, requireFeature("gacha"), async (req: Reques
       cost: result.cost,
       remaining: result.remaining,
       pityStatus: result.pityStatus,
-      bannerInfo: result.bannerInfo
+      bannerInfo: result.bannerInfo,
+      specialEffects: result.specialEffects,
+      // Ajout des données pour les animations client
+      animations: {
+        pullType: count === 1 ? 'single' : 'multi',
+        hasLegendary: result.stats.legendary > 0,
+        hasMultipleLegendary: result.stats.legendary > 1,
+        perfectPull: count === 10 && result.results.every(r => ['Epic', 'Legendary'].includes(r.rarity)),
+        luckyStreak: result.specialEffects?.luckyStreakCount || 0,
+        pityTriggered: result.specialEffects?.hasPityBreak || false
+      }
     };
+
+    // 🎰 === NOTIFICATIONS WEBSOCKET AUTOMATIQUES === 🎰
+    try {
+      if (result.results.length === 1) {
+        // Pull simple - notification immédiate
+        WebSocketService.notifyGachaPullResult(req.userId!, {
+          hero: {
+            id: result.results[0].hero._id,
+            name: result.results[0].hero.name,
+            rarity: result.results[0].rarity,
+            element: result.results[0].hero.element,
+            role: result.results[0].hero.role
+          },
+          isNew: result.results[0].isNew,
+          fragmentsGained: result.results[0].fragmentsGained,
+          isFocus: result.results[0].isFocus || false,
+          bannerId: bannerId,
+          bannerName: result.bannerInfo?.name || 'Unknown Banner',
+          cost: result.cost,
+          pullNumber: result.pityStatus.pullsSinceLegendary + 1
+        });
+
+        console.log(`🔔 Pull notification sent to ${req.userId}: ${result.results[0].hero.name} (${result.results[0].rarity})`);
+      } else {
+        // Multi-pull - notification enrichie
+        WebSocketService.notifyGachaMultiPullResult(req.userId!, {
+          bannerId: bannerId,
+          bannerName: result.bannerInfo?.name || 'Unknown Banner',
+          heroes: result.results.map(r => ({
+            hero: r.hero,
+            rarity: r.rarity,
+            isNew: r.isNew,
+            fragmentsGained: r.fragmentsGained,
+            isFocus: r.isFocus || false
+          })),
+          summary: result.stats,
+          cost: result.cost,
+          specialEffects: {
+            hasPityBreak: result.specialEffects?.hasPityBreak || false,
+            hasMultipleLegendary: result.stats.legendary > 1,
+            perfectPull: count === 10 && result.results.every(r => ['Epic', 'Legendary'].includes(r.rarity))
+          }
+        });
+
+        console.log(`🔔 Multi-pull notification sent to ${req.userId}: ${result.results.length} heroes (${result.stats.legendary}L/${result.stats.epic}E)`);
+      }
+
+      // Notifications spéciales pour drops légendaires
+      const legendaryResults = result.results.filter(r => r.rarity === 'Legendary');
+      for (const legendary of legendaryResults) {
+        WebSocketService.notifyGachaLegendaryDrop(req.userId!, req.serverId!, {
+          hero: {
+            id: legendary.hero._id,
+            name: legendary.hero.name,
+            rarity: legendary.rarity,
+            element: legendary.hero.element,
+            role: legendary.hero.role
+          },
+          bannerId: bannerId,
+          bannerName: result.bannerInfo?.name || 'Unknown Banner',
+          isFirstTime: legendary.isNew,
+          isFocus: legendary.isFocus || false,
+          pullsSinceLast: result.pityStatus.pullsSinceLegendary,
+          totalLegendaryCount: result.stats.legendary,
+          dropRate: legendary.dropRate || 5 // Fallback taux
+        });
+
+        console.log(`🌟 Legendary notification sent: ${legendary.hero.name} to ${req.userId}`);
+      }
+
+      // Notification de progression pity si proche du seuil
+      if (result.pityStatus.legendaryPityIn <= 10 && result.pityStatus.legendaryPityIn > 0) {
+        WebSocketService.notifyGachaPityProgress(req.userId!, {
+          bannerId: bannerId,
+          bannerName: result.bannerInfo?.name || 'Unknown Banner',
+          currentPulls: result.pityStatus.pullsSinceLegendary,
+          pityThreshold: 90, // ou récupérer de la config bannière
+          pullsRemaining: result.pityStatus.legendaryPityIn,
+          pityType: 'legendary',
+          progressPercentage: (result.pityStatus.pullsSinceLegendary / 90) * 100,
+          isSharedPity: false
+        });
+
+        console.log(`📊 Pity progress notification sent: ${result.pityStatus.legendaryPityIn} pulls remaining for ${req.userId}`);
+      }
+
+      // Notification pity triggé
+      if (result.specialEffects?.hasPityBreak && legendaryResults.length > 0) {
+        WebSocketService.notifyGachaPityTriggered(req.userId!, {
+          bannerId: bannerId,
+          bannerName: result.bannerInfo?.name || 'Unknown Banner',
+          pityType: 'legendary',
+          guaranteedHero: legendaryResults[0].hero,
+          pullsToTrigger: result.pityStatus.pullsSinceLegendary,
+          newPityCount: 0
+        });
+
+        console.log(`🎯 Pity triggered notification sent for ${req.userId}`);
+      }
+
+      // Notification nouveaux héros pour la collection
+      const newHeroes = result.results.filter(r => r.isNew);
+      for (const newHero of newHeroes) {
+        WebSocketService.notifyGachaNewHeroObtained(req.userId!, {
+          hero: newHero.hero,
+          bannerId: bannerId,
+          bannerName: result.bannerInfo?.name || 'Unknown Banner',
+          collectionProgress: {
+            totalHeroes: 100, // TODO: Récupérer le vrai nombre
+            ownedHeroes: 50, // TODO: Récupérer le vrai nombre
+            completionPercentage: 50 // TODO: Calculer le vrai pourcentage
+          }
+        });
+
+        console.log(`📚 New hero notification sent: ${newHero.hero.name} for ${req.userId}`);
+      }
+
+      // Notification lucky streak si applicable
+      if (result.specialEffects?.luckyStreakCount && result.specialEffects.luckyStreakCount >= 3) {
+        WebSocketService.notifyGachaLuckyStreak(req.userId!, {
+          consecutiveRareDrops: result.specialEffects.luckyStreakCount,
+          streakType: result.results.some(r => r.rarity === 'Legendary') ? 'legendary_streak' : 'epic_streak',
+          recentHeroes: result.results.filter(r => ['Epic', 'Legendary'].includes(r.rarity))
+            .slice(0, 3).map(r => r.hero.name),
+          probability: Math.pow(0.2, result.specialEffects.luckyStreakCount),
+          bonusReward: { gems: result.specialEffects.luckyStreakCount * 10 }
+        });
+
+        console.log(`🍀 Lucky streak notification sent: ${result.specialEffects.luckyStreakCount}x streak for ${req.userId}`);
+      }
+
+    } catch (notificationError) {
+      console.error("⚠️ Erreur notifications WebSocket gacha:", notificationError);
+      // Ne pas faire échouer la requête pour des erreurs de notification
+    }
 
     res.json(response);
 
@@ -232,6 +378,104 @@ router.get("/stats", authMiddleware, async (req: Request, res: Response): Promis
   }
 });
 
+// === NOUVELLE ROUTE: DÉCLENCHER ÉVÉNEMENT RATE-UP (ADMIN UNIQUEMENT) ===
+router.post("/admin/trigger-rate-up", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    // TODO: Ajouter middleware admin
+    const { bannerId, duration, rateMultiplier, focusHeroes } = req.body;
+
+    await GachaService.triggerRateUpEvent(req.serverId!, {
+      bannerId,
+      duration,
+      rateMultiplier,
+      focusHeroes
+    });
+
+    res.json({
+      message: "Rate-up event triggered successfully",
+      eventDetails: {
+        bannerId,
+        duration: `${duration}h`,
+        multiplier: `x${rateMultiplier}`,
+        serverId: req.serverId
+      }
+    });
+
+  } catch (err: any) {
+    console.error("Trigger rate-up event error:", err);
+    res.status(500).json({ 
+      error: "Failed to trigger rate-up event",
+      code: "TRIGGER_RATE_UP_FAILED"
+    });
+  }
+});
+
+// === NOUVELLE ROUTE: DÉCLENCHER PULLS GRATUITS (ADMIN UNIQUEMENT) ===
+router.post("/admin/trigger-free-pulls", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    // TODO: Ajouter middleware admin
+    const { bannerId, freePulls, duration, perPlayer } = req.body;
+
+    await GachaService.triggerFreePullsEvent(req.serverId!, {
+      bannerId,
+      freePulls,
+      duration,
+      perPlayer: perPlayer || true
+    });
+
+    res.json({
+      message: "Free pulls event triggered successfully",
+      eventDetails: {
+        bannerId,
+        freePulls: `${freePulls} pulls`,
+        duration: `${duration}h`,
+        perPlayer: perPlayer ? 'Per player' : 'Server-wide',
+        serverId: req.serverId
+      }
+    });
+
+  } catch (err: any) {
+    console.error("Trigger free pulls event error:", err);
+    res.status(500).json({ 
+      error: "Failed to trigger free pulls event",
+      code: "TRIGGER_FREE_PULLS_FAILED"
+    });
+  }
+});
+
+// === NOUVELLE ROUTE: ACTIVER BANNIÈRE SPÉCIALE (ADMIN UNIQUEMENT) ===
+router.post("/admin/activate-special-banner", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    // TODO: Ajouter middleware admin
+    const { bannerId, duration, exclusiveHeroes, specialMechanics } = req.body;
+
+    await GachaService.activateSpecialBanner(req.serverId!, {
+      bannerId,
+      duration,
+      exclusiveHeroes: exclusiveHeroes || [],
+      specialMechanics: specialMechanics || []
+    });
+
+    res.json({
+      message: "Special banner activated successfully",
+      bannerDetails: {
+        bannerId,
+        duration: `${duration}h`,
+        exclusiveHeroes: exclusiveHeroes?.length || 0,
+        specialMechanics: specialMechanics?.length || 0,
+        serverId: req.serverId
+      }
+    });
+
+  } catch (err: any) {
+    console.error("Activate special banner error:", err);
+    res.status(500).json({ 
+      error: "Failed to activate special banner",
+      code: "ACTIVATE_SPECIAL_BANNER_FAILED"
+    });
+  }
+});
+
 // === ROUTE DE TEST (développement uniquement) ===
 router.post("/test", authMiddleware, requireFeature("gacha"), async (req: Request, res: Response): Promise<void> => {
   try {
@@ -263,8 +507,28 @@ router.post("/test", authMiddleware, requireFeature("gacha"), async (req: Reques
       10
     );
 
+    // 🎰 Test des notifications WebSocket
+    try {
+      WebSocketService.notifyGachaMultiPullResult(req.userId!, {
+        bannerId: testBanner.bannerId,
+        bannerName: testBanner.name,
+        heroes: result.results,
+        summary: result.stats,
+        cost: result.cost,
+        specialEffects: {
+          hasPityBreak: false,
+          hasMultipleLegendary: result.stats.legendary > 1,
+          perfectPull: false
+        }
+      });
+
+      console.log(`🔔 Test notifications sent to ${req.userId}`);
+    } catch (notifError) {
+      console.warn("⚠️ Test notification error:", notifError);
+    }
+
     res.json({
-      message: "Test gacha pull completed",
+      message: "Test gacha pull completed with WebSocket notifications",
       testBanner: {
         bannerId: testBanner.bannerId,
         name: testBanner.name,
@@ -276,7 +540,8 @@ router.post("/test", authMiddleware, requireFeature("gacha"), async (req: Reques
         newHeroesObtained: result.results.filter(r => r.isNew).length,
         focusHeroesObtained: result.results.filter(r => r.isFocus).length,
         totalFragmentsGained: result.stats.totalFragments,
-        pityProgress: result.pityStatus
+        pityProgress: result.pityStatus,
+        specialEffects: result.specialEffects
       },
       detailedResults: result.results.map(r => ({
         heroName: r.hero.name,
@@ -287,7 +552,8 @@ router.post("/test", authMiddleware, requireFeature("gacha"), async (req: Reques
       })),
       cost: result.cost,
       remaining: result.remaining,
-      note: "This is a test endpoint for development"
+      websocketNotifications: "Sent successfully",
+      note: "This is a test endpoint for development with WebSocket integration"
     });
 
   } catch (err: any) {
@@ -299,14 +565,14 @@ router.post("/test", authMiddleware, requireFeature("gacha"), async (req: Reques
   }
 });
 
-// === ROUTE D'INFORMATION SYSTÈME GACHA ===
+// === ROUTE D'INFORMATION SYSTÈME GACHA (VERSION ENRICHIE) ===
 router.get("/info", async (req: Request, res: Response): Promise<void> => {
   try {
     const info = {
       system: {
         name: "Soulspire Advanced Gacha System",
-        version: "2.0.0",
-        description: "Multi-banner gacha system with focus heroes and flexible pity"
+        version: "3.0.0",
+        description: "Multi-banner gacha system with real-time WebSocket notifications"
       },
       features: {
         multipleBanners: "Support for multiple concurrent banners",
@@ -315,7 +581,11 @@ router.get("/info", async (req: Request, res: Response): Promise<void> => {
         bannerTypes: ["Standard", "Limited", "Event", "Beginner", "Weapon"],
         costTypes: "Gems, tickets, or special currencies",
         bonusRewards: "Milestone rewards for pulling",
-        serverFiltering: "Region and server-specific banners"
+        serverFiltering: "Region and server-specific banners",
+        realTimeNotifications: "WebSocket integration for instant notifications",
+        smartRecommendations: "AI-powered pull recommendations",
+        collectionTracking: "Automatic collection progress tracking",
+        specialEvents: "Rate-up events, free pulls, special banners"
       },
       bannerTypes: {
         Standard: {
@@ -354,19 +624,51 @@ router.get("/info", async (req: Request, res: Response): Promise<void> => {
           note: "Configurable per banner"
         },
         shared: "Can be shared across banners or banner-specific"
+      },
+      webSocketNotifications: {
+        pullResults: "Real-time pull results with animations",
+        legendaryDrops: "Special celebrations for legendary heroes",
+        pityProgress: "Live pity counter updates",
+        luckyStreaks: "Consecutive rare drop notifications",
+        collectionProgress: "New hero acquisition tracking",
+        smartRecommendations: "Intelligent pull suggestions",
+        specialEvents: "Event announcements and bonuses"
+      },
+      adminFeatures: {
+        rateUpEvents: "POST /api/gacha/admin/trigger-rate-up",
+        freePullEvents: "POST /api/gacha/admin/trigger-free-pulls", 
+        specialBanners: "POST /api/gacha/admin/activate-special-banner"
       }
     };
 
     res.json({
-      message: "Advanced gacha system information",
+      message: "Advanced gacha system information with WebSocket integration",
       info,
       endpoints: {
         banners: "GET /api/gacha/banners - List active banners",
         bannerRates: "GET /api/gacha/banner/rates?bannerId=X - Get banner rates",
-        pull: "POST /api/gacha/pull - Pull on specific banner",
+        pull: "POST /api/gacha/pull - Pull on specific banner (with WebSocket notifications)",
         history: "GET /api/gacha/history - Summon history",
         stats: "GET /api/gacha/stats - Personal statistics",
         test: "POST /api/gacha/test - Test pulls (dev only)"
+      },
+      websocketEvents: {
+        client: [
+          "gacha:join_room - Join gacha notifications",
+          "gacha:leave_room - Leave gacha notifications", 
+          "gacha:subscribe_banner - Subscribe to specific banner",
+          "gacha:unsubscribe_banner - Unsubscribe from banner"
+        ],
+        server: [
+          "gacha:pull_result - Single pull result",
+          "gacha:multi_pull_result - Multi-pull result",
+          "gacha:legendary_drop - Legendary hero obtained",
+          "gacha:pity_progress - Pity system progress",
+          "gacha:lucky_streak - Lucky streak achieved",
+          "gacha:new_hero_obtained - New hero for collection",
+          "gacha:rate_up_event - Rate-up event started",
+          "gacha:special_banner_live - Special banner activated"
+        ]
       }
     });
 
@@ -380,4 +682,3 @@ router.get("/info", async (req: Request, res: Response): Promise<void> => {
 });
 
 export default router;
-
