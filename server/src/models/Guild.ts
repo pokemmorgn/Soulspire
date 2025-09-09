@@ -175,8 +175,8 @@ export interface IGuild {
     language: string;
     timezone: string;
     requiredActivity: "low" | "medium" | "high";
-    autoKickInactiveMembers: { type: Boolean, default: false },
-    inactivityThresholdDays: { type: Number, default: 7, min: 3, max: 30 }
+    autoKickInactiveMembers: boolean;
+    inactivityThresholdDays: number;
   };
   members: IGuildMember[];
   maxMembers: number;
@@ -398,7 +398,9 @@ const guildSchema = new Schema<IGuildDocument>({
     minimumPower: { type: Number, default: 0, min: 0 },
     language: { type: String, default: "en", enum: ["en", "fr", "es", "de", "ja", "ko", "zh"] },
     timezone: { type: String, default: "UTC" },
-    requiredActivity: { type: String, enum: ["low", "medium", "high"], default: "medium" }
+    requiredActivity: { type: String, enum: ["low", "medium", "high"], default: "medium" },
+    autoKickInactiveMembers: { type: Boolean, default: false },
+    inactivityThresholdDays: { type: Number, default: 7, min: 3, max: 30 }
   },
   members: { type: [guildMemberSchema], default: [] },
   maxMembers: { type: Number, default: 30, min: 1, max: 50 },
