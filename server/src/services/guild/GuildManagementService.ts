@@ -360,7 +360,8 @@ export class GuildManagementService {
       });
 
       // Notification spéciale à toute la guilde
-      WebSocketGuild.broadcastToGuild(guild._id, 'guild:leadership_auto_transferred', {
+      WebSocketService.sendToPlayer(newLeader.playerId, 'guild:leadership_auto_transferred', {
+        type: 'leadership_gained',
         oldLeader: {
           playerId: currentLeader.playerId,
           playerName: currentLeader.playerName,
@@ -369,11 +370,27 @@ export class GuildManagementService {
         newLeader: {
           playerId: newLeader.playerId,
           playerName: newLeader.playerName,
-          role: newLeader.role
+          role: "leader"
         },
         reason: "leadership_inactivity",
         transferredAt: now
-      }, 'high');
+      });
+
+      WebSocketService.sendToPlayer(currentLeader.playerId, 'guild:leadership_auto_transferred', {
+        type: 'leadership_lost',
+        oldLeader: {
+          playerId: currentLeader.playerId,
+          playerName: currentLeader.playerName,
+          inactiveDays
+        },
+        newLeader: {
+          playerId: newLeader.playerId,
+          playerName: newLeader.playerName,
+          role: "leader"
+        },
+        reason: "leadership_inactivity",
+        transferredAt: now
+      });
 
       console.log(`👑 Leadership transferred in guild ${guild.name}: ${currentLeader.playerName} → ${newLeader.playerName} (inactive ${inactiveDays} days)`);
 
