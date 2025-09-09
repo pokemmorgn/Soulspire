@@ -325,7 +325,24 @@ export class ArenaRewards {
       await season.save();
 
       console.log(`✅ Récompenses fin de saison réclamées: ${JSON.stringify(seasonRewards)}`);
-
+      
+      // 🔌 Notification WebSocket temps réel
+      try {
+        const { WebSocketArena } = await import('../websocket/WebSocketArena');
+        WebSocketArena.notifySeasonEndRewards(playerId, {
+          seasonNumber: season.seasonNumber,
+          finalRank: playerRanking.finalRank,
+          finalLeague: playerRanking.finalLeague,
+          rewards: {
+            gold: seasonRewards.gold,
+            gems: seasonRewards.gems,
+            seasonTokens: seasonRewards.seasonTokens,
+            exclusiveItems: []
+          }
+        });
+      } catch (error) {
+        console.error('⚠️ Erreur WebSocket season rewards:', error);
+      }
       // Notification spéciale
       await NotificationService.notifyMajorMilestone(
         playerId,
