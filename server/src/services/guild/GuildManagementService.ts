@@ -9,6 +9,24 @@ export interface GuildCreationResult {
   code?: string;
 }
 
+export interface LeadershipTransferResult {
+  success: boolean;
+  transferred?: boolean;
+  newLeader?: {
+    playerId: string;
+    playerName: string;
+    role: string;
+    lastActiveAt: Date;
+  };
+  oldLeader?: {
+    playerId: string;
+    playerName: string;
+    inactiveDays: number;
+  };
+  error?: string;
+  code?: string;
+}
+
 export class GuildManagementService {
 
   static async createGuild(
@@ -88,8 +106,8 @@ export class GuildManagementService {
         level: guild.level
       });
 
-    // 🔥 NOUVEAU: Faire rejoindre le créateur à la room de guilde
-    WebSocketService.joinGuildRoom(creatorId, guild._id);
+      // 🔥 NOUVEAU: Faire rejoindre le créateur à la room de guilde
+      WebSocketService.joinGuildRoom(creatorId, guild._id);
       return { success: true, guild };
 
     } catch (error) {
@@ -116,6 +134,7 @@ export class GuildManagementService {
           await player.save();
         }
       }
+      
       WebSocketService.notifyGuildDisbanded(guild.members, {
         guildName: guild.name,
         guildTag: guild.tag,
@@ -225,6 +244,212 @@ export class GuildManagementService {
     }
   }
 
+  // 🔥 NOUVELLE MÉTHODE: Vérifier et transférer le leadership si inactif
+  static async checkAndTransferInactiveLeadership(guildId: string): Promise<LeadershipTransferResult> {
+    try {
+      const guild = await Guild.findById(guildId);
+      if (!guild) {
+        return { success: false, error: "Guild not found", code: "GUILD_NOT_FOUND" };
+      }
+
+      // Trouver le leader actuel
+      const currentLeader = guild.members.find(member => member.role === "leader");
+      if (!currentLeader) {
+        return { success: false, error: "No leader found", code: "NO_LEADER" };
+      }
+
+      // Calculer l'inactivité du leader (en heures)
+      const now = new Date();
+      const inactiveHours = (now.getTime() - currentLeader.lastActiveAt.getTime()) / (1000 * 60 * 60);
+      const inactiveDays = Math.floor(inactiveHours / 24);
+
+      // Seuil d'inactivité : 48-72h (paramétrable)
+      const inactivityThresholdHours = 48; // 48h par défaut
+      
+      if (inactiveHours < inactivityThresholdHours) {
+        return { 
+          success: true, 
+          transferred: false,
+          oldLeader: {
+            playerId: currentLeader.playerId,
+            playerName: currentLeader.playerName,
+            inactiveDays
+          }
+        };
+      }
+
+      // Chercher le meilleur candidat pour remplacer
+      const eligibleOfficers = guild.members.filter(member => 
+        member.role === "officer" && 
+        member.playerId !== currentLeader.playerId
+      );
+
+      let newLeader;
+      if (eligibleOfficers.length > 0) {
+        // Prendre l'officier le plus actif (dernière activité la plus récente)
+        newLeader = eligibleOfficers.sort((a, b) => 
+          b.lastActiveAt.getTime() - a.lastActiveAt.getTime()
+        )[0];
+      } else {
+        // Si pas d'officiers, prendre le membre le plus actif
+        const eligibleMembers = guild.members.filter(member => 
+          member.role === "member" && 
+          member.playerId !== currentLeader.playerId
+        );
+
+        if (eligibleMembers.length === 0) {
+          return { 
+            success: false, 
+            error: "No eligible candidates for leadership transfer", 
+            code: "NO_CANDIDATES" 
+          };
+        }
+
+        newLeader = eligibleMembers.sort((a, b) => 
+          b.lastActiveAt.getTime() - a.lastActiveAt.getTime()
+        )[0];
+      }
+
+      // Vérifier que le nouveau leader n'est pas trop inactif aussi (max 24h)
+      const newLeaderInactiveHours = (now.getTime() - newLeader.lastActiveAt.getTime()) / (1000 * 60 * 60);
+      if (newLeaderInactiveHours > 24) {
+        return { 
+          success: false, 
+          error: "No sufficiently active candidates found", 
+          code: "ALL_INACTIVE" 
+        };
+      }
+
+      // Effectuer le transfert de leadership
+      await guild.demoteMember(currentLeader.playerId);
+      await guild.promoteMember(newLeader.playerId, "leader");
+
+      // Ajouter log d'activité spécial
+      await guild.addActivityLog({
+        type: "promote",
+        playerId: newLeader.playerId,
+        playerName: newLeader.playerName,
+        targetPlayerId: currentLeader.playerId,
+        targetPlayerName: currentLeader.playerName,
+        details: { 
+          reason: "automatic_leadership_transfer",
+          oldLeaderInactiveDays: inactiveDays,
+          transferredAt: now,
+          newLeaderLastActive: newLeader.lastActiveAt
+        }
+      });
+
+      // Notifier via WebSocket
+      WebSocketService.notifyGuildMemberRoleChanged(guild._id, {
+        playerId: newLeader.playerId,
+        playerName: newLeader.playerName,
+        oldRole: newLeader.role,
+        newRole: "leader",
+        changedBy: "system",
+        changedByName: "Auto-Transfer System"
+      });
+
+      // Notifier l'ancien leader de sa rétrogradation
+      WebSocketService.notifyGuildMemberRoleChanged(guild._id, {
+        playerId: currentLeader.playerId,
+        playerName: currentLeader.playerName,
+        oldRole: "leader",
+        newRole: "member",
+        changedBy: "system",
+        changedByName: "Auto-Transfer System"
+      });
+
+      // Notification spéciale à toute la guilde
+      WebSocketService.broadcastToGuild(guild._id, 'guild:leadership_auto_transferred', {
+        oldLeader: {
+          playerId: currentLeader.playerId,
+          playerName: currentLeader.playerName,
+          inactiveDays
+        },
+        newLeader: {
+          playerId: newLeader.playerId,
+          playerName: newLeader.playerName,
+          role: newLeader.role
+        },
+        reason: "leadership_inactivity",
+        transferredAt: now
+      }, 'high');
+
+      console.log(`👑 Leadership transferred in guild ${guild.name}: ${currentLeader.playerName} → ${newLeader.playerName} (inactive ${inactiveDays} days)`);
+
+      return {
+        success: true,
+        transferred: true,
+        newLeader: {
+          playerId: newLeader.playerId,
+          playerName: newLeader.playerName,
+          role: "leader",
+          lastActiveAt: newLeader.lastActiveAt
+        },
+        oldLeader: {
+          playerId: currentLeader.playerId,
+          playerName: currentLeader.playerName,
+          inactiveDays
+        }
+      };
+
+    } catch (error) {
+      console.error("❌ Error checking/transferring leadership:", error);
+      return { success: false, error: "Failed to transfer leadership", code: "TRANSFER_FAILED" };
+    }
+  }
+
+  // 🔥 NOUVELLE MÉTHODE: Vérifier tous les leaders inactifs d'un serveur
+  static async checkAllInactiveLeadersOnServer(serverId: string): Promise<{
+    guildsChecked: number;
+    transfersPerformed: number;
+    transfers: Array<{
+      guildId: string;
+      guildName: string;
+      oldLeader: string;
+      newLeader: string;
+      inactiveDays: number;
+    }>;
+  }> {
+    try {
+      const guilds = await Guild.find({ serverId, status: "active" });
+      const transfers: Array<any> = [];
+      let transfersPerformed = 0;
+
+      for (const guild of guilds) {
+        const result = await this.checkAndTransferInactiveLeadership(guild._id);
+        
+        if (result.success && result.transferred) {
+          transfers.push({
+            guildId: guild._id,
+            guildName: guild.name,
+            oldLeader: result.oldLeader!.playerName,
+            newLeader: result.newLeader!.playerName,
+            inactiveDays: result.oldLeader!.inactiveDays
+          });
+          transfersPerformed++;
+        }
+      }
+
+      console.log(`👑 Leadership check on ${serverId}: ${transfersPerformed} transfers performed out of ${guilds.length} guilds`);
+
+      return {
+        guildsChecked: guilds.length,
+        transfersPerformed,
+        transfers
+      };
+
+    } catch (error) {
+      console.error("❌ Error checking all inactive leaders:", error);
+      return {
+        guildsChecked: 0,
+        transfersPerformed: 0,
+        transfers: []
+      };
+    }
+  }
+
+  // 🔥 MÉTHODE MISE À JOUR: Maintenance quotidienne avec transfert de leadership
   static async performDailyMaintenance(serverId: string): Promise<void> {
     try {
       const guilds = await Guild.find({ serverId, status: "active" });
@@ -251,6 +476,13 @@ export class GuildManagementService {
         }
 
         await guild.updateStats();
+      }
+
+      // 🔥 NOUVEAU: Vérifier les leaders inactifs
+      const leadershipCheck = await this.checkAllInactiveLeadersOnServer(serverId);
+      
+      if (leadershipCheck.transfersPerformed > 0) {
+        console.log(`👑 ${leadershipCheck.transfersPerformed} leadership transfers performed during daily maintenance on ${serverId}`);
       }
 
       console.log(`🏛️ Daily guild maintenance completed for ${serverId}: ${guilds.length} guilds processed`);
@@ -322,36 +554,37 @@ export class GuildManagementService {
       };
     }
   }
-  /**
- * Notifier mise à jour de la puissance de guilde
- */
-public static async notifyGuildPowerUpdate(guildId: string, serverId: string): Promise<void> {
-  try {
-    const guild = await Guild.findById(guildId);
-    if (!guild) return;
 
-    await guild.updateStats();
-    
-    // Vérifier si c'est un nouveau record serveur
-    const serverGuilds = await Guild.find({ serverId, status: "active" })
-      .sort({ "stats.totalPower": -1 })
-      .limit(10);
-    
-    const guildRank = serverGuilds.findIndex(g => g._id === guildId) + 1;
-    
-    // Notifier seulement si dans le top 5
-    if (guildRank > 0 && guildRank <= 5) {
-      WebSocketService.notifyGuildPowerRecord(guildId, serverId, {
-        guildName: guild.name,
-        guildTag: guild.tag,
-        newTotalPower: guild.stats.totalPower,
-        oldRecord: 0, // Sera calculé selon ta logique métier
-        serverRank: guildRank,
-        powerIncrease: 0 // Sera calculé selon ta logique métier
-      });
+  /**
+   * Notifier mise à jour de la puissance de guilde
+   */
+  public static async notifyGuildPowerUpdate(guildId: string, serverId: string): Promise<void> {
+    try {
+      const guild = await Guild.findById(guildId);
+      if (!guild) return;
+
+      await guild.updateStats();
+      
+      // Vérifier si c'est un nouveau record serveur
+      const serverGuilds = await Guild.find({ serverId, status: "active" })
+        .sort({ "stats.totalPower": -1 })
+        .limit(10);
+      
+      const guildRank = serverGuilds.findIndex(g => g._id === guildId) + 1;
+      
+      // Notifier seulement si dans le top 5
+      if (guildRank > 0 && guildRank <= 5) {
+        WebSocketService.notifyGuildPowerRecord(guildId, serverId, {
+          guildName: guild.name,
+          guildTag: guild.tag,
+          newTotalPower: guild.stats.totalPower,
+          oldRecord: 0, // Sera calculé selon ta logique métier
+          serverRank: guildRank,
+          powerIncrease: 0 // Sera calculé selon ta logique métier
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error notifying guild power update:', error);
     }
-  } catch (error) {
-    console.error('❌ Error notifying guild power update:', error);
   }
-}
 }
