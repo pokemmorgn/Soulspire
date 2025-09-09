@@ -598,7 +598,18 @@ export class ArenaSeasons {
           `Participez aux derniers combats pour améliorer votre classement.`,
           "normal"
         );
-
+        
+        // 🔌 Notification WebSocket fin de saison proche
+        try {
+          const { WebSocketArena } = await import('../websocket/WebSocketArena');
+          WebSocketArena.notifySeasonEnding(serverId, {
+            seasonNumber: currentSeason.seasonNumber,
+            daysRemaining,
+            theme: currentSeason.seasonTheme
+          });
+        } catch (error) {
+          console.error('⚠️ Erreur WebSocket season ending:', error);
+        }
         return {
           success: true,
           data: { 
