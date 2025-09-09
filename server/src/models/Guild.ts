@@ -216,7 +216,7 @@ export interface IGuildDocument extends Document, IGuild {
   _id: string;
   addMember(playerId: string, playerName: string, playerLevel: number, playerPower: number): Promise<IGuildDocument>;
   removeMember(playerId: string, reason?: string): Promise<IGuildDocument>;
-  promoteMember(playerId: string, newRole: "officer" | "leader"): Promise<IGuildDocument>;
+  promoteMember(playerId: string, newRole: "elite" | "officer" | "leader"): Promise<IGuildDocument>;
   demoteMember(playerId: string): Promise<IGuildDocument>;
   updateMemberActivity(playerId: string): Promise<IGuildDocument>;
   addApplication(playerId: string, playerName: string, playerLevel: number, playerPower: number, message: string): Promise<IGuildDocument>;
@@ -587,7 +587,7 @@ guildSchema.methods.removeMember = function(playerId: string, reason: string = "
   return this.save();
 };
 
-guildSchema.methods.promoteMember = function(playerId: string, newRole: "officer" | "leader") {
+guildSchema.methods.promoteMember = function(playerId: string, newRole: "elite" | "officer" | "leader") {
   const member = this.getMember(playerId);
   if (!member) {
     throw new Error("Player is not a member");
