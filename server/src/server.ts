@@ -34,7 +34,7 @@ import afkFarmingRoutes from "./routes/afkFarming";
 import notificationRoutes from "./routes/notifications";
 import tutorialRoutes from "./routes/tutorials";
 import arenaRoutes from "./routes/arena";
-
+import guildRoutes from "./routes/guild";
 // Import des services
 import { ShopService } from "./services/ShopService";
 import { SchedulerService } from "./services/SchedulerService";
@@ -223,6 +223,7 @@ app.use("/api/afk-farming", afkFarmingRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/tutorials", tutorialRoutes);
 app.use("/api/arena", arenaRoutes);
+app.use("/api/guilds", guildRoutes);
 // Route de santé de l'API
 app.get("/", (req: Request, res: Response) => {
   res.json({
