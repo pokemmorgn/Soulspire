@@ -400,7 +400,7 @@ export class ShopService {
     try {
       console.log("🏗️ Création des boutiques prédéfinies...");
 
-      const shopTypes = ["General", "Arena", "Daily", "Weekly", "VIP", "Clan"];
+      const shopTypes = ["Daily", "Weekly", "Monthly", "Arena", "Clan", "VIP"];
       const createdShops = [];
 
       for (const shopType of shopTypes) {
