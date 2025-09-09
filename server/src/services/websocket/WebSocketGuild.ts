@@ -577,10 +577,15 @@ export class WebSocketGuild {
   /**
    * Obtenir le niveau hiérarchique d'un rôle
    */
-  private static getRoleLevel(role: string): number {
-    const roleLevels = { 'member': 1, 'officer': 2, 'leader': 3 };
-    return roleLevels[role as keyof typeof roleLevels] || 0;
-  }
+    private static getRoleLevel(role: string): number {
+      const roleLevels = { 
+        'member': 1, 
+        'elite': 2,     // 🔥 NOUVEAU niveau
+        'officer': 3, 
+        'leader': 4 
+      };
+      return roleLevels[role as keyof typeof roleLevels] || 0;
+    }
 
   // ===== MÉTHODES UTILITAIRES PUBLIQUES =====
 
