@@ -359,24 +359,21 @@ export class GuildManagementService {
         changedByName: "Auto-Transfer System"
       });
 
-      // Notification spéciale à toute la guilde via WebSocketGuild
-      if (WebSocketService.isAvailable()) {
-        const { WebSocketGuild } = await import('./websocket/WebSocketGuild');
-        WebSocketGuild.broadcastToGuild(guild._id, 'guild:leadership_auto_transferred', {
-          oldLeader: {
-            playerId: currentLeader.playerId,
-            playerName: currentLeader.playerName,
-            inactiveDays
-          },
-          newLeader: {
-            playerId: newLeader.playerId,
-            playerName: newLeader.playerName,
-            role: newLeader.role
-          },
-          reason: "leadership_inactivity",
-          transferredAt: now
-        }, 'high');
-      }
+      // Notification spéciale à toute la guilde
+      WebSocketGuild.broadcastToGuild(guild._id, 'guild:leadership_auto_transferred', {
+        oldLeader: {
+          playerId: currentLeader.playerId,
+          playerName: currentLeader.playerName,
+          inactiveDays
+        },
+        newLeader: {
+          playerId: newLeader.playerId,
+          playerName: newLeader.playerName,
+          role: newLeader.role
+        },
+        reason: "leadership_inactivity",
+        transferredAt: now
+      }, 'high');
 
       console.log(`👑 Leadership transferred in guild ${guild.name}: ${currentLeader.playerName} → ${newLeader.playerName} (inactive ${inactiveDays} days)`);
 
