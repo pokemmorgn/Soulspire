@@ -8,7 +8,6 @@ import { WebSocketService } from "./WebSocketService";
 
 export class CampaignService {
 
-  // === RÉCUPÉRER TOUS LES MONDES DE LA CAMPAGNE ===
   public static async getAllWorlds() {
     try {
       console.log("🗺️ Récupération de tous les mondes de campagne");
@@ -28,7 +27,7 @@ export class CampaignService {
           minPlayerLevel: world.minPlayerLevel,
           recommendedPower: world.recommendedPower,
           elementBias: world.elementBias,
-          isLocked: false // Sera calculé dans getPlayerCampaignData
+          isLocked: false
         })),
         totalWorlds: worlds.length
       };
@@ -39,37 +38,27 @@ export class CampaignService {
     }
   }
 
-  // === RÉCUPÉRER LES DONNÉES DE CAMPAGNE POUR UN JOUEUR ===
   public static async getPlayerCampaignData(playerId: string, serverId: string) {
     try {
       console.log(`🎯 Récupération données campagne pour ${playerId} sur serveur ${serverId}`);
 
-      // Récupérer le joueur
       const player = await Player.findOne({ _id: playerId, serverId });
       if (!player) {
         throw new Error("Player not found on this server");
       }
 
-      // Récupérer tous les mondes
       const worlds = await CampaignWorld.find({}).sort({ worldId: 1 });
-      
-      // Récupérer la progression du joueur pour tous les mondes
       const playerProgress = await CampaignProgress.find({ 
         playerId, 
         serverId 
       });
 
-      // Construire les données enrichies
       const campaignData = worlds.map(world => {
         const worldProgress = playerProgress.find(p => p.worldId === world.worldId);
-        
-        // Déterminer si le monde est débloqué (basé sur le niveau joueur seulement)
         const isUnlocked = player.level >= world.minPlayerLevel;
-        
-        // Calculer les statistiques du monde
         const totalStars = worldProgress ? 
           worldProgress.starsByLevel.reduce((sum, level) => sum + level.stars, 0) : 0;
-        const maxStars = world.levelCount * 3; // 3 étoiles max par niveau
+        const maxStars = world.levelCount * 3;
         
         return {
           worldId: world.worldId,
@@ -80,24 +69,17 @@ export class CampaignService {
           minPlayerLevel: world.minPlayerLevel,
           recommendedPower: world.recommendedPower,
           elementBias: world.elementBias,
-          
-          // Progression du joueur
           isUnlocked,
           highestLevelCleared: worldProgress?.highestLevelCleared || 0,
           totalStars,
           maxStars,
           starProgress: maxStars > 0 ? Math.round((totalStars / maxStars) * 100) : 0,
-          
-          // Niveau suivant disponible
           nextLevelAvailable: isUnlocked ? 
             Math.min(world.levelCount, (worldProgress?.highestLevelCleared || 0) + 1) : null,
-          
-          // Récompenses disponibles à récupérer
-          hasUnclaimedRewards: false // TODO: Implémenter système de récompenses par étoiles
+          hasUnclaimedRewards: false
         };
       });
 
-      // Statistiques globales du joueur
       const globalStats = {
         totalWorlds: worlds.length,
         unlockedWorlds: campaignData.filter(w => w.isUnlocked).length,
@@ -120,7 +102,6 @@ export class CampaignService {
     }
   }
 
-  // === RÉCUPÉRER LES DÉTAILS D'UN MONDE SPÉCIFIQUE ===
   public static async getWorldDetails(
     worldId: number, 
     playerId: string, 
@@ -129,13 +110,11 @@ export class CampaignService {
     try {
       console.log(`🏰 Récupération détails monde ${worldId} pour ${playerId}`);
 
-      // Récupérer le monde
       const world = await CampaignWorld.findOne({ worldId });
       if (!world) {
         throw new Error("World not found");
       }
 
-      // Récupérer le joueur et sa progression
       const [player, worldProgress] = await Promise.all([
         Player.findOne({ _id: playerId, serverId }),
         CampaignProgress.findOne({ playerId, serverId, worldId })
@@ -145,7 +124,6 @@ export class CampaignService {
         throw new Error("Player not found on this server");
       }
 
-      // Vérifier si le monde est débloqué (seulement niveau joueur)
       const isUnlocked = player.level >= world.minPlayerLevel;
 
       if (!isUnlocked) {
@@ -159,10 +137,8 @@ export class CampaignService {
         };
       }
 
-      // Récupérer les difficultés disponibles pour ce joueur
       const availableDifficulties = await this.getAvailableDifficulties(playerId, serverId);
 
-      // Enrichir les niveaux avec la progression
       const enrichedLevels = world.levels.map(level => {
         const levelStar = worldProgress?.starsByLevel.find(s => s.levelIndex === level.levelIndex);
         const isCleared = levelStar ? levelStar.stars > 0 : false;
@@ -178,14 +154,10 @@ export class CampaignService {
           staminaCost: level.staminaCost || 6,
           rewards: level.rewards || this.generateDefaultRewards(worldId, level.levelIndex),
           modifiers: level.modifiers,
-          
-          // Progression du joueur
           isAvailable,
           isCleared,
           stars: levelStar?.stars || 0,
           bestTime: levelStar?.bestTimeMs || null,
-          
-          // Difficultés disponibles (identiques pour tous les niveaux)
           availableDifficulties
         };
       });
@@ -216,7 +188,6 @@ export class CampaignService {
     }
   }
 
-  // === DÉMARRER UN COMBAT DE CAMPAGNE ===
   public static async startCampaignBattle(
     playerId: string,
     serverId: string,
@@ -227,7 +198,6 @@ export class CampaignService {
     try {
       console.log(`⚔️ Combat campagne: Monde ${worldId}, Niveau ${levelIndex}, ${difficulty}`);
 
-      // Récupérer le monde et le niveau
       const world = await CampaignWorld.findOne({ worldId });
       if (!world) {
         throw new Error("World not found");
@@ -238,13 +208,11 @@ export class CampaignService {
         throw new Error("Level not found");
       }
 
-      // Vérifier les permissions du joueur
       const canPlay = await this.canPlayerPlayLevel(playerId, serverId, worldId, levelIndex, difficulty);
       if (!canPlay.allowed) {
         throw new Error(canPlay.reason);
       }
 
-      // 🔥 NOTIFICATION WEBSOCKET : Combat démarré
       try {
         WebSocketService.notifyCampaignBattleStarted(playerId, {
           worldId,
@@ -253,14 +221,13 @@ export class CampaignService {
           worldName: world.name,
           levelName: levelConfig.name,
           enemyType: levelConfig.enemyType || this.determineEnemyType(levelIndex),
-          estimatedDuration: 30000, // 30s estimé
+          estimatedDuration: 30000,
           staminaCost: levelConfig.staminaCost || 6
         });
       } catch (wsError) {
         console.error('❌ Erreur notification battle started:', wsError);
       }
 
-      // Démarrer le combat via BattleService
       const battleResult = await BattleService.startCampaignBattle(
         playerId,
         serverId,
@@ -269,13 +236,11 @@ export class CampaignService {
         difficulty
       );
 
-      // Variables pour les notifications
       let newLevelUnlocked = false;
       let newWorldUnlocked = false;
       let playerLevelUp = false;
       let newPlayerLevel = undefined;
 
-      // Si victoire, mettre à jour la progression
       if (battleResult.result.victory) {
         const progressResult = await this.updatePlayerProgress(
           playerId,
@@ -291,10 +256,8 @@ export class CampaignService {
         playerLevelUp = progressResult.playerLevelUp;
         newPlayerLevel = progressResult.newPlayerLevel;
 
-        // Calculer les étoiles obtenues
         const starsEarned = this.calculateStarsEarned(battleResult.result, difficulty);
 
-        // 🔥 NOTIFICATION WEBSOCKET : Combat terminé avec résultat complet
         try {
           WebSocketService.notifyCampaignBattleCompleted(playerId, {
             worldId,
@@ -317,7 +280,6 @@ export class CampaignService {
             }
           });
 
-          // Notifications spécialisées selon le contexte
           if (newLevelUnlocked) {
             const nextLevel = world.levels.find(l => l.levelIndex === levelIndex + 1);
             if (nextLevel) {
@@ -356,7 +318,6 @@ export class CampaignService {
             }
           }
 
-          // Notification premier passage
           const isFirstClear = await this.isFirstClear(playerId, serverId, worldId, levelIndex, difficulty);
           if (isFirstClear) {
             WebSocketService.notifyCampaignFirstClearRewards(playerId, {
@@ -365,11 +326,10 @@ export class CampaignService {
               difficulty,
               rewards: levelConfig.rewards || this.generateDefaultRewards(worldId, levelIndex),
               bonusRewards: starsEarned === 3 ? ["Perfect Clear Bonus"] : [],
-              isSpecialLevel: levelIndex % 10 === 0 // Boss levels
+              isSpecialLevel: levelIndex % 10 === 0
             });
           }
 
-          // Notification 3 étoiles parfaites
           if (starsEarned === 3) {
             const perfectCount = await this.getPerfectClearCount(playerId, serverId, worldId);
             WebSocketService.notifyCampaignPerfectClearRewards(playerId, {
@@ -386,7 +346,6 @@ export class CampaignService {
           console.error('❌ Erreur notifications battle completed:', wsError);
         }
 
-        // Mettre à jour les missions et événements
         await Promise.all([
           MissionService.updateProgress(
             playerId,
@@ -416,8 +375,7 @@ export class CampaignService {
           )
         ]);
 
-} else {
-        // 🔥 NOUVEAU : Enregistrer l'échec dans la progression
+      } else {
         try {
           await this.recordCampaignFailure(
             playerId,
@@ -431,7 +389,6 @@ export class CampaignService {
           console.error('❌ Erreur enregistrement échec:', failureError);
         }
 
-        // 🔥 NOTIFICATION WEBSOCKET : Défaite
         try {
           WebSocketService.notifyCampaignBattleCompleted(playerId, {
             worldId,
@@ -453,7 +410,6 @@ export class CampaignService {
             }
           });
 
-          // 🔥 NOUVEAU : Vérification intelligente de blocage avec vraies données
           await this.checkForProgressBlockingEnhanced(playerId, serverId, worldId, levelIndex, difficulty);
 
         } catch (wsError) {
@@ -461,7 +417,20 @@ export class CampaignService {
         }
       }
 
-  // === VÉRIFIER SI UN JOUEUR PEUT JOUER UN NIVEAU (NOUVELLE LOGIQUE) ===
+      return {
+        success: true,
+        battleResult,
+        worldId,
+        levelIndex,
+        difficulty
+      };
+
+    } catch (error: any) {
+      console.error("❌ Erreur startCampaignBattle:", error);
+      throw error;
+    }
+  }
+
   public static async canPlayerPlayLevel(
     playerId: string,
     serverId: string,
@@ -471,7 +440,6 @@ export class CampaignService {
   ): Promise<{ allowed: boolean; reason?: string }> {
     
     try {
-      // Récupérer le joueur et le monde
       const [player, world] = await Promise.all([
         Player.findOne({ _id: playerId, serverId }),
         CampaignWorld.findOne({ worldId })
@@ -485,7 +453,6 @@ export class CampaignService {
         return { allowed: false, reason: "World not found" };
       }
 
-      // Vérifier le niveau du joueur pour débloquer le monde
       if (player.level < world.minPlayerLevel) {
         return {
           allowed: false,
@@ -493,7 +460,6 @@ export class CampaignService {
         };
       }
 
-      // Vérifier que le niveau existe
       if (levelIndex < 1 || levelIndex > world.levelCount) {
         return {
           allowed: false,
@@ -501,9 +467,6 @@ export class CampaignService {
         };
       }
 
-      // === NOUVELLE LOGIQUE DE DIFFICULTÉ ===
-      
-      // Pour Normal: progression séquentielle dans le monde
       if (difficulty === "Normal") {
         if (levelIndex > 1) {
           const worldProgress = await CampaignProgress.findOne({ playerId, serverId, worldId });
@@ -518,7 +481,6 @@ export class CampaignService {
         return { allowed: true };
       }
 
-      // Pour Hard: doit avoir terminé TOUTE la campagne en Normal
       if (difficulty === "Hard") {
         const hasCompletedCampaignNormal = await this.hasPlayerCompletedCampaign(playerId, serverId, "Normal");
         if (!hasCompletedCampaignNormal) {
@@ -528,8 +490,6 @@ export class CampaignService {
           };
         }
 
-        // ✅ CHANGEMENT: Peut jouer n'importe quel monde débloqué en Hard
-        // Vérifier seulement la progression séquentielle dans ce monde en Hard
         if (levelIndex > 1) {
           const highestClearedHard = await this.getHighestClearedLevel(playerId, serverId, worldId, "Hard");
           if (levelIndex > highestClearedHard + 1) {
@@ -542,7 +502,6 @@ export class CampaignService {
         return { allowed: true };
       }
 
-      // Pour Nightmare: doit avoir terminé TOUTE la campagne en Hard
       if (difficulty === "Nightmare") {
         const hasCompletedCampaignHard = await this.hasPlayerCompletedCampaign(playerId, serverId, "Hard");
         if (!hasCompletedCampaignHard) {
@@ -552,8 +511,6 @@ export class CampaignService {
           };
         }
 
-        // ✅ CHANGEMENT: Peut jouer n'importe quel monde débloqué en Nightmare
-        // Vérifier seulement la progression séquentielle dans ce monde en Nightmare
         if (levelIndex > 1) {
           const highestClearedNightmare = await this.getHighestClearedLevel(playerId, serverId, worldId, "Nightmare");
           if (levelIndex > highestClearedNightmare + 1) {
@@ -574,223 +531,6 @@ export class CampaignService {
     }
   }
 
-  // === METTRE À JOUR LA PROGRESSION DU JOUEUR (utilise le nouveau modèle) ===
-  private static async updatePlayerProgress(
-    playerId: string,
-    serverId: string,
-    worldId: number,
-    levelIndex: number,
-    difficulty: string,
-    battleResult: any
-  ): Promise<{
-    newLevelUnlocked: boolean;
-    newWorldUnlocked: boolean;
-    playerLevelUp: boolean;
-    newPlayerLevel?: number;
-  }> {
-    try {
-      // Récupérer le monde pour avoir levelCount
-      const world = await CampaignWorld.findOne({ worldId });
-      if (!world) {
-        console.error(`Monde ${worldId} non trouvé`);
-        return { newLevelUnlocked: false, newWorldUnlocked: false, playerLevelUp: false };
-      }
-
-      // Récupérer ou créer la progression du monde
-      let worldProgress = await CampaignProgress.findOne({ playerId, serverId, worldId });
-      
-      if (!worldProgress) {
-        worldProgress = new CampaignProgress({
-          playerId,
-          serverId,
-          worldId,
-          highestLevelCleared: 0,
-          starsByLevel: [],
-          progressByDifficulty: [
-            { 
-              difficulty: "Normal", 
-              highestLevelCleared: 0, 
-              starsByLevel: [], 
-              isCompleted: false 
-            }
-          ],
-          totalStarsEarned: 0,
-          totalTimeSpent: 0
-        });
-      }
-
-      // Calculer les étoiles obtenues
-      const starsEarned = this.calculateStarsEarned(battleResult, difficulty);
-      
-      // Déterminer si un nouveau niveau sera débloqué
-      const newLevelUnlocked = (difficulty === "Normal") && (levelIndex === (worldProgress.highestLevelCleared || 0) + 1) && (levelIndex < world.levelCount);
-      
-      // Mettre à jour la progression via la méthode du modèle
-      (worldProgress as any).updateDifficultyProgress(
-        difficulty as "Normal" | "Hard" | "Nightmare",
-        levelIndex,
-        starsEarned,
-        battleResult.battleDuration,
-        world.levelCount
-      );
-
-      // Mettre à jour le temps total passé
-      (worldProgress as any).totalTimeSpent += battleResult.battleDuration;
-
-      await worldProgress.save();
-      
-      // Variables de retour
-      let newWorldUnlocked = false;
-      let playerLevelUp = false;
-      let newPlayerLevel = undefined;
-      
-      // Mettre à jour le niveau/monde du joueur SEULEMENT si c'est une progression en Normal
-      if (difficulty === "Normal") {
-        const player = await Player.findOne({ _id: playerId, serverId });
-        if (player) {
-          // ✅ CHANGEMENT: Mettre à jour le niveau joueur basé sur la progression Normal
-          const calculatedPlayerLevel = Math.max(player.level, (worldId - 1) * 10 + levelIndex + 5);
-          if (calculatedPlayerLevel > player.level) {
-            const oldLevel = player.level;
-            player.level = calculatedPlayerLevel;
-            player.world = worldId;
-            await player.save();
-            
-            playerLevelUp = true;
-            newPlayerLevel = calculatedPlayerLevel;
-            
-            // Vérifier si de nouveaux mondes sont débloqués
-            const nextWorld = await CampaignWorld.findOne({ 
-              minPlayerLevel: { $lte: calculatedPlayerLevel, $gt: oldLevel }
-            });
-            if (nextWorld) {
-              newWorldUnlocked = true;
-            }
-          }
-        }
-      }
-
-      console.log(`📈 Progression mise à jour: Monde ${worldId}, Niveau ${levelIndex}, ${difficulty}, ${starsEarned} étoiles`);
-
-      return {
-        newLevelUnlocked,
-        newWorldUnlocked,
-        playerLevelUp,
-        newPlayerLevel
-      };
-
-    } catch (error) {
-      console.error("❌ Erreur updatePlayerProgress:", error);
-      // Ne pas faire échouer le combat
-      return { newLevelUnlocked: false, newWorldUnlocked: false, playerLevelUp: false };
-    }
-  }
-
-  // === NOUVELLES MÉTHODES POUR WEBSOCKET ===
-
-  // Vérifier si c'est un premier passage
-  private static async isFirstClear(
-    playerId: string,
-    serverId: string,
-    worldId: number,
-    levelIndex: number,
-    difficulty: string
-  ): Promise<boolean> {
-    try {
-      const worldProgress = await CampaignProgress.findOne({ playerId, serverId, worldId });
-      if (!worldProgress) return true;
-
-      if (difficulty === "Normal") {
-        const levelStar = worldProgress.starsByLevel.find(s => s.levelIndex === levelIndex);
-        return !levelStar || levelStar.stars === 0;
-      }
-
-      // Pour Hard/Nightmare, utiliser le nouveau système
-      const diffProgress = worldProgress.progressByDifficulty?.find(p => p.difficulty === difficulty);
-      if (!diffProgress) return true;
-
-      const levelStar = diffProgress.starsByLevel.find(s => s.levelIndex === levelIndex);
-      return !levelStar || levelStar.stars === 0;
-
-    } catch (error) {
-      console.error("Erreur isFirstClear:", error);
-      return true;
-    }
-  }
-
-  // Obtenir le nombre de clears parfaits dans un monde
-  private static async getPerfectClearCount(
-    playerId: string,
-    serverId: string,
-    worldId: number
-  ): Promise<number> {
-    try {
-      const worldProgress = await CampaignProgress.findOne({ playerId, serverId, worldId });
-      if (!worldProgress) return 0;
-
-      return worldProgress.starsByLevel.filter(s => s.stars === 3).length;
-
-    } catch (error) {
-      console.error("Erreur getPerfectClearCount:", error);
-      return 0;
-    }
-  }
-
-  // Vérifier si le joueur est bloqué et suggérer des améliorations
-  private static async checkForProgressBlocking(
-    playerId: string,
-    serverId: string,
-    worldId: number,
-    levelIndex: number,
-    difficulty: string
-  ): Promise<void> {
-    try {
-      // Cette logique pourrait être plus sophistiquée en trackant les échecs
-      // Pour l'instant, c'est une implémentation simple
-      
-      // Simuler détection de blocage (en production, vous pourriez tracker les échecs)
-      const recentFailures = Math.floor(Math.random() * 5) + 1; // 1-5 échecs simulés
-      
-      if (recentFailures >= 3) {
-        WebSocketService.notifyCampaignProgressBlocked(playerId, {
-          worldId,
-          levelIndex,
-          difficulty,
-          failureCount: recentFailures,
-          blockedTime: recentFailures * 300000, // 5min par échec
-          suggestions: [
-            {
-              type: 'level_heroes',
-              description: 'Level up your heroes to increase combat power',
-              cost: 5000,
-              effectiveness: 85
-            },
-            {
-              type: 'upgrade_equipment',
-              description: 'Upgrade weapons and armor for better stats',
-              cost: 10000,
-              effectiveness: 75
-            },
-            {
-              type: 'change_formation',
-              description: 'Try a different team formation strategy',
-              effectiveness: 60
-            }
-          ],
-          canAutoResolve: false
-        });
-      }
-
-    } catch (error) {
-      console.error("Erreur checkForProgressBlocking:", error);
-    }
-  }
-
-    // === 🔥 NOUVELLES MÉTHODES POUR TRACKING ÉCHECS ===
-
-  /**
-   * Enregistrer un échec de combat dans la progression
-   */
   private static async recordCampaignFailure(
     playerId: string,
     serverId: string,
@@ -800,11 +540,9 @@ export class CampaignService {
     battleResult: any
   ): Promise<void> {
     try {
-      // Récupérer la progression du monde
       let worldProgress = await CampaignProgress.findOne({ playerId, serverId, worldId });
       
       if (!worldProgress) {
-        // Créer la progression si elle n'existe pas
         worldProgress = new CampaignProgress({
           playerId,
           serverId,
@@ -833,9 +571,8 @@ export class CampaignService {
         });
       }
 
-      // Déterminer la raison de l'échec
       let failureReason: string | undefined;
-      if (battleResult.battleDuration > 120000) { // Plus de 2 minutes
+      if (battleResult.battleDuration > 120000) {
         failureReason = 'timeout';
       } else if (battleResult.stats?.totalDamageDealt < 100) {
         failureReason = 'insufficient_damage';
@@ -843,7 +580,6 @@ export class CampaignService {
         failureReason = 'team_wiped';
       }
 
-      // Récupérer la puissance du joueur (estimation)
       const player = await Player.findOne({ _id: playerId, serverId }).select('heroes');
       let playerPower = 0;
       if (player && player.heroes) {
@@ -852,7 +588,6 @@ export class CampaignService {
           .reduce((sum: number, hero: any) => sum + (hero.level * hero.stars * 100), 0);
       }
 
-      // Enregistrer l'échec
       (worldProgress as any).recordFailure(
         levelIndex,
         difficulty as "Normal" | "Hard" | "Nightmare",
@@ -867,13 +602,9 @@ export class CampaignService {
 
     } catch (error) {
       console.error('❌ Erreur recordCampaignFailure:', error);
-      // Ne pas faire échouer le combat pour une erreur de tracking
     }
   }
 
-  /**
-   * Vérification intelligente de blocage avec vraies données d'échecs
-   */
   private static async checkForProgressBlockingEnhanced(
     playerId: string,
     serverId: string,
@@ -885,19 +616,15 @@ export class CampaignService {
       const worldProgress = await CampaignProgress.findOne({ playerId, serverId, worldId });
       if (!worldProgress) return;
 
-      // Obtenir l'analyse de blocage
       const stuckAnalysis = (worldProgress as any).getStuckAnalysis();
       
       if (stuckAnalysis.isStuck) {
-        // Calculer le niveau de priorité basé sur la durée de blocage
         const stuckHours = stuckAnalysis.stuckDuration / (1000 * 60 * 60);
         const priority: 'low' | 'medium' | 'high' = 
           stuckHours > 24 ? 'high' : stuckHours > 6 ? 'medium' : 'low';
 
-        // Obtenir les échecs consécutifs pour ce niveau spécifique
         const consecutiveFailures = (worldProgress as any).getConsecutiveFailures(levelIndex, difficulty);
         
-        // Générer suggestions avancées basées sur les données réelles
         const enhancedSuggestions = stuckAnalysis.suggestions.map((suggestion: string, index: number) => ({
           type: index === 0 ? 'upgrade' : index === 1 ? 'formation' : 'strategy',
           description: suggestion,
@@ -906,7 +633,6 @@ export class CampaignService {
           effectiveness: Math.max(60, 90 - (stuckAnalysis.failureCount * 5))
         }));
 
-        // Notification WebSocket avec données réelles
         WebSocketService.notifyCampaignProgressBlocked(playerId, {
           worldId,
           levelIndex,
@@ -914,17 +640,15 @@ export class CampaignService {
           failureCount: stuckAnalysis.failureCount,
           blockedTime: stuckAnalysis.stuckDuration,
           suggestions: enhancedSuggestions,
-          canAutoResolve: false // TODO: Implémenter auto-resolve selon niveau VIP
+          canAutoResolve: false
         });
 
         console.log(`⚠️ Joueur ${playerId} bloqué sur ${worldId}-${levelIndex} (${difficulty}): ${stuckAnalysis.failureCount} échecs, bloqué depuis ${Math.floor(stuckHours)}h`);
       }
 
-      // Vérifier les échecs consécutifs récents (même sans être "stuck")
       const recentFailures = (worldProgress as any).getConsecutiveFailures(levelIndex, difficulty);
       
       if (recentFailures >= 2 && !stuckAnalysis.isStuck) {
-        // Recommandation préventive avant que le joueur ne soit complètement bloqué
         WebSocketService.notifyCampaignSmartRecommendation(playerId, {
           type: 'retry_strategy',
           title: 'Multiple Defeats Detected',
@@ -944,16 +668,156 @@ export class CampaignService {
       console.error('❌ Erreur checkForProgressBlockingEnhanced:', error);
     }
   }
-  // === MÉTHODES UTILITAIRES PRIVÉES ===
 
-  // Déterminer le type d'ennemi par défaut
+  private static async updatePlayerProgress(
+    playerId: string,
+    serverId: string,
+    worldId: number,
+    levelIndex: number,
+    difficulty: string,
+    battleResult: any
+  ): Promise<{
+    newLevelUnlocked: boolean;
+    newWorldUnlocked: boolean;
+    playerLevelUp: boolean;
+    newPlayerLevel?: number;
+  }> {
+    try {
+      const world = await CampaignWorld.findOne({ worldId });
+      if (!world) {
+        console.error(`Monde ${worldId} non trouvé`);
+        return { newLevelUnlocked: false, newWorldUnlocked: false, playerLevelUp: false };
+      }
+
+      let worldProgress = await CampaignProgress.findOne({ playerId, serverId, worldId });
+      
+      if (!worldProgress) {
+        worldProgress = new CampaignProgress({
+          playerId,
+          serverId,
+          worldId,
+          highestLevelCleared: 0,
+          starsByLevel: [],
+          progressByDifficulty: [
+            { 
+              difficulty: "Normal", 
+              highestLevelCleared: 0, 
+              starsByLevel: [], 
+              isCompleted: false 
+            }
+          ],
+          totalStarsEarned: 0,
+          totalTimeSpent: 0
+        });
+      }
+
+      const starsEarned = this.calculateStarsEarned(battleResult, difficulty);
+      const newLevelUnlocked = (difficulty === "Normal") && (levelIndex === (worldProgress.highestLevelCleared || 0) + 1) && (levelIndex < world.levelCount);
+      
+      (worldProgress as any).updateDifficultyProgress(
+        difficulty as "Normal" | "Hard" | "Nightmare",
+        levelIndex,
+        starsEarned,
+        battleResult.battleDuration,
+        world.levelCount
+      );
+
+      (worldProgress as any).totalTimeSpent += battleResult.battleDuration;
+      await worldProgress.save();
+      
+      let newWorldUnlocked = false;
+      let playerLevelUp = false;
+      let newPlayerLevel = undefined;
+      
+      if (difficulty === "Normal") {
+        const player = await Player.findOne({ _id: playerId, serverId });
+        if (player) {
+          const calculatedPlayerLevel = Math.max(player.level, (worldId - 1) * 10 + levelIndex + 5);
+          if (calculatedPlayerLevel > player.level) {
+            const oldLevel = player.level;
+            player.level = calculatedPlayerLevel;
+            player.world = worldId;
+            await player.save();
+            
+            playerLevelUp = true;
+            newPlayerLevel = calculatedPlayerLevel;
+            
+            const nextWorld = await CampaignWorld.findOne({ 
+              minPlayerLevel: { $lte: calculatedPlayerLevel, $gt: oldLevel }
+            });
+            if (nextWorld) {
+              newWorldUnlocked = true;
+            }
+          }
+        }
+      }
+
+      console.log(`📈 Progression mise à jour: Monde ${worldId}, Niveau ${levelIndex}, ${difficulty}, ${starsEarned} étoiles`);
+
+      return {
+        newLevelUnlocked,
+        newWorldUnlocked,
+        playerLevelUp,
+        newPlayerLevel
+      };
+
+    } catch (error) {
+      console.error("❌ Erreur updatePlayerProgress:", error);
+      return { newLevelUnlocked: false, newWorldUnlocked: false, playerLevelUp: false };
+    }
+  }
+
+  private static async isFirstClear(
+    playerId: string,
+    serverId: string,
+    worldId: number,
+    levelIndex: number,
+    difficulty: string
+  ): Promise<boolean> {
+    try {
+      const worldProgress = await CampaignProgress.findOne({ playerId, serverId, worldId });
+      if (!worldProgress) return true;
+
+      if (difficulty === "Normal") {
+        const levelStar = worldProgress.starsByLevel.find(s => s.levelIndex === levelIndex);
+        return !levelStar || levelStar.stars === 0;
+      }
+
+      const diffProgress = worldProgress.progressByDifficulty?.find(p => p.difficulty === difficulty);
+      if (!diffProgress) return true;
+
+      const levelStar = diffProgress.starsByLevel.find(s => s.levelIndex === levelIndex);
+      return !levelStar || levelStar.stars === 0;
+
+    } catch (error) {
+      console.error("Erreur isFirstClear:", error);
+      return true;
+    }
+  }
+
+  private static async getPerfectClearCount(
+    playerId: string,
+    serverId: string,
+    worldId: number
+  ): Promise<number> {
+    try {
+      const worldProgress = await CampaignProgress.findOne({ playerId, serverId, worldId });
+      if (!worldProgress) return 0;
+
+      return worldProgress.starsByLevel.filter(s => s.stars === 3).length;
+
+    } catch (error) {
+      console.error("Erreur getPerfectClearCount:", error);
+      return 0;
+    }
+  }
+
   private static determineEnemyType(levelIndex: number): "normal" | "elite" | "boss" {
-    if (levelIndex % 10 === 0) return "boss";      // Niveaux 10, 20, 30 = boss
-    if (levelIndex % 5 === 0) return "elite";      // Niveaux 5, 15, 25 = elite
+    if (levelIndex % 10 === 0) return "boss";
+    if (levelIndex % 5 === 0) return "elite";
     return "normal";
   }
 
-  // Déterminer le nombre d'ennemis
   private static determineEnemyCount(enemyType: "normal" | "elite" | "boss"): number {
     switch (enemyType) {
       case "boss": return 1;
@@ -963,7 +827,6 @@ export class CampaignService {
     }
   }
 
-  // Générer les récompenses par défaut
   private static generateDefaultRewards(worldId: number, levelIndex: number) {
     const baseExp = 30 + (worldId - 1) * 10 + levelIndex * 2;
     const baseGold = 20 + (worldId - 1) * 5 + levelIndex * 1;
@@ -976,7 +839,6 @@ export class CampaignService {
     };
   }
 
-  // ✅ NOUVELLE MÉTHODE: Obtenir les difficultés disponibles pour un joueur
   private static async getAvailableDifficulties(
     playerId: string,
     serverId: string
@@ -985,13 +847,11 @@ export class CampaignService {
     const difficulties: ("Normal" | "Hard" | "Nightmare")[] = ["Normal"];
     
     try {
-      // Vérifier si le joueur a complété toute la campagne en Normal
       const hasCompletedNormal = await this.hasPlayerCompletedCampaign(playerId, serverId, "Normal");
       if (hasCompletedNormal) {
         difficulties.push("Hard");
       }
       
-      // Vérifier si le joueur a complété toute la campagne en Hard
       const hasCompletedHard = await this.hasPlayerCompletedCampaign(playerId, serverId, "Hard");
       if (hasCompletedHard) {
         difficulties.push("Nightmare");
@@ -999,26 +859,20 @@ export class CampaignService {
       
     } catch (error) {
       console.error("Erreur getAvailableDifficulties:", error);
-      // En cas d'erreur, retourner au moins Normal
     }
     
     return difficulties;
   }
 
-  // === MÉTHODES PUBLIQUES POUR LES ROUTES ===
-  
-  // Vérifier si un joueur a terminé toute la campagne sur une difficulté (PUBLIC)
   public static async hasPlayerCompletedCampaign(
     playerId: string,
     serverId: string,
     difficulty: "Normal" | "Hard" | "Nightmare"
   ): Promise<boolean> {
     try {
-      // Récupérer le nombre total de mondes
       const totalWorlds = await CampaignWorld.countDocuments({});
       if (totalWorlds === 0) return false;
 
-      // Utiliser la méthode statique du modèle pour vérifier la complétion
       return await (CampaignProgress as any).hasPlayerCompletedAllWorlds(
         playerId, 
         serverId, 
@@ -1032,9 +886,6 @@ export class CampaignService {
     }
   }
 
-  // === MÉTHODES PRIVÉES POUR LA LOGIQUE INTERNE ===
-
-  // Obtenir le plus haut niveau terminé sur une difficulté spécifique (utilise le nouveau modèle)
   private static async getHighestClearedLevel(
     playerId: string,
     serverId: string,
@@ -1050,7 +901,6 @@ export class CampaignService {
         return worldProgress.highestLevelCleared;
       }
       
-      // Utiliser le nouveau système pour Hard/Nightmare
       return (worldProgress as any).getHighestLevelForDifficulty(difficulty);
       
     } catch (error) {
@@ -1059,31 +909,25 @@ export class CampaignService {
     }
   }
 
-  // Calculer les étoiles obtenues
   private static calculateStarsEarned(battleResult: any, difficulty: string): number {
-    let stars = 1; // Base: victoire = 1 étoile
+    let stars = 1;
     
-    // Étoile bonus basée sur la performance
-    if (battleResult.totalTurns <= 10) stars++; // Combat rapide
-    if (battleResult.stats.criticalHits >= 3) stars++; // Beaucoup de critiques
+    if (battleResult.totalTurns <= 10) stars++;
+    if (battleResult.stats.criticalHits >= 3) stars++;
     
-    // Malus si trop long
     if (battleResult.totalTurns > 30) stars = Math.max(1, stars - 1);
     
-    // Bonus difficulté
     if (difficulty === "Hard") stars = Math.min(3, stars + 1);
-    if (difficulty === "Nightmare") stars = 3; // Nightmare donne toujours 3 étoiles
+    if (difficulty === "Nightmare") stars = 3;
     
     return Math.max(1, Math.min(3, stars));
   }
 
-  // Obtenir le monde actuel du joueur
   private static getCurrentWorld(campaignData: any[]): any {
     return campaignData.find(w => w.isUnlocked && w.highestLevelCleared < w.levelCount) || 
            campaignData[campaignData.length - 1];
   }
 
-  // Obtenir le prochain déblocage
   private static getNextUnlock(worlds: ICampaignWorld[], playerLevel: number): any {
     for (const world of worlds) {
       if (playerLevel < world.minPlayerLevel) {
@@ -1098,9 +942,6 @@ export class CampaignService {
     return null;
   }
 
-  // === MÉTHODES D'ADMINISTRATION ===
-
-  // Créer un nouveau monde
   public static async createWorld(worldData: Partial<ICampaignWorld>) {
     try {
       const world = new CampaignWorld(worldData);
@@ -1120,7 +961,6 @@ export class CampaignService {
     }
   }
 
-  // Obtenir les statistiques globales
   public static async getCampaignStats(serverId?: string) {
     try {
       const matchStage = serverId ? { serverId } : {};
