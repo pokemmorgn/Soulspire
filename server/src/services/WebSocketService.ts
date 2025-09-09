@@ -3,10 +3,11 @@ import { Server as SocketIOServer } from 'socket.io';
 import { Server as HttpServer } from 'http';
 import jwt from 'jsonwebtoken';
 import Player from '../models/Player';
+import { WebSocketArena } from './websocket/WebSocketArena';
 
 /**
  * SERVICE WEBSOCKET GLOBAL
- * Commence par l'arène, extensible pour tous les services
+ * Point d'entrée principal qui délègue aux modules spécialisés
  */
 export class WebSocketService {
   private static io: SocketIOServer | null = null;
@@ -64,7 +65,10 @@ export class WebSocketService {
       this.handleConnection(socket);
     });
 
-    console.log('✅ WebSocket Server initialized');
+    // Initialiser les modules spécialisés
+    WebSocketArena.initialize(this.io);
+
+    console.log('✅ WebSocket Server initialized with specialized modules');
   }
 
   /**
@@ -103,21 +107,8 @@ export class WebSocketService {
       playerName
     });
 
-    // Gestionnaires d'événements
-    socket.on('arena:join_room', () => {
-      socket.join(`arena:${serverId}`);
-      console.log(`🏟️ ${playerName} joined arena room`);
-    });
-
-    socket.on('arena:leave_room', () => {
-      socket.leave(`arena:${serverId}`);
-      console.log(`🚪 ${playerName} left arena room`);
-    });
-
-    // Ping/Pong pour maintenir la connexion
-    socket.on('ping', () => {
-      socket.emit('pong', { timestamp: Date.now() });
-    });
+    // Gestionnaires d'événements spécialisés
+    this.setupEventHandlers(socket);
 
     // Gestion de la déconnexion
     socket.on('disconnect', (reason: string) => {
@@ -133,146 +124,64 @@ export class WebSocketService {
     });
   }
 
-  // ===== MÉTHODES ARÈNE =====
+  /**
+   * Configurer les gestionnaires d'événements spécialisés
+   */
+  private static setupEventHandlers(socket: any): void {
+    // Événements Arena
+    socket.on('arena:join_room', () => {
+      socket.join(`arena:${socket.serverId}`);
+      console.log(`🏟️ ${socket.playerName} joined arena room`);
+    });
+
+    socket.on('arena:leave_room', () => {
+      socket.leave(`arena:${socket.serverId}`);
+      console.log(`🚪 ${socket.playerName} left arena room`);
+    });
+
+    // Événements génériques
+    socket.on('ping', () => {
+      socket.emit('pong', { timestamp: Date.now() });
+    });
+
+    // TODO: Ajouter d'autres gestionnaires pour AFK, Campaign, etc.
+  }
+
+  // ===== MÉTHODES ARÈNE (DÉLÉGATION) =====
 
   /**
    * Notifier le résultat d'un combat d'arène
    */
-  public static notifyArenaMatchResult(
-    playerId: string,
-    matchResult: {
-      victory: boolean;
-      newRank: number;
-      newPoints: number;
-      newLeague: string;
-      pointsChange: number;
-      opponentName: string;
-      duration: number;
-      rewards: any;
-    }
-  ): void {
-    if (!this.io) return;
-
-    const connection = this.connectedPlayers.get(playerId);
-    if (!connection) {
-      console.log(`⚠️ Player ${playerId} not connected for match result`);
-      return;
-    }
-
-    this.io.to(`player:${playerId}`).emit('arena:match_result', {
-      type: 'match_result',
-      data: matchResult,
-      timestamp: new Date(),
-      animation: matchResult.victory ? 'victory' : 'defeat'
-    });
-
-    console.log(`⚔️ Match result sent to ${playerId}: ${matchResult.victory ? 'Victory' : 'Defeat'}`);
-  }
-
-  /**
-   * Notifier une promotion/relégation
-   */
-  public static notifyArenaPromotion(
-    playerId: string,
-    promotionData: {
-      promoted: boolean;
-      newLeague: string;
-      oldLeague: string;
-      newRank: number;
-      bonusRewards?: any;
-    }
-  ): void {
-    if (!this.io) return;
-
-    const connection = this.connectedPlayers.get(playerId);
-    if (!connection) return;
-
-    this.io.to(`player:${playerId}`).emit('arena:promotion', {
-      type: promotionData.promoted ? 'promotion' : 'relegation',
-      data: promotionData,
-      timestamp: new Date(),
-      animation: promotionData.promoted ? 'promotion_celebration' : 'relegation_sad'
-    });
-
-    console.log(`🎉 ${promotionData.promoted ? 'Promotion' : 'Relegation'} sent to ${playerId}: ${promotionData.oldLeague} → ${promotionData.newLeague}`);
+  public static notifyArenaMatchResult(playerId: string, matchResult: any): void {
+    WebSocketArena.notifyMatchResult(playerId, matchResult);
   }
 
   /**
    * Notifier qu'on a été attaqué en défense
    */
-  public static notifyArenaDefenseAttacked(
-    defenderId: string,
-    attackData: {
-      attackerName: string;
-      result: 'victory' | 'defeat';
-      pointsChange: number;
-      newRank: number;
-      revengeAvailable: boolean;
-      matchId: string;
-    }
-  ): void {
-    if (!this.io) return;
+  public static notifyArenaDefenseAttacked(defenderId: string, attackData: any): void {
+    WebSocketArena.notifyDefenseAttacked(defenderId, attackData);
+  }
 
-    const connection = this.connectedPlayers.get(defenderId);
-    if (!connection) return;
-
-    this.io.to(`player:${defenderId}`).emit('arena:defense_attacked', {
-      type: 'defense_result',
-      data: attackData,
-      timestamp: new Date(),
-      priority: 'normal'
-    });
-
-    console.log(`🛡️ Defense result sent to ${defenderId}: ${attackData.result} vs ${attackData.attackerName}`);
+  /**
+   * Notifier une promotion/relégation
+   */
+  public static notifyArenaPromotion(playerId: string, promotionData: any): void {
+    WebSocketArena.notifyPromotion(playerId, promotionData);
   }
 
   /**
    * Notifier une nouvelle saison d'arène (broadcast serveur)
    */
-  public static notifyArenaNewSeason(
-    serverId: string,
-    seasonData: {
-      seasonNumber: number;
-      theme: string;
-      startDate: Date;
-      endDate: Date;
-      exclusiveRewards: string[];
-    }
-  ): void {
-    if (!this.io) return;
-
-    this.io.to(`arena:${serverId}`).emit('arena:new_season', {
-      type: 'new_season',
-      data: seasonData,
-      timestamp: new Date(),
-      animation: 'season_celebration'
-    });
-
-    const playerCount = this.getServerPlayerCount(serverId);
-    console.log(`🎭 New season notification sent to ${playerCount} players on ${serverId}`);
+  public static notifyArenaNewSeason(serverId: string, seasonData: any): void {
+    WebSocketArena.notifyNewSeason(serverId, seasonData);
   }
 
   /**
    * Notifier mise à jour des classements (broadcast)
    */
-  public static notifyArenaLeaderboardUpdate(
-    serverId: string,
-    topChanges: Array<{
-      playerId: string;
-      playerName: string;
-      newRank: number;
-      oldRank: number;
-    }>
-  ): void {
-    if (!this.io) return;
-
-    this.io.to(`arena:${serverId}`).emit('arena:leaderboard_update', {
-      type: 'leaderboard_update',
-      data: { topChanges },
-      timestamp: new Date()
-    });
-
-    console.log(`📊 Leaderboard update sent to arena room ${serverId}`);
+  public static notifyArenaLeaderboardUpdate(serverId: string, topChanges: any[]): void {
+    WebSocketArena.notifyLeaderboardUpdate(serverId, topChanges);
   }
 
   // ===== MÉTHODES UTILITAIRES =====
@@ -300,11 +209,7 @@ export class WebSocketService {
   /**
    * Envoyer un message personnalisé à un joueur
    */
-  public static sendToPlayer(
-    playerId: string,
-    event: string,
-    data: any
-  ): void {
+  public static sendToPlayer(playerId: string, event: string, data: any): void {
     if (!this.io) return;
 
     this.io.to(`player:${playerId}`).emit(event, {
@@ -316,11 +221,7 @@ export class WebSocketService {
   /**
    * Broadcast à tous les joueurs d'un serveur
    */
-  public static broadcastToServer(
-    serverId: string,
-    event: string,
-    data: any
-  ): void {
+  public static broadcastToServer(serverId: string, event: string, data: any): void {
     if (!this.io) return;
 
     this.io.to(`server:${serverId}`).emit(event, {
@@ -342,7 +243,11 @@ export class WebSocketService {
     return {
       totalConnections: this.connectedPlayers.size,
       connectionsByServer,
-      isActive: this.io !== null
+      isActive: this.io !== null,
+      modules: {
+        arena: WebSocketArena.isAvailable()
+        // TODO: Ajouter d'autres modules
+      }
     };
   }
 
