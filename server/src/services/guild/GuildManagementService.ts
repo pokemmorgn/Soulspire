@@ -317,7 +317,7 @@ static async updateGuildSettings(
         member.role === "officer" && 
         member.playerId !== currentLeader.playerId
       );
-
+      
       let newLeader;
       if (eligibleOfficers.length > 0) {
         // Prendre l'officier le plus actif (dernière activité la plus récente)
@@ -325,23 +325,35 @@ static async updateGuildSettings(
           b.lastActiveAt.getTime() - a.lastActiveAt.getTime()
         )[0];
       } else {
-        // Si pas d'officiers, prendre le membre le plus actif
-        const eligibleMembers = guild.members.filter(member => 
-          member.role === "member" && 
+        // 🔥 NOUVEAU: Si pas d'officiers, chercher parmi les Elite
+        const eligibleElites = guild.members.filter(member => 
+          member.role === "elite" && 
           member.playerId !== currentLeader.playerId
         );
-
-        if (eligibleMembers.length === 0) {
-          return { 
-            success: false, 
-            error: "No eligible candidates for leadership transfer", 
-            code: "NO_CANDIDATES" 
-          };
+      
+        if (eligibleElites.length > 0) {
+          newLeader = eligibleElites.sort((a, b) => 
+            b.lastActiveAt.getTime() - a.lastActiveAt.getTime()
+          )[0];
+        } else {
+          // Si pas d'Elite, prendre le membre le plus actif
+          const eligibleMembers = guild.members.filter(member => 
+            member.role === "member" && 
+            member.playerId !== currentLeader.playerId
+          );
+      
+          if (eligibleMembers.length === 0) {
+            return { 
+              success: false, 
+              error: "No eligible candidates for leadership transfer", 
+              code: "NO_CANDIDATES" 
+            };
+          }
+      
+          newLeader = eligibleMembers.sort((a, b) => 
+            b.lastActiveAt.getTime() - a.lastActiveAt.getTime()
+          )[0];
         }
-
-        newLeader = eligibleMembers.sort((a, b) => 
-          b.lastActiveAt.getTime() - a.lastActiveAt.getTime()
-        )[0];
       }
 
       // Vérifier que le nouveau leader n'est pas trop inactif aussi (max 24h)
