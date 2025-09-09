@@ -71,7 +71,7 @@ const processInvitationSchema = Joi.object({
 
 const manageMemberSchema = Joi.object({
   targetPlayerId: Joi.string().required(),
-  action: Joi.string().valid("kick", "promote_officer", "promote_leader", "demote").required()
+  action: Joi.string().valid("kick", "promote_elite", "promote_officer", "promote_leader", "demote").required()
 });
 
 const contributeSchema = Joi.object({
@@ -531,6 +531,9 @@ router.post("/:guildId/members/manage", async (req: Request, res: Response): Pro
     switch (action) {
       case "kick":
         result = await GuildMemberService.kickMember(guildId, targetPlayerId, req.userId!);
+        break;
+      case "promote_elite":
+        result = await GuildMemberService.promoteMember(guildId, targetPlayerId, "elite", req.userId!);
         break;
       case "promote_officer":
         result = await GuildMemberService.promoteMember(guildId, targetPlayerId, "officer", req.userId!);
