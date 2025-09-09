@@ -1,7 +1,6 @@
 import mongoose, { Document, Schema } from "mongoose";
 import { IdGenerator } from "../utils/idGenerator";
 
-// Interface pour les membres de guilde
 export interface IGuildMember {
   playerId: string;
   playerName: string;
@@ -13,10 +12,9 @@ export interface IGuildMember {
   contributionDaily: number;
   contributionWeekly: number;
   contributionTotal: number;
-  position?: string; // Position personnalisée
+  position?: string;
 }
 
-// Interface pour les candidatures à la guilde
 export interface IGuildApplication {
   playerId: string;
   playerName: string;
@@ -27,7 +25,6 @@ export interface IGuildApplication {
   status: "pending" | "accepted" | "rejected";
 }
 
-// Interface pour les invitations de guilde
 export interface IGuildInvitation {
   playerId: string;
   playerName: string;
@@ -38,7 +35,6 @@ export interface IGuildInvitation {
   status: "pending" | "accepted" | "declined" | "expired";
 }
 
-// Interface pour les logs d'activité de guilde
 export interface IGuildActivityLog {
   type: "join" | "leave" | "kick" | "promote" | "demote" | "contribution" | "raid_start" | "raid_complete" | "level_up";
   playerId: string;
@@ -49,7 +45,6 @@ export interface IGuildActivityLog {
   timestamp: Date;
 }
 
-// Interface pour les quêtes de guilde
 export interface IGuildQuest {
   questId: string;
   questType: "daily" | "weekly" | "special";
@@ -77,7 +72,6 @@ export interface IGuildQuest {
   endDate: Date;
 }
 
-// Interface pour les raids de guilde
 export interface IGuildRaid {
   raidId: string;
   raidType: "guild_boss" | "territory_war" | "labyrinth";
@@ -119,7 +113,6 @@ export interface IGuildRaid {
   completedAt?: Date;
 }
 
-// Interface pour les statistiques de guilde
 export interface IGuildStats {
   totalMembers: number;
   averageLevel: number;
@@ -134,7 +127,6 @@ export interface IGuildStats {
   seasonRank?: number;
 }
 
-// Interface pour les récompenses de guilde
 export interface IGuildRewards {
   dailyRewards: {
     lastClaimTime: Date;
@@ -163,20 +155,17 @@ export interface IGuildRewards {
   };
 }
 
-// Interface principale de la guilde
 export interface IGuild {
   _id?: string;
   guildId: string;
   serverId: string;
   name: string;
-  tag: string; // Tag court (3-5 caractères)
+  tag: string;
   description: string;
   iconId: string;
   level: number;
   experience: number;
   experienceRequired: number;
-  
-  // Paramètres de la guilde
   settings: {
     isPublic: boolean;
     autoAccept: boolean;
@@ -186,42 +175,24 @@ export interface IGuild {
     timezone: string;
     requiredActivity: "low" | "medium" | "high";
   };
-  
-  // Membres
   members: IGuildMember[];
   maxMembers: number;
   memberCount: number;
-  
-  // Candidatures et invitations
   applications: IGuildApplication[];
   invitations: IGuildInvitation[];
-  
-  // Activité et logs
   activityLogs: IGuildActivityLog[];
-  
-  // Progression et quêtes
   currentQuests: IGuildQuest[];
   completedQuests: number;
-  
-  // Raids et PvP
   currentRaid?: IGuildRaid;
   raidHistory: IGuildRaid[];
-  
-  // Économie de guilde
   guildCoins: number;
   guildBank: {
     gold: number;
     materials: Record<string, number>;
     lastDonation: Date;
   };
-  
-  // Statistiques
   stats: IGuildStats;
-  
-  // Récompenses
   rewards: IGuildRewards;
-  
-  // Territoire et classement (pour Territory Wars)
   territory: {
     regionId?: string;
     regionName?: string;
@@ -229,54 +200,35 @@ export interface IGuild {
     defenseWins: number;
     defenseTotal: number;
   };
-  
-  // Métadonnées
   createdAt: Date;
   createdBy: string;
   lastActivityAt: Date;
-  
-  // Statut
   status: "active" | "inactive" | "disbanded";
   disbandedAt?: Date;
   disbandedBy?: string;
   disbandReason?: string;
 }
 
-// Document Mongoose avec méthodes
 export interface IGuildDocument extends Document, IGuild {
   _id: string;
-  
-  // Méthodes de gestion des membres
   addMember(playerId: string, playerName: string, playerLevel: number, playerPower: number): Promise<IGuildDocument>;
   removeMember(playerId: string, reason?: string): Promise<IGuildDocument>;
   promoteMember(playerId: string, newRole: "officer" | "leader"): Promise<IGuildDocument>;
   demoteMember(playerId: string): Promise<IGuildDocument>;
   updateMemberActivity(playerId: string): Promise<IGuildDocument>;
-  
-  // Méthodes de candidatures
   addApplication(playerId: string, playerName: string, playerLevel: number, playerPower: number, message: string): Promise<IGuildDocument>;
   processApplication(playerId: string, action: "accept" | "reject", processedBy: string): Promise<IGuildDocument>;
-  
-  // Méthodes d'invitations
   inviteMember(playerId: string, playerName: string, invitedBy: string, invitedByName: string): Promise<IGuildDocument>;
   processInvitation(playerId: string, action: "accept" | "decline"): Promise<IGuildDocument>;
-  
-  // Méthodes de progression
   addExperience(amount: number, source: string): Promise<{ leveledUp: boolean; newLevel: number }>;
   addContribution(playerId: string, amount: number, type: "daily" | "weekly"): Promise<IGuildDocument>;
-  
-  // Méthodes de quêtes
   startQuest(questData: Partial<IGuildQuest>): Promise<IGuildDocument>;
   updateQuestProgress(questId: string, playerId: string, progress: number): Promise<IGuildDocument>;
   completeQuest(questId: string): Promise<IGuildDocument>;
-  
-  // Méthodes de raids
   startRaid(raidData: Partial<IGuildRaid>): Promise<IGuildDocument>;
   joinRaid(raidId: string, playerId: string, playerName: string): Promise<IGuildDocument>;
   updateRaidProgress(raidId: string, playerId: string, damage: number): Promise<IGuildDocument>;
   completeRaid(raidId: string): Promise<IGuildDocument>;
-  
-  // Méthodes utilitaires
   canJoin(playerLevel: number, playerPower: number): boolean;
   getMember(playerId: string): IGuildMember | null;
   getPlayerRole(playerId: string): string | null;
@@ -290,7 +242,6 @@ export interface IGuildDocument extends Document, IGuild {
   resetWeeklyProgress(): Promise<IGuildDocument>;
 }
 
-// Schémas des sous-documents
 const guildMemberSchema = new Schema<IGuildMember>({
   playerId: { type: String, required: true },
   playerName: { type: String, required: true },
@@ -403,7 +354,6 @@ const guildRaidSchema = new Schema<IGuildRaid>({
   completedAt: { type: Date }
 }, { _id: false });
 
-// Schéma principal de la guilde
 const guildSchema = new Schema<IGuildDocument>({
   _id: {
     type: String,
@@ -438,7 +388,6 @@ const guildSchema = new Schema<IGuildDocument>({
   level: { type: Number, default: 1, min: 1, max: 100 },
   experience: { type: Number, default: 0, min: 0 },
   experienceRequired: { type: Number, default: 1000, min: 1 },
-  
   settings: {
     isPublic: { type: Boolean, default: true },
     autoAccept: { type: Boolean, default: false },
@@ -448,29 +397,22 @@ const guildSchema = new Schema<IGuildDocument>({
     timezone: { type: String, default: "UTC" },
     requiredActivity: { type: String, enum: ["low", "medium", "high"], default: "medium" }
   },
-  
   members: { type: [guildMemberSchema], default: [] },
   maxMembers: { type: Number, default: 30, min: 1, max: 50 },
   memberCount: { type: Number, default: 0, min: 0 },
-  
   applications: { type: [guildApplicationSchema], default: [] },
   invitations: { type: [guildInvitationSchema], default: [] },
-  
   activityLogs: { type: [guildActivityLogSchema], default: [] },
-  
   currentQuests: { type: [guildQuestSchema], default: [] },
   completedQuests: { type: Number, default: 0, min: 0 },
-  
   currentRaid: { type: guildRaidSchema, default: null },
   raidHistory: { type: [guildRaidSchema], default: [] },
-  
   guildCoins: { type: Number, default: 0, min: 0 },
   guildBank: {
     gold: { type: Number, default: 0, min: 0 },
     materials: { type: Map, of: Number, default: new Map() },
     lastDonation: { type: Date, default: Date.now }
   },
-  
   stats: {
     totalMembers: { type: Number, default: 0, min: 0 },
     averageLevel: { type: Number, default: 0, min: 0 },
@@ -484,7 +426,6 @@ const guildSchema = new Schema<IGuildDocument>({
     territoryRank: { type: Number, min: 1 },
     seasonRank: { type: Number, min: 1 }
   },
-  
   rewards: {
     dailyRewards: {
       lastClaimTime: { type: Date, default: Date.now },
@@ -512,7 +453,6 @@ const guildSchema = new Schema<IGuildDocument>({
       distributed: { type: Boolean, default: false }
     }
   },
-  
   territory: {
     regionId: { type: String },
     regionName: { type: String },
@@ -520,7 +460,6 @@ const guildSchema = new Schema<IGuildDocument>({
     defenseWins: { type: Number, default: 0, min: 0 },
     defenseTotal: { type: Number, default: 0, min: 0 }
   },
-  
   createdBy: { type: String, required: true },
   lastActivityAt: { type: Date, default: Date.now },
   status: { type: String, enum: ["active", "inactive", "disbanded"], default: "active" },
@@ -533,7 +472,6 @@ const guildSchema = new Schema<IGuildDocument>({
   _id: false
 });
 
-// Index pour les performances
 guildSchema.index({ _id: 1 }, { unique: true });
 guildSchema.index({ guildId: 1 }, { unique: true });
 guildSchema.index({ serverId: 1 });
@@ -546,7 +484,6 @@ guildSchema.index({ "settings.isPublic": 1, "settings.autoAccept": 1 });
 guildSchema.index({ lastActivityAt: -1 });
 guildSchema.index({ status: 1 });
 
-// Hook pour s'assurer que _id et guildId sont synchronisés
 guildSchema.pre('save', function(next) {
   if (!this._id) {
     this._id = IdGenerator.generateGuildId();
@@ -554,17 +491,11 @@ guildSchema.pre('save', function(next) {
   if (!this.guildId || this.guildId !== this._id) {
     this.guildId = this._id;
   }
-  
-  // Mettre à jour le nombre de membres
   this.memberCount = this.members.length;
-  
-  // Calculer l'expérience requise pour le niveau suivant
   this.experienceRequired = this.level * 1000 + (this.level - 1) * 500;
-  
   next();
 });
 
-// Méthodes statiques
 guildSchema.statics.findByServer = function(serverId: string) {
   return this.find({ serverId, status: "active" });
 };
@@ -574,7 +505,7 @@ guildSchema.statics.findPublicGuilds = function(serverId: string) {
     serverId, 
     status: "active",
     "settings.isPublic": true,
-    memberCount: { $lt: this.maxMembers }
+    $expr: { $lt: ["$memberCount", "$maxMembers"] }
   });
 };
 
@@ -597,12 +528,10 @@ guildSchema.statics.getServerLeaderboard = function(serverId: string, type: stri
     .select('name tag level stats.totalPower memberCount');
 };
 
-// Méthodes d'instance - Gestion des membres
 guildSchema.methods.addMember = function(playerId: string, playerName: string, playerLevel: number, playerPower: number) {
   if (this.memberCount >= this.maxMembers) {
     throw new Error("Guild is full");
   }
-  
   if (this.getMember(playerId)) {
     throw new Error("Player is already a member");
   }
@@ -699,64 +628,77 @@ guildSchema.methods.updateMemberActivity = function(playerId: string) {
   return Promise.resolve(this);
 };
 
-// Méthodes utilitaires
-guildSchema.methods.canJoin = function(playerLevel: number, playerPower: number) {
-  return this.memberCount < this.maxMembers &&
-         playerLevel >= this.settings.minimumLevel &&
-         playerPower >= this.settings.minimumPower &&
-         this.status === "active";
-};
-
-guildSchema.methods.getMember = function(playerId: string) {
-  return this.members.find((m: IGuildMember) => m.playerId === playerId) || null;
-};
-
-guildSchema.methods.getPlayerRole = function(playerId: string) {
-  const member = this.getMember(playerId);
-  return member ? member.role : null;
-};
-
-guildSchema.methods.isLeader = function(playerId: string) {
-  return this.getPlayerRole(playerId) === "leader";
-};
-
-guildSchema.methods.isOfficer = function(playerId: string) {
-  const role = this.getPlayerRole(playerId);
-  return role === "officer" || role === "leader";
-};
-
-guildSchema.methods.canManageMembers = function(playerId: string) {
-  return this.isOfficer(playerId);
-};
-
-guildSchema.methods.addActivityLog = function(logData: Partial<IGuildActivityLog>) {
-  this.activityLogs.push({
-    type: logData.type!,
-    playerId: logData.playerId!,
-    playerName: logData.playerName!,
-    targetPlayerId: logData.targetPlayerId,
-    targetPlayerName: logData.targetPlayerName,
-    details: logData.details,
-    timestamp: logData.timestamp || new Date()
-  });
-  
-  // Garder seulement les 100 derniers logs
-  if (this.activityLogs.length > 100) {
-    this.activityLogs = this.activityLogs.slice(-100);
+guildSchema.methods.addApplication = function(playerId: string, playerName: string, playerLevel: number, playerPower: number, message: string) {
+  const existingApp = this.applications.find((app: IGuildApplication) => app.playerId === playerId && app.status === "pending");
+  if (existingApp) {
+    throw new Error("Application already exists");
   }
   
-  return Promise.resolve(this);
+  const application: IGuildApplication = {
+    playerId,
+    playerName,
+    playerLevel,
+    playerPower,
+    message,
+    appliedAt: new Date(),
+    status: "pending"
+  };
+  
+  this.applications.push(application);
+  
+  if (this.settings.autoAccept && this.canJoin(playerLevel, playerPower)) {
+    return this.processApplication(playerId, "accept", "system");
+  }
+  
+  return this.save();
 };
 
-guildSchema.methods.updateStats = function() {
-  const members = this.members;
+guildSchema.methods.processApplication = function(playerId: string, action: "accept" | "reject", processedBy: string) {
+  const appIndex = this.applications.findIndex((app: IGuildApplication) => app.playerId === playerId && app.status === "pending");
+  if (appIndex === -1) {
+    throw new Error("Application not found");
+  }
   
-  this.stats.totalMembers = members.length;
-  this.stats.averageLevel = members.length > 0 ? 
-    Math.round(members.reduce((sum, m) => sum + m.playerLevel, 0) / members.length) : 0;
-  this.stats.totalPower = members.reduce((sum, m) => sum + m.playerPower, 0);
-  this.stats.averagePower = members.length > 0 ? 
-    Math.round(this.stats.totalPower / members.length) : 0;
+  const application = this.applications[appIndex];
+  application.status = action;
+  
+  if (action === "accept") {
+    this.addMember(application.playerId, application.playerName, application.playerLevel, application.playerPower);
+  }
+  
+  this.applications = this.applications.filter((app: IGuildApplication) => app.playerId !== playerId || app.status === "pending");
+  
+  return this.save();
+};
+
+guildSchema.methods.inviteMember = function(playerId: string, playerName: string, invitedBy: string, invitedByName: string) {
+  const existingInv = this.invitations.find((inv: IGuildInvitation) => inv.playerId === playerId && inv.status === "pending");
+  if (existingInv) {
+    throw new Error("Invitation already exists");
+  }
+  
+  const invitation: IGuildInvitation = {
+    playerId,
+    playerName,
+    invitedBy,
+    invitedByName,
+    invitedAt: new Date(),
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    status: "pending"
+  };
+  
+  this.invitations.push(invitation);
+  return this.save();
+};
+
+guildSchema.methods.processInvitation = function(playerId: string, action: "accept" | "decline") {
+  const invIndex = this.invitations.findIndex((inv: IGuildInvitation) => inv.playerId === playerId && inv.status === "pending");
+  if (invIndex === -1) {
+    throw new Error("Invitation not found");
+  }
+  
+  const invitation = this.invitations[invIndex];
+  invitation.status = action;
   
   return this.save();
 };
@@ -768,19 +710,16 @@ guildSchema.methods.addExperience = function(amount: number, source: string) {
   let leveledUp = false;
   let newLevel = this.level;
   
-  // Vérifier si on peut monter de niveau
   while (this.experience >= this.experienceRequired && this.level < 100) {
     this.experience -= this.experienceRequired;
     this.level += 1;
     newLevel = this.level;
     leveledUp = true;
     
-    // Augmenter le max de membres tous les 10 niveaux
     if (this.level % 10 === 0) {
       this.maxMembers = Math.min(50, this.maxMembers + 5);
     }
     
-    // Recalculer l'expérience requise pour le niveau suivant
     this.experienceRequired = this.level * 1000 + (this.level - 1) * 500;
     
     this.addActivityLog({
@@ -816,94 +755,6 @@ guildSchema.methods.addContribution = function(playerId: string, amount: number,
   return this.save();
 };
 
-// Méthodes de candidatures
-guildSchema.methods.addApplication = function(playerId: string, playerName: string, playerLevel: number, playerPower: number, message: string) {
-  // Vérifier si le joueur a déjà une candidature en cours
-  const existingApp = this.applications.find(app => app.playerId === playerId && app.status === "pending");
-  if (existingApp) {
-    throw new Error("Application already exists");
-  }
-  
-  const application: IGuildApplication = {
-    playerId,
-    playerName,
-    playerLevel,
-    playerPower,
-    message,
-    appliedAt: new Date(),
-    status: "pending"
-  };
-  
-  this.applications.push(application);
-  
-  // Auto-accept si activé et que les conditions sont remplies
-  if (this.settings.autoAccept && this.canJoin(playerLevel, playerPower)) {
-    return this.processApplication(playerId, "accept", "system");
-  }
-  
-  return this.save();
-};
-
-guildSchema.methods.processApplication = function(playerId: string, action: "accept" | "reject", processedBy: string) {
-  const appIndex = this.applications.findIndex(app => app.playerId === playerId && app.status === "pending");
-  if (appIndex === -1) {
-    throw new Error("Application not found");
-  }
-  
-  const application = this.applications[appIndex];
-  application.status = action;
-  
-  if (action === "accept") {
-    // Ajouter le joueur comme membre
-    this.addMember(application.playerId, application.playerName, application.playerLevel, application.playerPower);
-  }
-  
-  // Nettoyer les anciennes candidatures du joueur
-  this.applications = this.applications.filter(app => app.playerId !== playerId || app.status === "pending");
-  
-  return this.save();
-};
-
-// Méthodes d'invitations
-guildSchema.methods.inviteMember = function(playerId: string, playerName: string, invitedBy: string, invitedByName: string) {
-  // Vérifier si le joueur a déjà une invitation en cours
-  const existingInv = this.invitations.find(inv => inv.playerId === playerId && inv.status === "pending");
-  if (existingInv) {
-    throw new Error("Invitation already exists");
-  }
-  
-  const invitation: IGuildInvitation = {
-    playerId,
-    playerName,
-    invitedBy,
-    invitedByName,
-    invitedAt: new Date(),
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 jours
-    status: "pending"
-  };
-  
-  this.invitations.push(invitation);
-  return this.save();
-};
-
-guildSchema.methods.processInvitation = function(playerId: string, action: "accept" | "decline") {
-  const invIndex = this.invitations.findIndex(inv => inv.playerId === playerId && inv.status === "pending");
-  if (invIndex === -1) {
-    throw new Error("Invitation not found");
-  }
-  
-  const invitation = this.invitations[invIndex];
-  invitation.status = action;
-  
-  if (action === "accept") {
-    // Ajouter le joueur comme membre (il faut récupérer ses stats)
-    // Cette partie sera gérée par le service qui aura accès au modèle Player
-  }
-  
-  return this.save();
-};
-
-// Méthodes de quêtes
 guildSchema.methods.startQuest = function(questData: Partial<IGuildQuest>) {
   const quest: IGuildQuest = {
     questId: questData.questId || IdGenerator.generateEventId(),
@@ -924,15 +775,14 @@ guildSchema.methods.startQuest = function(questData: Partial<IGuildQuest>) {
 };
 
 guildSchema.methods.updateQuestProgress = function(questId: string, playerId: string, progress: number) {
-  const quest = this.currentQuests.find(q => q.questId === questId);
+  const quest = this.currentQuests.find((q: IGuildQuest) => q.questId === questId);
   if (!quest || quest.isCompleted) {
     return this.save();
   }
   
   quest.currentProgress += progress;
   
-  // Ajouter ou mettre à jour la contribution du joueur
-  const contributor = quest.contributors.find(c => c.playerId === playerId);
+  const contributor = quest.contributors.find((c: any) => c.playerId === playerId);
   const member = this.getMember(playerId);
   
   if (contributor) {
@@ -945,13 +795,10 @@ guildSchema.methods.updateQuestProgress = function(questId: string, playerId: st
     });
   }
   
-  // Vérifier si la quête est complétée
   if (quest.currentProgress >= quest.targetValue) {
     quest.isCompleted = true;
     quest.completedAt = new Date();
     this.completedQuests += 1;
-    
-    // Ajouter l'expérience de guilde
     this.addExperience(quest.rewards.guildExp, `quest_${questId}`);
     this.guildCoins += quest.rewards.guildCoins;
   }
@@ -960,7 +807,7 @@ guildSchema.methods.updateQuestProgress = function(questId: string, playerId: st
 };
 
 guildSchema.methods.completeQuest = function(questId: string) {
-  const questIndex = this.currentQuests.findIndex(q => q.questId === questId);
+  const questIndex = this.currentQuests.findIndex((q: IGuildQuest) => q.questId === questId);
   if (questIndex === -1) {
     throw new Error("Quest not found");
   }
@@ -968,14 +815,11 @@ guildSchema.methods.completeQuest = function(questId: string) {
   const quest = this.currentQuests[questIndex];
   quest.isCompleted = true;
   quest.completedAt = new Date();
-  
-  // Déplacer vers l'historique et supprimer des quêtes actives
   this.currentQuests.splice(questIndex, 1);
   
   return this.save();
 };
 
-// Méthodes de raids
 guildSchema.methods.startRaid = function(raidData: Partial<IGuildRaid>) {
   if (this.currentRaid && this.currentRaid.status === "active") {
     throw new Error("Another raid is already active");
@@ -1020,7 +864,7 @@ guildSchema.methods.joinRaid = function(raidId: string, playerId: string, player
     throw new Error("Raid is full");
   }
   
-  const alreadyJoined = this.currentRaid.participants.find(p => p.playerId === playerId);
+  const alreadyJoined = this.currentRaid.participants.find((p: any) => p.playerId === playerId);
   if (alreadyJoined) {
     throw new Error("Player already joined");
   }
@@ -1044,15 +888,13 @@ guildSchema.methods.updateRaidProgress = function(raidId: string, playerId: stri
     return this.save();
   }
   
-  const participant = this.currentRaid.participants.find(p => p.playerId === playerId);
+  const participant = this.currentRaid.participants.find((p: any) => p.playerId === playerId);
   if (participant) {
     participant.damageDealt += damage;
     participant.contribution += damage;
     
-    // Réduire la vie du boss
     this.currentRaid.bossHealth.current = Math.max(0, this.currentRaid.bossHealth.current - damage);
     
-    // Vérifier si le raid est terminé
     if (this.currentRaid.bossHealth.current <= 0) {
       this.currentRaid.status = "completed";
       this.currentRaid.completedAt = new Date();
@@ -1079,11 +921,9 @@ guildSchema.methods.completeRaid = function(raidId: string) {
   this.currentRaid.status = "completed";
   this.currentRaid.completedAt = new Date();
   
-  // Déplacer vers l'historique
   this.raidHistory.push(this.currentRaid);
   this.currentRaid = undefined;
   
-  // Garder seulement les 20 derniers raids dans l'historique
   if (this.raidHistory.length > 20) {
     this.raidHistory = this.raidHistory.slice(-20);
   }
@@ -1091,7 +931,66 @@ guildSchema.methods.completeRaid = function(raidId: string) {
   return this.save();
 };
 
-// Méthodes de nettoyage
+guildSchema.methods.canJoin = function(playerLevel: number, playerPower: number) {
+  return this.memberCount < this.maxMembers &&
+         playerLevel >= this.settings.minimumLevel &&
+         playerPower >= this.settings.minimumPower &&
+         this.status === "active";
+};
+
+guildSchema.methods.getMember = function(playerId: string) {
+  return this.members.find((m: IGuildMember) => m.playerId === playerId) || null;
+};
+
+guildSchema.methods.getPlayerRole = function(playerId: string) {
+  const member = this.getMember(playerId);
+  return member ? member.role : null;
+};
+
+guildSchema.methods.isLeader = function(playerId: string) {
+  return this.getPlayerRole(playerId) === "leader";
+};
+
+guildSchema.methods.isOfficer = function(playerId: string) {
+  const role = this.getPlayerRole(playerId);
+  return role === "officer" || role === "leader";
+};
+
+guildSchema.methods.canManageMembers = function(playerId: string) {
+  return this.isOfficer(playerId);
+};
+
+guildSchema.methods.addActivityLog = function(logData: Partial<IGuildActivityLog>) {
+  this.activityLogs.push({
+    type: logData.type!,
+    playerId: logData.playerId!,
+    playerName: logData.playerName!,
+    targetPlayerId: logData.targetPlayerId,
+    targetPlayerName: logData.targetPlayerName,
+    details: logData.details,
+    timestamp: logData.timestamp || new Date()
+  });
+  
+  if (this.activityLogs.length > 100) {
+    this.activityLogs = this.activityLogs.slice(-100);
+  }
+  
+  return Promise.resolve(this);
+};
+
+guildSchema.methods.updateStats = function() {
+  const members = this.members;
+  
+  this.stats.totalMembers = members.length;
+  this.stats.averageLevel = members.length > 0 ? 
+    Math.round(members.reduce((sum: number, m: IGuildMember) => sum + m.playerLevel, 0) / members.length) : 0;
+  this.stats.totalPower = members.reduce((sum: number, m: IGuildMember) => sum + m.playerPower, 0);
+  this.stats.averagePower = members.length > 0 ? 
+    Math.round(this.stats.totalPower / members.length) : 0;
+  
+  return this.save();
+};
+
 guildSchema.methods.cleanupExpiredInvitations = function() {
   const now = new Date();
   this.invitations = this.invitations.filter((inv: IGuildInvitation) => {
@@ -1110,7 +1009,6 @@ guildSchema.methods.resetDailyProgress = function() {
     member.contributionDaily = 0;
   });
   
-  // Reset daily rewards
   this.rewards.dailyRewards.claimedBy = [];
   this.rewards.dailyRewards.lastClaimTime = new Date();
   
@@ -1122,11 +1020,9 @@ guildSchema.methods.resetWeeklyProgress = function() {
     member.contributionWeekly = 0;
   });
   
-  // Reset weekly rewards
   this.rewards.weeklyRewards.claimedBy = [];
   this.rewards.weeklyRewards.lastClaimTime = new Date();
   
-  // Nettoyer les quêtes expirées
   this.currentQuests = this.currentQuests.filter((quest: IGuildQuest) => 
     !quest.isCompleted && quest.endDate > new Date()
   );
