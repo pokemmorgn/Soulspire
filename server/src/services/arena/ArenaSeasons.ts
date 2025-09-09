@@ -484,7 +484,21 @@ export class ArenaSeasons {
         `Durée: ${this.SEASON_CONFIG.duration} jours.`,
         "high"
       );
-
+      
+      // 🔌 Notification WebSocket temps réel
+      try {
+        const { WebSocketArena } = await import('../websocket/WebSocketArena');
+        WebSocketArena.notifyNewSeason(serverId, {
+          seasonNumber: season.seasonNumber,
+          theme: season.seasonTheme,
+          startDate: season.startDate,
+          endDate: season.endDate,
+          exclusiveRewards: Object.keys(season.exclusiveRewards)
+        });
+      } catch (error) {
+        console.error('⚠️ Erreur WebSocket new season:', error);
+      }
+      
       console.log(`📢 Notification nouvelle saison envoyée aux joueurs de ${serverId}`);
 
     } catch (error) {
