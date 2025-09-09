@@ -4,7 +4,7 @@ import { Server as HttpServer } from 'http';
 import jwt from 'jsonwebtoken';
 import Player from '../models/Player';
 import { WebSocketArena } from './websocket/WebSocketArena';
-
+import { WebSocketAFK } from './websocket/WebSocketAFK';
 /**
  * SERVICE WEBSOCKET GLOBAL
  * Point d'entrée principal qui délègue aux modules spécialisés
@@ -67,7 +67,8 @@ export class WebSocketService {
 
     // Initialiser les modules spécialisés
     WebSocketArena.initialize(this.io);
-
+    WebSocketAFK.initialize(this.io);
+    
     console.log('✅ WebSocket Server initialized with specialized modules');
   }
 
@@ -138,7 +139,18 @@ export class WebSocketService {
       socket.leave(`arena:${socket.serverId}`);
       console.log(`🚪 ${socket.playerName} left arena room`);
     });
+    
+    // Événements AFK
+    socket.on('afk:join_room', () => {
+      socket.join(`afk:${socket.serverId}`);
+      console.log(`💤 ${socket.playerName} joined AFK room`);
+    });
 
+    socket.on('afk:leave_room', () => {
+      socket.leave(`afk:${socket.serverId}`);
+      console.log(`🚪 ${socket.playerName} left AFK room`);
+    });
+    
     // Événements génériques
     socket.on('ping', () => {
       socket.emit('pong', { timestamp: Date.now() });
@@ -184,6 +196,98 @@ export class WebSocketService {
     WebSocketArena.notifyLeaderboardUpdate(serverId, topChanges);
   }
 
+    // ===== MÉTHODES AFK (DÉLÉGATION) =====
+
+  /**
+   * Notifier que le farming automatique a commencé
+   */
+  public static notifyAfkFarmingStarted(playerId: string, farmingData: any): void {
+    WebSocketAFK.notifyFarmingStarted(playerId, farmingData);
+  }
+
+  /**
+   * Notifier que le farming est terminé avec récompenses
+   */
+  public static notifyAfkFarmingCompleted(playerId: string, completionData: any): void {
+    WebSocketAFK.notifyFarmingCompleted(playerId, completionData);
+  }
+
+  /**
+   * Notifier la progression du farming en temps réel
+   */
+  public static notifyAfkFarmingProgress(playerId: string, progressData: any): void {
+    WebSocketAFK.notifyFarmingProgress(playerId, progressData);
+  }
+
+  /**
+   * Notifier qu'un meilleur spot de farming a été trouvé
+   */
+  public static notifyAfkOptimalLocationFound(playerId: string, locationData: any): void {
+    WebSocketAFK.notifyOptimalLocationFound(playerId, locationData);
+  }
+
+  /**
+   * Notifier que les récompenses hors ligne ont été réclamées
+   */
+  public static notifyAfkOfflineRewardsClaimed(playerId: string, rewardsData: any): void {
+    WebSocketAFK.notifyOfflineRewardsClaimed(playerId, rewardsData);
+  }
+
+  /**
+   * Notifier que de nouvelles récompenses idle sont disponibles
+   */
+  public static notifyAfkIdleRewardsAvailable(playerId: string, availableData: any): void {
+    WebSocketAFK.notifyIdleRewardsAvailable(playerId, availableData);
+  }
+
+  /**
+   * Notifier l'activation d'un bonus de récompenses
+   */
+  public static notifyAfkBonusRewardsActivated(playerId: string, bonusData: any): void {
+    WebSocketAFK.notifyBonusRewardsActivated(playerId, bonusData);
+  }
+
+  /**
+   * Notifier que la formation a été auto-optimisée
+   */
+  public static notifyAfkFormationOptimized(playerId: string, optimizationData: any): void {
+    WebSocketAFK.notifyFormationOptimized(playerId, optimizationData);
+  }
+
+  /**
+   * Notifier que l'équipement a été amélioré automatiquement
+   */
+  public static notifyAfkEquipmentUpgraded(playerId: string, upgradeData: any): void {
+    WebSocketAFK.notifyEquipmentUpgraded(playerId, upgradeData);
+  }
+
+  /**
+   * Notifier que le joueur est bloqué avec recommandations
+   */
+  public static notifyAfkProgressStuck(playerId: string, stuckData: any): void {
+    WebSocketAFK.notifyProgressStuck(playerId, stuckData);
+  }
+
+  /**
+   * Notifier l'activation d'un événement double XP (broadcast serveur)
+   */
+  public static notifyAfkDoubleExpEvent(serverId: string, eventData: any): void {
+    WebSocketAFK.notifyDoubleExpEvent(serverId, eventData);
+  }
+
+  /**
+   * Notifier un drop rare pendant le farming
+   */
+  public static notifyAfkRareDrop(playerId: string, dropData: any): void {
+    WebSocketAFK.notifyRareDrop(playerId, dropData);
+  }
+
+  /**
+   * Notifier qu'un palier important a été atteint
+   */
+  public static notifyAfkMilestoneReached(playerId: string, milestoneData: any): void {
+    WebSocketAFK.notifyMilestoneReached(playerId, milestoneData);
+  }  
   // ===== MÉTHODES UTILITAIRES =====
 
   /**
@@ -245,7 +349,8 @@ export class WebSocketService {
       connectionsByServer,
       isActive: this.io !== null,
       modules: {
-        arena: WebSocketArena.isAvailable()
+        arena: WebSocketArena.isAvailable(),
+        afk: WebSocketAFK.isAvailable()
         // TODO: Ajouter d'autres modules
       }
     };
