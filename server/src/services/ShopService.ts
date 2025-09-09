@@ -5,6 +5,7 @@ import Item from "../models/Item";
 import Hero from "../models/Hero";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
+import { WebSocketService } from "./WebSocketService"; 
 
 export interface ShopPurchaseResult {
   success: boolean;
@@ -226,6 +227,16 @@ export class ShopService {
       // Vérifications d'achat
       const purchaseCheck = await shop.canPlayerPurchase(instanceId, playerId);
       if (!purchaseCheck.canPurchase) {
+          try {
+                  WebSocketService.notifyShopPurchaseFailure(playerId, {
+                    shopType,
+                    itemName: shopItem.name,
+                    reason: `Cannot purchase item: ${purchaseCheck.reason}`,
+                    code: "PURCHASE_NOT_ALLOWED"
+                  });
+                } catch (error) {
+                  console.warn("⚠️ Failed to send purchase failure notification:", error);
+                }
         return { 
           success: false, 
           error: `Cannot purchase item: ${purchaseCheck.reason}`, 
@@ -299,7 +310,18 @@ export class ShopService {
       this.deductResources(player, shop.refreshCost);
       await shop.refreshShop();
       await player.save();
-
+      try {
+        WebSocketService.notifyShopRefreshed(playerId, {
+          shopType,
+          shopName: shop.name,
+          newItemsCount: shop.items.length,
+          refreshCost: shop.refreshCost,
+          freeRefreshUsed: false, // À implémenter si vous gérez les refresh gratuits
+          featuredItems: shop.featuredItems
+        });
+      } catch (error) {
+        console.warn("⚠️ Failed to send shop refresh notification:", error);
+      }
       return {
         success: true,
         cost: shop.refreshCost,
@@ -523,7 +545,24 @@ export class ShopService {
         inventory.save(),
         shop.save()
       ]);
-
+      try {
+        WebSocketService.notifyShopPurchaseSuccess(player._id.toString(), {
+          shopType: shop.shopType,
+          itemName: shopItem.name,
+          quantity,
+          cost: finalCost,
+          rewards,
+          remainingStock: shopItem.currentStock,
+          playerResources: {
+            gold: player.gold,
+            gems: player.gems,
+            paidGems: player.paidGems,
+            tickets: player.tickets
+          }
+        });
+      } catch (error) {
+        console.warn("⚠️ Failed to send purchase success notification:", error);
+      }
       // Mettre à jour les missions et événements
       await this.updateProgressTracking(player._id.toString(), shopItem, quantity);
 
