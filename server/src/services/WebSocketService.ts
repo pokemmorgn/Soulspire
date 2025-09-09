@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import Player from '../models/Player';
 import { WebSocketArena } from './websocket/WebSocketArena';
 import { WebSocketAFK } from './websocket/WebSocketAFK';
+import { WebSocketCampaign } from './websocket/WebSocketCampaign';
 /**
  * SERVICE WEBSOCKET GLOBAL
  * Point d'entrée principal qui délègue aux modules spécialisés
@@ -68,7 +69,7 @@ export class WebSocketService {
     // Initialiser les modules spécialisés
     WebSocketArena.initialize(this.io);
     WebSocketAFK.initialize(this.io);
-    
+    WebSocketCampaign.initialize(this.io);
     console.log('✅ WebSocket Server initialized with specialized modules');
   }
 
@@ -149,6 +150,17 @@ export class WebSocketService {
     socket.on('afk:leave_room', () => {
       socket.leave(`afk:${socket.serverId}`);
       console.log(`🚪 ${socket.playerName} left AFK room`);
+    });
+
+    // Événements Campaign
+    socket.on('campaign:join_room', () => {
+      socket.join(`campaign:${socket.serverId}`);
+      console.log(`🗡️ ${socket.playerName} joined Campaign room`);
+    });
+
+    socket.on('campaign:leave_room', () => {
+      socket.leave(`campaign:${socket.serverId}`);
+      console.log(`🚪 ${socket.playerName} left Campaign room`);
     });
     
     // Événements génériques
@@ -288,6 +300,112 @@ export class WebSocketService {
   public static notifyAfkMilestoneReached(playerId: string, milestoneData: any): void {
     WebSocketAFK.notifyMilestoneReached(playerId, milestoneData);
   }  
+    // ===== MÉTHODES CAMPAIGN (DÉLÉGATION) =====
+
+  /**
+   * Notifier le début d'un combat de campagne
+   */
+  public static notifyCampaignBattleStarted(playerId: string, battleData: any): void {
+    WebSocketCampaign.notifyBattleStarted(playerId, battleData);
+  }
+
+  /**
+   * Notifier le résultat d'un combat de campagne
+   */
+  public static notifyCampaignBattleCompleted(playerId: string, battleResult: any): void {
+    WebSocketCampaign.notifyBattleCompleted(playerId, battleResult);
+  }
+
+  /**
+   * Notifier la progression du combat en temps réel
+   */
+  public static notifyCampaignBattleProgress(playerId: string, progressData: any): void {
+    WebSocketCampaign.notifyBattleProgress(playerId, progressData);
+  }
+
+  /**
+   * Notifier qu'un nouveau niveau a été débloqué
+   */
+  public static notifyCampaignLevelUnlocked(playerId: string, unlockData: any): void {
+    WebSocketCampaign.notifyLevelUnlocked(playerId, unlockData);
+  }
+
+  /**
+   * Notifier qu'un nouveau monde a été débloqué
+   */
+  public static notifyCampaignWorldUnlocked(playerId: string, worldData: any): void {
+    WebSocketCampaign.notifyWorldUnlocked(playerId, worldData);
+  }
+
+  /**
+   * Notifier qu'une nouvelle difficulté a été débloquée
+   */
+  public static notifyCampaignDifficultyUnlocked(playerId: string, difficultyData: any): void {
+    WebSocketCampaign.notifyDifficultyUnlocked(playerId, difficultyData);
+  }
+
+  /**
+   * Notifier le gain d'étoiles et jalons
+   */
+  public static notifyCampaignStarMilestone(playerId: string, milestoneData: any): void {
+    WebSocketCampaign.notifyStarMilestone(playerId, milestoneData);
+  }
+
+  /**
+   * Notifier les récompenses de premier passage
+   */
+  public static notifyCampaignFirstClearRewards(playerId: string, rewardsData: any): void {
+    WebSocketCampaign.notifyFirstClearRewards(playerId, rewardsData);
+  }
+
+  /**
+   * Notifier les récompenses de perfectionnement (3 étoiles)
+   */
+  public static notifyCampaignPerfectClearRewards(playerId: string, perfectData: any): void {
+    WebSocketCampaign.notifyPerfectClearRewards(playerId, perfectData);
+  }
+
+  /**
+   * Notifier les récompenses de complétion de monde
+   */
+  public static notifyCampaignWorldCompletionRewards(playerId: string, completionData: any): void {
+    WebSocketCampaign.notifyWorldCompletionRewards(playerId, completionData);
+  }
+
+  /**
+   * Notifier l'activation d'un événement campagne (broadcast serveur)
+   */
+  public static notifyCampaignEvent(serverId: string, eventData: any): void {
+    WebSocketCampaign.notifyCampaignEvent(serverId, eventData);
+  }
+
+  /**
+   * Notifier un drop rare spécial
+   */
+  public static notifyCampaignRareDrop(playerId: string, dropData: any): void {
+    WebSocketCampaign.notifyRareDrop(playerId, dropData);
+  }
+
+  /**
+   * Notifier une performance exceptionnelle
+   */
+  public static notifyCampaignExceptionalPerformance(playerId: string, performanceData: any): void {
+    WebSocketCampaign.notifyExceptionalPerformance(playerId, performanceData);
+  }
+
+  /**
+   * Notifier des recommandations intelligentes
+   */
+  public static notifyCampaignSmartRecommendation(playerId: string, recommendationData: any): void {
+    WebSocketCampaign.notifySmartRecommendation(playerId, recommendationData);
+  }
+
+  /**
+   * Notifier qu'un joueur est bloqué avec suggestions
+   */
+  public static notifyCampaignProgressBlocked(playerId: string, blockedData: any): void {
+    WebSocketCampaign.notifyProgressBlocked(playerId, blockedData);
+  }
   // ===== MÉTHODES UTILITAIRES =====
 
   /**
@@ -350,7 +468,8 @@ export class WebSocketService {
       isActive: this.io !== null,
       modules: {
         arena: WebSocketArena.isAvailable(),
-        afk: WebSocketAFK.isAvailable()
+        afk: WebSocketAFK.isAvailable(),
+        campaign: WebSocketCampaign.isAvailable()
         // TODO: Ajouter d'autres modules
       }
     };
