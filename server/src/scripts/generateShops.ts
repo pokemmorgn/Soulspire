@@ -215,12 +215,16 @@ async function createOrUpdateShop(shopType: keyof typeof SHOP_CONFIGS): Promise<
     shop = (Shop as any).createPredefinedShop(shopType);
   }
   
+  if (!shop) {
+    throw new Error(`Failed to create or find ${shopType} shop`);
+  }
+  
   // Générer les nouveaux objets
   const shopItems = await generateShopItems(shopType);
   
   // Ajouter les objets au shop
   shopItems.forEach(item => {
-    shop.addItem(item);
+    shop!.addItem(item);
   });
   
   // Mettre à jour les timestamps
