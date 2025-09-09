@@ -48,8 +48,21 @@ class GuildSystemTester {
       // 1. Tests de création de données de test
       await this.createTestPlayers();
       
+      // 🔥 VÉRIFICATION: Arrêter si pas de joueurs créés
+      if (this.testPlayers.length === 0) {
+        console.error("❌ Aucun joueur de test créé - arrêt des tests");
+        return;
+      }
+      
       // 2. Tests de gestion de guildes
       await this.testGuildCreation();
+      
+      // 🔥 VÉRIFICATION: Arrêter si pas de guilde créée
+      if (!this.testGuild) {
+        console.error("❌ Aucune guilde de test créée - arrêt des tests");
+        return;
+      }
+      
       await this.testGuildSettings();
       
       // 3. Tests de membres
@@ -335,7 +348,7 @@ class GuildSystemTester {
       const elite = this.testPlayers[2];
       const member = this.testPlayers[3];
 
-      // Tests de permissions
+      // Tests de permissions selon la hiérarchie : Leader > Officer > Elite > Member
       const tests = {
         leaderCanManage: guild?.canManageMembers(this.testPlayers[0]._id),
         officerCanManage: guild?.canManageMembers(officer._id),
