@@ -508,7 +508,7 @@ export class GuildActivityService {
       player.gold += finalRewards.gold;
       player.gems += finalRewards.gems;
       
-      for (const [material, amount] of baseRewards.materials.entries()) {
+      for (const [material, amount] of Object.entries(baseRewards.materials)) {
         const current = player.materials.get(material) || 0;
         player.materials.set(material, current + amount);
       }
