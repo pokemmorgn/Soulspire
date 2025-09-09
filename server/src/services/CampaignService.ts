@@ -416,7 +416,21 @@ export class CampaignService {
           )
         ]);
 
-      } else {
+} else {
+        // 🔥 NOUVEAU : Enregistrer l'échec dans la progression
+        try {
+          await this.recordCampaignFailure(
+            playerId,
+            serverId,
+            worldId,
+            levelIndex,
+            difficulty,
+            battleResult.result
+          );
+        } catch (failureError) {
+          console.error('❌ Erreur enregistrement échec:', failureError);
+        }
+
         // 🔥 NOTIFICATION WEBSOCKET : Défaite
         try {
           WebSocketService.notifyCampaignBattleCompleted(playerId, {
@@ -439,27 +453,13 @@ export class CampaignService {
             }
           });
 
-          // Vérifier si le joueur a beaucoup d'échecs et suggérer des améliorations
-          await this.checkForProgressBlocking(playerId, serverId, worldId, levelIndex, difficulty);
+          // 🔥 NOUVEAU : Vérification intelligente de blocage avec vraies données
+          await this.checkForProgressBlockingEnhanced(playerId, serverId, worldId, levelIndex, difficulty);
 
         } catch (wsError) {
           console.error('❌ Erreur notification defeat:', wsError);
         }
       }
-
-      return {
-        success: true,
-        battleResult,
-        worldId,
-        levelIndex,
-        difficulty
-      };
-
-    } catch (error: any) {
-      console.error("❌ Erreur startCampaignBattle:", error);
-      throw error;
-    }
-  }
 
   // === VÉRIFIER SI UN JOUEUR PEUT JOUER UN NIVEAU (NOUVELLE LOGIQUE) ===
   public static async canPlayerPlayLevel(
@@ -786,6 +786,164 @@ export class CampaignService {
     }
   }
 
+    // === 🔥 NOUVELLES MÉTHODES POUR TRACKING ÉCHECS ===
+
+  /**
+   * Enregistrer un échec de combat dans la progression
+   */
+  private static async recordCampaignFailure(
+    playerId: string,
+    serverId: string,
+    worldId: number,
+    levelIndex: number,
+    difficulty: string,
+    battleResult: any
+  ): Promise<void> {
+    try {
+      // Récupérer la progression du monde
+      let worldProgress = await CampaignProgress.findOne({ playerId, serverId, worldId });
+      
+      if (!worldProgress) {
+        // Créer la progression si elle n'existe pas
+        worldProgress = new CampaignProgress({
+          playerId,
+          serverId,
+          worldId,
+          highestLevelCleared: 0,
+          starsByLevel: [],
+          progressByDifficulty: [
+            { 
+              difficulty: "Normal", 
+              highestLevelCleared: 0, 
+              starsByLevel: [], 
+              isCompleted: false,
+              failureHistory: [],
+              consecutiveFailures: 0,
+              totalFailures: 0
+            }
+          ],
+          totalStarsEarned: 0,
+          totalTimeSpent: 0,
+          globalFailureStats: {
+            totalFailures: 0,
+            failuresByLevel: new Map(),
+            worstLevel: null,
+            isCurrentlyStuck: false
+          }
+        });
+      }
+
+      // Déterminer la raison de l'échec
+      let failureReason: string | undefined;
+      if (battleResult.battleDuration > 120000) { // Plus de 2 minutes
+        failureReason = 'timeout';
+      } else if (battleResult.stats?.totalDamageDealt < 100) {
+        failureReason = 'insufficient_damage';
+      } else {
+        failureReason = 'team_wiped';
+      }
+
+      // Récupérer la puissance du joueur (estimation)
+      const player = await Player.findOne({ _id: playerId, serverId }).select('heroes');
+      let playerPower = 0;
+      if (player && player.heroes) {
+        playerPower = player.heroes
+          .filter((h: any) => h.equipped)
+          .reduce((sum: number, hero: any) => sum + (hero.level * hero.stars * 100), 0);
+      }
+
+      // Enregistrer l'échec
+      (worldProgress as any).recordFailure(
+        levelIndex,
+        difficulty as "Normal" | "Hard" | "Nightmare",
+        failureReason,
+        battleResult.battleDuration,
+        playerPower
+      );
+
+      await worldProgress.save();
+      
+      console.log(`📊 Échec enregistré: ${playerId} sur ${worldId}-${levelIndex} (${difficulty}) - Raison: ${failureReason}`);
+
+    } catch (error) {
+      console.error('❌ Erreur recordCampaignFailure:', error);
+      // Ne pas faire échouer le combat pour une erreur de tracking
+    }
+  }
+
+  /**
+   * Vérification intelligente de blocage avec vraies données d'échecs
+   */
+  private static async checkForProgressBlockingEnhanced(
+    playerId: string,
+    serverId: string,
+    worldId: number,
+    levelIndex: number,
+    difficulty: string
+  ): Promise<void> {
+    try {
+      const worldProgress = await CampaignProgress.findOne({ playerId, serverId, worldId });
+      if (!worldProgress) return;
+
+      // Obtenir l'analyse de blocage
+      const stuckAnalysis = (worldProgress as any).getStuckAnalysis();
+      
+      if (stuckAnalysis.isStuck) {
+        // Calculer le niveau de priorité basé sur la durée de blocage
+        const stuckHours = stuckAnalysis.stuckDuration / (1000 * 60 * 60);
+        const priority: 'low' | 'medium' | 'high' = 
+          stuckHours > 24 ? 'high' : stuckHours > 6 ? 'medium' : 'low';
+
+        // Obtenir les échecs consécutifs pour ce niveau spécifique
+        const consecutiveFailures = (worldProgress as any).getConsecutiveFailures(levelIndex, difficulty);
+        
+        // Générer suggestions avancées basées sur les données réelles
+        const enhancedSuggestions = stuckAnalysis.suggestions.map((suggestion: string, index: number) => ({
+          type: index === 0 ? 'upgrade' : index === 1 ? 'formation' : 'strategy',
+          description: suggestion,
+          priority: index === 0 ? 'high' : 'medium',
+          cost: index === 0 ? 5000 * Math.floor(stuckAnalysis.failureCount / 2) : undefined,
+          effectiveness: Math.max(60, 90 - (stuckAnalysis.failureCount * 5))
+        }));
+
+        // Notification WebSocket avec données réelles
+        WebSocketService.notifyCampaignProgressBlocked(playerId, {
+          worldId,
+          levelIndex,
+          difficulty,
+          failureCount: stuckAnalysis.failureCount,
+          blockedTime: stuckAnalysis.stuckDuration,
+          suggestions: enhancedSuggestions,
+          canAutoResolve: false // TODO: Implémenter auto-resolve selon niveau VIP
+        });
+
+        console.log(`⚠️ Joueur ${playerId} bloqué sur ${worldId}-${levelIndex} (${difficulty}): ${stuckAnalysis.failureCount} échecs, bloqué depuis ${Math.floor(stuckHours)}h`);
+      }
+
+      // Vérifier les échecs consécutifs récents (même sans être "stuck")
+      const recentFailures = (worldProgress as any).getConsecutiveFailures(levelIndex, difficulty);
+      
+      if (recentFailures >= 2 && !stuckAnalysis.isStuck) {
+        // Recommandation préventive avant que le joueur ne soit complètement bloqué
+        WebSocketService.notifyCampaignSmartRecommendation(playerId, {
+          type: 'retry_strategy',
+          title: 'Multiple Defeats Detected',
+          description: `You've failed ${recentFailures} times on this level. Consider adjusting your approach.`,
+          actionSuggestion: 'Try upgrading heroes or changing team formation before the next attempt',
+          currentContext: {
+            worldId,
+            levelIndex,
+            difficulty,
+            recentFailures
+          },
+          priority: 'medium'
+        });
+      }
+
+    } catch (error) {
+      console.error('❌ Erreur checkForProgressBlockingEnhanced:', error);
+    }
+  }
   // === MÉTHODES UTILITAIRES PRIVÉES ===
 
   // Déterminer le type d'ennemi par défaut
