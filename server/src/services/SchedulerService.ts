@@ -243,23 +243,32 @@ export class SchedulerService {
           console.error(`❌ Erreur transfert leadership pour ${guild.name}:`, error);
         }
 
-        // 3. Supprimer les membres inactifs (sauf leaders)
-        const inactiveMembers = guild.members.filter((member: any) => {
-          const daysSinceActive = (Date.now() - member.lastActiveAt.getTime()) / (1000 * 60 * 60 * 24);
-          return daysSinceActive > 7 && member.role !== "leader";
-        });
-
-        for (const member of inactiveMembers) {
-          await guild.removeMember(member.playerId, "inactive");
-          
-          // Notifier via WebSocket
-          WebSocketService.notifyGuildMemberLeft(guild._id, {
-            playerId: member.playerId,
-            playerName: member.playerName,
-            reason: 'inactive'
+        // 3. Supprimer les membres inactifs SEULEMENT si activé par le leader
+        if (guild.settings.autoKickInactiveMembers) {
+          const thresholdDays = guild.settings.inactivityThresholdDays || 7;
+          const inactiveMembers = guild.members.filter((member: any) => {
+            const daysSinceActive = (Date.now() - member.lastActiveAt.getTime()) / (1000 * 60 * 60 * 24);
+            return daysSinceActive > thresholdDays && member.role !== "leader";
           });
-
-          inactiveMembersRemoved++;
+        
+          for (const member of inactiveMembers) {
+            await guild.removeMember(member.playerId, "inactive");
+            
+            // Notifier via WebSocket
+            WebSocketService.notifyGuildMemberLeft(guild._id, {
+              playerId: member.playerId,
+              playerName: member.playerName,
+              reason: 'inactive'
+            });
+        
+            inactiveMembersRemoved++;
+          }
+        
+          if (inactiveMembers.length > 0) {
+            console.log(`🧹 ${guild.name}: ${inactiveMembers.length} membres inactifs supprimés automatiquement (seuil: ${thresholdDays} jours)`);
+          }
+        } else {
+          console.log(`⏸️ ${guild.name}: Auto-kick désactivé - membres inactifs conservés`);
         }
 
         // 4. Reset des récompenses quotidiennes
