@@ -580,7 +580,7 @@ shopSchema.methods.generateDefaultItems = async function() {
 };
 
 // Ajouter un objet - CORRECTION TYPAGE
-shopSchema.methods.addItem = function(itemData: Partial<IShopItem>): IShopDocument {
+shopSchema.methods.addItem = function(itemData: Partial<IShopItem>): typeof this {
   const newItem: IShopItem = {
     itemId: itemData.itemId || "",
     instanceId: new mongoose.Types.ObjectId().toString(),
