@@ -1,5 +1,6 @@
 import mongoose, { Document, Schema } from "mongoose";
 import { IdGenerator } from "../utils/idGenerator";
+import { WebSocketService } from '../services/WebSocketService';
 
 export interface IGuildMember {
   playerId: string;
@@ -556,7 +557,19 @@ guildSchema.methods.addMember = function(playerId: string, playerName: string, p
     playerName,
     timestamp: new Date()
   });
-  
+    if (typeof WebSocketService !== 'undefined' && WebSocketService.notifyGuildLevelUp) {
+    WebSocketService.notifyGuildLevelUp(this._id, {
+      oldLevel: oldLevel,
+      newLevel: this.level,
+      guildName: this.name,
+      unlockedFeatures: this.level % 10 === 0 ? ['Max members increased'] : [],
+      newMaxMembers: this.maxMembers,
+      celebrationRewards: {
+        guildCoins: this.level * 100,
+        guildExp: 0
+      }
+    });
+  }
   return this.save();
 };
 
