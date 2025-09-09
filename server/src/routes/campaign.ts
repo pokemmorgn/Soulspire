@@ -4,6 +4,8 @@ import { CampaignService } from "../services/CampaignService";
 import authMiddleware from "../middleware/authMiddleware";
 import { requireFeature } from "../middleware/featureMiddleware";
 import { FeatureUnlockService } from "../services/FeatureUnlockService";
+import { WebSocketService } from "../services/WebSocketService";
+
 const router = express.Router();
 
 // Schémas de validation
@@ -93,6 +95,30 @@ router.get("/progress", authMiddleware, async (req: Request, res: Response): Pro
     console.log(`🎯 Récupération données campagne pour ${req.userId}`);
 
     const result = await CampaignService.getPlayerCampaignData(req.userId!, req.serverId!);
+
+    // 🔥 NOTIFICATION WEBSOCKET : Vérifier les recommandations intelligentes
+    try {
+      const campaignData = result.campaignData;
+      const currentWorld = campaignData.find(w => w.isUnlocked && w.highestLevelCleared < w.levelCount);
+      
+      if (currentWorld && currentWorld.starProgress < 50) {
+        WebSocketService.notifyCampaignSmartRecommendation(req.userId!, {
+          type: 'farming_suggestion',
+          title: 'Star Collection Opportunity',
+          description: `You have only ${currentWorld.starProgress}% stars in ${currentWorld.name}`,
+          actionSuggestion: 'Replay levels to earn 3-star ratings for better rewards',
+          currentContext: {
+            worldId: currentWorld.worldId,
+            levelIndex: currentWorld.highestLevelCleared,
+            difficulty: 'Normal',
+            recentFailures: 0
+          },
+          priority: 'low'
+        });
+      }
+    } catch (wsError) {
+      console.error('❌ Erreur notification progress smart recommendation:', wsError);
+    }
 
     res.json({
       message: "Player campaign data retrieved successfully",
@@ -237,7 +263,7 @@ router.post("/battle", authMiddleware, async (req: Request, res: Response): Prom
       return;
     }
 
-    // Démarrer le combat
+    // Démarrer le combat (les notifications WebSocket sont intégrées dans CampaignService.startCampaignBattle)
     const battleResult = await CampaignService.startCampaignBattle(
       req.userId!,
       req.serverId!,
@@ -245,6 +271,57 @@ router.post("/battle", authMiddleware, async (req: Request, res: Response): Prom
       levelIndex,
       difficulty
     );
+
+    // 🔥 NOTIFICATION WEBSOCKET ADDITIONNELLE : Recommandations post-combat
+    try {
+      if (battleResult.battleResult.result.victory) {
+        // Suggérer de continuer sur une difficulté supérieure si disponible
+        if (difficulty === "Normal") {
+          const hasCompletedCampaign = await CampaignService.hasPlayerCompletedCampaign(req.userId!, req.serverId!, "Normal");
+          if (hasCompletedCampaign) {
+            WebSocketService.notifyCampaignSmartRecommendation(req.userId!, {
+              type: 'difficulty_switch',
+              title: 'Hard Mode Available!',
+              description: 'You have completed the campaign on Normal. Try Hard mode for better rewards!',
+              actionSuggestion: 'Switch to Hard difficulty for 50% more rewards',
+              currentContext: {
+                worldId,
+                levelIndex,
+                difficulty,
+                recentFailures: 0
+              },
+              priority: 'medium'
+            });
+          }
+        }
+
+        // Détecter performance exceptionnelle
+        const battleStats = battleResult.battleResult.result;
+        if (battleStats.totalTurns <= 3) {
+          WebSocketService.notifyCampaignExceptionalPerformance(req.userId!, {
+            worldId,
+            levelIndex,
+            achievement: 'speed_run',
+            description: `Completed in only ${battleStats.totalTurns} turns!`,
+            bonusRewards: { gems: 5, experience: 100 },
+            newRecord: true
+          });
+        }
+
+        if (battleStats.stats?.criticalHits >= 5) {
+          WebSocketService.notifyCampaignExceptionalPerformance(req.userId!, {
+            worldId,
+            levelIndex,
+            achievement: 'critical_master',
+            description: `Landed ${battleStats.stats.criticalHits} critical hits!`,
+            bonusRewards: { gold: 200 },
+            newRecord: false
+          });
+        }
+      }
+    } catch (wsError) {
+      console.error('❌ Erreur notifications post-combat:', wsError);
+    }
 
     res.json({
       message: "Campaign battle completed",
@@ -404,6 +481,39 @@ router.get("/difficulties", authMiddleware, async (req: Request, res: Response):
       }
     };
 
+    // 🔥 NOTIFICATION WEBSOCKET : Difficulté débloquée
+    try {
+      if (normalCompleted && !req.query.checked_hard) {
+        WebSocketService.notifyCampaignDifficultyUnlocked(req.userId!, {
+          difficulty: 'Hard',
+          unlockedBy: 'Completed entire campaign on Normal',
+          description: 'Face stronger enemies with 50% more rewards',
+          bonusRewards: {
+            experienceMultiplier: 1.5,
+            goldMultiplier: 1.5,
+            exclusiveItems: ['Hard Mode Crystals', 'Enhanced Materials']
+          },
+          accessibleWorlds: [] // Tous les mondes débloqués
+        });
+      }
+
+      if (hardCompleted && !req.query.checked_nightmare) {
+        WebSocketService.notifyCampaignDifficultyUnlocked(req.userId!, {
+          difficulty: 'Nightmare',
+          unlockedBy: 'Completed entire campaign on Hard',
+          description: 'Ultimate challenge with maximum rewards',
+          bonusRewards: {
+            experienceMultiplier: 2.0,
+            goldMultiplier: 2.0,
+            exclusiveItems: ['Nightmare Crystals', 'Legendary Materials', 'Rare Fragments']
+          },
+          accessibleWorlds: []
+        });
+      }
+    } catch (wsError) {
+      console.error('❌ Erreur notification difficulty unlocked:', wsError);
+    }
+
     res.json({
       message: "Difficulty status retrieved successfully",
       difficulties: difficultyStatus,
@@ -420,6 +530,81 @@ router.get("/difficulties", authMiddleware, async (req: Request, res: Response):
     res.status(500).json({
       error: "Internal server error",
       code: "GET_DIFFICULTY_STATUS_FAILED"
+    });
+  }
+});
+
+// === NOUVELLE ROUTE : CHECK PLAYER PERFORMANCE ===
+router.get("/performance", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    console.log(`📈 Vérification performance campagne pour ${req.userId}`);
+
+    const campaignData = await CampaignService.getPlayerCampaignData(req.userId!, req.serverId!);
+    
+    const performanceAnalysis = {
+      overallProgress: {
+        worldsUnlocked: campaignData.globalStats.unlockedWorlds,
+        totalWorlds: campaignData.globalStats.totalWorlds,
+        starsEarned: campaignData.globalStats.totalStarsEarned,
+        starsAvailable: campaignData.globalStats.totalStarsAvailable,
+        completionPercentage: Math.round((campaignData.globalStats.totalStarsEarned / campaignData.globalStats.totalStarsAvailable) * 100)
+      },
+      recommendations: [] as any[],
+      strengths: [] as string[],
+      improvements: [] as string[]
+    };
+
+    // Analyser les performances
+    const avgStarRating = campaignData.globalStats.totalStarsEarned / Math.max(1, campaignData.campaignData.reduce((sum, w) => sum + w.highestLevelCleared, 0));
+
+    if (avgStarRating >= 2.5) {
+      performanceAnalysis.strengths.push("Excellent combat performance");
+    } else if (avgStarRating < 1.5) {
+      performanceAnalysis.improvements.push("Focus on optimizing team composition");
+      
+      // 🔥 NOTIFICATION WEBSOCKET : Recommandation d'amélioration
+      try {
+        WebSocketService.notifyCampaignSmartRecommendation(req.userId!, {
+          type: 'team_upgrade',
+          title: 'Performance Analysis',
+          description: `Your average star rating is ${avgStarRating.toFixed(1)}/3.0`,
+          actionSuggestion: 'Consider upgrading heroes or changing formation',
+          currentContext: {
+            worldId: campaignData.globalStats.currentWorld?.worldId || 1,
+            levelIndex: 1,
+            difficulty: 'Normal',
+            recentFailures: 0
+          },
+          priority: 'medium'
+        });
+      } catch (wsError) {
+        console.error('❌ Erreur notification performance analysis:', wsError);
+      }
+    }
+
+    // Identifier les mondes avec progression faible
+    const strugglingWorlds = campaignData.campaignData.filter(w => 
+      w.isUnlocked && w.starProgress < 30 && w.highestLevelCleared > 0
+    );
+
+    if (strugglingWorlds.length > 0) {
+      performanceAnalysis.recommendations.push({
+        type: 'star_farming',
+        worlds: strugglingWorlds.map(w => ({ worldId: w.worldId, name: w.name, starProgress: w.starProgress })),
+        suggestion: 'Revisit these worlds to improve star ratings'
+      });
+    }
+
+    res.json({
+      message: "Performance analysis completed",
+      analysis: performanceAnalysis
+    });
+
+  } catch (err: any) {
+    console.error("Get performance analysis error:", err);
+    res.status(500).json({
+      error: "Internal server error",
+      code: "GET_PERFORMANCE_ANALYSIS_FAILED"
     });
   }
 });
@@ -578,7 +763,7 @@ router.post("/quick-battle", authMiddleware, async (req: Request, res: Response)
       return;
     }
 
-    // Démarrer le combat
+    // Démarrer le combat (les notifications WebSocket sont automatiques)
     const battleResult = await CampaignService.startCampaignBattle(
       req.userId!,
       req.serverId!,
