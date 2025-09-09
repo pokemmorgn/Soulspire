@@ -452,7 +452,7 @@ export class GachaService {
           bannerId: banner.bannerId,
           globalDropCount: await this.getGlobalHeroDropCount(ultraRare.hero._id),
           serverFirstDrop: await this.isServerFirstDrop(ultraRare.hero._id, serverId),
-          dropRate: ultraRare.dropRate
+          dropRate: ultraRare.dropRate ?? GACHA_CONFIG.rareDrop.ultraRareThreshold
         });
       }
 
