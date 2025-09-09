@@ -37,7 +37,7 @@ export interface IGuildInvitation {
 }
 
 export interface IGuildActivityLog {
-  type: "join" | "leave" | "kick" | "promote" | "demote" | "contribution" | "raid_start" | "raid_complete" | "level_up";
+  type: "join" | "leave" | "kick" | "promote" | "demote" | "contribution" | "raid_start" | "raid_complete" | "level_up" | "settings_changed";
   playerId: string;
   playerName: string;
   targetPlayerId?: string;
