@@ -712,7 +712,7 @@ export class EnhancementService {
   }
 
   private async getForgeConfig() {
-    return await ForgeConfig.getActiveConfig();
+    return await (ForgeConfig as any).getActiveConfig();
   }
 }
 
