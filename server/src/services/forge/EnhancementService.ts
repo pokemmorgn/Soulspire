@@ -186,7 +186,7 @@ export class EnhancementService {
         previousLevel: currentLevel,
         newLevel,
         pityInfo,
-        guaranteeUsed,
+        guaranteeUsed: guaranteeUsed || false,
         pityGuaranteed,
         executionTime
       });
@@ -680,7 +680,7 @@ export class EnhancementService {
    */
   private async updatePlayerStats(cost: EnhancementCost, success: boolean, powerGain: number, moduleData: any): Promise<void> {
     try {
-      const stats = await ForgeStats.getOrCreatePlayerStats(this.playerId);
+     const stats = await (ForgeStats as any).getOrCreatePlayerStats(this.playerId);
       
       stats.updateWithOperation({
         operationType: 'enhancement',
