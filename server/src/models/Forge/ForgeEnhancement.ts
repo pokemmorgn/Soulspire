@@ -240,7 +240,6 @@ async attemptEnhance(itemInstanceId: string, options?: IEnhancementOptions): Pro
   const baseItem: any = validation.itemData;
   const ownedItem: any = validation.ownedItem;
   
-  // 🔧 CORRECTION : Utiliser le bon champ pour le niveau d'enhancement
   const currentLevel: number = ownedItem.enhancement || ownedItem.enhancementLevel || 0;
 
   if (currentLevel >= ForgeEnhancement.MAX_ENHANCEMENT_LEVEL) {
@@ -252,7 +251,6 @@ async attemptEnhance(itemInstanceId: string, options?: IEnhancementOptions): Pro
     };
   }
 
-  // Calculer coût
   const baseCost = await this.getEnhancementCost(itemInstanceId, undefined);
   if (!baseCost) {
     return { success: false, cost: { gold: 0, gems: 0 }, message: "Unable to compute cost", data: null };
@@ -265,19 +263,16 @@ async attemptEnhance(itemInstanceId: string, options?: IEnhancementOptions): Pro
     finalCost.gems = (finalCost.gems || 0) + guaranteeGems;
   }
 
-  // Vérifier ressources
   const canAfford = await this.validatePlayerResources(finalCost);
   if (!canAfford) {
     return { success: false, cost: finalCost, message: "Insufficient resources", data: null };
   }
 
-  // Dépenser ressources
   const spent = await this.spendResources(finalCost);
   if (!spent) {
     return { success: false, cost: finalCost, message: "Failed to spend resources", data: null };
   }
 
-  // Recharger pour être sûr
   const inventory = await this.getInventory();
   if (!inventory) {
     await this.logOperation("enhancement", itemInstanceId, finalCost, false, { reason: "Inventory missing after spend" });
@@ -292,13 +287,9 @@ async attemptEnhance(itemInstanceId: string, options?: IEnhancementOptions): Pro
     return { success: false, cost: finalCost, message: "Item missing after spending resources", data: null };
   }
 
-  // 🔧 CORRECTION : Utiliser le bon champ ici aussi pour le calcul du pity
   const currentLevelForPity: number = owned.enhancement || owned.enhancementLevel || 0;
-
-  // Calculer chances et appliquer pity
   const { effectiveChance, pityData } = this.getEffectiveSuccessChance(currentLevelForPity, owned);
 
-  // Déterminer le résultat
   const guaranteeUsed = !!options?.usePaidGemsToGuarantee || !!options?.forceGuaranteed;
   const pityGuaranteeTriggered = pityData.willBeGuaranteedByPity;
 
@@ -314,31 +305,44 @@ async attemptEnhance(itemInstanceId: string, options?: IEnhancementOptions): Pro
 
   let newLevel = currentLevel;
   let newStats = null;
+  let oldStats = null;
+  let oldPowerScore = 0;
+  let newPowerScore = 0;
+
+  // Calculer les stats actuelles pour la comparaison
+  try {
+    const baseStats = baseItem.baseStats || {};
+    const statsPerLevel = baseItem.statsPerLevel || {};
+    oldStats = this.calculateItemStatsWithEnhancement(baseStats, statsPerLevel, owned.level || 1, currentLevel);
+    oldPowerScore = Object.values(oldStats).reduce((sum: number, val: any) => sum + (typeof val === 'number' ? val : 0), 0);
+  } catch (err) {
+    // Fallback si erreur de calcul
+    oldStats = owned.stats || {};
+    oldPowerScore = Object.values(oldStats).reduce((sum: number, val: any) => sum + (typeof val === 'number' ? val : 0), 0);
+  }
 
   if (success) {
     newLevel = currentLevel + 1;
     
-    // 🔧 CORRECTION : Mettre à jour les deux champs pour compatibilité
     owned.enhancement = newLevel;
     owned.enhancementLevel = newLevel;
 
-    // Reset du pity si on atteint un palier de reset
     if (this.PITY_RESET_LEVELS.includes(newLevel)) {
       owned.lastResetFailures = owned.enhancementPity || 0;
       owned.lastResetLevel = newLevel;
     }
 
-    // Reset compteur d'échecs sur succès
     owned.enhancementPity = owned.lastResetFailures || 0;
 
-    // Recalcul des stats
     try {
       const baseStats = baseItem.baseStats || {};
       const statsPerLevel = baseItem.statsPerLevel || {};
       newStats = this.calculateItemStatsWithEnhancement(baseStats, statsPerLevel, owned.level || 1, newLevel);
       owned.stats = newStats;
+      newPowerScore = Object.values(newStats).reduce((sum: number, val: any) => sum + (typeof val === 'number' ? val : 0), 0);
     } catch (err) {
-      // Ne pas bloquer
+      newStats = oldStats;
+      newPowerScore = oldPowerScore;
     }
 
     try {
@@ -347,8 +351,9 @@ async attemptEnhance(itemInstanceId: string, options?: IEnhancementOptions): Pro
       // Log mais ne pas bloquer
     }
   } else {
-    // Échec : incrémenter pity
     owned.enhancementPity = (owned.enhancementPity || 0) + 1;
+    newStats = oldStats;
+    newPowerScore = oldPowerScore;
 
     try {
       await inventory.save();
@@ -357,7 +362,6 @@ async attemptEnhance(itemInstanceId: string, options?: IEnhancementOptions): Pro
     }
   }
 
-  // Log détaillé
   await this.logOperation("enhancement", itemInstanceId, finalCost, success, {
     roll,
     effectiveChance,
@@ -371,7 +375,78 @@ async attemptEnhance(itemInstanceId: string, options?: IEnhancementOptions): Pro
 
   await this.updateStats(finalCost, success);
 
-  // Message informatif avec labels
+  // 🔥 NOTIFICATION WEBSOCKET ENHANCEMENT
+  try {
+    const { WebSocketForge } = require('../../services/websocket/WebSocketForge');
+    
+    if (WebSocketForge.isAvailable()) {
+      // Calculer les changements de stats pour l'affichage
+      const statChanges: Record<string, { old: number; new: number }> = {};
+      if (oldStats && newStats) {
+        for (const [stat, newValue] of Object.entries(newStats)) {
+          if (typeof newValue === 'number' && typeof oldStats[stat] === 'number') {
+            statChanges[stat] = { old: oldStats[stat], new: newValue };
+          }
+        }
+      }
+
+      // Préparer les effets spéciaux
+      const specialEffects: string[] = [];
+      if (this.PITY_RESET_LEVELS.includes(newLevel)) {
+        specialEffects.push('pity_reset');
+      }
+      if (newLevel % 10 === 0) {
+        specialEffects.push('milestone_reached');
+      }
+
+      WebSocketForge.notifyEnhancementResult(this.playerId, {
+        itemInstanceId,
+        itemName: baseItem.name || 'Unknown Item',
+        success,
+        previousLevel: currentLevel,
+        newLevel: success ? newLevel : currentLevel,
+        cost: {
+          gold: finalCost.gold,
+          gems: finalCost.gems,
+          materials: finalCost.materials || {}
+        },
+        pityInfo: {
+          currentPity: owned.enhancementPity || 0,
+          pityTriggered: pityGuaranteeTriggered,
+          nextGuarantee: Math.max(0, pityData.pityThreshold - (owned.enhancementPity || 0))
+        },
+        statsImprovement: {
+          oldPowerScore,
+          newPowerScore,
+          powerIncrease: newPowerScore - oldPowerScore,
+          statChanges
+        },
+        guaranteeUsed,
+        specialEffects
+      });
+
+      // Notification pity progress si nécessaire
+      if (!success && !pityGuaranteeTriggered) {
+        const failuresUntilGuarantee = Math.max(0, pityData.pityThreshold - (owned.enhancementPity || 0));
+        
+        WebSocketForge.notifyEnhancementPityProgress(this.playerId, {
+          itemInstanceId,
+          itemName: baseItem.name || 'Unknown Item',
+          currentFailures: owned.enhancementPity || 0,
+          pityThreshold: pityData.pityThreshold,
+          failuresUntilGuarantee,
+          nextLevel: currentLevel + 1,
+          pityResetLevel: this.PITY_RESET_LEVELS.find(level => level > currentLevel),
+          recommendAction: failuresUntilGuarantee <= 1 ? 'use_guarantee' : 
+                          failuresUntilGuarantee <= 3 ? 'continue' : 'wait'
+        });
+      }
+    }
+  } catch (wsError) {
+    console.warn('[Enhancement] WebSocket notification failed:', wsError);
+    // Ne pas faire échouer l'opération si WebSocket échoue
+  }
+
   const messageParts = [];
   if (success) {
     messageParts.push("ENHANCEMENT_SUCCESS");
@@ -386,7 +461,7 @@ async attemptEnhance(itemInstanceId: string, options?: IEnhancementOptions): Pro
   return {
     success,
     cost: finalCost,
-    message: messageParts[0], // Message principal pour la localisation
+    message: messageParts[0],
     data: {
       previousLevel: currentLevel,
       newLevel: success ? newLevel : currentLevel,
@@ -395,7 +470,7 @@ async attemptEnhance(itemInstanceId: string, options?: IEnhancementOptions): Pro
       pityData,
       guaranteeUsed,
       pityGuaranteeTriggered,
-      additionalMessages: messageParts.slice(1) // Messages additionnels
+      additionalMessages: messageParts.slice(1)
     }
   };
 }
