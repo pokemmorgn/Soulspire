@@ -638,10 +638,59 @@ forgeConfigSchema.methods.validateConfiguration = function(): { valid: boolean; 
 // === VALIDATION AVANT SAUVEGARDE ===
 
 forgeConfigSchema.pre('save', function(next) {
-  // Validate configuration
-  const validation = this.validateConfiguration();
-  if (!validation.valid) {
-    return next(new Error(`CONFIG_VALIDATION_FAILED: ${validation.errors.join(', ')}`));
+  // Validate configuration inline to avoid method binding issues
+  const errors: string[] = [];
+  
+  // Validate module configs
+  const modules = ['reforgeConfig', 'enhancementConfig', 'fusionConfig', 'tierUpgradeConfig'] as const;
+  
+  modules.forEach(moduleName => {
+    const config = (this as any)[moduleName];
+    
+    if (!config) {
+      errors.push(`${moduleName} is required`);
+      return;
+    }
+    
+    if (config.baseGoldCost < 0) {
+      errors.push(`${moduleName}.baseGoldCost must be non-negative`);
+    }
+    
+    if (config.baseGemCost < 0) {
+      errors.push(`${moduleName}.baseGemCost must be non-negative`);
+    }
+    
+    if (config.levelRestrictions.minPlayerLevel < 1) {
+      errors.push(`${moduleName}.levelRestrictions.minPlayerLevel must be at least 1`);
+    }
+  });
+  
+  // Validate events
+  this.events.forEach((event: any, index: number) => {
+    if (event.startDate >= event.endDate) {
+      errors.push(`Event ${index}: startDate must be before endDate`);
+    }
+    
+    if (event.effects.successRateBonus && (event.effects.successRateBonus < 0 || event.effects.successRateBonus > 100)) {
+      errors.push(`Event ${index}: successRateBonus must be between 0-100`);
+    }
+  });
+  
+  // Validate experiments
+  this.experiments.forEach((experiment: any, index: number) => {
+    if (experiment.trafficPercentage < 0 || experiment.trafficPercentage > 100) {
+      errors.push(`Experiment ${index}: trafficPercentage must be between 0-100`);
+    }
+    
+    const totalWeight = experiment.variants.reduce((sum: number, v: any) => sum + v.weight, 0);
+    if (totalWeight === 0) {
+      errors.push(`Experiment ${index}: variants must have total weight > 0`);
+    }
+  });
+  
+  // Check if validation passed
+  if (errors.length > 0) {
+    return next(new Error(`CONFIG_VALIDATION_FAILED: ${errors.join(', ')}`));
   }
   
   // Ensure version format
