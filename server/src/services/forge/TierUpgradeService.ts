@@ -166,7 +166,13 @@ export class TierUpgradeService {
       // Calculer coût total au max si demandé
       let totalCostToMax;
       if (targetTier < maxPossibleTier) {
-        totalCostToMax = this.calculateTotalCostToMax(baseItem, currentTier, maxPossibleTier);
+        const fullCost = this.calculateTotalCostToMax(baseItem, currentTier, maxPossibleTier);
+        totalCostToMax = {
+          gold: fullCost.totalGold,
+          gems: fullCost.totalGems,
+          materials: fullCost.totalMaterials,
+          steps: fullCost.steps.length
+        };
       }
       
       return {
