@@ -313,7 +313,11 @@ export class ForgeService {
 
     try {
       // Test connexion MongoDB
-      await mongoose.connection.db.admin().ping();
+      if (mongoose.connection.db) {
+        await mongoose.connection.db.admin().ping();
+      } else {
+        checks.databaseConnection = false;
+      }
     } catch (error) {
       checks.databaseConnection = false;
     }
