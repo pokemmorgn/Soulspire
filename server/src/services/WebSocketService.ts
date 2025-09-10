@@ -9,6 +9,7 @@ import { WebSocketCampaign } from './websocket/WebSocketCampaign';
 import { WebSocketGacha } from './websocket/WebSocketGacha';
 import { WebSocketShop } from './websocket/WebSocketShop';
 import { WebSocketGuild } from './websocket/WebSocketGuild';
+import { WebSocketForge } from './websocket/WebSocketForge';
 /**
  * SERVICE WEBSOCKET GLOBAL
  * Point d'entrée principal qui délègue aux modules spécialisés
@@ -76,6 +77,7 @@ export class WebSocketService {
     WebSocketGacha.initialize(this.io);
     WebSocketShop.initialize(this.io);
     WebSocketGuild.initialize(this.io);
+    WebSocketForge.initialize(this.io);
     console.log('✅ WebSocket Server initialized with specialized modules');
   }
 
@@ -232,6 +234,15 @@ export class WebSocketService {
     socket.on('guild:unsubscribe_notifications', () => {
       socket.leave(`guild_notifications:${socket.serverId}`);
       console.log(`🔕 ${socket.playerName} unsubscribed from guild notifications`);
+    });
+    socket.on('forge:join_room', () => {
+      socket.join(`forge:${socket.serverId}`);
+      console.log(`🔨 ${socket.playerName} joined Forge room`);
+    });
+    
+    socket.on('forge:leave_room', () => {
+      socket.leave(`forge:${socket.serverId}`);
+      console.log(`🚪 ${socket.playerName} left Forge room`);
     });
     // Événements génériques
     socket.on('ping', () => {
@@ -777,6 +788,31 @@ public static joinGuildRoom(playerId: string, guildId: string): void {
 public static leaveGuildRoom(playerId: string, guildId: string): void {
   WebSocketGuild.leaveGuildRoom(playerId, guildId);
 }
+    // ===== MÉTHODES FORGE (DÉLÉGATION) =====
+  
+  public static notifyForgeReforgeResult(playerId: string, reforgeData: any): void {
+    WebSocketForge.notifyReforgeResult(playerId, reforgeData);
+  }
+  
+  public static notifyForgeEnhancementResult(playerId: string, enhancementData: any): void {
+    WebSocketForge.notifyEnhancementResult(playerId, enhancementData);
+  }
+  
+  public static notifyForgeFusionResult(playerId: string, fusionData: any): void {
+    WebSocketForge.notifyFusionResult(playerId, fusionData);
+  }
+  
+  public static notifyForgeTierUpgradeResult(playerId: string, upgradeData: any): void {
+    WebSocketForge.notifyTierUpgradeResult(playerId, upgradeData);
+  }
+  
+  public static notifyForgeRecommendations(playerId: string, recommendations: any): void {
+    WebSocketForge.notifyForgeRecommendations(playerId, recommendations);
+  }
+  
+  public static notifyForgeEvent(serverId: string, eventData: any): void {
+    WebSocketForge.notifyForgeEvent(serverId, eventData);
+  }
   // ===== MÉTHODES UTILITAIRES =====
 
   /**
@@ -843,7 +879,8 @@ public static leaveGuildRoom(playerId: string, guildId: string): void {
         campaign: WebSocketCampaign.isAvailable(),
         gacha: WebSocketGacha.isAvailable(),
         shop: WebSocketShop.isAvailable(),
-        guild: WebSocketGuild.isAvailable()
+        guild: WebSocketGuild.isAvailable(),
+        forge: WebSocketForge.isAvailable()
         // TODO: Ajouter d'autres modules
       }
     };
