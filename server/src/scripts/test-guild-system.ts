@@ -146,6 +146,20 @@ class GuildSystemTester {
       ];
 
       for (const data of accountData) {
+        // 🔥 AJOUTÉ: Vérifier si le compte existe déjà avant de créer
+        const existingAccount = await Account.findOne({ 
+          $or: [
+            { username: data.username },
+            { email: data.email }
+          ]
+        });
+        
+        if (existingAccount) {
+          console.log(`   ⚠️ Account ${data.username} already exists, skipping...`);
+          this.testAccounts.push(existingAccount);
+          continue;
+        }
+        
         const account = new Account({
           accountId: `${TEST_ACCOUNT_PREFIX}${data.username}`,
           username: data.username,
