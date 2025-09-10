@@ -1,411 +1,749 @@
-import express, { Request, Response } from "express";
-import Joi from "joi";
-import authMiddleware from "../middleware/authMiddleware";
-import { createForgeService, handleForgeError, validateForgeParams } from "../models/Forge/index";
+// server/src/routes/forge.ts
+import { Router, Request, Response } from 'express';
+import { authenticateToken } from '../middleware/auth';
+import { validateRequest } from '../middleware/validation';
+import { ForgeService, createForgeService } from '../services/forge/ForgeService';
+import { WebSocketService } from '../services/WebSocketService';
+import { body, param, query } from 'express-validator';
 
-const router = express.Router();
+const router = Router();
 
-// === SCHÉMAS DE VALIDATION ===
+// ===== MIDDLEWARE =====
 
-const batchOperationSchema = Joi.object({
-  operations: Joi.array().items(Joi.object({
-    type: Joi.string().valid('reforge', 'enhancement', 'fusion', 'tierUpgrade').required(),
-    itemInstanceId: Joi.string().required(),
-    parameters: Joi.object().optional()
-  })).min(1).max(10).required()
-});
+// Authentification requise pour toutes les routes forge
+router.use(authenticateToken);
 
-const moduleConfigSchema = Joi.object({
-  moduleName: Joi.string().valid('reforge', 'enhancement', 'fusion', 'tierUpgrade').required(),
-  enabled: Joi.boolean().optional(),
-  baseGoldCost: Joi.number().min(0).optional(),
-  baseGemCost: Joi.number().min(0).optional(),
-  materialRequirements: Joi.object().optional(),
-  levelRestrictions: Joi.object({
-    minPlayerLevel: Joi.number().min(1).optional(),
-    maxPlayerLevel: Joi.number().min(1).optional()
-  }).optional()
-});
+// ===== VALIDATION SCHEMAS =====
 
-// === GET FORGE STATUS (GLOBAL) ===
-router.get("/status", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+const enhancementValidation = [
+  param('itemInstanceId').isString().notEmpty().withMessage('Item instance ID required'),
+  body('usePaidGemsToGuarantee').optional().isBoolean(),
+  body('forceGuaranteed').optional().isBoolean()
+];
+
+const reforgeValidation = [
+  param('itemInstanceId').isString().notEmpty().withMessage('Item instance ID required'),
+  body('lockedStats').optional().isArray(),
+  body('lockedStats.*').isString(),
+  body('simulationMode').optional().isBoolean()
+];
+
+const fusionValidation = [
+  body('itemInstanceIds').isArray({ min: 3, max: 3 }).withMessage('Exactly 3 items required for fusion'),
+  body('itemInstanceIds.*').isString().notEmpty(),
+  body('validateOnly').optional().isBoolean(),
+  body('consumeMaterials').optional().isBoolean()
+];
+
+const tierUpgradeValidation = [
+  param('itemInstanceId').isString().notEmpty().withMessage('Item instance ID required'),
+  body('targetTier').optional().isInt({ min: 2, max: 5 }),
+  body('validateOnly').optional().isBoolean()
+];
+
+const batchOperationValidation = [
+  body('operations').isArray({ min: 1, max: 10 }).withMessage('1-10 operations allowed'),
+  body('operations.*.type').isIn(['enhancement', 'reforge', 'fusion', 'tierUpgrade']),
+  body('operations.*.itemInstanceId').isString().notEmpty(),
+  body('operations.*.parameters').optional().isObject()
+];
+
+// ===== ROUTES PRINCIPALES =====
+
+/**
+ * GET /forge/status
+ * Obtenir le statut complet de la forge pour le joueur
+ */
+router.get('/status', async (req: Request, res: Response) => {
   try {
-    const forgeService = createForgeService(req.userId!);
-    const status = await forgeService.getForgeStatus();
-
-    res.json({
-      message: "FORGE_STATUS_RETRIEVED",
-      status,
-      gameConstants: {
-        maxEnhancementLevel: 30,
-        maxTier: 5,
-        maxLockedStats: 3,
-        fusionRequiredItems: 3,
-        rarities: ["Common", "Rare", "Epic", "Legendary", "Mythic", "Ascended"],
-        equipmentSlots: ["Weapon", "Helmet", "Armor", "Boots", "Gloves", "Accessory"]
-      }
-    });
-
-  } catch (err: any) {
-    console.error("Get forge status error:", err);
-    const errorResponse = handleForgeError(err, "get_forge_status");
-    res.status(errorResponse.statusCode).json(errorResponse);
-  }
-});
-
-// === GET ALL MODULE STATS ===
-router.get("/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const forgeService = createForgeService(req.userId!);
-    const moduleStats = await forgeService.getAllModuleStats();
-
-    res.json({
-      message: "ALL_MODULE_STATS_RETRIEVED",
-      moduleStats,
-      totalModules: Object.keys(moduleStats).length
-    });
-
-  } catch (err: any) {
-    console.error("Get all module stats error:", err);
-    const errorResponse = handleForgeError(err, "get_all_module_stats");
-    res.status(errorResponse.statusCode).json(errorResponse);
-  }
-});
-
-// === CALCULATE BATCH OPERATION COST ===
-router.post("/batch/cost", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { error } = batchOperationSchema.validate(req.body);
-    if (error) {
-      res.status(400).json({ 
-        error: "VALIDATION_ERROR",
-        code: "VALIDATION_ERROR",
-        details: error.details[0].message
-      });
-      return;
-    }
-
-    const { operations } = req.body;
-
-    const forgeService = createForgeService(req.userId!);
-
-    // Vérifier que tous les modules requis sont activés
-    const requiredModules = [...new Set(operations.map((op: any) => op.type))] as string[];
-    const disabledModules = requiredModules.filter((module: string) => 
-      !forgeService.isModuleEnabled(module as 'reforge' | 'enhancement' | 'fusion' | 'tierUpgrade')
-    );
-
-    if (disabledModules.length > 0) {
-      res.status(403).json({
-        error: "SOME_FORGE_MODULES_DISABLED",
-        code: "MODULES_DISABLED",
-        disabledModules
-      });
-      return;
-    }
-
-    const totalCost = await forgeService.calculateBatchOperationCost(operations);
-
-    res.json({
-      message: "BATCH_OPERATION_COST_CALCULATED",
-      operations: operations.map((op: any) => ({
-        type: op.type,
-        itemInstanceId: op.itemInstanceId
-      })),
-      totalOperations: operations.length,
-      totalCost,
-      estimatedTime: `${operations.length * 2}s` // Approximation
-    });
-
-  } catch (err: any) {
-    console.error("Calculate batch cost error:", err);
-    const errorResponse = handleForgeError(err, "calculate_batch_cost");
-    res.status(errorResponse.statusCode).json(errorResponse);
-  }
-});
-
-// === GET FORGE CONFIGURATION ===
-router.get("/config", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const forgeService = createForgeService(req.userId!);
-
-    // Récupérer la configuration actuelle de tous les modules
-    const config = {
-      reforge: {
-        enabled: forgeService.isModuleEnabled('reforge'),
-        baseGoldCost: 2000,
-        baseGemCost: 100,
-        maxLockedStats: 3,
-        levelRestrictions: { minPlayerLevel: 10 }
-      },
-      enhancement: {
-        enabled: forgeService.isModuleEnabled('enhancement'),
-        baseGoldCost: 1000,
-        baseGemCost: 50,
-        maxLevel: 30,
-        levelRestrictions: { minPlayerLevel: 5 }
-      },
-      fusion: {
-        enabled: forgeService.isModuleEnabled('fusion'),
-        baseGoldCost: 5000,
-        baseGemCost: 200,
-        requiredItems: 3,
-        maxRarity: "Mythic",
-        levelRestrictions: { minPlayerLevel: 15 }
-      },
-      tierUpgrade: {
-        enabled: forgeService.isModuleEnabled('tierUpgrade'),
-        baseGoldCost: 10000,
-        baseGemCost: 500,
-        maxTier: 5,
-        levelRestrictions: { minPlayerLevel: 20 }
-      }
-    };
-
-    res.json({
-      message: "FORGE_CONFIG_RETRIEVED",
-      config,
-      lastUpdated: new Date().toISOString()
-    });
-
-  } catch (err: any) {
-    console.error("Get forge config error:", err);
-    const errorResponse = handleForgeError(err, "get_forge_config");
-    res.status(errorResponse.statusCode).json(errorResponse);
-  }
-});
-
-// === UPDATE MODULE CONFIGURATION (ADMIN) ===
-router.put("/config", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    // TODO: Ajouter vérification admin
-    const { error } = moduleConfigSchema.validate(req.body);
-    if (error) {
-      res.status(400).json({ 
-        error: "VALIDATION_ERROR",
-        code: "VALIDATION_ERROR",
-        details: error.details[0].message
-      });
-      return;
-    }
-
-    const { moduleName, ...configUpdates } = req.body;
-
-    const forgeService = createForgeService(req.userId!);
-    forgeService.updateModuleConfig(moduleName as any, configUpdates);
-
-    res.json({
-      message: "MODULE_CONFIG_UPDATED",
-      moduleName,
-      updatedFields: Object.keys(configUpdates),
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (err: any) {
-    console.error("Update module config error:", err);
-    const errorResponse = handleForgeError(err, "update_module_config");
-    res.status(errorResponse.statusCode).json(errorResponse);
-  }
-});
-
-// === GET PLAYER FORGE HISTORY (LIMITED) ===
-router.get("/history", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
-    const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
-    const operationType = req.query.type as string;
-
-    // Note: Cette route retournerait normalement des données depuis une collection de logs
-    // Pour l'instant, on retourne une structure vide
-    const mockHistory = {
-      operations: [],
-      pagination: {
-        limit,
-        offset,
-        total: 0,
-        hasMore: false
-      },
-      filters: {
-        operationType: operationType || "all"
-      }
-    };
-
-    res.json({
-      message: "FORGE_HISTORY_RETRIEVED",
-      history: mockHistory
-    });
-
-  } catch (err: any) {
-    console.error("Get forge history error:", err);
-    const errorResponse = handleForgeError(err, "get_forge_history");
-    res.status(errorResponse.statusCode).json(errorResponse);
-  }
-});
-
-// === GET FORGE RECOMMENDATIONS ===
-router.get("/recommendations", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const forgeService = createForgeService(req.userId!);
-    const status = await forgeService.getForgeStatus();
-
-    const recommendations = [];
-
-    // Recommandations basées sur l'inventaire et les ressources
-    if (status.playerResources.gold < 10000) {
-      recommendations.push({
-        type: "warning",
-        category: "resources",
-        message: "LOW_GOLD_WARNING",
-        priority: "medium",
-        suggestion: "CONSIDER_FARMING_GOLD"
-      });
-    }
-
-    if (status.inventory.enhanceableItems > 10) {
-      recommendations.push({
-        type: "suggestion",
-        category: "enhancement",
-        message: "MANY_ENHANCEABLE_ITEMS",
-        priority: "low",
-        suggestion: "CONSIDER_BATCH_ENHANCEMENT"
-      });
-    }
-
-    if (status.inventory.fusableItems > 5) {
-      recommendations.push({
-        type: "suggestion",
-        category: "fusion",
-        message: "FUSION_OPPORTUNITIES_AVAILABLE",
-        priority: "medium",
-        suggestion: "CHECK_FUSION_RECIPES"
-      });
-    }
-
-    if (status.playerResources.gems > 5000) {
-      recommendations.push({
-        type: "suggestion",
-        category: "enhancement",
-        message: "HIGH_GEM_COUNT",
-        priority: "low",
-        suggestion: "CONSIDER_GUARANTEED_ENHANCEMENTS"
-      });
-    }
-
-    res.json({
-      message: "FORGE_RECOMMENDATIONS_RETRIEVED",
-      recommendations,
-      totalRecommendations: recommendations.length,
-      categories: ["resources", "enhancement", "fusion", "tierUpgrade", "reforge"],
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (err: any) {
-    console.error("Get forge recommendations error:", err);
-    const errorResponse = handleForgeError(err, "get_forge_recommendations");
-    res.status(errorResponse.statusCode).json(errorResponse);
-  }
-});
-
-// === GET FORGE ANALYTICS (SUMMARY) ===
-router.get("/analytics", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const forgeService = createForgeService(req.userId!);
-    const [status, moduleStats] = await Promise.all([
-      forgeService.getForgeStatus(),
-      forgeService.getAllModuleStats()
-    ]);
-
-    // Calculer des métriques analytiques
-    const analytics = {
-      overview: {
-        totalOperationsAvailable: Object.values(status.modules).reduce((sum, module) => 
-          sum + (module.availableOperations || 0), 0),
-        enabledModules: Object.values(status.modules).filter(module => module.enabled).length,
-        totalModules: Object.keys(status.modules).length
-      },
-      resources: {
-        totalWorth: status.playerResources.gold + (status.playerResources.gems * 10) + (status.playerResources.paidGems * 20),
-        goldRatio: status.playerResources.gold / Math.max(status.playerResources.gems, 1),
-        canAffordOperations: {
-          reforge: Math.floor(status.playerResources.gold / 2000),
-          enhancement: Math.floor(status.playerResources.gold / 1000),
-          fusion: Math.floor(status.playerResources.gold / 5000),
-          tierUpgrade: Math.floor(status.playerResources.gold / 10000)
-        }
-      },
-      inventory: {
-        totalProcessableItems: Object.values(status.inventory).reduce((sum, count) => sum + count, 0),
-        itemDistribution: {
-          reforge: ((status.inventory.reforgeableItems / Math.max(status.inventory.reforgeableItems + status.inventory.enhanceableItems + status.inventory.fusableItems + status.inventory.upgradeableItems, 1)) * 100).toFixed(1) + "%",
-          enhancement: ((status.inventory.enhanceableItems / Math.max(status.inventory.reforgeableItems + status.inventory.enhanceableItems + status.inventory.fusableItems + status.inventory.upgradeableItems, 1)) * 100).toFixed(1) + "%",
-          fusion: ((status.inventory.fusableItems / Math.max(status.inventory.reforgeableItems + status.inventory.enhanceableItems + status.inventory.fusableItems + status.inventory.upgradeableItems, 1)) * 100).toFixed(1) + "%",
-          tierUpgrade: ((status.inventory.upgradeableItems / Math.max(status.inventory.reforgeableItems + status.inventory.enhanceableItems + status.inventory.fusableItems + status.inventory.upgradeableItems, 1)) * 100).toFixed(1) + "%"
-        }
-      },
-      performance: moduleStats
-    };
-
-    res.json({
-      message: "FORGE_ANALYTICS_RETRIEVED",
-      analytics,
-      generatedAt: new Date().toISOString(),
-      playerId: status.playerId
-    });
-
-  } catch (err: any) {
-    console.error("Get forge analytics error:", err);
-    const errorResponse = handleForgeError(err, "get_forge_analytics");
-    res.status(errorResponse.statusCode).json(errorResponse);
-  }
-});
-
-// === HEALTH CHECK ===
-router.get("/health", authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const forgeService = createForgeService(req.userId!);
+    const playerId = (req as any).user.userId;
+    const forgeService = createForgeService(playerId);
     
-    // Vérifications de santé basiques
-    const healthChecks = {
-      moduleInitialization: true,
-      playerAccess: false,
-      inventoryAccess: false,
-      databaseConnection: true
-    };
-
-    try {
-      const player = await (forgeService as any).getPlayer();
-      healthChecks.playerAccess = !!player;
-    } catch (err) {
-      healthChecks.playerAccess = false;
-    }
-
-    try {
-      const inventory = await (forgeService as any).getInventory();
-      healthChecks.inventoryAccess = !!inventory;
-    } catch (err) {
-      healthChecks.inventoryAccess = false;
-    }
-
-    const allHealthy = Object.values(healthChecks).every(check => check === true);
-    const status = allHealthy ? "healthy" : "degraded";
-
-    res.status(allHealthy ? 200 : 503).json({
-      message: "FORGE_HEALTH_CHECK_COMPLETED",
-      status,
-      checks: healthChecks,
-      timestamp: new Date().toISOString(),
-      version: "1.0.0"
+    const status = await forgeService.getForgeStatus();
+    
+    res.json({
+      success: true,
+      data: status,
+      timestamp: new Date()
     });
-
-  } catch (err: any) {
-    console.error("Forge health check error:", err);
-    res.status(503).json({
-      message: "FORGE_HEALTH_CHECK_FAILED",
-      status: "unhealthy",
-      error: err.message,
-      timestamp: new Date().toISOString()
+    
+  } catch (error: any) {
+    console.error('[Forge] Status error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'FORGE_STATUS_ERROR',
+      message: error.message
     });
   }
+});
+
+/**
+ * GET /forge/recommendations
+ * Obtenir des recommandations intelligentes de forge
+ */
+router.get('/recommendations', async (req: Request, res: Response) => {
+  try {
+    const playerId = (req as any).user.userId;
+    const forgeService = createForgeService(playerId);
+    
+    const recommendations = await forgeService.getRecommendations();
+    
+    // Notifier recommandations via WebSocket
+    if (recommendations.length > 0) {
+      WebSocketService.notifyForgeRecommendations(playerId, {
+        playerPowerScore: 0, // Sera rempli par le service
+        playerLevel: 0,     // Sera rempli par le service
+        recommendations,
+        resourceOptimization: {
+          currentResources: {},
+          optimalSpendingPlan: [],
+          efficiencyScore: 0
+        }
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: { recommendations },
+      timestamp: new Date()
+    });
+    
+  } catch (error: any) {
+    console.error('[Forge] Recommendations error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'FORGE_RECOMMENDATIONS_ERROR',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /forge/analytics
+ * Obtenir les analytics d'utilisation du joueur
+ */
+router.get('/analytics', async (req: Request, res: Response) => {
+  try {
+    const playerId = (req as any).user.userId;
+    const forgeService = createForgeService(playerId);
+    
+    const analytics = await forgeService.getUsageAnalytics();
+    
+    res.json({
+      success: true,
+      data: analytics,
+      timestamp: new Date()
+    });
+    
+  } catch (error: any) {
+    console.error('[Forge] Analytics error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'FORGE_ANALYTICS_ERROR',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /forge/optimization-cost
+ * Obtenir le coût total pour optimiser tout l'équipement
+ */
+router.get('/optimization-cost', async (req: Request, res: Response) => {
+  try {
+    const playerId = (req as any).user.userId;
+    const forgeService = createForgeService(playerId);
+    
+    const optimizationCost = await forgeService.getFullOptimizationCost();
+    
+    res.json({
+      success: true,
+      data: optimizationCost,
+      timestamp: new Date()
+    });
+    
+  } catch (error: any) {
+    console.error('[Forge] Optimization cost error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'FORGE_OPTIMIZATION_COST_ERROR',
+      message: error.message
+    });
+  }
+});
+
+// ===== ROUTES ENHANCEMENT =====
+
+/**
+ * GET /forge/enhancement/items
+ * Obtenir les items enhanceables
+ */
+router.get('/enhancement/items', [
+  query('rarity').optional().isIn(['Common', 'Rare', 'Epic', 'Legendary', 'Mythic']),
+  query('maxLevel').optional().isInt({ min: 0, max: 30 })
+], validateRequest, async (req: Request, res: Response) => {
+  try {
+    const playerId = (req as any).user.userId;
+    const forgeService = createForgeService(playerId);
+    
+    const filters = {
+      rarity: req.query.rarity as string,
+      maxLevel: req.query.maxLevel ? parseInt(req.query.maxLevel as string) : undefined
+    };
+    
+    const items = await forgeService.getEnhanceableItems(filters);
+    
+    res.json({
+      success: true,
+      data: { items },
+      timestamp: new Date()
+    });
+    
+  } catch (error: any) {
+    console.error('[Forge] Enhancement items error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'ENHANCEMENT_ITEMS_ERROR',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /forge/enhancement/:itemInstanceId/cost
+ * Obtenir le coût d'enhancement pour un item
+ */
+router.get('/enhancement/:itemInstanceId/cost', enhancementValidation, validateRequest, async (req: Request, res: Response) => {
+  try {
+    const playerId = (req as any).user.userId;
+    const { itemInstanceId } = req.params;
+    const forgeService = createForgeService(playerId);
+    
+    const options = {
+      usePaidGemsToGuarantee: req.query.usePaidGemsToGuarantee === 'true',
+      forceGuaranteed: req.query.forceGuaranteed === 'true'
+    };
+    
+    const cost = await forgeService.getEnhancementCost(itemInstanceId, options);
+    
+    res.json({
+      success: true,
+      data: { cost },
+      timestamp: new Date()
+    });
+    
+  } catch (error: any) {
+    console.error('[Forge] Enhancement cost error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'ENHANCEMENT_COST_ERROR',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /forge/enhancement/:itemInstanceId/execute
+ * Exécuter un enhancement
+ */
+router.post('/enhancement/:itemInstanceId/execute', enhancementValidation, validateRequest, async (req: Request, res: Response) => {
+  try {
+    const playerId = (req as any).user.userId;
+    const { itemInstanceId } = req.params;
+    const forgeService = createForgeService(playerId);
+    
+    const options = {
+      usePaidGemsToGuarantee: req.body.usePaidGemsToGuarantee,
+      forceGuaranteed: req.body.forceGuaranteed
+    };
+    
+    const result = await forgeService.executeEnhancement(itemInstanceId, options);
+    
+    // Notification WebSocket
+    WebSocketService.notifyForgeEnhancementResult(playerId, {
+      itemInstanceId,
+      itemName: result.message || 'Unknown Item',
+      success: result.success,
+      previousLevel: result.previousLevel,
+      newLevel: result.newLevel,
+      cost: result.cost,
+      pityInfo: result.pityInfo,
+      statsImprovement: result.statsImprovement,
+      guaranteeUsed: result.guaranteeUsed,
+      specialEffects: result.specialEffects
+    });
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date()
+    });
+    
+  } catch (error: any) {
+    console.error('[Forge] Enhancement execute error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'ENHANCEMENT_EXECUTE_ERROR',
+      message: error.message
+    });
+  }
+});
+
+// ===== ROUTES REFORGE =====
+
+/**
+ * GET /forge/reforge/items
+ * Obtenir les items reforgeables
+ */
+router.get('/reforge/items', [
+  query('rarity').optional().isIn(['Common', 'Rare', 'Epic', 'Legendary', 'Mythic']),
+  query('slot').optional().isIn(['Weapon', 'Armor', 'Helmet', 'Boots', 'Gloves', 'Accessory'])
+], validateRequest, async (req: Request, res: Response) => {
+  try {
+    const playerId = (req as any).user.userId;
+    const forgeService = createForgeService(playerId);
+    
+    const filters = {
+      rarity: req.query.rarity as string,
+      slot: req.query.slot as string
+    };
+    
+    const items = await forgeService.getReforgeableItems(filters);
+    
+    res.json({
+      success: true,
+      data: { items },
+      timestamp: new Date()
+    });
+    
+  } catch (error: any) {
+    console.error('[Forge] Reforge items error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'REFORGE_ITEMS_ERROR',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /forge/reforge/:equipmentSlot/stats
+ * Obtenir les stats disponibles pour un slot d'équipement
+ */
+router.get('/reforge/:equipmentSlot/stats', [
+  param('equipmentSlot').isIn(['Weapon', 'Armor', 'Helmet', 'Boots', 'Gloves', 'Accessory'])
+], validateRequest, async (req: Request, res: Response) => {
+  try {
+    const playerId = (req as any).user.userId;
+    const { equipmentSlot } = req.params;
+    const forgeService = createForgeService(playerId);
+    
+    const availableStats = forgeService.getAvailableStatsForSlot(equipmentSlot);
+    
+    res.json({
+      success: true,
+      data: { availableStats },
+      timestamp: new Date()
+    });
+    
+  } catch (error: any) {
+    console.error('[Forge] Available stats error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'AVAILABLE_STATS_ERROR',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /forge/reforge/:itemInstanceId/preview
+ * Obtenir un aperçu de reforge
+ */
+router.post('/reforge/:itemInstanceId/preview', reforgeValidation, validateRequest, async (req: Request, res: Response) => {
+  try {
+    const playerId = (req as any).user.userId;
+    const { itemInstanceId } = req.params;
+    const forgeService = createForgeService(playerId);
+    
+    const options = {
+      lockedStats: req.body.lockedStats || []
+    };
+    
+    const preview = await forgeService.getReforgePreview(itemInstanceId, options);
+    
+    res.json({
+      success: true,
+      data: preview,
+      timestamp: new Date()
+    });
+    
+  } catch (error: any) {
+    console.error('[Forge] Reforge preview error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'REFORGE_PREVIEW_ERROR',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /forge/reforge/:itemInstanceId/execute
+ * Exécuter un reforge
+ */
+router.post('/reforge/:itemInstanceId/execute', reforgeValidation, validateRequest, async (req: Request, res: Response) => {
+  try {
+    const playerId = (req as any).user.userId;
+    const { itemInstanceId } = req.params;
+    const forgeService = createForgeService(playerId);
+    
+    const options = {
+      lockedStats: req.body.lockedStats || [],
+      simulationMode: req.body.simulationMode || false
+    };
+    
+    const result = await forgeService.executeReforge(itemInstanceId, options);
+    
+    // Notification WebSocket
+    WebSocketService.notifyForgeReforgeResult(playerId, {
+      itemInstanceId,
+      itemName: result.message || 'Unknown Item',
+      success: result.success,
+      lockedStats: result.lockedStats,
+      oldStats: result.previousStats,
+      newStats: result.newStats,
+      cost: result.cost,
+      reforgeCount: result.reforgeCount,
+      improvements: result.improvements,
+      powerChange: result.powerChange
+    });
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date()
+    });
+    
+  } catch (error: any) {
+    console.error('[Forge] Reforge execute error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'REFORGE_EXECUTE_ERROR',
+      message: error.message
+    });
+  }
+});
+
+// ===== ROUTES FUSION =====
+
+/**
+ * GET /forge/fusion/groups
+ * Obtenir les groupes d'items fusionnables
+ */
+router.get('/fusion/groups', [
+  query('rarity').optional().isIn(['Common', 'Rare', 'Epic', 'Legendary']),
+  query('minCount').optional().isInt({ min: 3 })
+], validateRequest, async (req: Request, res: Response) => {
+  try {
+    const playerId = (req as any).user.userId;
+    const forgeService = createForgeService(playerId);
+    
+    const filters = {
+      rarity: req.query.rarity as string,
+      minCount: req.query.minCount ? parseInt(req.query.minCount as string) : undefined
+    };
+    
+    const groups = await forgeService.getFusableGroups(filters);
+    
+    res.json({
+      success: true,
+      data: { groups },
+      timestamp: new Date()
+    });
+    
+  } catch (error: any) {
+    console.error('[Forge] Fusion groups error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'FUSION_GROUPS_ERROR',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /forge/fusion/preview
+ * Obtenir un aperçu de fusion
+ */
+router.post('/fusion/preview', fusionValidation, validateRequest, async (req: Request, res: Response) => {
+  try {
+    const playerId = (req as any).user.userId;
+    const { itemInstanceIds } = req.body;
+    const forgeService = createForgeService(playerId);
+    
+    const preview = await forgeService.getFusionPreview(itemInstanceIds);
+    
+    res.json({
+      success: true,
+      data: preview,
+      timestamp: new Date()
+    });
+    
+  } catch (error: any) {
+    console.error('[Forge] Fusion preview error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'FUSION_PREVIEW_ERROR',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /forge/fusion/execute
+ * Exécuter une fusion
+ */
+router.post('/fusion/execute', fusionValidation, validateRequest, async (req: Request, res: Response) => {
+  try {
+    const playerId = (req as any).user.userId;
+    const { itemInstanceIds } = req.body;
+    const forgeService = createForgeService(playerId);
+    
+    const options = {
+      validateOnly: req.body.validateOnly || false,
+      consumeMaterials: req.body.consumeMaterials !== false
+    };
+    
+    const result = await forgeService.executeFusion(itemInstanceIds, options);
+    
+    // Notification WebSocket
+    WebSocketService.notifyForgeFusionResult(playerId, {
+      success: result.success,
+      consumedItems: result.consumedItems,
+      newItem: result.newItem,
+      cost: result.cost,
+      rarityUpgrade: result.rarityUpgrade,
+      statsComparison: result.statsComparison
+    });
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date()
+    });
+    
+  } catch (error: any) {
+    console.error('[Forge] Fusion execute error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'FUSION_EXECUTE_ERROR',
+      message: error.message
+    });
+  }
+});
+
+// ===== ROUTES TIER UPGRADE =====
+
+/**
+ * GET /forge/tier-upgrade/items
+ * Obtenir les items upgradables de tier
+ */
+router.get('/tier-upgrade/items', [
+  query('rarity').optional().isIn(['Common', 'Rare', 'Epic', 'Legendary', 'Mythic']),
+  query('minTier').optional().isInt({ min: 1, max: 5 }),
+  query('maxTier').optional().isInt({ min: 1, max: 5 })
+], validateRequest, async (req: Request, res: Response) => {
+  try {
+    const playerId = (req as any).user.userId;
+    const forgeService = createForgeService(playerId);
+    
+    const filters = {
+      rarity: req.query.rarity as string,
+      minTier: req.query.minTier ? parseInt(req.query.minTier as string) : undefined,
+      maxTier: req.query.maxTier ? parseInt(req.query.maxTier as string) : undefined
+    };
+    
+    const items = await forgeService.getUpgradableItems(filters);
+    
+    res.json({
+      success: true,
+      data: { items },
+      timestamp: new Date()
+    });
+    
+  } catch (error: any) {
+    console.error('[Forge] Tier upgrade items error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'TIER_UPGRADE_ITEMS_ERROR',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /forge/tier-upgrade/:itemInstanceId/cost-to-max
+ * Obtenir le coût total pour upgrader un item au maximum
+ */
+router.get('/tier-upgrade/:itemInstanceId/cost-to-max', [
+  param('itemInstanceId').isString().notEmpty()
+], validateRequest, async (req: Request, res: Response) => {
+  try {
+    const playerId = (req as any).user.userId;
+    const { itemInstanceId } = req.params;
+    const forgeService = createForgeService(playerId);
+    
+    const totalCost = await forgeService.getTotalUpgradeCostToMax(itemInstanceId);
+    
+    res.json({
+      success: true,
+      data: totalCost,
+      timestamp: new Date()
+    });
+    
+  } catch (error: any) {
+    console.error('[Forge] Total upgrade cost error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'TOTAL_UPGRADE_COST_ERROR',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /forge/tier-upgrade/:itemInstanceId/preview
+ * Obtenir un aperçu de tier upgrade
+ */
+router.post('/tier-upgrade/:itemInstanceId/preview', tierUpgradeValidation, validateRequest, async (req: Request, res: Response) => {
+  try {
+    const playerId = (req as any).user.userId;
+    const { itemInstanceId } = req.params;
+    const forgeService = createForgeService(playerId);
+    
+    const options = {
+      targetTier: req.body.targetTier
+    };
+    
+    const preview = await forgeService.getTierUpgradePreview(itemInstanceId, options);
+    
+    res.json({
+      success: true,
+      data: preview,
+      timestamp: new Date()
+    });
+    
+  } catch (error: any) {
+    console.error('[Forge] Tier upgrade preview error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'TIER_UPGRADE_PREVIEW_ERROR',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /forge/tier-upgrade/:itemInstanceId/execute
+ * Exécuter un tier upgrade
+ */
+router.post('/tier-upgrade/:itemInstanceId/execute', tierUpgradeValidation, validateRequest, async (req: Request, res: Response) => {
+  try {
+    const playerId = (req as any).user.userId;
+    const { itemInstanceId } = req.params;
+    const forgeService = createForgeService(playerId);
+    
+    const options = {
+      targetTier: req.body.targetTier,
+      validateOnly: req.body.validateOnly || false
+    };
+    
+    const result = await forgeService.executeTierUpgrade(itemInstanceId, options);
+    
+    // Notification WebSocket
+    WebSocketService.notifyForgeTierUpgradeResult(playerId, {
+      success: result.success,
+      itemInstanceId: result.itemInstanceId,
+      itemName: result.itemName,
+      previousTier: result.previousTier,
+      newTier: result.newTier,
+      cost: result.cost,
+      tierMultiplier: result.tierMultiplier,
+      statsImprovement: result.statsImprovement,
+      maxTierReached: result.maxTierReached,
+      unlockedFeatures: result.unlockedFeatures
+    });
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date()
+    });
+    
+  } catch (error: any) {
+    console.error('[Forge] Tier upgrade execute error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'TIER_UPGRADE_EXECUTE_ERROR',
+      message: error.message
+    });
+  }
+});
+
+// ===== ROUTES AVANCÉES =====
+
+/**
+ * POST /forge/batch
+ * Exécuter des opérations en lot
+ */
+router.post('/batch', batchOperationValidation, validateRequest, async (req: Request, res: Response) => {
+  try {
+    const playerId = (req as any).user.userId;
+    const { operations } = req.body;
+    const forgeService = createForgeService(playerId);
+    
+    const result = await forgeService.executeBatchOperations(operations);
+    
+    // Notification WebSocket pour le batch
+    WebSocketService.notifyForgeRecommendations(playerId, {
+      playerPowerScore: 0,
+      playerLevel: 0,
+      recommendations: [],
+      resourceOptimization: {
+        currentResources: {},
+        optimalSpendingPlan: [],
+        efficiencyScore: 0
+      }
+    });
+    
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date()
+    });
+    
+  } catch (error: any) {
+    console.error('[Forge] Batch operations error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'BATCH_OPERATIONS_ERROR',
+      message: error.message
+    });
+  }
+});
+
+// ===== MIDDLEWARE DE GESTION D'ERREURS =====
+
+router.use((error: any, req: Request, res: Response, next: any) => {
+  console.error('[Forge Routes] Unhandled error:', error);
+  
+  res.status(500).json({
+    success: false,
+    error: 'FORGE_INTERNAL_ERROR',
+    message: 'Internal server error in forge system',
+    timestamp: new Date()
+  });
 });
 
 export default router;
