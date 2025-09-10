@@ -477,7 +477,7 @@ forgeStatsSchema.methods.updateWithOperation = function(operationData: {
   // Update favorite module
   const operationsByModule = Object.entries(this.moduleStats).map(([name, stats]) => ({
     name,
-    operations: stats.totalOperations
+    operations: (stats as IModuleStats).totalOperations
   }));
   
   operationsByModule.sort((a, b) => b.operations - a.operations);
