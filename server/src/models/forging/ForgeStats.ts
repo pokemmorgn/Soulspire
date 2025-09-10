@@ -551,8 +551,24 @@ forgeStatsSchema.pre('save', function(next) {
     }
   }
   
-  // Update cache before saving
-  this.updateCache();
+  // Update cache before saving (call the method directly)
+  const daysActive = Math.max(1, Math.ceil(
+    (Date.now() - this.globalStats.firstForgeDate.getTime()) / (1000 * 60 * 60 * 24)
+  ));
+  
+  this.cachedData.lastCalculated = new Date();
+  this.cachedData.totalItemsForged = this.moduleStats.fusion.moduleSpecific.totalItemsFused || 0;
+  this.cachedData.averageDailyOperations = Math.round(this.globalStats.totalOperations / daysActive * 100) / 100;
+  
+  // Calculate efficiency score inline
+  if (this.globalStats.totalGoldSpent > 0) {
+    const powerPerGold = this.globalStats.totalPowerGained / this.globalStats.totalGoldSpent;
+    const successRate = this.globalStats.globalSuccessRate;
+    const efficiency = Math.min(100, (powerPerGold * 10) + (successRate * 0.5));
+    this.cachedData.efficiencyScore = Math.round(efficiency * 100) / 100;
+  } else {
+    this.cachedData.efficiencyScore = 0;
+  }
   
   next();
 });
