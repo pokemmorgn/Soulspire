@@ -550,6 +550,16 @@ class GuildSystemTester {
 
   private async testRaids(): Promise<void> {
     await this.runTest("Raids de guilde", async () => {
+      // 🔥 AJOUTÉ: Monter la guilde au niveau 5 avant de tester les raids
+      const guild = await Guild.findById(this.testGuild._id);
+      if (guild && guild.level < 5) {
+        guild.level = 5;
+        guild.experience = 5000;
+        guild.experienceRequired = 6000;
+        await guild.save();
+        console.log(`   📈 Guild level boosted to ${guild.level} for raid testing`);
+      }
+
       // Démarrer un raid
       const raidResult = await GuildActivityService.startGuildRaid(
         this.testGuild._id,
