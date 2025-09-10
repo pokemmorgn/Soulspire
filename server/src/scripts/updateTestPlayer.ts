@@ -10,7 +10,7 @@ const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/unity-gach
 // Configuration du joueur test
 const TEST_PLAYER_CONFIG = {
   serverId: "S1",
-  displayName: "TestPlayer", // Nom à rechercher
+  displayName: "testt", // Nom à rechercher
   updates: {
     level: 4,
     experience: 1200, // XP pour level 4
@@ -36,11 +36,13 @@ const TEST_PLAYER_CONFIG = {
       ["evolution_crystal", 5],
       ["awakening_shard", 2]
     ]),
-    // Ajout de fragments de héros
+    // Ajout de fragments de héros (génériques avec vos IDs)
     fragments: new Map([
-      ["HERO_001", 10],
-      ["HERO_002", 5],
-      ["HERO_003", 8]
+      ["HERO_TANK_001", 10],      // Fragment de tank
+      ["HERO_DPS_001", 8],        // Fragment de DPS
+      ["HERO_SUPPORT_001", 12],   // Fragment de support
+      ["HERO_RARE_001", 5],       // Fragment rare
+      ["HERO_EPIC_001", 3]        // Fragment épique
     ])
   }
 };
