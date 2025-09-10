@@ -224,7 +224,7 @@ export class EnhancementService {
           powerIncrease: newPowerScore - oldPowerScore,
           statChanges
         },
-        guaranteeUsed,
+        guaranteeUsed: guaranteeUsed || false,
         specialEffects,
         message: success ? 'ENHANCEMENT_SUCCESS' : 'ENHANCEMENT_FAILED'
       };
