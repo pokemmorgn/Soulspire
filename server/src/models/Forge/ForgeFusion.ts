@@ -141,317 +141,243 @@ export class ForgeFusion extends ForgeModuleBase {
   /**
    * Tentative de fusion AFK Arena style
    */
-async attemptFusion(itemInstanceIds: string[], options?: IFusionOptions): Promise<IForgeOperationResult> {
-  if (!this.isEnabled()) {
-    return { success: false, cost: { gold: 0, gems: 0 }, message: "FUSION_MODULE_DISABLED", data: null };
-  }
+  async attemptFusion(itemInstanceIds: string[], options?: IFusionOptions): Promise<IForgeOperationResult> {
+    if (!this.isEnabled()) {
+      return { success: false, cost: { gold: 0, gems: 0 }, message: "FUSION_MODULE_DISABLED", data: null };
+    }
 
-  if (!Array.isArray(itemInstanceIds) || itemInstanceIds.length !== this.REQUIRED_ITEMS_COUNT) {
-    return { 
-      success: false, 
-      cost: { gold: 0, gems: 0 }, 
-      message: "FUSION_REQUIRES_EXACTLY_THREE_ITEMS", 
-      data: { required: this.REQUIRED_ITEMS_COUNT, provided: itemInstanceIds?.length || 0 }
-    };
-  }
-
-  const ownedItems: Array<{ base: any; owned: any }> = [];
-  for (const iid of itemInstanceIds) {
-    const validation = await this.validateItem(iid, undefined);
-    if (!validation.valid || !validation.itemData || !validation.ownedItem) {
+    // Validation du nombre d'items (toujours 3 dans AFK Arena)
+    if (!Array.isArray(itemInstanceIds) || itemInstanceIds.length !== this.REQUIRED_ITEMS_COUNT) {
       return { 
         success: false, 
         cost: { gold: 0, gems: 0 }, 
-        message: "INVALID_ITEM_FOR_FUSION", 
-        data: { itemInstanceId: iid, reason: validation.reason }
+        message: "FUSION_REQUIRES_EXACTLY_THREE_ITEMS", 
+        data: { required: this.REQUIRED_ITEMS_COUNT, provided: itemInstanceIds?.length || 0 }
       };
     }
-    ownedItems.push({ base: validation.itemData, owned: validation.ownedItem });
-  }
 
-  const firstBase = ownedItems[0].base;
-  const firstOwned = ownedItems[0].owned;
-  
-  const sameItemId = ownedItems.every(x => x.base.itemId === firstBase.itemId);
-  const sameCategory = ownedItems.every(x => x.base.category === firstBase.category);
-  const sameRarity = ownedItems.every(x => (x.base.rarity || "Common") === (firstBase.rarity || "Common"));
-
-  if (!sameItemId || !sameCategory || !sameRarity) {
-    return { 
-      success: false, 
-      cost: { gold: 0, gems: 0 }, 
-      message: "FUSION_ITEMS_MUST_BE_IDENTICAL", 
-      data: null 
-    };
-  }
-
-  if (firstBase.category !== "Equipment") {
-    return { 
-      success: false, 
-      cost: { gold: 0, gems: 0 }, 
-      message: "ONLY_EQUIPMENT_CAN_BE_FUSED", 
-      data: null 
-    };
-  }
-
-  const currentRarity = firstBase.rarity || "Common";
-  const nextRarity = this.getNextRarity(currentRarity);
-
-  if (!nextRarity) {
-    return { 
-      success: false, 
-      cost: { gold: 0, gems: 0 }, 
-      message: "ITEM_CANNOT_BE_FUSED_FURTHER", 
-      data: { currentRarity, maxFusionRarity: this.MAX_FUSION_RARITY }
-    };
-  }
-
-  if (!this.canFuseRarity(currentRarity)) {
-    return { 
-      success: false, 
-      cost: { gold: 0, gems: 0 }, 
-      message: "RARITY_CANNOT_BE_FUSED", 
-      data: { currentRarity, maxFusionRarity: this.MAX_FUSION_RARITY }
-    };
-  }
-
-  const cost = await this.calculateFusionCost(itemInstanceIds[0], options);
-  if (!cost) {
-    return { success: false, cost: { gold: 0, gems: 0 }, message: "UNABLE_TO_COMPUTE_FUSION_COST", data: null };
-  }
-
-  const canAfford = await this.validatePlayerResources(cost);
-  if (!canAfford) {
-    return { success: false, cost, message: "INSUFFICIENT_RESOURCES", data: null };
-  }
-
-  const spent = await this.spendResources(cost);
-  if (!spent) {
-    return { success: false, cost, message: "FAILED_TO_SPEND_RESOURCES", data: null };
-  }
-
-  const inventory = await this.getInventory();
-  if (!inventory) {
-    await this.logOperation("fusion", itemInstanceIds.join(","), cost, false, { reason: "Inventory not found after spend" });
-    await this.updateStats(cost, false);
-    return { success: false, cost, message: "INVENTORY_NOT_FOUND_AFTER_SPENDING", data: null };
-  }
-
-  // Calculer le pouvoir total avant fusion pour comparaison
-  let oldTotalPower = 0;
-  const consumedItemsInfo: Array<{ instanceId: string; name: string; level: number; enhancement: number; power: number }> = [];
-
-  try {
-    for (const { base, owned } of ownedItems) {
-      const baseStats = base.baseStats || {};
-      const statsPerLevel = base.statsPerLevel || {};
-      const itemStats = this.calculateItemStatsWithEnhancement(baseStats, statsPerLevel, owned.level || 1, owned.enhancement || 0);
-      const itemPower = Object.values(itemStats).reduce((sum: number, val: any) => sum + (typeof val === 'number' ? val : 0), 0);
-      
-      oldTotalPower += itemPower;
-      consumedItemsInfo.push({
-        instanceId: owned.instanceId,
-        name: base.name || 'Unknown',
-        level: owned.level || 1,
-        enhancement: owned.enhancement || 0,
-        power: itemPower
-      });
-    }
-  } catch (err) {
-    console.warn('[Fusion] Power calculation error:', err);
-    oldTotalPower = 0;
-  }
-
-  try {
-    for (const { owned } of ownedItems) {
-      const removed = await inventory.removeItem(owned.instanceId, 1);
-      if (!removed) {
-        throw new Error(`Failed to remove item instance ${owned.instanceId}`);
+    // Validation des items
+    const ownedItems: Array<{ base: any; owned: any }> = [];
+    for (const iid of itemInstanceIds) {
+      const validation = await this.validateItem(iid, undefined);
+      if (!validation.valid || !validation.itemData || !validation.ownedItem) {
+        return { 
+          success: false, 
+          cost: { gold: 0, gems: 0 }, 
+          message: "INVALID_ITEM_FOR_FUSION", 
+          data: { itemInstanceId: iid, reason: validation.reason }
+        };
       }
-    }
-  } catch (err: any) {
-    await this.logOperation("fusion", itemInstanceIds.join(","), cost, false, { reason: "Failed to remove base items", error: err });
-    await this.updateStats(cost, false);
-    return { success: false, cost, message: "FAILED_TO_REMOVE_BASE_ITEMS", data: { error: err?.message || err } };
-  }
-
-  try {
-    const conservedLevel = this.getConservedLevel(ownedItems);
-    const conservedEnhancement = this.getConservedEnhancement(ownedItems);
-
-    const ItemModel = mongoose.model("Item");
-    let targetItemTemplate = await ItemModel.findOne({ 
-      itemId: firstBase.itemId, 
-      rarity: nextRarity 
-    });
-
-    const targetItemId = targetItemTemplate ? targetItemTemplate.itemId : firstBase.itemId;
-
-    const newOwnedItem: any = {
-      itemId: targetItemId,
-      instanceId: this.generateOperationId(),
-      quantity: 1,
-      level: conservedLevel,
-      enhancement: conservedEnhancement,
-      isEquipped: false,
-      acquiredDate: new Date()
-    };
-
-    let storageCategory: string;
-    const slotMap: { [key: string]: string } = {
-      "Weapon": "weapons",
-      "Helmet": "helmets",
-      "Armor": "armors", 
-      "Boots": "boots",
-      "Gloves": "gloves",
-      "Accessory": "accessories"
-    };
-
-    storageCategory = slotMap[firstBase.equipmentSlot] || "artifacts";
-
-    if (!Array.isArray(inventory.storage[storageCategory])) {
-      storageCategory = "artifacts";
-      if (!Array.isArray(inventory.storage[storageCategory])) {
-        inventory.storage[storageCategory] = [];
-      }
+      ownedItems.push({ base: validation.itemData, owned: validation.ownedItem });
     }
 
-    (inventory.storage as any)[storageCategory].push(newOwnedItem);
-    await inventory.save();
+    // Vérifications AFK Arena : même itemId, même catégorie, même rareté
+    const firstBase = ownedItems[0].base;
+    const firstOwned = ownedItems[0].owned;
+    
+    const sameItemId = ownedItems.every(x => x.base.itemId === firstBase.itemId);
+    const sameCategory = ownedItems.every(x => x.base.category === firstBase.category);
+    const sameRarity = ownedItems.every(x => (x.base.rarity || "Common") === (firstBase.rarity || "Common"));
 
-    const baseStats = (targetItemTemplate?.baseStats) || (firstBase.baseStats || {});
-    const statsPerLevel = (targetItemTemplate?.statsPerLevel) || (firstBase.statsPerLevel || {});
-
-    const rarityMultipliers: { [key: string]: number } = {
-      "Common": 1,
-      "Rare": 1.3,
-      "Epic": 1.8,
-      "Legendary": 2.5,
-      "Mythic": 3.5,
-      "Ascended": 5.0
-    };
-
-    const rarityMultiplier = rarityMultipliers[nextRarity] || 1;
-
-    const recalculatedBaseStats: any = {};
-    for (const [k, v] of Object.entries(baseStats)) {
-      if (typeof v === "number") {
-        recalculatedBaseStats[k] = Math.floor((v as number) * rarityMultiplier);
-      } else {
-        recalculatedBaseStats[k] = v;
-      }
+    if (!sameItemId || !sameCategory || !sameRarity) {
+      return { 
+        success: false, 
+        cost: { gold: 0, gems: 0 }, 
+        message: "FUSION_ITEMS_MUST_BE_IDENTICAL", 
+        data: null 
+      };
     }
 
-    const computedStats = this.calculateItemStatsWithEnhancement(
-      recalculatedBaseStats, 
-      statsPerLevel, 
-      conservedLevel, 
-      conservedEnhancement
-    );
+    // Vérifier que c'est de l'équipement
+    if (firstBase.category !== "Equipment") {
+      return { 
+        success: false, 
+        cost: { gold: 0, gems: 0 }, 
+        message: "ONLY_EQUIPMENT_CAN_BE_FUSED", 
+        data: null 
+      };
+    }
 
-    // Calculer le nouveau pouvoir pour comparaison
-    const newPowerScore = Object.values(computedStats).reduce((sum: number, val: any) => sum + (typeof val === 'number' ? val : 0), 0);
+    const currentRarity = firstBase.rarity || "Common";
+    const nextRarity = this.getNextRarity(currentRarity);
 
-    await this.logOperation("fusion", itemInstanceIds.join(","), cost, true, {
-      createdInstanceId: newOwnedItem.instanceId,
-      previousRarity: currentRarity,
-      newRarity: nextRarity,
-      conservedLevel,
-      conservedEnhancement,
-      consumedItems: itemInstanceIds
-    });
-    await this.updateStats(cost, true);
+    if (!nextRarity) {
+      return { 
+        success: false, 
+        cost: { gold: 0, gems: 0 }, 
+        message: "ITEM_CANNOT_BE_FUSED_FURTHER", 
+        data: { currentRarity, maxFusionRarity: this.MAX_FUSION_RARITY }
+      };
+    }
 
-    // 🔥 NOTIFICATION WEBSOCKET FUSION
+    if (!this.canFuseRarity(currentRarity)) {
+      return { 
+        success: false, 
+        cost: { gold: 0, gems: 0 }, 
+        message: "RARITY_CANNOT_BE_FUSED", 
+        data: { currentRarity, maxFusionRarity: this.MAX_FUSION_RARITY }
+      };
+    }
+
+    // Calculer coût
+    const cost = await this.calculateFusionCost(itemInstanceIds[0], options);
+    if (!cost) {
+      return { success: false, cost: { gold: 0, gems: 0 }, message: "UNABLE_TO_COMPUTE_FUSION_COST", data: null };
+    }
+
+    // Vérifier ressources
+    const canAfford = await this.validatePlayerResources(cost);
+    if (!canAfford) {
+      return { success: false, cost, message: "INSUFFICIENT_RESOURCES", data: null };
+    }
+
+    // Dépenser ressources
+    const spent = await this.spendResources(cost);
+    if (!spent) {
+      return { success: false, cost, message: "FAILED_TO_SPEND_RESOURCES", data: null };
+    }
+
+    // Récupérer l'inventaire
+    const inventory = await this.getInventory();
+    if (!inventory) {
+      await this.logOperation("fusion", itemInstanceIds.join(","), cost, false, { reason: "Inventory not found after spend" });
+      await this.updateStats(cost, false);
+      return { success: false, cost, message: "INVENTORY_NOT_FOUND_AFTER_SPENDING", data: null };
+    }
+
+    // Supprimer les 3 items de base
     try {
-      const { WebSocketForge } = require('../../services/websocket/WebSocketForge');
-      
-      if (WebSocketForge.isAvailable()) {
-        WebSocketForge.notifyFusionResult(this.playerId, {
-          success: true,
-          consumedItems: consumedItemsInfo,
-          newItem: {
-            instanceId: newOwnedItem.instanceId,
-            name: (targetItemTemplate?.name || firstBase.name || 'Unknown Item'),
-            rarity: nextRarity,
-            level: conservedLevel,
-            enhancement: conservedEnhancement,
-            powerScore: newPowerScore
-          },
-          cost: {
-            gold: cost.gold,
-            gems: cost.gems,
-            materials: cost.materials || {}
-          },
-          rarityUpgrade: {
-            oldRarity: currentRarity,
-            newRarity: nextRarity,
-            rarityMultiplier
-          },
-          statsComparison: {
-            oldTotalPower,
-            newPowerScore,
-            powerIncrease: newPowerScore - oldTotalPower
-          }
-        });
+      for (const { owned } of ownedItems) {
+        const removed = await inventory.removeItem(owned.instanceId, 1);
+        if (!removed) {
+          throw new Error(`Failed to remove item instance ${owned.instanceId}`);
+        }
       }
-    } catch (wsError) {
-      console.warn('[Fusion] WebSocket notification failed:', wsError);
+    } catch (err: any) {
+      await this.logOperation("fusion", itemInstanceIds.join(","), cost, false, { reason: "Failed to remove base items", error: err });
+      await this.updateStats(cost, false);
+      return { success: false, cost, message: "FAILED_TO_REMOVE_BASE_ITEMS", data: { error: err?.message || err } };
     }
 
-    return {
-      success: true,
-      cost,
-      message: "FUSION_SUCCESS",
-      data: {
-        newInstance: newOwnedItem,
-        newInstanceId: newOwnedItem.instanceId,
+    // Créer le nouvel item fusionné
+    try {
+      // Conserver le meilleur niveau et enhancement
+      const conservedLevel = this.getConservedLevel(ownedItems);
+      const conservedEnhancement = this.getConservedEnhancement(ownedItems);
+
+      // Rechercher template pour la nouvelle rareté
+      const ItemModel = mongoose.model("Item");
+      let targetItemTemplate = await ItemModel.findOne({ 
+        itemId: firstBase.itemId, 
+        rarity: nextRarity 
+      });
+
+      // Si pas de template spécifique, utiliser le même itemId
+      const targetItemId = targetItemTemplate ? targetItemTemplate.itemId : firstBase.itemId;
+
+      // Construire la nouvelle instance
+      const newOwnedItem: any = {
+        itemId: targetItemId,
+        instanceId: this.generateOperationId(),
+        quantity: 1,
+        level: conservedLevel,
+        enhancement: conservedEnhancement, // Conserver l'enhancement
+        isEquipped: false,
+        acquiredDate: new Date()
+      };
+
+      // Déterminer catégorie de stockage
+      let storageCategory: string;
+      const slotMap: { [key: string]: string } = {
+        "Weapon": "weapons",
+        "Helmet": "helmets",
+        "Armor": "armors", 
+        "Boots": "boots",
+        "Gloves": "gloves",
+        "Accessory": "accessories"
+      };
+
+      storageCategory = slotMap[firstBase.equipmentSlot] || "artifacts";
+
+      if (!Array.isArray(inventory.storage[storageCategory])) {
+        storageCategory = "artifacts";
+        if (!Array.isArray(inventory.storage[storageCategory])) {
+          inventory.storage[storageCategory] = [];
+        }
+      }
+
+      // Ajouter à l'inventaire
+      (inventory.storage as any)[storageCategory].push(newOwnedItem);
+      await inventory.save();
+
+      // Calculer les nouvelles stats pour affichage
+      const baseStats = (targetItemTemplate?.baseStats) || (firstBase.baseStats || {});
+      const statsPerLevel = (targetItemTemplate?.statsPerLevel) || (firstBase.statsPerLevel || {});
+
+      // Multiplicateur de rareté AFK Arena
+      const rarityMultipliers: { [key: string]: number } = {
+        "Common": 1,
+        "Rare": 1.3,
+        "Epic": 1.8,
+        "Legendary": 2.5,
+        "Mythic": 3.5,
+        "Ascended": 5.0
+      };
+
+      const rarityMultiplier = rarityMultipliers[nextRarity] || 1;
+
+      // Appliquer multiplicateur de rareté aux stats de base
+      const recalculatedBaseStats: any = {};
+      for (const [k, v] of Object.entries(baseStats)) {
+        if (typeof v === "number") {
+          recalculatedBaseStats[k] = Math.floor((v as number) * rarityMultiplier);
+        } else {
+          recalculatedBaseStats[k] = v;
+        }
+      }
+
+      // Calculer stats finales avec enhancement conservé
+      const computedStats = this.calculateItemStatsWithEnhancement(
+        recalculatedBaseStats, 
+        statsPerLevel, 
+        conservedLevel, 
+        conservedEnhancement
+      );
+
+      // Log & stats
+      await this.logOperation("fusion", itemInstanceIds.join(","), cost, true, {
+        createdInstanceId: newOwnedItem.instanceId,
         previousRarity: currentRarity,
         newRarity: nextRarity,
         conservedLevel,
         conservedEnhancement,
-        consumedItems: itemInstanceIds,
-        computedStats,
-        rarityMultiplier
-      }
-    };
+        consumedItems: itemInstanceIds
+      });
+      await this.updateStats(cost, true);
 
-  } catch (err: any) {
-    await this.logOperation("fusion", itemInstanceIds.join(","), cost, false, { reason: "Failed to create fused item", error: err });
-    await this.updateStats(cost, false);
+      return {
+        success: true,
+        cost,
+        message: "FUSION_SUCCESS",
+        data: {
+          newInstance: newOwnedItem,
+          newInstanceId: newOwnedItem.instanceId,
+          previousRarity: currentRarity,
+          newRarity: nextRarity,
+          conservedLevel,
+          conservedEnhancement,
+          consumedItems: itemInstanceIds,
+          computedStats,
+          rarityMultiplier
+        }
+      };
 
-    // 🔥 NOTIFICATION WEBSOCKET FUSION ÉCHEC
-    try {
-      const { WebSocketForge } = require('../../services/websocket/WebSocketForge');
-      
-      if (WebSocketForge.isAvailable()) {
-        WebSocketForge.notifyFusionResult(this.playerId, {
-          success: false,
-          consumedItems: consumedItemsInfo,
-          cost: {
-            gold: cost.gold,
-            gems: cost.gems,
-            materials: cost.materials || {}
-          },
-          rarityUpgrade: {
-            oldRarity: currentRarity,
-            newRarity: nextRarity,
-            rarityMultiplier: rarityMultipliers[nextRarity] || 1
-          },
-          statsComparison: {
-            oldTotalPower,
-            newPowerScore: 0,
-            powerIncrease: 0
-          }
-        });
-      }
-    } catch (wsError) {
-      console.warn('[Fusion] WebSocket error notification failed:', wsError);
+    } catch (err: any) {
+      await this.logOperation("fusion", itemInstanceIds.join(","), cost, false, { reason: "Failed to create fused item", error: err });
+      await this.updateStats(cost, false);
+      return { success: false, cost, message: "FAILED_TO_CREATE_FUSED_ITEM", data: { error: err?.message || err } };
     }
-
-    return { success: false, cost, message: "FAILED_TO_CREATE_FUSED_ITEM", data: { error: err?.message || err } };
   }
-}
 
   /**
    * Obtient les items fusionnables du joueur (par rareté)
