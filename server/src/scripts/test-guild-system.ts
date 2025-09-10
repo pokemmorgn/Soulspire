@@ -1,7 +1,7 @@
 #!/usr/bin/env npx ts-node
 
 /**
- * SCRIPT DE TEST COMPLET - SYSTÈME DE GUILDES
+ * SCRIPT DE TEST COMPLET - SYSTÈME DE GUILDES (VERSION CORRIGÉE)
  * Usage: npx ts-node scripts/test-guild-system.ts
  */
 
@@ -14,13 +14,15 @@ import { GuildActivityService } from '../services/guild/GuildActivityService';
 import { GuildSearchService } from '../services/guild/GuildSearchService';
 import Guild from '../models/Guild';
 import Player from '../models/Player';
+import Account from '../models/Account'; // 🔥 AJOUTÉ: Import Account
 import { IdGenerator } from '../utils/idGenerator';
 
 // Configuration
 dotenv.config();
 
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/unity-gacha-game";
-const TEST_SERVER_ID = "TEST_S1";
+const TEST_SERVER_ID = "S999"; // 🔥 CORRIGÉ: Format valide S + chiffres
+const TEST_ACCOUNT_PREFIX = "test-account-"; // 🔥 AJOUTÉ: Préfixe pour comptes de test
 
 interface TestResult {
   name: string;
@@ -33,6 +35,7 @@ interface TestResult {
 class GuildSystemTester {
   private results: TestResult[] = [];
   private testPlayers: any[] = [];
+  private testAccounts: any[] = []; // 🔥 AJOUTÉ: Stockage des comptes de test
   private testGuild: any = null;
 
   async runAllTests(): Promise<void> {
@@ -46,6 +49,7 @@ class GuildSystemTester {
       await this.cleanup();
       
       // 1. Tests de création de données de test
+      await this.createTestAccounts(); // 🔥 NOUVEAU: Créer comptes d'abord
       await this.createTestPlayers();
       
       // 🔥 VÉRIFICATION: Arrêter si pas de joueurs créés
@@ -121,11 +125,62 @@ class GuildSystemTester {
       displayName: { $regex: /^TEST_PLAYER_/ }
     });
     
+    // 🔥 NOUVEAU: Supprimer comptes de test
+    await Account.deleteMany({
+      accountId: { $regex: new RegExp(`^${TEST_ACCOUNT_PREFIX}`) }
+    });
+    
     console.log("✅ Nettoyage terminé\n");
+  }
+
+  // 🔥 NOUVELLE MÉTHODE: Créer les comptes de test d'abord
+  private async createTestAccounts(): Promise<void> {
+    await this.runTest("Création comptes de test", async () => {
+      const accountData = [
+        { username: "test_leader", email: "leader@test.com" },
+        { username: "test_officer", email: "officer@test.com" },
+        { username: "test_elite", email: "elite@test.com" },
+        { username: "test_member1", email: "member1@test.com" },
+        { username: "test_member2", email: "member2@test.com" },
+        { username: "test_inactive", email: "inactive@test.com" }
+      ];
+
+      for (const data of accountData) {
+        const account = new Account({
+          accountId: `${TEST_ACCOUNT_PREFIX}${data.username}`,
+          username: data.username,
+          email: data.email,
+          password: "test123456", // Mot de passe de test
+          accountStatus: "active",
+          preferences: {
+            language: "fr",
+            notifications: {
+              email: true,
+              push: true,
+              marketing: false
+            },
+            privacy: {
+              showOnlineStatus: true,
+              allowFriendRequests: true
+            }
+          }
+        });
+        
+        await account.save();
+        this.testAccounts.push(account);
+      }
+
+      return { accountsCreated: this.testAccounts.length };
+    });
   }
 
   private async createTestPlayers(): Promise<void> {
     await this.runTest("Création joueurs de test", async () => {
+      // 🔥 VÉRIFICATION: S'assurer que les comptes existent
+      if (this.testAccounts.length === 0) {
+        throw new Error("Aucun compte de test disponible");
+      }
+
       const playerData = [
         { name: "TEST_PLAYER_LEADER", level: 50, gold: 100000, gems: 5000 },
         { name: "TEST_PLAYER_OFFICER", level: 45, gold: 50000, gems: 3000 },
@@ -135,17 +190,62 @@ class GuildSystemTester {
         { name: "TEST_PLAYER_INACTIVE", level: 25, gold: 10000, gems: 100 }
       ];
 
-      for (const data of playerData) {
+      for (let i = 0; i < playerData.length && i < this.testAccounts.length; i++) {
+        const data = playerData[i];
+        const account = this.testAccounts[i];
+        
         const player = new Player({
           _id: IdGenerator.generatePlayerId(),
-          serverId: TEST_SERVER_ID,
+          accountId: account.accountId, // 🔥 CORRIGÉ: Utiliser l'ID du compte
+          serverId: TEST_SERVER_ID, // 🔥 CORRIGÉ: Format valide
           displayName: data.name,
           level: data.level,
           gold: data.gold,
           gems: data.gems,
-          lastActiveAt: data.name.includes("INACTIVE") ? 
+          lastSeenAt: data.name.includes("INACTIVE") ? 
             new Date(Date.now() - 5 * 24 * 60 * 60 * 1000) : // 5 jours d'inactivité
-            new Date()
+            new Date(),
+          // 🔥 AJOUTÉ: Champs requis par le modèle
+          world: 1,
+          stage: 1,
+          difficulty: "Normal",
+          vipLevel: 0,
+          vipExperience: 0,
+          heroes: [],
+          formations: [],
+          fragments: new Map(),
+          materials: new Map(),
+          items: new Map(),
+          campaignProgress: {
+            highestWorld: 1,
+            highestStage: 1,
+            starsEarned: 0
+          },
+          towerProgress: {
+            highestFloor: 0,
+            lastResetDate: new Date()
+          },
+          arenaProgress: {
+            currentRank: 999999,
+            highestRank: 999999,
+            seasonWins: 0,
+            seasonLosses: 0
+          },
+          lastAfkCollectAt: new Date(),
+          lastDailyResetAt: new Date(),
+          playtimeMinutes: 0,
+          dailyMissionsCompleted: 0,
+          weeklyMissionsCompleted: 0,
+          eventParticipations: [],
+          friendsList: [],
+          serverPurchases: [],
+          totalSpentUSDOnServer: 0,
+          isNewPlayer: true,
+          tutorialCompleted: false,
+          totalBattlesFought: 0,
+          totalBattlesWon: 0,
+          totalDamageDealt: 0,
+          totalHeroesCollected: 0
         });
         
         await player.save();
