@@ -381,7 +381,7 @@ adminSchema.methods.canManageAdmin = function(targetAdminRole: AdminRole): boole
   const rolePermissions = DEFAULT_ROLE_PERMISSIONS[this.role as AdminRole] || [];
   const targetLevel = ADMIN_ROLE_HIERARCHY[targetAdminRole];
   
-  return currentLevel > targetLevel;
+  return ADMIN_ROLE_HIERARCHY[this.role as AdminRole] > ADMIN_ROLE_HIERARCHY[targetAdminRole];
 };
 
 adminSchema.methods.getEffectivePermissions = function(): AdminPermission[] {
