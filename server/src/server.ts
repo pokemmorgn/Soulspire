@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
-
+import { setupAdminPanel } from './serverAdmin';
 // Import des routes
 import authRoutes from "./routes/auth";
 import playerRoutes from "./routes/player";
@@ -108,7 +108,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(injectServerIdMiddleware);
 app.use(serverMiddleware);
-
+setupAdminPanel(app); 
 // Application du rate limiting
 app.use(limiter);
 
