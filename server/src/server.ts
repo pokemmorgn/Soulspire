@@ -36,6 +36,10 @@ import { ShopService } from "./services/ShopService";
 import { SchedulerService } from "./services/SchedulerService";
 import { ArenaCache } from './services/arena/ArenaCache';
 import { WebSocketService } from './services/WebSocketService';
+
+//Panel Admin
+import { panelConfig, validateEnvironment } from './PanelAdmin/config/panelConfig';
+
 // Configuration de l'environnement
 dotenv.config();
 
@@ -255,6 +259,14 @@ app.get("/health", async (req: Request, res: Response) => {
     res.status(503).json(healthCheck);
   }
 });
+
+// Test de configuration
+try {
+  validateEnvironment();
+  console.log('Panel config loaded:', panelConfig.server.port);
+} catch (error) {
+  console.error('Panel config error:', error);
+}
 
 // Route pour les métriques (optionnel, pour monitoring)
 app.get("/metrics", async (req: Request, res: Response) => {
