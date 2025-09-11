@@ -389,7 +389,7 @@ adminSchema.methods.getEffectivePermissions = function(): AdminPermission[] {
     return ['*'];
   }
   
-  const rolePermissions = DEFAULT_ROLE_PERMISSIONS[this.role] || [];
+  const rolePermissions = DEFAULT_ROLE_PERMISSIONS[this.role as AdminRole] || [];
   const customPermissions = this.permissions || [];
   
   return [...new Set([...rolePermissions, ...customPermissions])];
