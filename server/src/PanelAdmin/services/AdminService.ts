@@ -275,7 +275,7 @@ export class AdminService {
       if (updateData.role && !updater.canManageAdmin(updateData.role)) {
         throw new AdminPermissionError(
           'Insufficient permissions to assign this role',
-          'admin.modify_permissions'
+          'admin.change_permissions'
         );
       }
 
