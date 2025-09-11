@@ -383,7 +383,7 @@ const startServer = async (): Promise<void> => {
     });
 
     // Gestion gracieuse de l'arrêt
-    const gracefulShutdown = (signal: string) => {
+    const gracefulShutdown = async (signal: string) => {
       console.log(`\n🛑 ${signal} received. Starting graceful shutdown...`);
       
       // Arrêt des tâches programmées en premier
