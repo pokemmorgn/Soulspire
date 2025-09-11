@@ -93,7 +93,7 @@ router.get('/overview',
       
       // Ajouter les stats des sessions admin
       const sessionStats = getSessionStats();
-      dashboardData.overview.onlineAdmins = sessionStats.totalSessions;
+      (dashboardData.overview as any).onlineAdmins = sessionStats.totalSessions;
       
       // Sauvegarder en cache et répondre
       saveToCache(req, res, dashboardData);
@@ -493,9 +493,11 @@ router.post('/export',
         action: 'analytics.export_data',
         resource: 'analytics_data',
         details: {
-          exportType: type,
-          format,
-          recordCount: Array.isArray(exportResult.data) ? exportResult.data.length : 1
+          additionalInfo: {
+            exportType: type,
+            format,
+            recordCount: Array.isArray(exportResult.data) ? exportResult.data.length : 1
+          }
         },
         ipAddress: req.ip || '0.0.0.0',
         userAgent: req.get('User-Agent') || '',
@@ -601,7 +603,7 @@ router.get('/security-alerts',
  */
 router.get('/audit-summary',
   authenticateAdmin,
-  requirePermission('admin.view_audit_logs'),
+  requirePermission('admin.view'),
   async (req: Request, res: Response) => {
     try {
       const hours = parseInt(req.query.hours as string) || 24;
@@ -645,7 +647,7 @@ router.delete('/clear-cache',
         adminRole: adminReq.admin.role,
         action: 'system.modify_config',
         resource: 'metrics_cache',
-        details: { cacheEntriesCleared: cacheSize },
+        details: { additionalInfo: { cacheEntriesCleared: cacheSize } },
         ipAddress: req.ip || '0.0.0.0',
         userAgent: req.get('User-Agent') || '',
         success: true,
