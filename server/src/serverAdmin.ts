@@ -9,7 +9,7 @@ import { cleanExpiredSessions } from './PanelAdmin/middleware/adminAuth';
 // Import des routes admin
 import authRoutes from './PanelAdmin/routes/auth';
 import dashboardRoutes from './PanelAdmin/routes/dashboard';
-
+import playersRoutes from './routes/players';
 // Import des services pour l'initialisation
 import AdminService from './PanelAdmin/services/AdminService';
 import AnalyticsService from './PanelAdmin/services/AnalyticsService';
@@ -210,7 +210,10 @@ export class AdminPanelServer {
 
     // Routes du dashboard admin
     app.use('/api/admin/dashboard', dashboardRoutes);
-
+    
+    // Routes de gestion des joueurs
+    app.use('/api/admin/players', playersRoutes);
+    
     // Route 404 pour le panel admin
     app.use('/api/admin/*', (req: Request, res: Response) => {
       res.status(404).json({
