@@ -524,7 +524,7 @@ auditLogSchema.methods.sanitizeRequestBody = function(body: any): any {
   const sensitiveFields = ['password', 'token', 'secret', 'key', 'auth'];
   
   for (const field of sensitiveFields) {
-    if (sensitized[field]) {
+    if (sanitized[field]) {
       sanitized[field] = '[REDACTED]';
     }
   }
