@@ -274,13 +274,12 @@ export class InventoryManagementService {
       const query: any = { playerId };
       if (serverId) query.serverId = serverId;
 
-      const [inventory, player, account] = await Promise.all([
-        Inventory.findOne(query),
-        Player.findById(playerId),
-        player ? Account.findOne({ accountId: (await Player.findById(playerId))?.accountId }) : null
-      ]);
-
+      const inventory = await Inventory.findOne(query);
       if (!inventory) return null;
+      
+      const player = await Player.findById(playerId);
+      const account = player ? 
+        await Account.findOne({ accountId: player.accountId }) : null;
 
       // Effectuer un check de santé complet
       const healthCheck = await this.performHealthCheck(inventory);
@@ -308,8 +307,8 @@ export class InventoryManagementService {
           metadata: {
             lastSyncAt: inventory.lastSyncAt,
             lastCleanup: inventory.lastCleanup,
-            createdAt: inventory.createdAt,
-            updatedAt: inventory.updatedAt
+            createdAt: (inventory as any).createdAt || null,
+            updatedAt: (inventory as any).updatedAt || null
           }
         },
         player: player ? {
