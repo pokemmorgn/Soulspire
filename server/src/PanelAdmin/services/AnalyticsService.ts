@@ -647,7 +647,12 @@ export class AnalyticsService {
     severity: 'low' | 'medium' | 'high' | 'critical';
   }>> {
     try {
-      const alerts = [];
+      const alerts: Array<{
+        type: 'warning' | 'error' | 'info';
+        message: string;
+        timestamp: Date;
+        severity: 'low' | 'medium' | 'high' | 'critical';
+      }> = [];
       const now = new Date();
       const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
