@@ -9,7 +9,7 @@ import { cleanExpiredSessions } from './PanelAdmin/middleware/adminAuth';
 // Import des routes admin
 import authRoutes from './PanelAdmin/routes/auth';
 import dashboardRoutes from './PanelAdmin/routes/dashboard';
-import playersRoutes from './routes/players';
+import playersRoutes from './PanelAdmin/routes/players';
 // Import des services pour l'initialisation
 import AdminService from './PanelAdmin/services/AdminService';
 import AnalyticsService from './PanelAdmin/services/AnalyticsService';
