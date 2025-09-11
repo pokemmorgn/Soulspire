@@ -11,6 +11,7 @@ import authRoutes from './PanelAdmin/routes/auth';
 import dashboardRoutes from './PanelAdmin/routes/dashboard';
 import playersRoutes from './PanelAdmin/routes/players';
 import economyRoutes from './PanelAdmin/routes/economy';
+import inventoryRoutes from './PanelAdmin/routes/inventory';
 // Import des services pour l'initialisation
 import AdminService from './PanelAdmin/services/AdminService';
 import AnalyticsService from './PanelAdmin/services/AnalyticsService';
@@ -106,7 +107,7 @@ export class AdminPanelServer {
     
     // Routes de gestion économique
     app.use('/api/admin/economy', economyRoutes);
-    
+    app.use('/api/admin/inventory', inventoryRoutes);
     // Rate limiting global pour le panel admin
     const adminGlobalRateLimit = rateLimit({
       windowMs: panelConfig.server.rateLimiting.windowMs,
