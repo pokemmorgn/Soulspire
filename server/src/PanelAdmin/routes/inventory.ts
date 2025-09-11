@@ -654,9 +654,12 @@ router.post('/bulk-health-check',
         }
       }
 
-      const problematic = results.filter(r => 
-        r.success && (r.healthScore < 80 || r.issuesCount > 0)
-      );
+      summary: {
+        totalChecked: playerIds.length,
+        healthy: results.filter(r => r.success && r.healthScore !== undefined && r.healthScore >= 80).length,
+        problematic: problematic.length,
+        errors: results.filter(r => !r.success).length
+      }
 
       await AuditLog.createLog({
         adminId: adminReq.admin.adminId,
@@ -683,7 +686,7 @@ router.post('/bulk-health-check',
           results,
           summary: {
             totalChecked: playerIds.length,
-            healthy: results.filter(r => r.success && r.healthScore >= 80).length,
+            healthy: results.filter(r => r.success && r.healthScore !== undefined && r.healthScore >= 80).length,
             problematic: problematic.length,
             errors: results.filter(r => !r.success).length
           }
