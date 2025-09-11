@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
-import { setupAdminPanel } from './serverAdmin';
+import { setupAdminPanel, shutdownAdminPanel } from './serverAdmin';
 // Import des routes
 import authRoutes from "./routes/auth";
 import playerRoutes from "./routes/player";
@@ -108,7 +108,6 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(injectServerIdMiddleware);
 app.use(serverMiddleware);
-setupAdminPanel(app); 
 // Application du rate limiting
 app.use(limiter);
 
@@ -313,7 +312,7 @@ const startServer = async (): Promise<void> => {
   try {
     // Connexion à la base de données
     await connectDB();
-    
+    setupAdminPanel(app);
     // 🛒 INITIALISATION DES BOUTIQUES SYSTÈME
     console.log("🛒 Initialisation des boutiques système...");
     try {
@@ -404,7 +403,7 @@ const startServer = async (): Promise<void> => {
       } catch (error) {
         console.error("⚠️ Erreur fermeture WebSocket:", error);
       }
-      
+      await shutdownAdminPanel();
       server.close(async () => {
         console.log("🔌 HTTP server closed");
         
