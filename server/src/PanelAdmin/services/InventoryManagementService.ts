@@ -510,7 +510,7 @@ export class InventoryManagementService {
       // Vérifier la cohérence avec le joueur
       const validation = await inventory.validateConsistency();
       if (!validation.valid) {
-        validation.issues.forEach(issue => {
+        validation.issues.forEach((issue: string) => {
           let severity: 'low' | 'medium' | 'high' | 'critical' = 'medium';
           let type: string = 'sync_outdated';
           
