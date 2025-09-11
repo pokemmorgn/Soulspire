@@ -191,6 +191,43 @@ const auditLogSchema = new Schema<IAuditLogDocument>({
   _id: false
 });
 
+function determineSeverityHelper(log: any): 'low' | 'medium' | 'high' | 'critical' {
+  if (!log.success) {
+    if (log.action.includes('login') || log.action.includes('auth')) {
+      return 'medium';
+    }
+    return 'high';
+  }
+  
+  const criticalActions = [
+    'player.delete_account', 'admin.delete_user', 'system.server_restart'
+  ];
+  
+  const highActions = [
+    'player.ban', 'admin.modify_permissions', 'system.modify_config'
+  ];
+  
+  if (criticalActions.includes(log.action)) return 'critical';
+  if (highActions.includes(log.action)) return 'high';
+  if (log.action.includes('modify') || log.action.includes('delete')) return 'medium';
+  
+  return 'low';
+}
+
+function sanitizeRequestBodyHelper(body: any): any {
+  if (!body || typeof body !== 'object') return body;
+  
+  const sanitized = { ...body };
+  const sensitiveFields = ['password', 'token', 'secret', 'key', 'auth'];
+  
+  for (const field of sensitiveFields) {
+    if (sanitized[field]) {
+      sanitized[field] = '[REDACTED]';
+    }
+  }
+  
+  return sanitized;
+}
 // ===== PRE-SAVE HOOK =====
 auditLogSchema.pre<IAuditLogDocument>('save', function(next) {
   // Synchroniser logId avec _id
@@ -200,12 +237,12 @@ auditLogSchema.pre<IAuditLogDocument>('save', function(next) {
 
   // Déterminer automatiquement la sévérité si pas définie
   if (!this.severity || this.severity === 'low') {
-    this.severity = this.determineSeverity();
+    this.severity = determineSeverityHelper(this);
   }
 
   // Anonymiser les données sensibles si nécessaire
   if (this.details && this.details.requestBody) {
-    this.details.requestBody = this.sanitizeRequestBody(this.details.requestBody);
+    this.details.requestBody = sanitizeRequestBodyHelper(this.details.requestBody);
   }
 
   next();
@@ -479,7 +516,7 @@ auditLogSchema.methods.anonymize = function(): IAuditLogDocument {
   const anonymized = this.toObject();
   
   // Anonymiser les données sensibles
-  anonymized.ipAddress = this.ipAddress.split('.').map((part, index) => 
+  anonymized.ipAddress = this.ipAddress.split('.').map((part: string, index: number) =>
     index < 2 ? part : 'XXX'
   ).join('.');
   
