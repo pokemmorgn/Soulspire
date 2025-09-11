@@ -1,33 +1,68 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema, Model } from 'mongoose';
 import bcrypt from 'bcrypt';
 import { IdGenerator } from '../../utils/idGenerator';
 import {
-  IAdminUser,
   AdminRole,
   AdminPermission,
   DEFAULT_ROLE_PERMISSIONS,
   ADMIN_ROLE_HIERARCHY
 } from '../types/adminTypes';
 
-// Interface pour le document Mongoose
-export interface IAdminDocument extends Document, IAdminUser {
+// Interface pour les métadonnées
+interface IAdminMetadata {
+  createdByIP?: string;
+  lastPasswordChange?: Date;
+  failedLoginIPs?: string[];
+  preferredLanguage?: string;
+  timezone?: string;
+}
+
+// Interface principale du document
+export interface IAdminDocument extends Document {
   _id: string;
-  
+  adminId: string;
+  accountId?: string;
+  username: string;
+  email: string;
+  password: string;
+  role: AdminRole;
+  permissions: AdminPermission[];
+  isActive: boolean;
+  lastLoginAt?: Date;
+  lastLoginIP?: string;
+  loginAttempts: number;
+  lockedUntil?: Date;
+  createdBy: string;
+  twoFactorEnabled: boolean;
+  twoFactorSecret?: string;
+  metadata: IAdminMetadata;
+  createdAt: Date;
+  updatedAt: Date;
+
   // Méthodes d'instance
   comparePassword(candidatePassword: string): Promise<boolean>;
   hashPassword(password: string): Promise<string>;
-  incrementLoginAttempts(): Promise<IAdminDocument>;
-  resetLoginAttempts(): Promise<IAdminDocument>;
-  lockAccount(): Promise<IAdminDocument>;
-  unlockAccount(): Promise<IAdminDocument>;
+  incrementLoginAttempts(): Promise<void>;
+  resetLoginAttempts(): Promise<void>;
+  lockAccount(): Promise<void>;
+  unlockAccount(): Promise<void>;
   isLocked(): boolean;
-  updateLastLogin(ipAddress: string): Promise<IAdminDocument>;
+  updateLastLogin(ipAddress: string): Promise<void>;
   hasPermission(permission: AdminPermission): boolean;
   canManageAdmin(targetAdminRole: AdminRole): boolean;
   getEffectivePermissions(): AdminPermission[];
   generateTwoFactorSecret(): string;
   verifyTwoFactorCode(code: string): boolean;
   getAccountSummary(): any;
+}
+
+// Interface pour les méthodes statiques
+interface IAdminModel extends Model<IAdminDocument> {
+  findByUsername(username: string): Promise<IAdminDocument | null>;
+  findByEmail(email: string): Promise<IAdminDocument | null>;
+  findActiveAdmins(): Promise<IAdminDocument[]>;
+  findByRole(role: AdminRole): Promise<IAdminDocument[]>;
+  getAdminStats(): Promise<any>;
 }
 
 // Schéma principal
@@ -40,10 +75,7 @@ const adminSchema = new Schema<IAdminDocument>({
   adminId: {
     type: String,
     required: true,
-    unique: true,
-    default: function(this: IAdminDocument) { 
-      return this._id; 
-    }
+    unique: true
   },
   accountId: {
     type: String,
@@ -51,7 +83,6 @@ const adminSchema = new Schema<IAdminDocument>({
     index: true,
     validate: {
       validator: function(v: string) {
-        // Valider que c'est un ID de compte valide si fourni
         return !v || v.startsWith('ACC_');
       },
       message: 'Invalid account ID format'
@@ -80,7 +111,7 @@ const adminSchema = new Schema<IAdminDocument>({
     type: String,
     required: true,
     minlength: 8,
-    select: false // Ne pas inclure par défaut dans les requêtes
+    select: false
   },
   role: {
     type: String,
@@ -92,27 +123,17 @@ const adminSchema = new Schema<IAdminDocument>({
   permissions: [{
     type: String,
     enum: [
-      // Serveur et système
       'server.manage', 'server.restart', 'server.config', 'system.config', 
-      'system.backup', 'system.logs',
-      // Gestion des joueurs
-      'player.view', 'player.manage', 'player.moderate', 'player.ban', 
-      'player.unban', 'player.edit', 'player.delete',
-      // Économie
-      'economy.view', 'economy.modify', 'economy.add_currency', 
-      'economy.remove_currency', 'economy.transaction_history',
-      // Héros
-      'heroes.view', 'heroes.manage', 'heroes.add', 'heroes.remove', 'heroes.modify_stats',
-      // Événements
+      'system.backup', 'system.logs', 'player.view', 'player.manage', 
+      'player.moderate', 'player.ban', 'player.unban', 'player.edit', 
+      'player.delete', 'economy.view', 'economy.modify', 'economy.add_currency', 
+      'economy.remove_currency', 'economy.transaction_history', 'heroes.view', 
+      'heroes.manage', 'heroes.add', 'heroes.remove', 'heroes.modify_stats',
       'events.view', 'events.manage', 'events.create', 'events.delete',
-      // Boutiques et gacha
       'shop.view', 'shop.manage', 'gacha.view', 'gacha.modify_rates',
-      // Analytics
       'analytics.view', 'analytics.export', 'analytics.financial',
-      // Gestion des admins
-      'admin.view', 'admin.manage', 'admin.create', 'admin.delete', 'admin.change_permissions',
-      // Super-admin
-      '*'
+      'admin.view', 'admin.manage', 'admin.create', 'admin.delete', 
+      'admin.change_permissions', '*'
     ]
   }],
   isActive: {
@@ -125,8 +146,7 @@ const adminSchema = new Schema<IAdminDocument>({
     index: true
   },
   lastLoginIP: {
-    type: String,
-    match: /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$|^::1$|^127\.0\.0\.1$/
+    type: String
   },
   loginAttempts: {
     type: Number,
@@ -148,10 +168,8 @@ const adminSchema = new Schema<IAdminDocument>({
   },
   twoFactorSecret: {
     type: String,
-    select: false // Sensible, ne pas inclure par défaut
+    select: false
   },
-  
-  // Métadonnées supplémentaires
   metadata: {
     createdByIP: String,
     lastPasswordChange: { type: Date, default: Date.now },
@@ -165,35 +183,36 @@ const adminSchema = new Schema<IAdminDocument>({
   _id: false
 });
 
-// ===== HOOKS PRE-SAVE =====
-
-// Hash du mot de passe avant sauvegarde
-adminSchema.pre('save', async function(next) {
-  // Synchroniser adminId avec _id
-  if (!this.adminId || this.adminId !== this._id) {
-    this.adminId = this._id;
-  }
-
-  // Hash du mot de passe si modifié
-  if (this.isModified('password')) {
-    try {
-      this.password = await this.hashPassword(this.password);
-      this.metadata.lastPasswordChange = new Date();
-    } catch (error) {
-      return next(error as Error);
+// ===== PRE-SAVE HOOK =====
+adminSchema.pre<IAdminDocument>('save', async function(next) {
+  try {
+    // Synchroniser adminId avec _id
+    if (!this.adminId || this.adminId !== this._id) {
+      this.adminId = this._id;
     }
-  }
 
-  // Assigner les permissions par défaut selon le rôle si pas définies
-  if (this.isModified('role') && (!this.permissions || this.permissions.length === 0)) {
-    this.permissions = DEFAULT_ROLE_PERMISSIONS[this.role];
-  }
+    // Hash du mot de passe si modifié
+    if (this.isModified('password')) {
+      const saltRounds = 12;
+      this.password = await bcrypt.hash(this.password, saltRounds);
+      if (!this.metadata) {
+        this.metadata = {};
+      }
+      this.metadata.lastPasswordChange = new Date();
+    }
 
-  next();
+    // Assigner les permissions par défaut selon le rôle
+    if (this.isModified('role') && (!this.permissions || this.permissions.length === 0)) {
+      this.permissions = DEFAULT_ROLE_PERMISSIONS[this.role] || [];
+    }
+
+    next();
+  } catch (error) {
+    next(error as Error);
+  }
 });
 
 // ===== INDEX =====
-
 adminSchema.index({ _id: 1 }, { unique: true });
 adminSchema.index({ adminId: 1 }, { unique: true });
 adminSchema.index({ username: 1 }, { unique: true });
@@ -201,13 +220,9 @@ adminSchema.index({ email: 1 }, { unique: true });
 adminSchema.index({ role: 1, isActive: 1 });
 adminSchema.index({ lastLoginAt: -1 });
 adminSchema.index({ lockedUntil: 1 }, { sparse: true });
-adminSchema.index({ 'metadata.createdByIP': 1 });
-
-// Index pour recherche par permissions
 adminSchema.index({ permissions: 1 });
 
 // ===== MÉTHODES STATIQUES =====
-
 adminSchema.statics.findByUsername = function(username: string) {
   return this.findOne({ username: username.toLowerCase(), isActive: true });
 };
@@ -278,7 +293,6 @@ adminSchema.statics.getAdminStats = async function() {
 };
 
 // ===== MÉTHODES D'INSTANCE =====
-
 adminSchema.methods.comparePassword = async function(candidatePassword: string): Promise<boolean> {
   try {
     return await bcrypt.compare(candidatePassword, this.password);
@@ -289,22 +303,14 @@ adminSchema.methods.comparePassword = async function(candidatePassword: string):
 };
 
 adminSchema.methods.hashPassword = async function(password: string): Promise<string> {
-  const saltRounds = 12; // Fort niveau de sécurité
+  const saltRounds = 12;
   return await bcrypt.hash(password, saltRounds);
 };
 
-adminSchema.methods.incrementLoginAttempts = function(): Promise<IAdminDocument> {
-  // Si le compte était verrouillé et que le verrou a expiré, le réinitialiser
-  if (this.lockedUntil && this.lockedUntil < new Date()) {
-    return this.updateOne({
-      $unset: { lockedUntil: 1 },
-      $set: { loginAttempts: 1 }
-    }).exec();
-  }
-
+adminSchema.methods.incrementLoginAttempts = async function(): Promise<void> {
   const updates: any = { $inc: { loginAttempts: 1 } };
   
-  // Verrouiller si trop de tentatives (configurable)
+  // Verrouiller si trop de tentatives
   const maxAttempts = 5;
   const lockTimeMs = 30 * 60 * 1000; // 30 minutes
 
@@ -312,43 +318,43 @@ adminSchema.methods.incrementLoginAttempts = function(): Promise<IAdminDocument>
     updates.$set = { lockedUntil: new Date(Date.now() + lockTimeMs) };
   }
 
-  return this.updateOne(updates).exec();
+  await this.updateOne(updates);
 };
 
-adminSchema.methods.resetLoginAttempts = function(): Promise<IAdminDocument> {
-  return this.updateOne({
+adminSchema.methods.resetLoginAttempts = async function(): Promise<void> {
+  await this.updateOne({
     $unset: {
       loginAttempts: 1,
       lockedUntil: 1
     }
-  }).exec();
+  });
 };
 
-adminSchema.methods.lockAccount = function(): Promise<IAdminDocument> {
+adminSchema.methods.lockAccount = async function(): Promise<void> {
   const lockTime = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
-  return this.updateOne({
+  await this.updateOne({
     $set: { 
       lockedUntil: lockTime,
-      loginAttempts: 999 // Marquer comme verrouillé manuellement
+      loginAttempts: 999
     }
-  }).exec();
+  });
 };
 
-adminSchema.methods.unlockAccount = function(): Promise<IAdminDocument> {
-  return this.updateOne({
+adminSchema.methods.unlockAccount = async function(): Promise<void> {
+  await this.updateOne({
     $unset: {
       lockedUntil: 1,
       loginAttempts: 1
     }
-  }).exec();
+  });
 };
 
 adminSchema.methods.isLocked = function(): boolean {
   return !!(this.lockedUntil && this.lockedUntil > new Date());
 };
 
-adminSchema.methods.updateLastLogin = function(ipAddress: string): Promise<IAdminDocument> {
-  return this.updateOne({
+adminSchema.methods.updateLastLogin = async function(ipAddress: string): Promise<void> {
+  await this.updateOne({
     $set: {
       lastLoginAt: new Date(),
       lastLoginIP: ipAddress
@@ -357,25 +363,21 @@ adminSchema.methods.updateLastLogin = function(ipAddress: string): Promise<IAdmi
       loginAttempts: 1,
       lockedUntil: 1
     }
-  }).exec();
+  });
 };
 
 adminSchema.methods.hasPermission = function(permission: AdminPermission): boolean {
-  // Super admin a tout
   if (this.permissions.includes('*')) {
     return true;
   }
-  
   return this.permissions.includes(permission);
 };
 
 adminSchema.methods.canManageAdmin = function(targetAdminRole: AdminRole): boolean {
-  // Seuls les super_admin peuvent gérer d'autres super_admin
   if (targetAdminRole === 'super_admin') {
     return this.role === 'super_admin';
   }
   
-  // Un admin peut gérer les rôles inférieurs
   const currentLevel = ADMIN_ROLE_HIERARCHY[this.role];
   const targetLevel = ADMIN_ROLE_HIERARCHY[targetAdminRole];
   
@@ -387,35 +389,30 @@ adminSchema.methods.getEffectivePermissions = function(): AdminPermission[] {
     return ['*'];
   }
   
-  // Combiner les permissions du rôle et les permissions personnalisées
   const rolePermissions = DEFAULT_ROLE_PERMISSIONS[this.role] || [];
   const customPermissions = this.permissions || [];
   
-  // Supprimer les doublons
   return [...new Set([...rolePermissions, ...customPermissions])];
 };
 
-adminSchema.methods.generateTwoFactorSecret = function(this: IAdminDocument): string {
-  // Pour la simplicité, on génère un secret basique
-  // En production, utiliser une vraie librairie 2FA comme speakeasy
-  const secret = require('crypto').randomBytes(32).toString('base64');
+adminSchema.methods.generateTwoFactorSecret = function(): string {
+  const crypto = require('crypto');
+  const secret = crypto.randomBytes(32).toString('base64');
   this.twoFactorSecret = secret;
   return secret;
 };
 
-adminSchema.methods.verifyTwoFactorCode = function(this: IAdminDocument, code: string): boolean {
-  // Implémentation basique pour l'exemple
-  // En production, utiliser speakeasy ou similar
+adminSchema.methods.verifyTwoFactorCode = function(code: string): boolean {
   if (!this.twoFactorEnabled || !this.twoFactorSecret) {
     return false;
   }
   
-  // Pour l'instant, accepter un code simple basé sur le timestamp
+  // Implémentation simple pour l'exemple
   const expectedCode = Math.floor(Date.now() / 30000).toString().substr(-6);
   return code === expectedCode;
 };
 
-adminSchema.methods.getAccountSummary = function(this: IAdminDocument) {
+adminSchema.methods.getAccountSummary = function() {
   return {
     adminId: this.adminId,
     username: this.username,
@@ -435,12 +432,11 @@ adminSchema.methods.getAccountSummary = function(this: IAdminDocument) {
   };
 };
 
-// ===== VALIDATION PERSONNALISÉE =====
-
+// ===== VALIDATION CUSTOM =====
 adminSchema.path('email').validate(async function(email: string) {
   if (!this.isNew && !this.isModified('email')) return true;
   
-  const emailCount = await (this.constructor as any).countDocuments({ 
+  const emailCount = await mongoose.model('Admin').countDocuments({ 
     email, 
     _id: { $ne: this._id } 
   });
@@ -450,7 +446,7 @@ adminSchema.path('email').validate(async function(email: string) {
 adminSchema.path('username').validate(async function(username: string) {
   if (!this.isNew && !this.isModified('username')) return true;
   
-  const usernameCount = await (this.constructor as any).countDocuments({ 
+  const usernameCount = await mongoose.model('Admin').countDocuments({ 
     username, 
     _id: { $ne: this._id } 
   });
@@ -458,4 +454,5 @@ adminSchema.path('username').validate(async function(username: string) {
 }, 'Username already exists');
 
 // Export du modèle
-export default mongoose.model<IAdminDocument>('Admin', adminSchema);
+const Admin = mongoose.model<IAdminDocument, IAdminModel>('Admin', adminSchema);
+export default Admin;
