@@ -395,7 +395,7 @@ adminSchema.methods.getEffectivePermissions = function(): AdminPermission[] {
   return [...new Set([...rolePermissions, ...customPermissions])];
 };
 
-adminSchema.methods.generateTwoFactorSecret = function(): string {
+adminSchema.methods.generateTwoFactorSecret = function(this: IAdminDocument): string {
   // Pour la simplicité, on génère un secret basique
   // En production, utiliser une vraie librairie 2FA comme speakeasy
   const secret = require('crypto').randomBytes(32).toString('base64');
@@ -403,7 +403,7 @@ adminSchema.methods.generateTwoFactorSecret = function(): string {
   return secret;
 };
 
-adminSchema.methods.verifyTwoFactorCode = function(code: string): boolean {
+adminSchema.methods.verifyTwoFactorCode = function(this: IAdminDocument, code: string): boolean {
   // Implémentation basique pour l'exemple
   // En production, utiliser speakeasy ou similar
   if (!this.twoFactorEnabled || !this.twoFactorSecret) {
@@ -415,7 +415,7 @@ adminSchema.methods.verifyTwoFactorCode = function(code: string): boolean {
   return code === expectedCode;
 };
 
-adminSchema.methods.getAccountSummary = function() {
+adminSchema.methods.getAccountSummary = function(this: IAdminDocument) {
   return {
     adminId: this.adminId,
     username: this.username,
