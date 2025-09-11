@@ -323,7 +323,7 @@ export interface ISecurityConfig {
 export const SENSITIVE_ACTIONS: AdminAction[] = [
   'player.delete_account',
   'player.reset_account',
-  'economy.remove_currency',
+  'player.remove_currency',
   'admin.delete_user',
   'admin.modify_permissions',
   'system.server_restart',
