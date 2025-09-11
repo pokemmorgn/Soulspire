@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema } from "mongoose";
 import { IdGenerator } from "../utils/idGenerator";
-
+import { AdminRole, AdminPermission } from "../PanelAdmin/types/adminTypes";
 // Interface pour l'historique des achats premium (ANALYTICS SEULEMENT)
 interface IPurchaseHistory {
   transactionId: string;
@@ -71,6 +71,21 @@ export interface IAccount {
   // DONNÉES CROSS-SERVER
   favoriteServerId?: string; // Serveur principal du joueur
   serverList: string[]; // Liste des serveurs où le joueur a un personnage
+
+  // ADMINISTRATION (panel admin)
+  adminRole?: AdminRole; // 'super_admin' | 'admin' | 'moderator' | 'viewer'
+  adminPermissions?: AdminPermission[];
+  adminEnabled: boolean; // Peut accéder au panel admin
+  adminLastLoginAt?: Date;
+  adminLoginAttempts: number;
+  adminLockedUntil?: Date;
+  adminTwoFactorEnabled: boolean;
+  adminTwoFactorSecret?: string;
+  adminMetadata?: {
+    createdByAdmin?: string;
+    lastPasswordChange?: Date;
+    preferredLanguage?: string;
+  };
 }
 
 interface IAccountDocument extends Document {
@@ -105,6 +120,27 @@ interface IAccountDocument extends Document {
   loginHistory: ILoginHistory[];
   favoriteServerId?: string;
   serverList: string[];
+
+    // ADMINISTRATION
+  adminRole?: AdminRole;
+  adminPermissions?: AdminPermission[];
+  adminEnabled: boolean;
+  adminLastLoginAt?: Date;
+  adminLoginAttempts: number;
+  adminLockedUntil?: Date;
+  adminTwoFactorEnabled: boolean;
+  adminTwoFactorSecret?: string;
+  adminMetadata?: {
+    createdByAdmin?: string;
+    lastPasswordChange?: Date;
+    preferredLanguage?: string;
+  };
+  
+  // Nouvelles méthodes admin
+  isAdmin(): boolean;
+  hasAdminPermission(permission: AdminPermission): boolean;
+  canManageAdmin(targetRole: AdminRole): boolean;
+  setAdminRole(role: AdminRole, grantedBy: string): Promise<IAccountDocument>;
   
   // Méthodes d'instance
   addPurchaseRecord(purchase: IPurchaseHistory): Promise<IAccountDocument>;
@@ -260,7 +296,33 @@ const accountSchema = new Schema<IAccountDocument>({
   serverList: [{
     type: String,
     match: /^S\d+$/
-  }]
+  }],
+  
+  // ADMINISTRATION
+  adminRole: {
+    type: String,
+    enum: ['super_admin', 'admin', 'moderator', 'viewer'],
+    sparse: true,
+    index: true
+  },
+  adminPermissions: [{
+    type: String
+  }],
+  adminEnabled: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+  adminLastLoginAt: { type: Date },
+  adminLoginAttempts: { type: Number, default: 0, min: 0 },
+  adminLockedUntil: { type: Date },
+  adminTwoFactorEnabled: { type: Boolean, default: false },
+  adminTwoFactorSecret: { type: String, select: false },
+  adminMetadata: {
+    createdByAdmin: String,
+    lastPasswordChange: { type: Date, default: Date.now },
+    preferredLanguage: { type: String, default: 'en' }
+  }
 }, {
   timestamps: true,
   collection: 'accounts',
@@ -403,4 +465,48 @@ accountSchema.methods.getAccountStats = function() {
   };
 };
 
+// MÉTHODES ADMINISTRATION
+accountSchema.methods.isAdmin = function() {
+  return this.adminEnabled && this.adminRole && this.accountStatus === 'active';
+};
+
+accountSchema.methods.hasAdminPermission = function(permission: AdminPermission) {
+  if (!this.isAdmin()) return false;
+  if (this.adminPermissions?.includes('*')) return true;
+  return this.adminPermissions?.includes(permission) || false;
+};
+
+accountSchema.methods.canManageAdmin = function(targetRole: AdminRole) {
+  if (!this.isAdmin()) return false;
+  
+  const roleHierarchy = {
+    'viewer': 1,
+    'moderator': 2, 
+    'admin': 3,
+    'super_admin': 4
+  };
+  
+  const currentLevel = roleHierarchy[this.adminRole as AdminRole] || 0;
+  const targetLevel = roleHierarchy[targetRole] || 0;
+  
+  return currentLevel > targetLevel;
+};
+
+accountSchema.methods.setAdminRole = function(role: AdminRole, grantedBy: string) {
+  this.adminRole = role;
+  this.adminEnabled = true;
+  if (!this.adminMetadata) this.adminMetadata = {};
+  this.adminMetadata.createdByAdmin = grantedBy;
+  
+  // Assigner permissions par défaut selon le rôle
+  const defaultPermissions = {
+    'viewer': ['analytics.view'],
+    'moderator': ['analytics.view', 'player.view', 'player.moderate'],
+    'admin': ['analytics.view', 'analytics.export', 'player.manage', 'economy.view'],
+    'super_admin': ['*']
+  };
+  
+  this.adminPermissions = defaultPermissions[role] || [];
+  return this.save();
+};
 export default mongoose.model<IAccountDocument>("Account", accountSchema);
