@@ -497,7 +497,7 @@ export class AdminService {
         role: account.adminRole,
         permissions: account.adminPermissions,
         lastLoginAt: account.adminLastLoginAt,
-        createdAt: account.createdAt,
+        createdAt: (account as any).createdAt,
         isActive: account.adminEnabled
       }));
 
@@ -804,7 +804,7 @@ export class AdminService {
         role: account.adminRole,
         permissions: this.getEffectiveAdminPermissions(account),
         lastLoginAt: account.adminLastLoginAt,
-        createdAt: account.createdAt,
+        createdAt: (account as any).createdAt,
         getAccountSummary: () => ({
           adminId: account.accountId,
           username: account.username,
