@@ -378,7 +378,7 @@ adminSchema.methods.canManageAdmin = function(targetAdminRole: AdminRole): boole
     return this.role === 'super_admin';
   }
   
-  const currentLevel = ADMIN_ROLE_HIERARCHY[this.role];
+  const rolePermissions = DEFAULT_ROLE_PERMISSIONS[this.role as AdminRole] || [];
   const targetLevel = ADMIN_ROLE_HIERARCHY[targetAdminRole];
   
   return currentLevel > targetLevel;
