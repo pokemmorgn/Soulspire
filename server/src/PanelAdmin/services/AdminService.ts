@@ -814,7 +814,7 @@ export class AdminService {
           isActive: account.adminEnabled,
           isLocked: this.isAdminLocked(account),
           lastLoginAt: account.adminLastLoginAt,
-          createdAt: account.createdAt
+          createdAt: (account as any).createdAt
         })
       };
     } catch (error) {
