@@ -267,7 +267,7 @@ export class PlayerManagementService {
           email: account.email,
           accountStatus: account.accountStatus,
           totalSpentUSD: account.totalPurchasesUSD,
-          accountAge: account.createdAt ? 
+          accountAge: (account as any).createdAt ? 
             Math.floor((Date.now() - (account as any).createdAt.getTime()) / (1000 * 60 * 60 * 24)) : 0,
           totalPlaytime: account.totalPlaytimeMinutes,
           lastLogin: account.lastLoginAt,
@@ -378,7 +378,7 @@ export class PlayerManagementService {
         case 'warn':
           // Pour l'instant, juste logger l'avertissement
           result = { success: true, message: `Warning issued to ${account.username}` };
-          auditAction = 'player.moderate';
+          auditAction = 'player.view_details';
           break;
 
         case 'reset_progress':
