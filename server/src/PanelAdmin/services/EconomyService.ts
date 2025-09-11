@@ -2,1078 +2,693 @@ import mongoose from 'mongoose';
 import Account from '../../models/Account';
 import Player from '../../models/Player';
 import AuditLog from '../models/AuditLog';
-import { AdminRole, AdminPermission, AdminAction } from '../types/adminTypes';
+import { AdminRole, AdminPermission } from '../types/adminTypes';
 
-// Interfaces pour l'économie
-interface IEconomySnapshot {
-  serverId: string;
-  timestamp: Date;
-  totalPlayers: number;
-  currencies: {
-    gold: {
-      total: number;
-      average: number;
-      median: number;
-      top1Percent: number;
-      distribution: Array<{ range: string; count: number; percentage: number }>;
-    };
-    gems: {
-      total: number;
-      average: number;
-      median: number;
-      top1Percent: number;
-      distribution: Array<{ range: string; count: number; percentage: number }>;
-    };
-    paidGems: {
-      total: number;
-      average: number;
-      median: number;
-      top1Percent: number;
-    };
-    tickets: {
-      total: number;
-      average: number;
-      median: number;
-    };
-  };
-  healthIndicators: {
-    giniCoefficient: number; // Inégalité de distribution (0-1, 0=parfaitement égal)
-    inflationRate: number; // Taux d'inflation estimé
-    liquidityRatio: number; // Ratio de liquidité
-    economyScore: number; // Score global de santé (0-100)
-  };
-}
-
-interface IEconomyAnomaly {
-  type: 'suspicious_wealth' | 'rapid_accumulation' | 'mass_transfer' | 'inflation_spike' | 'deflation_risk';
+interface IEconomyAlert {
+  type: 'currency_spike' | 'impossible_progress' | 'suspicious_purchases' | 'currency_manipulation' | 'progress_skip';
   severity: 'low' | 'medium' | 'high' | 'critical';
-  serverId: string;
+  accountId: string;
+  username: string;
+  serverId?: string;
   playerId?: string;
-  playerName?: string;
-  description: string;
-  detectedAt: Date;
-  data: any;
-  resolved: boolean;
-  resolvedAt?: Date;
-  resolvedBy?: string;
+  details: any;
+  timestamp: Date;
+  autoAction?: 'flag' | 'suspend' | 'investigate';
 }
 
-interface IGlobalEconomyAction {
-  serverId: string;
-  action: 'distribute' | 'drain' | 'multiply' | 'tax' | 'compensate';
-  currency: 'gold' | 'gems' | 'tickets';
-  parameters: {
-    amount?: number;
-    percentage?: number;
-    multiplier?: number;
-    condition?: string; // Ex: "level >= 10", "vipLevel >= 3"
+interface IEconomyStats {
+  totalCurrency: {
+    gold: number;
+    gems: number;
+    paidGems: number;
+    tickets: number;
   };
-  reason: string;
-  affectedPlayersEstimate?: number;
+  circulation: {
+    dailySpent: any;
+    dailyEarned: any;
+    inflation: number;
+  };
+  players: {
+    f2p: number;
+    spenders: number;
+    whales: number;
+    averageSpending: number;
+  };
+  alerts: {
+    total: number;
+    critical: number;
+    recent: number;
+  };
 }
 
-interface ITransactionPattern {
-  playerId: string;
-  playerName: string;
+interface ICheaterDetection {
+  accountId: string;
+  username: string;
   serverId: string;
-  patterns: {
-    rapidGoldGain: boolean;
-    suspiciousGemsGain: boolean;
-    unusualSpending: boolean;
-    potentialBot: boolean;
-    riskScore: number; // 0-100
-  };
-  recentTransactions: Array<{
+  suspicionLevel: number; // 0-100
+  flags: Array<{
     type: string;
-    amount: number;
-    currency: string;
+    severity: 'low' | 'medium' | 'high' | 'critical';
+    description: string;
+    evidence: any;
     timestamp: Date;
-    suspicious: boolean;
   }>;
+  recommendations: string[];
 }
 
 export class EconomyService {
 
-  // ===== SURVEILLANCE ÉCONOMIQUE =====
-
-  /**
-   * Obtenir un snapshot complet de l'économie d'un serveur
-   */
-  static async getEconomySnapshot(serverId: string): Promise<IEconomySnapshot> {
+  static async getEconomyOverview(): Promise<IEconomyStats> {
     try {
-      const players = await Player.find({ serverId }).select('gold gems paidGems tickets level vipLevel');
-      
-      if (players.length === 0) {
-        throw new Error('No players found for this server');
-      }
+      const [currencyStats, playerTypes, alertsData] = await Promise.all([
+        this.getTotalCurrencyInCirculation(),
+        this.getPlayerSpendingDistribution(),
+        this.getRecentAlertsCount()
+      ]);
 
-      // Trier les données pour calculs statistiques
-      const goldValues = players.map(p => p.gold).sort((a, b) => a - b);
-      const gemsValues = players.map(p => p.gems).sort((a, b) => a - b);
-      const paidGemsValues = players.map(p => p.paidGems).sort((a, b) => a - b);
-      const ticketsValues = players.map(p => p.tickets).sort((a, b) => a - b);
-
-      const snapshot: IEconomySnapshot = {
-        serverId,
-        timestamp: new Date(),
-        totalPlayers: players.length,
-        currencies: {
-          gold: {
-            total: goldValues.reduce((sum, val) => sum + val, 0),
-            average: goldValues.reduce((sum, val) => sum + val, 0) / goldValues.length,
-            median: this.calculateMedian(goldValues),
-            top1Percent: this.calculateTop1Percent(goldValues),
-            distribution: this.calculateDistribution(goldValues, [
-              { min: 0, max: 10000, label: '0-10K' },
-              { min: 10000, max: 50000, label: '10K-50K' },
-              { min: 50000, max: 100000, label: '50K-100K' },
-              { min: 100000, max: 500000, label: '100K-500K' },
-              { min: 500000, max: Infinity, label: '500K+' }
-            ])
-          },
-          gems: {
-            total: gemsValues.reduce((sum, val) => sum + val, 0),
-            average: gemsValues.reduce((sum, val) => sum + val, 0) / gemsValues.length,
-            median: this.calculateMedian(gemsValues),
-            top1Percent: this.calculateTop1Percent(gemsValues),
-            distribution: this.calculateDistribution(gemsValues, [
-              { min: 0, max: 1000, label: '0-1K' },
-              { min: 1000, max: 5000, label: '1K-5K' },
-              { min: 5000, max: 10000, label: '5K-10K' },
-              { min: 10000, max: 50000, label: '10K-50K' },
-              { min: 50000, max: Infinity, label: '50K+' }
-            ])
-          },
-          paidGems: {
-            total: paidGemsValues.reduce((sum, val) => sum + val, 0),
-            average: paidGemsValues.reduce((sum, val) => sum + val, 0) / paidGemsValues.length,
-            median: this.calculateMedian(paidGemsValues),
-            top1Percent: this.calculateTop1Percent(paidGemsValues)
-          },
-          tickets: {
-            total: ticketsValues.reduce((sum, val) => sum + val, 0),
-            average: ticketsValues.reduce((sum, val) => sum + val, 0) / ticketsValues.length,
-            median: this.calculateMedian(ticketsValues)
-          }
-        },
-        healthIndicators: {
-          giniCoefficient: this.calculateGiniCoefficient(goldValues),
-          inflationRate: await this.estimateInflationRate(serverId),
-          liquidityRatio: this.calculateLiquidityRatio(players),
-          economyScore: 0 // Sera calculé après
-        }
+      return {
+        totalCurrency: currencyStats,
+        circulation: await this.getCurrencyCirculation(),
+        players: playerTypes,
+        alerts: alertsData
       };
-
-      // Calculer le score global de santé économique
-      snapshot.healthIndicators.economyScore = this.calculateEconomyHealthScore(snapshot);
-
-      return snapshot;
-
     } catch (error) {
-      console.error('Get economy snapshot error:', error);
-      throw new Error('Failed to generate economy snapshot');
+      console.error('Get economy overview error:', error);
+      throw new Error('Failed to get economy overview');
     }
   }
 
-  /**
-   * Détecter les anomalies économiques
-   */
-  static async detectEconomyAnomalies(serverId: string): Promise<IEconomyAnomaly[]> {
+  static async detectCheaters(serverId?: string): Promise<ICheaterDetection[]> {
     try {
-      const anomalies: IEconomyAnomaly[] = [];
-      const players = await Player.find({ serverId });
-      const now = new Date();
-
-      // 1. Détecter les richesses suspectes
-      const wealthThresholds = {
-        gold: 10000000, // 10M d'or
-        gems: 100000,   // 100K gems
-        paidGems: 50000 // 50K paid gems
-      };
+      const query = serverId ? { serverId } : {};
+      const players = await Player.find(query).limit(1000);
+      const cheaters: ICheaterDetection[] = [];
 
       for (const player of players) {
-        let suspiciousWealth = false;
-        const suspiciousFields = [];
-
-        if (player.gold > wealthThresholds.gold) {
-          suspiciousFields.push(`gold: ${player.gold.toLocaleString()}`);
-          suspiciousWealth = true;
-        }
-        if (player.gems > wealthThresholds.gems) {
-          suspiciousFields.push(`gems: ${player.gems.toLocaleString()}`);
-          suspiciousWealth = true;
-        }
-        if (player.paidGems > wealthThresholds.paidGems) {
-          suspiciousFields.push(`paidGems: ${player.paidGems.toLocaleString()}`);
-          suspiciousWealth = true;
-        }
-
-        if (suspiciousWealth) {
-          anomalies.push({
-            type: 'suspicious_wealth',
-            severity: player.paidGems > wealthThresholds.paidGems ? 'critical' : 'high',
-            serverId,
-            playerId: player.playerId,
-            playerName: player.displayName,
-            description: `Player has suspicious wealth levels: ${suspiciousFields.join(', ')}`,
-            detectedAt: now,
-            data: {
-              gold: player.gold,
-              gems: player.gems,
-              paidGems: player.paidGems,
-              level: player.level,
-              vipLevel: player.vipLevel
-            },
-            resolved: false
-          });
+        const detection = await this.analyzePlayerForCheating(player);
+        if (detection.suspicionLevel >= 60) {
+          cheaters.push(detection);
         }
       }
 
-      // 2. Détecter l'accumulation rapide (dernières 24h)
-      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      const recentlyCreatedPlayers = players.filter(p => 
-        (p as any).createdAt && (p as any).createdAt > yesterday
-      );
+      cheaters.sort((a, b) => b.suspicionLevel - a.suspicionLevel);
+      return cheaters.slice(0, 50);
+    } catch (error) {
+      console.error('Detect cheaters error:', error);
+      throw new Error('Failed to detect cheaters');
+    }
+  }
 
-      for (const player of recentlyCreatedPlayers) {
-        const totalWealth = player.gold + (player.gems * 100) + (player.paidGems * 100);
-        if (totalWealth > 1000000) { // 1M en valeur équivalente or
-          anomalies.push({
-            type: 'rapid_accumulation',
-            severity: 'high',
-            serverId,
-            playerId: player.playerId,
-            playerName: player.displayName,
-            description: `New player accumulated significant wealth quickly: ${totalWealth.toLocaleString()} total value`,
-            detectedAt: now,
-            data: {
-              accountAge: Math.floor((now.getTime() - (player as any).createdAt.getTime()) / (1000 * 60 * 60)),
-              totalWealth,
-              gold: player.gold,
-              gems: player.gems,
-              paidGems: player.paidGems
-            },
-            resolved: false
-          });
-        }
-      }
+  static async flagSuspiciousActivity(): Promise<IEconomyAlert[]> {
+    try {
+      const alerts: IEconomyAlert[] = [];
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-      // 3. Détecter les ratios anormaux gems/paidGems
-      for (const player of players) {
-        if (player.paidGems > 0 && player.gems > player.paidGems * 50) {
-          anomalies.push({
-            type: 'suspicious_wealth',
-            severity: 'medium',
-            serverId,
-            playerId: player.playerId,
-            playerName: player.displayName,
-            description: `Unusual gems to paidGems ratio: ${player.gems} gems vs ${player.paidGems} paid gems`,
-            detectedAt: now,
-            data: {
-              gems: player.gems,
-              paidGems: player.paidGems,
-              ratio: player.paidGems > 0 ? player.gems / player.paidGems : 0
-            },
-            resolved: false
-          });
-        }
-      }
+      const [currencySpikes, progressAnomalies, purchaseAnomalies] = await Promise.all([
+        this.detectCurrencySpikes(yesterday),
+        this.detectProgressAnomalies(yesterday),
+        this.detectPurchaseAnomalies(yesterday)
+      ]);
 
-      // 4. Analyser la distribution économique globale
-      const snapshot = await this.getEconomySnapshot(serverId);
+      alerts.push(...currencySpikes, ...progressAnomalies, ...purchaseAnomalies);
       
-      // Détection d'inflation (coefficient de Gini trop élevé)
-      if (snapshot.healthIndicators.giniCoefficient > 0.7) {
-        anomalies.push({
-          type: 'inflation_spike',
-          severity: snapshot.healthIndicators.giniCoefficient > 0.85 ? 'critical' : 'high',
-          serverId,
-          description: `High wealth inequality detected (Gini: ${snapshot.healthIndicators.giniCoefficient.toFixed(3)})`,
-          detectedAt: now,
-          data: {
-            giniCoefficient: snapshot.healthIndicators.giniCoefficient,
-            top1PercentGold: snapshot.currencies.gold.top1Percent,
-            averageGold: snapshot.currencies.gold.average,
-            medianGold: snapshot.currencies.gold.median
-          },
-          resolved: false
-        });
+      for (const alert of alerts.filter(a => a.severity === 'critical')) {
+        await this.createEconomyAuditLog(alert);
       }
 
-      // Détection de déflation (économie trop restreinte)
-      if (snapshot.currencies.gold.average < 1000 && snapshot.totalPlayers > 100) {
-        anomalies.push({
-          type: 'deflation_risk',
-          severity: 'medium',
-          serverId,
-          description: `Low average gold suggests possible deflation (avg: ${snapshot.currencies.gold.average.toFixed(0)})`,
-          detectedAt: now,
-          data: {
-            averageGold: snapshot.currencies.gold.average,
-            totalPlayers: snapshot.totalPlayers,
-            economyScore: snapshot.healthIndicators.economyScore
-          },
-          resolved: false
-        });
-      }
-
-      return anomalies.sort((a, b) => {
-        const severityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
-        return severityOrder[b.severity] - severityOrder[a.severity];
-      });
-
+      return alerts.sort((a, b) => this.getSeverityWeight(b.severity) - this.getSeverityWeight(a.severity));
     } catch (error) {
-      console.error('Detect economy anomalies error:', error);
-      throw new Error('Failed to detect economy anomalies');
+      console.error('Flag suspicious activity error:', error);
+      return [];
     }
   }
 
-  /**
-   * Analyser les patterns de transaction suspects
-   */
-  static async analyzeTransactionPatterns(serverId: string, limit: number = 50): Promise<ITransactionPattern[]> {
-    try {
-      const players = await Player.find({ serverId })
-        .sort({ lastSeenAt: -1 })
-        .limit(limit);
-
-      const patterns: ITransactionPattern[] = [];
-
-      for (const player of players) {
-        const riskFactors = {
-          rapidGoldGain: false,
-          suspiciousGemsGain: false,
-          unusualSpending: false,
-          potentialBot: false
-        };
-
-        let riskScore = 0;
-
-        // Analyser la progression vs niveau
-        const expectedGoldForLevel = player.level * 1000; // 1K or par niveau approximativement
-        if (player.gold > expectedGoldForLevel * 10) {
-          riskFactors.rapidGoldGain = true;
-          riskScore += 25;
-        }
-
-        // Analyser les gems vs argent dépensé
-        if (player.gems > 10000 && player.totalSpentUSDOnServer < 10) {
-          riskFactors.suspiciousGemsGain = true;
-          riskScore += 30;
-        }
-
-        // Détecter les patterns de bot
-        if (player.totalBattlesFought > 1000 && 
-            player.playtimeMinutes < 60 && 
-            player.totalBattlesWon === player.totalBattlesFought) {
-          riskFactors.potentialBot = true;
-          riskScore += 40;
-        }
-
-        // Analyser les dépenses inhabituelles
-        if (player.totalSpentUSDOnServer > 1000 && player.level < 10) {
-          riskFactors.unusualSpending = true;
-          riskScore += 20;
-        }
-
-        // Simuler des transactions récentes (dans un vrai système, ça viendrait de logs)
-        const recentTransactions = this.generateMockTransactions(player, riskFactors);
-
-        if (riskScore > 20) { // Seuil de détection
-          patterns.push({
-            playerId: player.playerId,
-            playerName: player.displayName,
-            serverId,
-            patterns: {
-              ...riskFactors,
-              riskScore
-            },
-            recentTransactions
-          });
-        }
-      }
-
-      return patterns.sort((a, b) => b.patterns.riskScore - a.patterns.riskScore);
-
-    } catch (error) {
-      console.error('Analyze transaction patterns error:', error);
-      throw new Error('Failed to analyze transaction patterns');
-    }
-  }
-
-  // ===== INTERVENTIONS ÉCONOMIQUES =====
-
-  /**
-   * Exécuter une action économique globale
-   */
-  static async executeGlobalEconomyAction(
-    action: IGlobalEconomyAction,
-    adminId: string,
-    ipAddress: string,
-    userAgent: string
-  ): Promise<{
-    success: boolean;
-    affectedPlayers: number;
-    totalAmountChanged: number;
-    message: string;
-  }> {
-    try {
-      const admin = await Account.findOne({ accountId: adminId, adminEnabled: true });
-      if (!admin || !admin.hasAdminPermission('economy.modify')) {
-        throw new Error('Insufficient permissions for global economy actions');
-      }
-
-      let query: any = { serverId: action.serverId };
-      
-      // Appliquer les conditions si spécifiées
-      if (action.parameters.condition) {
-        query = { ...query, ...this.parseCondition(action.parameters.condition) };
-      }
-
-      const targetPlayers = await Player.find(query);
-      let affectedPlayers = 0;
-      let totalAmountChanged = 0;
-
-      for (const player of targetPlayers) {
-        const oldValue = player[action.currency];
-        let newValue = oldValue;
-
-        switch (action.action) {
-          case 'distribute':
-            if (action.parameters.amount) {
-              newValue = oldValue + action.parameters.amount;
-              totalAmountChanged += action.parameters.amount;
-            }
-            break;
-
-          case 'drain':
-            if (action.parameters.amount) {
-              newValue = Math.max(0, oldValue - action.parameters.amount);
-              totalAmountChanged += (oldValue - newValue);
-            } else if (action.parameters.percentage) {
-              const drainAmount = Math.floor(oldValue * (action.parameters.percentage / 100));
-              newValue = oldValue - drainAmount;
-              totalAmountChanged += drainAmount;
-            }
-            break;
-
-          case 'multiply':
-            if (action.parameters.multiplier) {
-              newValue = Math.floor(oldValue * action.parameters.multiplier);
-              totalAmountChanged += (newValue - oldValue);
-            }
-            break;
-
-          case 'tax':
-            if (action.parameters.percentage && oldValue > 10000) { // Taxer seulement les "riches"
-              const taxAmount = Math.floor(oldValue * (action.parameters.percentage / 100));
-              newValue = oldValue - taxAmount;
-              totalAmountChanged += taxAmount;
-            }
-            break;
-
-          case 'compensate':
-            if (action.parameters.amount) {
-              newValue = oldValue + action.parameters.amount;
-              totalAmountChanged += action.parameters.amount;
-            }
-            break;
-        }
-
-        if (newValue !== oldValue) {
-          player[action.currency] = newValue;
-          await player.save();
-          affectedPlayers++;
-        }
-      }
-
-      // Logger l'action globale
-      await AuditLog.createLog({
-        adminId,
-        adminUsername: admin.username,
-        adminRole: admin.adminRole!,
-        action: 'economy.modify_shop',
-        resource: 'global_economy',
-        resourceId: action.serverId,
-        details: {
-          additionalInfo: {
-            action: action.action,
-            currency: action.currency,
-            parameters: action.parameters,
-            reason: action.reason,
-            affectedPlayers,
-            totalAmountChanged,
-            estimateMatched: action.affectedPlayersEstimate || 'not provided'
-          }
-        },
-        ipAddress,
-        userAgent,
-        success: true,
-        severity: 'critical'
-      });
-
-      return {
-        success: true,
-        affectedPlayers,
-        totalAmountChanged,
-        message: `Global ${action.action} completed: ${affectedPlayers} players affected, ${totalAmountChanged.toLocaleString()} ${action.currency} ${action.action === 'drain' || action.action === 'tax' ? 'removed' : 'added'}`
-      };
-
-    } catch (error) {
-      console.error('Execute global economy action error:', error);
-      throw new Error(`Failed to execute global economy action: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  /**
-   * Créer une compensation de masse
-   */
-  static async createMassCompensation(
-    serverId: string,
-    compensation: {
-      gold?: number;
-      gems?: number;
-      tickets?: number;
-    },
-    condition: string,
-    reason: string,
-    adminId: string,
-    ipAddress: string,
-    userAgent: string
-  ): Promise<{ success: boolean; details: any }> {
-    try {
-      const results = [];
-
-      for (const [currency, amount] of Object.entries(compensation)) {
-        if (amount && amount > 0) {
-          const action: IGlobalEconomyAction = {
-            serverId,
-            action: 'compensate',
-            currency: currency as 'gold' | 'gems' | 'tickets',
-            parameters: { amount },
-            reason: `Mass compensation: ${reason}`,
-            affectedPlayersEstimate: 0
-          };
-
-          const result = await this.executeGlobalEconomyAction(
-            action,
-            adminId,
-            ipAddress,
-            userAgent
-          );
-
-          results.push({
-            currency,
-            amount,
-            affectedPlayers: result.affectedPlayers,
-            success: result.success
-          });
-        }
-      }
-
-      return {
-        success: true,
-        details: {
-          serverId,
-          compensations: results,
-          reason,
-          condition,
-          timestamp: new Date()
-        }
-      };
-
-    } catch (error) {
-      console.error('Create mass compensation error:', error);
-      throw new Error('Failed to create mass compensation');
-    }
-  }
-
-  // ===== ANALYTICS ÉCONOMIQUES =====
-
-  /**
-   * Comparer l'économie entre serveurs
-   */
-  static async compareServerEconomies(): Promise<Array<{
-    serverId: string;
-    playerCount: number;
-    economyScore: number;
-    averageWealth: number;
-    giniCoefficient: number;
-    inflationRisk: 'low' | 'medium' | 'high';
-    lastUpdated: Date;
-  }>> {
-    try {
-      const servers = await Player.distinct('serverId');
-      const comparisons = [];
-
-      for (const serverId of servers) {
-        try {
-          const snapshot = await this.getEconomySnapshot(serverId);
-          
-          let inflationRisk: 'low' | 'medium' | 'high' = 'low';
-          if (snapshot.healthIndicators.giniCoefficient > 0.6) inflationRisk = 'medium';
-          if (snapshot.healthIndicators.giniCoefficient > 0.75) inflationRisk = 'high';
-
-          comparisons.push({
-            serverId,
-            playerCount: snapshot.totalPlayers,
-            economyScore: snapshot.healthIndicators.economyScore,
-            averageWealth: snapshot.currencies.gold.average + (snapshot.currencies.gems.average * 10),
-            giniCoefficient: snapshot.healthIndicators.giniCoefficient,
-            inflationRisk,
-            lastUpdated: snapshot.timestamp
-          });
-        } catch (error) {
-          console.warn(`Failed to get snapshot for server ${serverId}:`, error);
-        }
-      }
-
-      return comparisons.sort((a, b) => b.economyScore - a.economyScore);
-
-    } catch (error) {
-      console.error('Compare server economies error:', error);
-      throw new Error('Failed to compare server economies');
-    }
-  }
-
-  /**
-   * Obtenir les tendances économiques
-   */
-  static async getEconomyTrends(serverId: string, days: number = 7): Promise<{
-    trends: Array<{
-      date: string;
-      avgGold: number;
-      avgGems: number;
-      playerCount: number;
-      economyScore: number;
-    }>;
-    projections: {
-      nextWeekGold: number;
-      nextWeekGems: number;
-      trend: 'growing' | 'stable' | 'declining';
-    };
-  }> {
-    try {
-      // Pour l'instant, simuler des données de tendance
-      // Dans un vrai système, ça viendrait d'une table de snapshots historiques
-      const trends = [];
-      const now = new Date();
-
-      for (let i = days - 1; i >= 0; i--) {
-        const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-        const snapshot = await this.getEconomySnapshot(serverId);
-        
-        // Ajouter une variation simulée pour montrer l'évolution
-        const dayVariation = 1 + (Math.random() - 0.5) * 0.1; // ±5% variation
-        
-        trends.push({
-          date: date.toISOString().split('T')[0],
-          avgGold: Math.floor(snapshot.currencies.gold.average * dayVariation),
-          avgGems: Math.floor(snapshot.currencies.gems.average * dayVariation),
-          playerCount: snapshot.totalPlayers,
-          economyScore: snapshot.healthIndicators.economyScore
-        });
-      }
-
-      // Calculer les projections basiques
-      const lastWeek = trends.slice(-7);
-      const goldTrend = lastWeek[lastWeek.length - 1].avgGold - lastWeek[0].avgGold;
-      const gemsTrend = lastWeek[lastWeek.length - 1].avgGems - lastWeek[0].avgGems;
-      
-      let overallTrend: 'growing' | 'stable' | 'declining' = 'stable';
-      if (goldTrend > 100 && gemsTrend > 10) overallTrend = 'growing';
-      if (goldTrend < -100 && gemsTrend < -10) overallTrend = 'declining';
-
-      return {
-        trends,
-        projections: {
-          nextWeekGold: lastWeek[lastWeek.length - 1].avgGold + goldTrend,
-          nextWeekGems: lastWeek[lastWeek.length - 1].avgGems + gemsTrend,
-          trend: overallTrend
-        }
-      };
-
-    } catch (error) {
-      console.error('Get economy trends error:', error);
-      throw new Error('Failed to get economy trends');
-    }
-  }
-
-  // ===== MÉTHODES UTILITAIRES PRIVÉES =====
-
-  private static calculateMedian(values: number[]): number {
-    const mid = Math.floor(values.length / 2);
-    return values.length % 2 === 0 
-      ? (values[mid - 1] + values[mid]) / 2 
-      : values[mid];
-  }
-
-  private static calculateTop1Percent(values: number[]): number {
-    const index = Math.floor(values.length * 0.99);
-    return values[index] || 0;
-  }
-
-  private static calculateDistribution(
-    values: number[], 
-    ranges: Array<{ min: number; max: number; label: string }>
-  ): Array<{ range: string; count: number; percentage: number }> {
-    const total = values.length;
-    return ranges.map(range => {
-      const count = values.filter(v => v >= range.min && v < range.max).length;
-      return {
-        range: range.label,
-        count,
-        percentage: (count / total) * 100
-      };
-    });
-  }
-
-  private static calculateGiniCoefficient(values: number[]): number {
-    const n = values.length;
-    if (n === 0) return 0;
-
-    const sortedValues = [...values].sort((a, b) => a - b);
-    const mean = sortedValues.reduce((sum, val) => sum + val, 0) / n;
-    
-    if (mean === 0) return 0;
-
-    let gini = 0;
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) {
-        gini += Math.abs(sortedValues[i] - sortedValues[j]);
-      }
-    }
-
-    return gini / (2 * n * n * mean);
-  }
-
-  private static async estimateInflationRate(serverId: string): Promise<number> {
-    // Simulation simple - dans un vrai système, comparer avec données historiques
-    const snapshot = await this.getEconomySnapshot(serverId);
-    const baseInflation = 0.02; // 2% de base
-    
-    // Plus d'inégalité = plus d'inflation
-    const inequalityFactor = snapshot.healthIndicators.giniCoefficient * 0.05;
-    
-    return Math.min(baseInflation + inequalityFactor, 0.15); // Max 15%
-  }
-
-  private static calculateLiquidityRatio(players: any[]): number {
-    const totalLiquid = players.reduce((sum, p) => sum + p.gold + p.gems, 0);
-    const totalAssets = players.reduce((sum, p) => 
-      sum + p.gold + p.gems + p.paidGems + (p.heroes.length * 1000), 0
-    );
-    
-    return totalAssets > 0 ? totalLiquid / totalAssets : 0;
-  }
-
-  private static calculateEconomyHealthScore(snapshot: IEconomySnapshot): number {
-    let score = 100;
-
-    // Pénaliser l'inégalité excessive
-    if (snapshot.healthIndicators.giniCoefficient > 0.5) {
-      score -= (snapshot.healthIndicators.giniCoefficient - 0.5) * 100;
-    }
-
-    // Pénaliser l'inflation élevée
-    if (snapshot.healthIndicators.inflationRate > 0.05) {
-      score -= (snapshot.healthIndicators.inflationRate - 0.05) * 200;
-    }
-
-    // Pénaliser la faible liquidité
-    if (snapshot.healthIndicators.liquidityRatio < 0.3) {
-      score -= (0.3 - snapshot.healthIndicators.liquidityRatio) * 100;
-    }
-
-    // Bonus pour une distribution équilibrée
-    if (snapshot.healthIndicators.giniCoefficient < 0.3) {
-      score += 10;
-    }
-
-    return Math.max(0, Math.min(100, score));
-  }
-
-  private static parseCondition(condition: string): any {
-    // Parser simple pour les conditions comme "level >= 10", "vipLevel >= 3"
-    const query: any = {};
-    
-    if (condition.includes('level >=')) {
-      const value = parseInt(condition.split('>=')[1].trim());
-      query.level = { $gte: value };
-    } else if (condition.includes('level <=')) {
-      const value = parseInt(condition.split('<=')[1].trim());
-      query.level = { $lte: value };
-    } else if (condition.includes('vipLevel >=')) {
-      const value = parseInt(condition.split('>=')[1].trim());
-      query.vipLevel = { $gte: value };
-    } else if (condition.includes('vipLevel <=')) {
-      const value = parseInt(condition.split('<=')[1].trim());
-      query.vipLevel = { $lte: value };
-    } else if (condition.includes('gold >')) {
-      const value = parseInt(condition.split('>')[1].trim());
-      query.gold = { $gt: value };
-    } else if (condition.includes('isNewPlayer')) {
-      query.isNewPlayer = condition.includes('true');
-    }
-    
-    return query;
-  }
-
-  private static generateMockTransactions(player: any, riskFactors: any): Array<{
-    type: string;
-    amount: number;
-    currency: string;
-    timestamp: Date;
-    suspicious: boolean;
-  }> {
-    const transactions = [];
-    const now = new Date();
-    
-    // Générer des transactions simulées basées sur les facteurs de risque
-    for (let i = 0; i < 10; i++) {
-      const timestamp = new Date(now.getTime() - Math.random() * 24 * 60 * 60 * 1000);
-      let suspicious = false;
-      
-      if (riskFactors.rapidGoldGain && Math.random() > 0.7) {
-        transactions.push({
-          type: 'gold_gain',
-          amount: Math.floor(Math.random() * 100000) + 50000,
-          currency: 'gold',
-          timestamp,
-          suspicious: true
-        });
-      } else if (riskFactors.suspiciousGemsGain && Math.random() > 0.8) {
-        transactions.push({
-          type: 'gems_gain',
-          amount: Math.floor(Math.random() * 5000) + 1000,
-          currency: 'gems',
-          timestamp,
-          suspicious: true
-        });
-      } else {
-        // Transaction normale
-        const types = ['battle_reward', 'quest_complete', 'shop_purchase', 'daily_bonus'];
-        const type = types[Math.floor(Math.random() * types.length)];
-        const currency = Math.random() > 0.7 ? 'gems' : 'gold';
-        const amount = currency === 'gold' 
-          ? Math.floor(Math.random() * 5000) + 100
-          : Math.floor(Math.random() * 100) + 10;
-          
-        transactions.push({
-          type,
-          amount,
-          currency,
-          timestamp,
-          suspicious: false
-        });
-      }
-    }
-    
-    return transactions.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-  }
-
-  // ===== MÉTHODES PUBLIQUES UTILITAIRES =====
-
-  /**
-   * Vérifier les permissions pour les actions économiques
-   */
-  static async checkEconomyPermission(
-    adminId: string,
-    action: 'view' | 'modify' | 'global_action' | 'compensate'
-  ): Promise<boolean> {
-    try {
-      const admin = await Account.findOne({ accountId: adminId, adminEnabled: true });
-      if (!admin || !admin.isAdmin()) {
-        return false;
-      }
-
-      const permissionMap = {
-        'view': 'economy.view',
-        'modify': 'economy.modify',
-        'global_action': 'economy.modify',
-        'compensate': 'economy.modify'
-      };
-
-      return admin.hasAdminPermission(permissionMap[action] as AdminPermission);
-    } catch (error) {
-      console.error('Check economy permission error:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Obtenir un résumé rapide de l'économie
-   */
-  static async getEconomyQuickSummary(): Promise<{
-    totalServers: number;
-    healthyServers: number;
-    serversWithAnomalies: number;
-    globalPlayerCount: number;
-    globalWealthDistribution: {
-      totalGold: number;
-      totalGems: number;
-      totalPaidGems: number;
-    };
-    lastUpdated: Date;
-  }> {
-    try {
-      const servers = await Player.distinct('serverId');
-      let healthyServers = 0;
-      let serversWithAnomalies = 0;
-      let globalPlayerCount = 0;
-      let totalGold = 0;
-      let totalGems = 0;
-      let totalPaidGems = 0;
-
-      for (const serverId of servers) {
-        try {
-          const [snapshot, anomalies] = await Promise.all([
-            this.getEconomySnapshot(serverId),
-            this.detectEconomyAnomalies(serverId)
-          ]);
-
-          globalPlayerCount += snapshot.totalPlayers;
-          totalGold += snapshot.currencies.gold.total;
-          totalGems += snapshot.currencies.gems.total;
-          totalPaidGems += snapshot.currencies.paidGems.total;
-
-          if (anomalies.length === 0 && snapshot.healthIndicators.economyScore > 70) {
-            healthyServers++;
-          } else {
-            serversWithAnomalies++;
-          }
-        } catch (error) {
-          console.warn(`Failed to analyze server ${serverId}:`, error);
-          serversWithAnomalies++;
-        }
-      }
-
-      return {
-        totalServers: servers.length,
-        healthyServers,
-        serversWithAnomalies,
-        globalPlayerCount,
-        globalWealthDistribution: {
-          totalGold,
-          totalGems,
-          totalPaidGems
-        },
-        lastUpdated: new Date()
-      };
-
-    } catch (error) {
-      console.error('Get economy quick summary error:', error);
-      throw new Error('Failed to get economy quick summary');
-    }
-  }
-
-  /**
-   * Simuler l'impact d'une action économique avant exécution
-   */
-  static async simulateEconomyAction(
-    action: IGlobalEconomyAction
-  ): Promise<{
-    estimatedAffectedPlayers: number;
-    estimatedImpact: {
-      totalAmountChanged: number;
-      averageChangePerPlayer: number;
-      percentageOfPlayerbase: number;
-    };
-    riskAssessment: {
-      level: 'low' | 'medium' | 'high' | 'critical';
-      warnings: string[];
+  static async analyzePlayerEconomy(accountId: string): Promise<{
+    account: any;
+    characters: any[];
+    economyHealth: {
+      score: number;
+      flags: string[];
       recommendations: string[];
     };
+    spending: {
+      total: number;
+      byServer: any[];
+      efficiency: number;
+    };
+    currency: {
+      byServer: any[];
+      totalValue: number;
+      suspiciousTransactions: any[];
+    };
   }> {
     try {
-      let query: any = { serverId: action.serverId };
-      
-      if (action.parameters.condition) {
-        query = { ...query, ...this.parseCondition(action.parameters.condition) };
-      }
+      const [account, characters] = await Promise.all([
+        Account.findOne({ accountId }),
+        Player.find({ accountId })
+      ]);
 
-      const targetPlayers = await Player.find(query).select(action.currency);
-      const totalPlayers = await Player.countDocuments({ serverId: action.serverId });
+      if (!account) throw new Error('Account not found');
 
-      let totalAmountChanged = 0;
-      const warnings: string[] = [];
-      const recommendations: string[] = [];
-
-      // Calculer l'impact estimé
-      for (const player of targetPlayers) {
-        const currentValue = player[action.currency];
-        
-        switch (action.action) {
-          case 'distribute':
-            if (action.parameters.amount) {
-              totalAmountChanged += action.parameters.amount;
-            }
-            break;
-          case 'drain':
-            if (action.parameters.amount) {
-              totalAmountChanged += Math.min(currentValue, action.parameters.amount);
-            } else if (action.parameters.percentage) {
-              totalAmountChanged += Math.floor(currentValue * (action.parameters.percentage / 100));
-            }
-            break;
-          case 'multiply':
-            if (action.parameters.multiplier) {
-              totalAmountChanged += Math.abs(currentValue * action.parameters.multiplier - currentValue);
-            }
-            break;
-        }
-      }
-
-      // Évaluation des risques
-      let riskLevel: 'low' | 'medium' | 'high' | 'critical' = 'low';
-      const percentageAffected = (targetPlayers.length / totalPlayers) * 100;
-
-      if (percentageAffected > 90) {
-        riskLevel = 'high';
-        warnings.push('Action affects more than 90% of players');
-      }
-
-      if (action.action === 'drain' && action.parameters.percentage && action.parameters.percentage > 50) {
-        riskLevel = 'critical';
-        warnings.push('Draining more than 50% of currency is very risky');
-      }
-
-      if (totalAmountChanged > 1000000 && action.currency === 'gold') {
-        riskLevel = riskLevel === 'critical' ? 'critical' : 'high';
-        warnings.push('Large amount of gold will be affected (>1M)');
-      }
-
-      if (action.action === 'multiply' && action.parameters.multiplier && action.parameters.multiplier > 2) {
-        riskLevel = 'medium';
-        warnings.push('High multiplication factor may cause inflation');
-        recommendations.push('Consider monitoring economy health after action');
-      }
-
-      if (targetPlayers.length < 10) {
-        recommendations.push('Very few players affected - consider if this is intended');
-      }
-
-      if (action.action === 'distribute' && !action.parameters.condition) {
-        recommendations.push('Consider adding conditions to target specific player groups');
-      }
+      const economyHealth = await this.calculateEconomyHealth(account, characters);
+      const spending = this.analyzeSpendingPatterns(account, characters);
+      const currency = await this.analyzeCurrencyDistribution(characters);
 
       return {
-        estimatedAffectedPlayers: targetPlayers.length,
-        estimatedImpact: {
-          totalAmountChanged,
-          averageChangePerPlayer: targetPlayers.length > 0 ? totalAmountChanged / targetPlayers.length : 0,
-          percentageOfPlayerbase: percentageAffected
+        account: {
+          accountId: account.accountId,
+          username: account.username,
+          totalSpentUSD: account.totalPurchasesUSD,
+          accountAge: Math.floor((Date.now() - (account as any).createdAt.getTime()) / (1000 * 60 * 60 * 24))
         },
-        riskAssessment: {
-          level: riskLevel,
-          warnings,
-          recommendations
-        }
+        characters: characters.map(char => ({
+          serverId: char.serverId,
+          level: char.level,
+          vipLevel: char.vipLevel,
+          currencies: {
+            gold: char.gold,
+            gems: char.gems,
+            paidGems: char.paidGems,
+            tickets: char.tickets
+          },
+          totalSpent: char.totalSpentUSDOnServer,
+          progressionSpeed: this.calculateProgressionSpeed(char)
+        })),
+        economyHealth,
+        spending,
+        currency
       };
-
     } catch (error) {
-      console.error('Simulate economy action error:', error);
-      throw new Error('Failed to simulate economy action');
+      console.error('Analyze player economy error:', error);
+      throw new Error('Failed to analyze player economy');
+    }
+  }
+
+  static async getServerEconomyComparison(): Promise<any[]> {
+    try {
+      const serverStats = await Player.aggregate([
+        {
+          $group: {
+            _id: '$serverId',
+            playerCount: { $sum: 1 },
+            avgLevel: { $avg: '$level' },
+            avgGold: { $avg: '$gold' },
+            avgGems: { $avg: '$gems' },
+            totalSpent: { $sum: '$totalSpentUSDOnServer' },
+            avgVip: { $avg: '$vipLevel' },
+            whales: { $sum: { $cond: [{ $gt: ['$totalSpentUSDOnServer', 100] }, 1, 0] } }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]);
+
+      return serverStats.map(server => ({
+        serverId: server._id,
+        playerCount: server.playerCount,
+        averages: {
+          level: Math.round(server.avgLevel),
+          gold: Math.round(server.avgGold),
+          gems: Math.round(server.avgGems),
+          vipLevel: Math.round(server.avgVip * 10) / 10
+        },
+        economy: {
+          totalSpent: server.totalSpent,
+          arpu: server.playerCount > 0 ? server.totalSpent / server.playerCount : 0,
+          whaleCount: server.whales,
+          whalePercentage: server.playerCount > 0 ? (server.whales / server.playerCount) * 100 : 0
+        },
+        healthScore: this.calculateServerHealthScore(server)
+      }));
+    } catch (error) {
+      console.error('Get server economy comparison error:', error);
+      return [];
+    }
+  }
+
+  static async correctEconomyIssue(
+    type: 'currency_reset' | 'progress_rollback' | 'purchase_refund',
+    targetId: string,
+    adminId: string,
+    reason: string,
+    data: any
+  ): Promise<{ success: boolean; message: string; changes: any }> {
+    try {
+      let result: any = { success: false, message: '', changes: {} };
+
+      switch (type) {
+        case 'currency_reset':
+          result = await this.resetSuspiciousCurrency(targetId, data, adminId, reason);
+          break;
+        case 'progress_rollback':
+          result = await this.rollbackProgress(targetId, data, adminId, reason);
+          break;
+        case 'purchase_refund':
+          result = await this.refundPurchase(targetId, data, adminId, reason);
+          break;
+      }
+
+      await this.createEconomyAuditLog({
+        type: 'currency_manipulation',
+        severity: 'high',
+        accountId: targetId,
+        username: 'system',
+        details: { correctionType: type, reason, changes: result.changes },
+        timestamp: new Date()
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Correct economy issue error:', error);
+      throw new Error('Failed to correct economy issue');
+    }
+  }
+
+  // DÉTECTION DE TRICHEURS
+  private static async analyzePlayerForCheating(player: any): Promise<ICheaterDetection> {
+    const flags: any[] = [];
+    let suspicionLevel = 0;
+
+    const account = await Account.findOne({ accountId: player.accountId });
+    const accountAge = account ? Math.floor((Date.now() - (account as any).createdAt.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+
+    // Progression trop rapide
+    const expectedLevel = Math.min(accountAge * 2, 50);
+    if (player.level > expectedLevel * 2) {
+      flags.push({
+        type: 'rapid_progression',
+        severity: 'high',
+        description: `Level ${player.level} too high for account age (${accountAge} days)`,
+        evidence: { level: player.level, accountAge, expected: expectedLevel },
+        timestamp: new Date()
+      });
+      suspicionLevel += 25;
+    }
+
+    // Currency suspecte
+    const expectedGold = player.level * 1000;
+    if (player.gold > expectedGold * 10) {
+      flags.push({
+        type: 'excessive_currency',
+        severity: 'critical',
+        description: `Gold amount ${player.gold} extremely high for level ${player.level}`,
+        evidence: { gold: player.gold, level: player.level, expected: expectedGold },
+        timestamp: new Date()
+      });
+      suspicionLevel += 35;
+    }
+
+    // Gems sans achat
+    if (player.gems > 10000 && player.totalSpentUSDOnServer === 0) {
+      flags.push({
+        type: 'suspicious_gems',
+        severity: 'high',
+        description: `High gem count (${player.gems}) with no purchases`,
+        evidence: { gems: player.gems, totalSpent: player.totalSpentUSDOnServer },
+        timestamp: new Date()
+      });
+      suspicionLevel += 20;
+    }
+
+    // Progression world impossible
+    const maxPossibleWorld = Math.min(Math.floor(player.level / 5), 20);
+    if (player.world > maxPossibleWorld + 3) {
+      flags.push({
+        type: 'impossible_world',
+        severity: 'critical',
+        description: `World ${player.world} impossible for level ${player.level}`,
+        evidence: { world: player.world, level: player.level, maxPossible: maxPossibleWorld },
+        timestamp: new Date()
+      });
+      suspicionLevel += 30;
+    }
+
+    // Héros collection suspecte
+    if (player.heroes.length > player.level * 0.5 + 10) {
+      flags.push({
+        type: 'excessive_heroes',
+        severity: 'medium',
+        description: `Too many heroes (${player.heroes.length}) for level ${player.level}`,
+        evidence: { heroCount: player.heroes.length, level: player.level },
+        timestamp: new Date()
+      });
+      suspicionLevel += 15;
+    }
+
+    // VIP sans dépenses
+    if (player.vipLevel > 5 && player.totalSpentUSDOnServer < player.vipLevel * 10) {
+      flags.push({
+        type: 'vip_without_spending',
+        severity: 'high',
+        description: `VIP ${player.vipLevel} with only $${player.totalSpentUSDOnServer} spent`,
+        evidence: { vipLevel: player.vipLevel, totalSpent: player.totalSpentUSDOnServer },
+        timestamp: new Date()
+      });
+      suspicionLevel += 25;
+    }
+
+    const recommendations = this.generateRecommendations(flags, suspicionLevel);
+
+    return {
+      accountId: player.accountId,
+      username: account?.username || 'Unknown',
+      serverId: player.serverId,
+      suspicionLevel: Math.min(suspicionLevel, 100),
+      flags,
+      recommendations
+    };
+  }
+
+  private static async detectCurrencySpikes(since: Date): Promise<IEconomyAlert[]> {
+    const alerts: IEconomyAlert[] = [];
+    
+    const suspiciousPlayers = await Player.find({
+      $or: [
+        { gold: { $gt: 1000000 } },
+        { gems: { $gt: 50000 } },
+        { tickets: { $gt: 1000 } }
+      ],
+      lastSeenAt: { $gte: since }
+    });
+
+    for (const player of suspiciousPlayers) {
+      const account = await Account.findOne({ accountId: player.accountId });
+      if (!account) continue;
+
+      alerts.push({
+        type: 'currency_spike',
+        severity: 'high',
+        accountId: player.accountId,
+        username: account.username,
+        serverId: player.serverId,
+        playerId: player.playerId,
+        details: {
+          gold: player.gold,
+          gems: player.gems,
+          tickets: player.tickets,
+          level: player.level
+        },
+        timestamp: new Date(),
+        autoAction: 'investigate'
+      });
+    }
+
+    return alerts;
+  }
+
+  private static async detectProgressAnomalies(since: Date): Promise<IEconomyAlert[]> {
+    const alerts: IEconomyAlert[] = [];
+    
+    const rapidProgressors = await Player.find({
+      world: { $gt: 15 },
+      level: { $lt: 50 },
+      lastSeenAt: { $gte: since }
+    });
+
+    for (const player of rapidProgressors) {
+      const account = await Account.findOne({ accountId: player.accountId });
+      if (!account) continue;
+
+      alerts.push({
+        type: 'impossible_progress',
+        severity: 'critical',
+        accountId: player.accountId,
+        username: account.username,
+        serverId: player.serverId,
+        details: {
+          world: player.world,
+          level: player.level,
+          accountAge: Math.floor((Date.now() - (account as any).createdAt.getTime()) / (1000 * 60 * 60 * 24))
+        },
+        timestamp: new Date(),
+        autoAction: 'suspend'
+      });
+    }
+
+    return alerts;
+  }
+
+  private static async detectPurchaseAnomalies(since: Date): Promise<IEconomyAlert[]> {
+    const alerts: IEconomyAlert[] = [];
+    
+    const suspiciousAccounts = await Account.find({
+      totalPurchasesUSD: { $gt: 1000 },
+      $expr: {
+        $gt: [
+          { $size: { $ifNull: ['$purchaseHistory', []] } },
+          50
+        ]
+      }
+    });
+
+    for (const account of suspiciousAccounts) {
+      const recentPurchases = account.purchaseHistory.filter(
+        p => p.purchaseDate >= since && p.status === 'completed'
+      );
+
+      if (recentPurchases.length > 20) {
+        alerts.push({
+          type: 'suspicious_purchases',
+          severity: 'medium',
+          accountId: account.accountId,
+          username: account.username,
+          details: {
+            recentPurchases: recentPurchases.length,
+            totalSpent: account.totalPurchasesUSD,
+            avgPurchaseAmount: recentPurchases.reduce((sum, p) => sum + p.priceUSD, 0) / recentPurchases.length
+          },
+          timestamp: new Date(),
+          autoAction: 'flag'
+        });
+      }
+    }
+
+    return alerts;
+  }
+
+  // UTILITAIRES
+  private static async getTotalCurrencyInCirculation(): Promise<any> {
+    const result = await Player.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalGold: { $sum: '$gold' },
+          totalGems: { $sum: '$gems' },
+          totalPaidGems: { $sum: '$paidGems' },
+          totalTickets: { $sum: '$tickets' }
+        }
+      }
+    ]);
+
+    return result[0] || { totalGold: 0, totalGems: 0, totalPaidGems: 0, totalTickets: 0 };
+  }
+
+  private static async getCurrencyCirculation(): Promise<any> {
+    return {
+      dailySpent: { gold: 0, gems: 0, tickets: 0 },
+      dailyEarned: { gold: 0, gems: 0, tickets: 0 },
+      inflation: 0
+    };
+  }
+
+  private static async getPlayerSpendingDistribution(): Promise<any> {
+    const result = await Account.aggregate([
+      {
+        $group: {
+          _id: null,
+          f2p: { $sum: { $cond: [{ $eq: ['$totalPurchasesUSD', 0] }, 1, 0] } },
+          spenders: { $sum: { $cond: [{ $and: [{ $gt: ['$totalPurchasesUSD', 0] }, { $lte: ['$totalPurchasesUSD', 100] }] }, 1, 0] } },
+          whales: { $sum: { $cond: [{ $gt: ['$totalPurchasesUSD', 100] }, 1, 0] } },
+          avgSpending: { $avg: '$totalPurchasesUSD' }
+        }
+      }
+    ]);
+
+    return result[0] || { f2p: 0, spenders: 0, whales: 0, avgSpending: 0 };
+  }
+
+  private static async getRecentAlertsCount(): Promise<any> {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const total = await AuditLog.countDocuments({
+      action: { $in: ['player.ban', 'economy.modify_shop'] },
+      severity: { $in: ['high', 'critical'] }
+    });
+
+    return { total, critical: 0, recent: 0 };
+  }
+
+  private static calculateProgressionSpeed(player: any): number {
+    const accountAge = Math.max(1, Math.floor((Date.now() - (player as any).createdAt.getTime()) / (1000 * 60 * 60 * 24)));
+    return player.level / accountAge;
+  }
+
+  private static async calculateEconomyHealth(account: any, characters: any[]): Promise<any> {
+    let score = 100;
+    const flags: string[] = [];
+    const recommendations: string[] = [];
+
+    const totalCurrency = characters.reduce((sum, char) => sum + char.gold + char.gems * 10, 0);
+    const totalSpent = account.totalPurchasesUSD;
+
+    if (totalCurrency > totalSpent * 1000 && totalSpent > 0) {
+      score -= 20;
+      flags.push('Currency to spending ratio suspicious');
+      recommendations.push('Investigate currency sources');
+    }
+
+    return { score: Math.max(score, 0), flags, recommendations };
+  }
+
+  private static analyzeSpendingPatterns(account: any, characters: any[]): any {
+    const total = account.totalPurchasesUSD;
+    const byServer = characters.map(char => ({
+      serverId: char.serverId,
+      spent: char.totalSpentUSDOnServer
+    }));
+
+    return {
+      total,
+      byServer,
+      efficiency: total > 0 ? characters.reduce((sum, char) => sum + char.level, 0) / total : 0
+    };
+  }
+
+  private static async analyzeCurrencyDistribution(characters: any[]): Promise<any> {
+    const byServer = characters.map(char => ({
+      serverId: char.serverId,
+      gold: char.gold,
+      gems: char.gems,
+      paidGems: char.paidGems,
+      tickets: char.tickets
+    }));
+
+    const totalValue = characters.reduce((sum, char) => 
+      sum + char.gold + (char.gems * 10) + (char.paidGems * 10) + (char.tickets * 100), 0
+    );
+
+    return {
+      byServer,
+      totalValue,
+      suspiciousTransactions: []
+    };
+  }
+
+  private static calculateServerHealthScore(serverData: any): number {
+    let score = 100;
+    
+    if (serverData.avgLevel < 10) score -= 20;
+    if (serverData.avgGold > 100000) score -= 15;
+    if (serverData.whales / serverData.playerCount > 0.1) score -= 10;
+    
+    return Math.max(score, 0);
+  }
+
+  private static generateRecommendations(flags: any[], suspicionLevel: number): string[] {
+    const recommendations: string[] = [];
+
+    if (suspicionLevel >= 80) {
+      recommendations.push('Immediate investigation required');
+      recommendations.push('Consider temporary account suspension');
+    } else if (suspicionLevel >= 60) {
+      recommendations.push('Flag for manual review');
+      recommendations.push('Monitor closely for 48 hours');
+    } else if (suspicionLevel >= 40) {
+      recommendations.push('Add to watchlist');
+    }
+
+    if (flags.some(f => f.type === 'excessive_currency')) {
+      recommendations.push('Audit currency transaction history');
+    }
+
+    if (flags.some(f => f.type === 'impossible_world')) {
+      recommendations.push('Check for client-side modifications');
+    }
+
+    return recommendations;
+  }
+
+  private static getSeverityWeight(severity: string): number {
+    const weights = { low: 1, medium: 2, high: 3, critical: 4 };
+    return weights[severity as keyof typeof weights] || 0;
+  }
+
+  private static async resetSuspiciousCurrency(playerId: string, data: any, adminId: string, reason: string): Promise<any> {
+    const player = await Player.findOne({ playerId });
+    if (!player) throw new Error('Player not found');
+
+    const oldValues = {
+      gold: player.gold,
+      gems: player.gems,
+      tickets: player.tickets
+    };
+
+    player.gold = Math.min(player.gold, data.maxGold || 50000);
+    player.gems = Math.min(player.gems, data.maxGems || 5000);
+    player.tickets = Math.min(player.tickets, data.maxTickets || 100);
+
+    await player.save();
+
+    return {
+      success: true,
+      message: 'Currency reset completed',
+      changes: { oldValues, newValues: { gold: player.gold, gems: player.gems, tickets: player.tickets } }
+    };
+  }
+
+  private static async rollbackProgress(playerId: string, data: any, adminId: string, reason: string): Promise<any> {
+    const player = await Player.findOne({ playerId });
+    if (!player) throw new Error('Player not found');
+
+    const oldValues = {
+      level: player.level,
+      world: player.world,
+      stage: player.stage
+    };
+
+    if (data.targetLevel) player.level = Math.min(player.level, data.targetLevel);
+    if (data.targetWorld) player.world = Math.min(player.world, data.targetWorld);
+    if (data.targetStage) player.stage = Math.min(player.stage, data.targetStage);
+
+    await player.save();
+
+    return {
+      success: true,
+      message: 'Progress rollback completed',
+      changes: { oldValues, newValues: { level: player.level, world: player.world, stage: player.stage } }
+    };
+  }
+
+  private static async refundPurchase(accountId: string, data: any, adminId: string, reason: string): Promise<any> {
+    return {
+      success: true,
+      message: 'Refund processed (placeholder)',
+      changes: { refundAmount: data.amount }
+    };
+  }
+
+  private static async createEconomyAuditLog(alert: IEconomyAlert): Promise<void> {
+    try {
+      await AuditLog.createLog({
+        adminId: 'system',
+        adminUsername: 'economy_system',
+        adminRole: 'super_admin',
+        action: 'economy.view_transactions',
+        resource: 'economy_alert',
+        resourceId: alert.accountId,
+        details: {
+          additionalInfo: {
+            alertType: alert.type,
+            severity: alert.severity,
+            autoAction: alert.autoAction,
+            evidence: alert.details
+          }
+        },
+        ipAddress: '127.0.0.1',
+        userAgent: 'EconomyService',
+        success: true,
+        severity: alert.severity === 'critical' ? 'critical' : 'high'
+      });
+    } catch (error) {
+      console.error('Create economy audit log error:', error);
     }
   }
 }
