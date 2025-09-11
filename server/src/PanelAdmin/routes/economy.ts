@@ -90,7 +90,7 @@ router.get('/cheaters',
         adminId: adminReq.admin.adminId,
         adminUsername: adminReq.admin.username,
         adminRole: adminReq.admin.role,
-        action: 'analytics.view',
+        action: 'analytics.view_dashboard',
         resource: 'cheater_detection',
         details: {
           additionalInfo: {
@@ -299,7 +299,7 @@ router.post('/correct',
         adminId: adminReq.admin.adminId,
         adminUsername: adminReq.admin.username,
         adminRole: adminReq.admin.role,
-        action: 'economy.modify',
+        action: 'economy.modify_shop',
         resource: 'economy_correction',
         resourceId: targetId,
         details: {
@@ -371,8 +371,8 @@ router.post('/bulk-check',
           results.push({
             accountId,
             success: true,
-            economyHealth: analysis.economyHealth,
-            suspiciousFlags: analysis.economyHealth.flags.length,
+            economyHealth: analysis.economyHealth || { score: 100, flags: [] },
+            suspiciousFlags: analysis.economyHealth?.flags?.length || 0,
             totalCurrencyValue: analysis.currency.totalValue
           });
         } catch (error) {
@@ -385,14 +385,14 @@ router.post('/bulk-check',
       }
 
       const suspicious = results.filter(r => 
-        r.success && (r.suspiciousFlags > 0 || r.economyHealth.score < 70)
+        r.success && (r.suspiciousFlags && r.suspiciousFlags > 0 || r.economyHealth && r.economyHealth.score < 70)
       );
 
       await AuditLog.createLog({
         adminId: adminReq.admin.adminId,
         adminUsername: adminReq.admin.username,
         adminRole: adminReq.admin.role,
-        action: 'analytics.view',
+        action: 'analytics.view_dashboard',
         resource: 'bulk_economy_check',
         details: {
           additionalInfo: {
