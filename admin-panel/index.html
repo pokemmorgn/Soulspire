@@ -5,8 +5,90 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Idle Gacha - Admin Panel</title>
     <link rel="stylesheet" href="styles/admin.css">
+    <style>
+        /* Console de debug */
+        .debug-console {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 200px;
+            background: #1e1e1e;
+            border-top: 2px solid #333;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .console-header {
+            background: #333;
+            padding: 8px 12px;
+            color: #fff;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .console-content {
+            flex: 1;
+            padding: 8px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        
+        .console-input {
+            display: flex;
+            padding: 8px;
+            background: #2d2d2d;
+        }
+        
+        .console-input input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            outline: none;
+        }
+        
+        .console-toggle {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 10px;
+        }
+        
+        .console-clear {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 10px;
+            margin-left: 8px;
+        }
+        
+        .log-info { color: #00ff00; }
+        .log-warn { color: #ffa500; }
+        .log-error { color: #ff4444; }
+        .log-debug { color: #888; }
+        .log-success { color: #00ff88; }
+        
+        /* Ajuster le body pour la console */
+        body.console-open {
+            padding-bottom: 200px;
+        }
+    </style>
 </head>
-<body>
+<body class="console-open">
     <div class="admin-container">
         <!-- Login Form -->
         <div id="loginSection" class="login-form">
@@ -23,7 +105,7 @@
                 <input type="password" id="password" value="ChangeMe123!" required>
             </div>
             
-            <button id="loginBtn" class="btn" onclick="AdminCore.login()">
+            <button id="loginBtn" class="btn" onclick="handleLogin()">
                 Login to Admin Panel
             </button>
         </div>
@@ -39,28 +121,28 @@
                         <div id="userName">Super Admin</div>
                         <div class="user-role" id="userRole">super_admin</div>
                     </div>
-                    <button class="btn logout-btn" onclick="AdminCore.logout()">Logout</button>
+                    <button class="btn logout-btn" onclick="handleLogout()">Logout</button>
                 </div>
             </div>
 
             <!-- Stats Cards -->
             <div class="stats-grid" id="statsGrid">
-                <div class="stat-card" onclick="AdminCore.showSection('overview')">
+                <div class="stat-card" onclick="showSection('overview')">
                     <div class="stat-icon">📊</div>
                     <div class="stat-value" id="totalPlayers">-</div>
                     <div class="stat-label">Active Players</div>
                 </div>
-                <div class="stat-card" onclick="AdminCore.showSection('overview')">
+                <div class="stat-card" onclick="showSection('overview')">
                     <div class="stat-icon">💎</div>
                     <div class="stat-value" id="todayRevenue">-</div>
                     <div class="stat-label">Today's Revenue</div>
                 </div>
-                <div class="stat-card" onclick="AdminCore.showSection('overview')">
+                <div class="stat-card" onclick="showSection('overview')">
                     <div class="stat-icon">👨‍💼</div>
                     <div class="stat-value" id="onlineAdmins">-</div>
                     <div class="stat-label">Online Admins</div>
                 </div>
-                <div class="stat-card health-card" onclick="AdminCore.showSection('overview')">
+                <div class="stat-card health-card" onclick="showSection('overview')">
                     <div class="stat-icon">⚡</div>
                     <div class="stat-value" id="systemHealth">-</div>
                     <div class="stat-label">System Health</div>
@@ -69,11 +151,11 @@
 
             <!-- Navigation -->
             <div class="nav-tabs">
-                <div class="nav-tab active" onclick="AdminCore.showSection('overview')">📊 Overview</div>
-                <div class="nav-tab" onclick="AdminCore.showSection('players')">👥 Players</div>
-                <div class="nav-tab" onclick="AdminCore.showSection('economy')">💰 Economy</div>
-                <div class="nav-tab" onclick="AdminCore.showSection('logs')">📜 Audit Logs</div>
-                <div class="nav-tab" onclick="AdminCore.showSection('system')">⚙️ System</div>
+                <div class="nav-tab active" onclick="showSection('overview')">📊 Overview</div>
+                <div class="nav-tab" onclick="showSection('players')">👥 Players</div>
+                <div class="nav-tab" onclick="showSection('economy')">💰 Economy</div>
+                <div class="nav-tab" onclick="showSection('logs')">📜 Audit Logs</div>
+                <div class="nav-tab" onclick="showSection('system')">⚙️ System</div>
             </div>
 
             <!-- Content Sections -->
@@ -136,20 +218,310 @@
     <!-- Global Alert System -->
     <div id="globalAlert" class="global-alert"></div>
 
-    <!-- Scripts -->
-    <script src="core/admin.js"></script>
-    <script src="modules/players.js"></script>
-    
+    <!-- Console de Debug -->
+    <div class="debug-console" id="debugConsole">
+        <div class="console-header">
+            <span>🐛 Debug Console</span>
+            <div>
+                <button class="console-clear" onclick="clearConsole()">Clear</button>
+                <button class="console-toggle" onclick="toggleConsole()">Hide</button>
+            </div>
+        </div>
+        <div class="console-content" id="consoleContent"></div>
+        <div class="console-input">
+            <span>></span>
+            <input type="text" id="consoleInput" placeholder="Type JavaScript command..." onkeypress="handleConsoleInput(event)">
+        </div>
+    </div>
+
     <script>
-        // Initialize admin panel when page loads
-        window.addEventListener('load', () => {
-            AdminCore.init();
+        // ===== CONSOLE DE DEBUG =====
+        let consoleVisible = true;
+        let logCount = 0;
+
+        function log(message, type = 'info') {
+            logCount++;
+            const timestamp = new Date().toLocaleTimeString();
+            const consoleContent = document.getElementById('consoleContent');
+            const logLine = document.createElement('div');
+            logLine.className = `log-${type}`;
+            logLine.textContent = `[${timestamp}] [${logCount}] ${message}`;
+            consoleContent.appendChild(logLine);
+            consoleContent.scrollTop = consoleContent.scrollHeight;
             
-            // Initialize modules
-            if (window.PlayersModule) {
-                PlayersModule.init();
+            // Aussi dans la vraie console
+            console.log(`[ADMIN PANEL] ${message}`);
+        }
+
+        function clearConsole() {
+            document.getElementById('consoleContent').innerHTML = '';
+            logCount = 0;
+        }
+
+        function toggleConsole() {
+            const console = document.getElementById('debugConsole');
+            const body = document.body;
+            consoleVisible = !consoleVisible;
+            
+            if (consoleVisible) {
+                console.style.display = 'flex';
+                body.classList.add('console-open');
+                document.querySelector('.console-toggle').textContent = 'Hide';
+            } else {
+                console.style.display = 'none';
+                body.classList.remove('console-open');
+                document.querySelector('.console-toggle').textContent = 'Show';
+            }
+        }
+
+        function handleConsoleInput(event) {
+            if (event.key === 'Enter') {
+                const input = event.target;
+                const command = input.value;
+                log(`> ${command}`, 'debug');
+                
+                try {
+                    const result = eval(command);
+                    log(`< ${JSON.stringify(result)}`, 'success');
+                } catch (error) {
+                    log(`< Error: ${error.message}`, 'error');
+                }
+                
+                input.value = '';
+            }
+        }
+
+        // ===== OVERRIDE CONSOLE METHODS =====
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+
+        console.log = function(...args) {
+            log(args.join(' '), 'info');
+            originalLog.apply(console, args);
+        };
+
+        console.error = function(...args) {
+            log(args.join(' '), 'error');
+            originalError.apply(console, args);
+        };
+
+        console.warn = function(...args) {
+            log(args.join(' '), 'warn');
+            originalWarn.apply(console, args);
+        };
+
+        // ===== ADMIN CORE FUNCTIONALITY =====
+        let adminToken = localStorage.getItem('adminToken');
+        let adminUser = null;
+
+        // Log initial
+        log('🔧 Initializing Admin Panel with Debug Console...', 'info');
+        log(`📍 Current URL: ${window.location.href}`, 'debug');
+        log(`🔑 Stored token: ${adminToken ? 'YES' : 'NO'}`, 'debug');
+
+        // Fonction de login avec debug
+        async function handleLogin() {
+            log('🔐 Login button clicked!', 'info');
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const loginBtn = document.getElementById('loginBtn');
+
+            log(`📝 Username: ${username}`, 'debug');
+            log(`🔒 Password: ${password ? '[PROVIDED]' : '[EMPTY]'}`, 'debug');
+
+            if (!username || !password) {
+                log('❌ Username and password are required', 'error');
+                showAlert('Please enter both username and password', 'error');
+                return;
+            }
+
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Logging in...';
+            log('🔄 Starting login request...', 'info');
+
+            try {
+                const requestBody = { username, password };
+                log(`📤 Request body: ${JSON.stringify(requestBody)}`, 'debug');
+                
+                const response = await fetch('/api/admin/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                log(`📥 Response status: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                log(`📍 Response URL: ${response.url}`, 'debug');
+                
+                const responseHeaders = {};
+                response.headers.forEach((value, key) => {
+                    responseHeaders[key] = value;
+                });
+                log(`📋 Response headers: ${JSON.stringify(responseHeaders)}`, 'debug');
+
+                const data = await response.json();
+                log(`📦 Response data: ${JSON.stringify(data, null, 2)}`, 'debug');
+
+                if (response.ok && data.success) {
+                    log('✅ Login successful!', 'success');
+                    
+                    adminToken = data.data.token;
+                    adminUser = data.data.admin;
+                    localStorage.setItem('adminToken', adminToken);
+                    
+                    log(`🎫 Token stored: ${adminToken.substring(0, 20)}...`, 'debug');
+                    log(`👤 Admin user: ${JSON.stringify(adminUser)}`, 'debug');
+                    
+                    showAlert('Login successful! Loading dashboard...', 'success');
+                    
+                    setTimeout(() => {
+                        showDashboard();
+                        loadDashboardData();
+                    }, 1000);
+                } else {
+                    log(`❌ Login failed: ${data.message || 'Unknown error'}`, 'error');
+                    showAlert(data.error || data.message || 'Login failed', 'error');
+                }
+            } catch (error) {
+                log(`💥 Network error: ${error.message}`, 'error');
+                log(`🔍 Error details: ${JSON.stringify(error)}`, 'debug');
+                showAlert(`Connection error: ${error.message}`, 'error');
+            } finally {
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Login to Admin Panel';
+                log('🔄 Login process completed', 'debug');
+            }
+        }
+
+        function handleLogout() {
+            log('🚪 Logout clicked', 'info');
+            localStorage.removeItem('adminToken');
+            adminToken = null;
+            adminUser = null;
+            
+            document.getElementById('loginSection').style.display = 'block';
+            document.getElementById('dashboardSection').style.display = 'none';
+            
+            showAlert('Logged out successfully', 'info');
+            log('✅ Logout completed', 'success');
+        }
+
+        function showDashboard() {
+            log('🏠 Showing dashboard', 'info');
+            document.getElementById('loginSection').style.display = 'none';
+            document.getElementById('dashboardSection').style.display = 'block';
+            
+            if (adminUser) {
+                document.getElementById('userName').textContent = adminUser.username;
+                document.getElementById('userRole').textContent = adminUser.role;
+                document.getElementById('userAvatar').textContent = adminUser.username.substring(0, 2).toUpperCase();
+                log(`👤 Dashboard loaded for: ${adminUser.username}`, 'success');
+            }
+        }
+
+        function loadDashboardData() {
+            log('📊 Loading dashboard data...', 'info');
+            // Placeholder pour les données
+            document.getElementById('totalPlayers').textContent = '1,234';
+            document.getElementById('todayRevenue').textContent = '$567.89';
+            document.getElementById('onlineAdmins').textContent = '3';
+            document.getElementById('systemHealth').textContent = 'Good';
+            log('✅ Dashboard data loaded (mock data)', 'success');
+        }
+
+        function showSection(section) {
+            log(`🔀 Switching to section: ${section}`, 'info');
+            
+            // Masquer toutes les sections
+            document.querySelectorAll('.content-section').forEach(section => {
+                section.classList.remove('active');
+            });
+            
+            // Retirer active de tous les onglets
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Afficher la section sélectionnée
+            const sectionElement = document.getElementById(section + 'Section');
+            const tabElement = event?.target?.classList.contains('nav-tab') ? event.target : 
+                document.querySelector(`.nav-tab[onclick*="${section}"]`);
+            
+            if (sectionElement) sectionElement.classList.add('active');
+            if (tabElement) tabElement.classList.add('active');
+            
+            log(`✅ Section ${section} activated`, 'success');
+        }
+
+        function showAlert(message, type = 'info', duration = 5000) {
+            log(`🚨 Alert: ${message} (${type})`, type === 'error' ? 'error' : 'info');
+            
+            const alertContainer = document.getElementById('globalAlert');
+            
+            alertContainer.innerHTML = `
+                <div class="alert ${type} slide-in">
+                    <span class="alert-icon">
+                        ${type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️'}
+                    </span>
+                    <span class="alert-message">${message}</span>
+                    <button class="alert-close" onclick="this.parentElement.remove()">×</button>
+                </div>
+            `;
+            
+            alertContainer.style.display = 'block';
+            
+            if (duration > 0) {
+                setTimeout(() => {
+                    const alert = alertContainer.querySelector('.alert');
+                    if (alert) {
+                        alert.classList.add('slide-out');
+                        setTimeout(() => alertContainer.style.display = 'none', 300);
+                    }
+                }, duration);
+            }
+        }
+
+        // Test de connectivité au démarrage
+        window.addEventListener('load', async () => {
+            log('🌐 Page loaded, testing connectivity...', 'info');
+            
+            try {
+                const response = await fetch('/api/admin/auth/me', {
+                    headers: {
+                        'Authorization': `Bearer ${adminToken}`
+                    }
+                });
+                log(`🔍 Auth test: ${response.status}`, response.ok ? 'success' : 'warn');
+                
+                if (adminToken && response.ok) {
+                    log('🎯 Auto-login attempt...', 'info');
+                    const data = await response.json();
+                    adminUser = data.data.admin;
+                    showDashboard();
+                    loadDashboardData();
+                }
+            } catch (error) {
+                log(`⚠️ Auth test failed: ${error.message}`, 'warn');
             }
         });
+
+        // Test de l'API au démarrage
+        fetch('/api/admin/dashboard/quick-stats')
+            .then(response => {
+                log(`🎯 API test: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                return response.json();
+            })
+            .then(data => {
+                log(`📊 API data: ${JSON.stringify(data)}`, 'debug');
+            })
+            .catch(error => {
+                log(`❌ API test failed: ${error.message}`, 'error');
+            });
+
+        log('✅ Admin Panel initialized with full debug support!', 'success');
     </script>
 </body>
 </html>
