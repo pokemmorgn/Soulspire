@@ -892,6 +892,53 @@ export class AdminService {
       throw new Error('Failed to reset admin password');
     }
   }
+
+  /**
+   * Créer un compte super admin par défaut
+   */
+  static async createDefaultSuperAdmin(): Promise<void> {
+    try {
+      // Vérifier si un super admin existe déjà
+      const existingSuperAdmin = await Account.findOne({
+        adminRole: 'super_admin',
+        adminEnabled: true
+      });
+
+      if (existingSuperAdmin) {
+        console.log(`✅ Super admin already exists: ${existingSuperAdmin.username}`);
+        return;
+      }
+
+      // Créer le compte super admin
+      const superAdminAccount = new Account({
+        username: process.env.DEFAULT_ADMIN_USERNAME || 'superadmin',
+        email: process.env.DEFAULT_ADMIN_EMAIL || 'admin@idlegacha.com',
+        password: await bcrypt.hash(
+          process.env.DEFAULT_ADMIN_PASSWORD || 'ChangeMe123!',
+          12
+        ),
+        accountStatus: 'active',
+        adminEnabled: true,
+        adminRole: 'super_admin',
+        adminPermissions: ['*'],
+        adminMetadata: {
+          createdByAdmin: 'system',
+          preferredLanguage: 'en'
+        }
+      });
+
+      await superAdminAccount.save();
+
+      console.log('✅ Default super admin created successfully');
+      console.log(`📧 Username: ${superAdminAccount.username}`);
+      console.log(`🔐 Email: ${superAdminAccount.email}`);
+      console.log('⚠️  Please change the default password immediately!');
+
+    } catch (error) {
+      console.error('❌ Failed to create default super admin:', error);
+      throw error;
+    }
+  }
 }
 
 export default AdminService;
