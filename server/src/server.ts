@@ -312,7 +312,7 @@ const startServer = async (): Promise<void> => {
   try {
     // Connexion à la base de données
     await connectDB();
-    // setupAdminPanel(app);
+    setupAdminPanel(app);
     // 🛒 INITIALISATION DES BOUTIQUES SYSTÈME
     console.log("🛒 Initialisation des boutiques système...");
     try {
