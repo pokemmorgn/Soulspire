@@ -3,183 +3,259 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Idle Gacha - Admin Panel</title>
-    <link rel="stylesheet" href="styles/admin.css">
+    <title>Admin Panel - Test Simple</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        
+        .test-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .test-section h3 {
+            margin-top: 0;
+            color: #666;
+        }
+        
+        button {
+            padding: 10px 15px;
+            margin: 5px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+    </style>
 </head>
 <body>
-    <div class="admin-container">
-        <!-- Login Form -->
-        <div id="loginSection" class="login-form">
-            <h1>🎮 Admin Panel</h1>
-            <div id="loginAlert"></div>
-            
-            <div class="form-group">
-                <label for="username">Username:</label>
-                <input type="text" id="username" value="superadmin" required>
-            </div>
-            
-            <div class="form-group">
-                <label for="password">Password:</label>
-                <input type="password" id="password" value="ChangeMe123!" required>
-            </div>
-            
-            <button id="loginBtn" class="btn" onclick="AdminCore.login()">
-                Login to Admin Panel
-            </button>
+    <div class="container">
+        <h1>🔧 Admin Panel Test</h1>
+        
+        <!-- Test de connexion API -->
+        <div class="test-section">
+            <h3>1. Test de connexion API</h3>
+            <button onclick="testApiHealth()">Test /api/admin/health</button>
+            <button onclick="testApiInfo()">Test /api/admin/info</button>
+            <div id="api-result" class="result" style="display:none;"></div>
         </div>
-
-        <!-- Dashboard -->
-        <div id="dashboardSection" class="dashboard">
-            <!-- Header -->
-            <div class="header">
-                <h1>🎮 Idle Gacha Admin</h1>
-                <div class="user-info">
-                    <div class="user-avatar" id="userAvatar">SA</div>
-                    <div>
-                        <div id="userName">Super Admin</div>
-                        <div class="user-role" id="userRole">super_admin</div>
-                    </div>
-                    <button class="btn logout-btn" onclick="AdminCore.logout()">Logout</button>
-                </div>
+        
+        <!-- Test de login -->
+        <div class="test-section">
+            <h3>2. Test de login</h3>
+            <div class="form-group">
+                <label>Username:</label>
+                <input type="text" id="username" value="superadmin">
             </div>
-
-            <!-- Stats Cards -->
-            <div class="stats-grid" id="statsGrid">
-                <div class="stat-card" onclick="AdminCore.showSection('overview')">
-                    <div class="stat-icon">📊</div>
-                    <div class="stat-value" id="totalPlayers">-</div>
-                    <div class="stat-label">Active Players</div>
-                </div>
-                <div class="stat-card" onclick="AdminCore.showSection('overview')">
-                    <div class="stat-icon">💎</div>
-                    <div class="stat-value" id="todayRevenue">-</div>
-                    <div class="stat-label">Today's Revenue</div>
-                </div>
-                <div class="stat-card" onclick="AdminCore.showSection('overview')">
-                    <div class="stat-icon">👨‍💼</div>
-                    <div class="stat-value" id="onlineAdmins">-</div>
-                    <div class="stat-label">Online Admins</div>
-                </div>
-                <div class="stat-card health-card" onclick="AdminCore.showSection('overview')">
-                    <div class="stat-icon">⚡</div>
-                    <div class="stat-value" id="systemHealth">-</div>
-                    <div class="stat-label">System Health</div>
-                </div>
+            <div class="form-group">
+                <label>Password:</label>
+                <input type="password" id="password" value="ChangeMe123!">
             </div>
-
-            <!-- Navigation -->
-            <div class="nav-tabs">
-                <div class="nav-tab active" onclick="AdminCore.showSection('overview')">📊 Overview</div>
-                <div class="nav-tab" onclick="AdminCore.showSection('players')">👥 Players</div>
-                <div class="nav-tab" onclick="AdminCore.showSection('economy')">💰 Economy</div>
-                <div class="nav-tab" onclick="AdminCore.showSection('logs')">📜 Audit Logs</div>
-                <div class="nav-tab" onclick="AdminCore.showSection('system')">⚙️ System</div>
-            </div>
-
-            <!-- Content Sections -->
-            <div class="content-container">
-                <!-- Overview Section -->
-                <div id="overviewSection" class="content-section active">
-                    <h2 class="section-title">📊 System Overview</h2>
-                    <div id="overviewContent">
-                        <div class="loading">
-                            <div class="spinner"></div>
-                            <p>Loading dashboard data...</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Players Section -->
-                <div id="playersSection" class="content-section">
-                    <h2 class="section-title">👥 Player Management</h2>
-                    <div id="playersContent">
-                        <!-- Content will be loaded by players.js module -->
-                    </div>
-                </div>
-
-                <!-- Economy Section -->
-                <div id="economySection" class="content-section">
-                    <h2 class="section-title">💰 Economy Analytics</h2>
-                    <div id="economyContent">
-                        <div class="placeholder">
-                            <div class="placeholder-icon">💰</div>
-                            <h3>🚧 Economy Module</h3>
-                            <p>This module is coming soon...</p>
-                            <p class="placeholder-hint">This will include comprehensive economy management tools.</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Logs Section -->
-                <div id="logsSection" class="content-section">
-                    <h2 class="section-title">📜 Audit Logs</h2>
-                    <div id="logsContent">
-                        <div class="placeholder">
-                            <div class="placeholder-icon">📜</div>
-                            <h3>🚧 Audit Logs Module</h3>
-                            <p>This module is coming soon...</p>
-                            <p class="placeholder-hint">This will include comprehensive audit logs management tools.</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- System Section -->
-                <div id="systemSection" class="content-section">
-                    <h2 class="section-title">⚙️ System Information</h2>
-                    <div id="systemContent">
-                        <div class="loading">
-                            <div class="spinner"></div>
-                            <p>Loading system information...</p>
-                        </div>
-                    </div>
-                </div>
+            <button onclick="testLogin()">Test Login</button>
+            <div id="login-result" class="result" style="display:none;"></div>
+        </div>
+        
+        <!-- Test avec token -->
+        <div class="test-section">
+            <h3>3. Test avec authentication</h3>
+            <button onclick="testAuthenticatedRequest()" id="auth-test-btn" disabled>Test /api/admin/dashboard/quick-stats</button>
+            <div id="auth-result" class="result" style="display:none;"></div>
+        </div>
+        
+        <!-- Logs -->
+        <div class="test-section">
+            <h3>4. Logs de débogage</h3>
+            <div id="debug-logs" class="result info" style="display:block; height: 150px;">
+                Prêt pour les tests...<br>
             </div>
         </div>
     </div>
 
-    <!-- Global Alert System -->
-    <div id="globalAlert" class="global-alert"></div>
-
-    <!-- Scripts - Dans l'ordre d'importance -->
-    <script src="core/admin.js"></script>
-    <script src="modules/players.js"></script>
-    
     <script>
-        // Initialize admin panel when page loads
+        let authToken = null;
+        
+        function log(message, type = 'info') {
+            const debugLogs = document.getElementById('debug-logs');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'color: red' : type === 'success' ? 'color: green' : 'color: blue';
+            debugLogs.innerHTML += `<span style="${className}">[${timestamp}] ${message}</span><br>`;
+            debugLogs.scrollTop = debugLogs.scrollHeight;
+        }
+        
+        async function makeRequest(url, options = {}) {
+            log(`Making request to: ${url}`);
+            try {
+                const response = await fetch(url, {
+                    ...options,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+                        ...options.headers
+                    }
+                });
+                
+                log(`Response status: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                
+                const data = await response.json();
+                return { response, data };
+            } catch (error) {
+                log(`Request error: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+        
+        async function testApiHealth() {
+            try {
+                const { response, data } = await makeRequest('/api/admin/health');
+                document.getElementById('api-result').style.display = 'block';
+                document.getElementById('api-result').className = 'result ' + (response.ok ? 'success' : 'error');
+                document.getElementById('api-result').textContent = JSON.stringify(data, null, 2);
+                log('Health check completed', response.ok ? 'success' : 'error');
+            } catch (error) {
+                document.getElementById('api-result').style.display = 'block';
+                document.getElementById('api-result').className = 'result error';
+                document.getElementById('api-result').textContent = `Error: ${error.message}`;
+                log(`Health check failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testApiInfo() {
+            try {
+                const { response, data } = await makeRequest('/api/admin/info');
+                document.getElementById('api-result').style.display = 'block';
+                document.getElementById('api-result').className = 'result ' + (response.ok ? 'success' : 'error');
+                document.getElementById('api-result').textContent = JSON.stringify(data, null, 2);
+                log('Info endpoint completed', response.ok ? 'success' : 'error');
+            } catch (error) {
+                document.getElementById('api-result').style.display = 'block';
+                document.getElementById('api-result').className = 'result error';
+                document.getElementById('api-result').textContent = `Error: ${error.message}`;
+                log(`Info endpoint failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testLogin() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            if (!username || !password) {
+                log('Username and password required', 'error');
+                return;
+            }
+            
+            try {
+                const { response, data } = await makeRequest('/api/admin/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify({ username, password })
+                });
+                
+                document.getElementById('login-result').style.display = 'block';
+                document.getElementById('login-result').className = 'result ' + (response.ok ? 'success' : 'error');
+                document.getElementById('login-result').textContent = JSON.stringify(data, null, 2);
+                
+                if (response.ok && data.success && data.data && data.data.token) {
+                    authToken = data.data.token;
+                    document.getElementById('auth-test-btn').disabled = false;
+                    log('Login successful! Token saved.', 'success');
+                } else {
+                    log('Login failed or no token received', 'error');
+                }
+            } catch (error) {
+                document.getElementById('login-result').style.display = 'block';
+                document.getElementById('login-result').className = 'result error';
+                document.getElementById('login-result').textContent = `Error: ${error.message}`;
+                log(`Login failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testAuthenticatedRequest() {
+            if (!authToken) {
+                log('No auth token available. Please login first.', 'error');
+                return;
+            }
+            
+            try {
+                const { response, data } = await makeRequest('/api/admin/dashboard/quick-stats');
+                
+                document.getElementById('auth-result').style.display = 'block';
+                document.getElementById('auth-result').className = 'result ' + (response.ok ? 'success' : 'error');
+                document.getElementById('auth-result').textContent = JSON.stringify(data, null, 2);
+                log('Authenticated request completed', response.ok ? 'success' : 'error');
+            } catch (error) {
+                document.getElementById('auth-result').style.display = 'block';
+                document.getElementById('auth-result').className = 'result error';
+                document.getElementById('auth-result').textContent = `Error: ${error.message}`;
+                log(`Authenticated request failed: ${error.message}`, 'error');
+            }
+        }
+        
+        // Auto-test de connectivité au chargement
         window.addEventListener('load', () => {
-            console.log('🎮 Initializing Idle Gacha Admin Panel...');
-            
-            // Initialize core admin functionality
-            if (window.AdminCore) {
-                AdminCore.init();
-                console.log('✅ AdminCore initialized');
-            } else {
-                console.error('❌ AdminCore not loaded');
-            }
-            
-            // Initialize players module
-            if (window.PlayersModule) {
-                PlayersModule.init();
-                console.log('✅ PlayersModule initialized');
-            } else {
-                console.warn('⚠️ PlayersModule not loaded');
-            }
-
-            console.log('🚀 Admin Panel fully initialized!');
+            log('Page loaded. Testing basic connectivity...', 'info');
+            setTimeout(testApiHealth, 1000);
         });
-
-        // Fallback functions if modules fail to load
-        window.AdminCore = window.AdminCore || {
-            init: () => console.warn('AdminCore fallback init'),
-            login: () => console.error('AdminCore not loaded - cannot login'),
-            logout: () => console.error('AdminCore not loaded - cannot logout'),
-            showSection: (section) => console.error('AdminCore not loaded - cannot show section:', section)
-        };
-
-        window.PlayersModule = window.PlayersModule || {
-            init: () => console.warn('PlayersModule fallback init'),
-            loadData: () => console.warn('PlayersModule not loaded - cannot load data')
-        };
     </script>
 </body>
 </html>
