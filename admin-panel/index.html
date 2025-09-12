@@ -253,8 +253,7 @@
             consoleContent.appendChild(logLine);
             consoleContent.scrollTop = consoleContent.scrollHeight;
             
-            // Aussi dans la vraie console
-            console.log(`[ADMIN PANEL] ${message}`);
+            // Pas de console.log ici pour éviter la boucle !
         }
 
         function clearConsole() {
