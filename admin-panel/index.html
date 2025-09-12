@@ -5,90 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Idle Gacha - Admin Panel</title>
     <link rel="stylesheet" href="styles/admin.css">
-    <style>
-        /* Console de debug */
-        .debug-console {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 200px;
-            background: #1e1e1e;
-            border-top: 2px solid #333;
-            color: #00ff00;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            z-index: 9999;
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .console-header {
-            background: #333;
-            padding: 8px 12px;
-            color: #fff;
-            font-weight: bold;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .console-content {
-            flex: 1;
-            padding: 8px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-        }
-        
-        .console-input {
-            display: flex;
-            padding: 8px;
-            background: #2d2d2d;
-        }
-        
-        .console-input input {
-            flex: 1;
-            background: transparent;
-            border: none;
-            color: #00ff00;
-            font-family: 'Courier New', monospace;
-            outline: none;
-        }
-        
-        .console-toggle {
-            background: #007acc;
-            color: white;
-            border: none;
-            padding: 4px 8px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 10px;
-        }
-        
-        .console-clear {
-            background: #dc3545;
-            color: white;
-            border: none;
-            padding: 4px 8px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 10px;
-            margin-left: 8px;
-        }
-        
-        .log-info { color: #00ff00; }
-        .log-warn { color: #ffa500; }
-        .log-error { color: #ff4444; }
-        .log-debug { color: #888; }
-        .log-success { color: #00ff88; }
-        
-        /* Ajuster le body pour la console */
-        body.console-open {
-            padding-bottom: 200px;
-        }
-    </style>
 </head>
-<body class="console-open">
+<body>
     <div class="admin-container">
         <!-- Login Form -->
         <div id="loginSection" class="login-form">
@@ -184,8 +102,10 @@
                     <h2 class="section-title">💰 Economy Analytics</h2>
                     <div id="economyContent">
                         <div class="placeholder">
-                            <h3>🚧 Coming Soon</h3>
-                            <p>Economy analytics module will be implemented here...</p>
+                            <div class="placeholder-icon">💰</div>
+                            <h3>🚧 Economy Module</h3>
+                            <p>This module is coming soon...</p>
+                            <p class="placeholder-hint">This will include comprehensive economy management tools.</p>
                         </div>
                     </div>
                 </div>
@@ -195,8 +115,10 @@
                     <h2 class="section-title">📜 Audit Logs</h2>
                     <div id="logsContent">
                         <div class="placeholder">
-                            <h3>🚧 Coming Soon</h3>
-                            <p>Audit logs module will be implemented here...</p>
+                            <div class="placeholder-icon">📜</div>
+                            <h3>🚧 Audit Logs Module</h3>
+                            <p>This module is coming soon...</p>
+                            <p class="placeholder-hint">This will include comprehensive audit logs management tools.</p>
                         </div>
                     </div>
                 </div>
@@ -205,9 +127,9 @@
                 <div id="systemSection" class="content-section">
                     <h2 class="section-title">⚙️ System Information</h2>
                     <div id="systemContent">
-                        <div class="placeholder">
-                            <h3>🚧 Coming Soon</h3>
-                            <p>System information module will be implemented here...</p>
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p>Loading system information...</p>
                         </div>
                     </div>
                 </div>
@@ -218,187 +140,46 @@
     <!-- Global Alert System -->
     <div id="globalAlert" class="global-alert"></div>
 
-    <!-- Console de Debug -->
-    <div class="debug-console" id="debugConsole">
-        <div class="console-header">
-            <span>🐛 Debug Console</span>
-            <div>
-                <button class="console-clear" onclick="clearConsole()">Clear</button>
-                <button class="console-toggle" onclick="toggleConsole()">Hide</button>
-            </div>
-        </div>
-        <div class="console-content" id="consoleContent"></div>
-        <div class="console-input">
-            <span>></span>
-            <input type="text" id="consoleInput" placeholder="Type JavaScript command..." onkeypress="handleConsoleInput(event)">
-        </div>
-    </div>
-
-    <!-- Scripts - On charge les modules dans le bon ordre -->
+    <!-- Scripts - Dans l'ordre d'importance -->
     <script src="core/admin.js"></script>
     <script src="modules/players.js"></script>
     
     <script>
-        // ===== CONSOLE DE DEBUG =====
-        let consoleVisible = true;
-        let logCount = 0;
-
-        function log(message, type = 'info') {
-            logCount++;
-            const timestamp = new Date().toLocaleTimeString();
-            const consoleContent = document.getElementById('consoleContent');
-            const logLine = document.createElement('div');
-            logLine.className = `log-${type}`;
-            logLine.textContent = `[${timestamp}] [${logCount}] ${message}`;
-            consoleContent.appendChild(logLine);
-            consoleContent.scrollTop = consoleContent.scrollHeight;
-            
-            // Pas de console.log ici pour éviter la boucle !
-        }
-
-        function clearConsole() {
-            document.getElementById('consoleContent').innerHTML = '';
-            logCount = 0;
-        }
-
-        function toggleConsole() {
-            const console = document.getElementById('debugConsole');
-            const body = document.body;
-            consoleVisible = !consoleVisible;
-            
-            if (consoleVisible) {
-                console.style.display = 'flex';
-                body.classList.add('console-open');
-                document.querySelector('.console-toggle').textContent = 'Hide';
-            } else {
-                console.style.display = 'none';
-                body.classList.remove('console-open');
-                document.querySelector('.console-toggle').textContent = 'Show';
-            }
-        }
-
-        function handleConsoleInput(event) {
-            if (event.key === 'Enter') {
-                const input = event.target;
-                const command = input.value;
-                log(`> ${command}`, 'debug');
-                
-                try {
-                    const result = eval(command);
-                    log(`< ${JSON.stringify(result)}`, 'success');
-                } catch (error) {
-                    log(`< Error: ${error.message}`, 'error');
-                }
-                
-                input.value = '';
-            }
-        }
-
-        // ===== OVERRIDE CONSOLE METHODS =====
-        const originalLog = console.log;
-        const originalError = console.error;
-        const originalWarn = console.warn;
-
-        console.log = function(...args) {
-            log(args.join(' '), 'info');
-            originalLog.apply(console, args);
-        };
-
-        console.error = function(...args) {
-            log(args.join(' '), 'error');
-            originalError.apply(console, args);
-        };
-
-        console.warn = function(...args) {
-            log(args.join(' '), 'warn');
-            originalWarn.apply(console, args);
-        };
-
-        // ===== DEBUG HOOKS POUR ADMIN CORE =====
-        
-        // Override des méthodes AdminCore pour ajouter des logs
+        // Initialize admin panel when page loads
         window.addEventListener('load', () => {
-            log('🔧 Page loaded, initializing Admin Core...', 'info');
-            log(`📍 Current URL: ${window.location.href}`, 'debug');
-            log(`🔑 Stored token: ${localStorage.getItem('adminToken') ? 'YES' : 'NO'}`, 'debug');
-
-            // Hook sur AdminCore.login
-            if (window.AdminCore && window.AdminCore.login) {
-                const originalLogin = window.AdminCore.login;
-                window.AdminCore.login = function() {
-                    log('🔐 AdminCore.login() called!', 'info');
-                    
-                    const username = document.getElementById('username').value;
-                    const password = document.getElementById('password').value;
-                    
-                    log(`📝 Username: ${username}`, 'debug');
-                    log(`🔒 Password: ${password ? '[PROVIDED]' : '[EMPTY]'}`, 'debug');
-                    
-                    return originalLogin.call(this);
-                };
-            }
-
-            // Hook sur AdminCore.makeRequest
-            if (window.AdminCore && window.AdminCore.makeRequest) {
-                const originalMakeRequest = window.AdminCore.makeRequest;
-                window.AdminCore.makeRequest = async function(url, options = {}) {
-                    log(`📤 HTTP ${options.method || 'GET'} ${url}`, 'info');
-                    
-                    try {
-                        const result = await originalMakeRequest.call(this, url, options);
-                        log(`📥 Response ${result.response.status}: SUCCESS`, 'success');
-                        return result;
-                    } catch (error) {
-                        log(`📥 Response ERROR: ${error.message}`, 'error');
-                        throw error;
-                    }
-                };
-            }
-
-            // Hook sur AdminCore.showAlert
-            if (window.AdminCore && window.AdminCore.showAlert) {
-                const originalShowAlert = window.AdminCore.showAlert;
-                window.AdminCore.showAlert = function(message, type = 'info', duration = 5000) {
-                    log(`🚨 Alert (${type}): ${message}`, type === 'error' ? 'error' : 'info');
-                    return originalShowAlert.call(this, message, type, duration);
-                };
-            }
-
-            // Initialiser AdminCore
+            console.log('🎮 Initializing Idle Gacha Admin Panel...');
+            
+            // Initialize core admin functionality
             if (window.AdminCore) {
                 AdminCore.init();
-                log('✅ AdminCore initialized!', 'success');
+                console.log('✅ AdminCore initialized');
             } else {
-                log('❌ AdminCore not found! Check if core/admin.js loaded correctly', 'error');
+                console.error('❌ AdminCore not loaded');
             }
-
-            // Initialiser PlayersModule
+            
+            // Initialize players module
             if (window.PlayersModule) {
                 PlayersModule.init();
-                log('✅ PlayersModule initialized!', 'success');
+                console.log('✅ PlayersModule initialized');
             } else {
-                log('⚠️ PlayersModule not found - this is normal if modules/players.js is not loaded', 'warn');
+                console.warn('⚠️ PlayersModule not loaded');
             }
+
+            console.log('🚀 Admin Panel fully initialized!');
         });
 
-        // Test de connectivité API au démarrage
-        setTimeout(async () => {
-            log('🌐 Testing API connectivity...', 'info');
-            
-            try {
-                const response = await fetch('/api/admin/dashboard/quick-stats');
-                log(`🎯 API test: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    log(`📊 API data received: ${JSON.stringify(data)}`, 'debug');
-                }
-            } catch (error) {
-                log(`❌ API test failed: ${error.message}`, 'error');
-            }
-        }, 1000);
+        // Fallback functions if modules fail to load
+        window.AdminCore = window.AdminCore || {
+            init: () => console.warn('AdminCore fallback init'),
+            login: () => console.error('AdminCore not loaded - cannot login'),
+            logout: () => console.error('AdminCore not loaded - cannot logout'),
+            showSection: (section) => console.error('AdminCore not loaded - cannot show section:', section)
+        };
 
-        log('✅ Debug console initialized with AdminCore hooks!', 'success');
+        window.PlayersModule = window.PlayersModule || {
+            init: () => console.warn('PlayersModule fallback init'),
+            loadData: () => console.warn('PlayersModule not loaded - cannot load data')
+        };
     </script>
 </body>
 </html>
