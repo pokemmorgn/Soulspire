@@ -45,6 +45,7 @@ import { panelConfig, validateEnvironment } from './PanelAdmin/config/panelConfi
 dotenv.config();
 
 const app: Application = express();
+app.set('trust proxy', true);
 const httpServer = createServer(app);
 const PORT: number = parseInt(process.env.PORT || "3000", 10);
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/unity-gacha-game";
