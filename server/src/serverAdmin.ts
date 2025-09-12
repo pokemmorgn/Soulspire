@@ -260,43 +260,14 @@ export class AdminPanelServer {
   /**
    * S'assurer qu'un super admin existe
    */
-  private static async ensureDefaultSuperAdmin(): Promise<void> {
-    try {
-      const superAdminCount = await Admin.countDocuments({ 
-        role: 'super_admin', 
-        isActive: true 
-      });
-
-      if (superAdminCount === 0) {
-        console.log('🔧 No super admin found, creating default super admin...');
-        
-        const defaultAdmin = new Admin({
-          username: process.env.DEFAULT_ADMIN_USERNAME || 'superadmin',
-          email: process.env.DEFAULT_ADMIN_EMAIL || 'admin@idlegacha.com',
-          password: process.env.DEFAULT_ADMIN_PASSWORD || 'ChangeMe123!',
-          role: 'super_admin',
-          createdBy: 'system',
-          metadata: {
-            createdByIP: '127.0.0.1',
-            preferredLanguage: 'en',
-            timezone: 'UTC'
-          }
-        });
-
-        await defaultAdmin.save();
-        
-        console.log('✅ Default super admin created');
-        console.log(`📧 Username: ${defaultAdmin.username}`);
-        console.log(`🔐 Email: ${defaultAdmin.email}`);
-        console.log('⚠️  Please change the default password immediately!');
-      } else {
-        console.log(`✅ Found ${superAdminCount} super admin(s)`);
-      }
-    } catch (error) {
-      console.error('❌ Failed to ensure default super admin:', error);
-      throw error;
-    }
+private static async ensureDefaultSuperAdmin(): Promise<void> {
+  try {
+    await AdminService.createDefaultSuperAdmin();
+  } catch (error) {
+    console.error('❌ Failed to ensure default super admin:', error);
+    throw error;
   }
+}
 
   /**
    * Nettoyer les logs d'audit anciens
