@@ -267,7 +267,7 @@ export function getRolePermissions(role: AdminRole): string[] {
 // Environment validation helper
 export function validateEnvironment(): void {
   const requiredEnvVars = [
-    'MONGODB_URI',
+    'MONGO_URI',
     'ADMIN_JWT_SECRET'
   ];
 
