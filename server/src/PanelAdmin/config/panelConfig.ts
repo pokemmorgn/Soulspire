@@ -100,7 +100,7 @@ const defaultConfig: IPanelConfig = {
   },
 
   database: {
-    connectionString: process.env.MONGODB_URI || 'mongodb://localhost:27017/idle_gacha_admin',
+    connectionString: process.env.MONGO_URI || 'mongodb://localhost:27017/idle_gacha_admin',
     adminDatabase: process.env.ADMIN_DB_NAME || 'admin_panel',
     enableAuditLog: process.env.ADMIN_ENABLE_AUDIT === 'true',
     retentionDays: parseInt(process.env.ADMIN_LOG_RETENTION || '90')
