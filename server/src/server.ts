@@ -367,7 +367,8 @@ const startServer = async (): Promise<void> => {
       console.log(`🌐 Environment: ${NODE_ENV}`);
       console.log(`📊 API Health: http://${publicIP}:${PORT}/health`);
       console.log(`🔌 WebSocket available at ws://${publicIP}:${PORT}`);
-      console.log(`👨‍💼 Admin Panel: http://${publicIP}:${PORT}/api/admin/health`);
+      console.log(`👨‍💼 Admin Panel: http://${publicIP}:${PORT}/admin-panel/index.html`);
+      console.log(`🔐 Admin API: http://${publicIP}:${PORT}/api/admin/health`);
       
       // Affichage du statut des services après démarrage
       setTimeout(async () => {
