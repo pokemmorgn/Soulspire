@@ -32,13 +32,14 @@ import notificationRoutes from "./routes/notifications";
 import tutorialRoutes from "./routes/tutorials";
 import arenaRoutes from "./routes/arena";
 import guildRoutes from "./routes/guild";
+
 // Import des services
 import { ShopService } from "./services/ShopService";
 import { SchedulerService } from "./services/SchedulerService";
 import { ArenaCache } from './services/arena/ArenaCache';
 import { WebSocketService } from './services/WebSocketService';
 
-//Panel Admin
+// Panel Admin
 import { panelConfig, validateEnvironment } from './PanelAdmin/config/panelConfig';
 
 // Configuration de l'environnement
@@ -110,7 +111,8 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(injectServerIdMiddleware);
 app.use(serverMiddleware);
-// Application du rate limiting
+// Application du rate limiting (SAUF pour l'admin panel)
+app.use('/api/admin', (req, res, next) => next()); // Skip rate limiting for admin
 app.use(limiter);
 
 // Middleware de logging personnalisé
@@ -122,6 +124,113 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   
   console.log(`[${timestamp}] ${method} ${url} - IP: ${ip}`);
   next();
+});
+
+// ===== 🔧 SETUP ADMIN PANEL EN PREMIER =====
+console.log("🔧 Configuration du panel admin...");
+try {
+  setupAdminPanel(app);
+  console.log("✅ Panel admin configuré avec succès");
+} catch (error) {
+  console.error("⚠️ Erreur configuration panel admin:", error);
+  console.log("ℹ️ Le serveur continuera sans le panel admin");
+}
+
+// Servir les fichiers statiques du panel admin
+app.use('/admin-panel', express.static(path.join(__dirname, '../admin-panel')));
+app.get('/admin-panel', (req, res) => {
+  res.redirect('/admin-panel/index.html');
+});
+
+// Routes du jeu avec middlewares spécifiques
+app.use("/api/auth", authLimiter, authRoutes);
+app.use("/api/player", playerRoutes);
+app.use("/api/inventory", inventoryRoutes);
+app.use("/api/heroes", heroesRoutes);
+app.use("/api/gacha", gachaLimiter, gachaRoutes);
+app.use('/api/shops', shopRoutes); 
+app.use("/api/battle", battleRoutes);
+app.use("/api/servers", serverRoutes);
+app.use("/api/tower", towerRoutes);
+app.use("/api/events", eventsRoutes);
+app.use("/api/afk", authMiddleware, touchLastSeen, afkRouter);
+app.use("/api/campaign", campaignRoutes);
+app.use("/api/items", itemsRoutes);
+app.use("/api/forge", forgeRoutes);
+app.use("/api/leaderboard", leaderboardRoutes);
+app.use("/api/hero-fusion", heroFusionRoutes);
+app.use("/api/mail", mailRoutes);
+app.use("/api/afk-farming", afkFarmingRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/tutorials", tutorialRoutes);
+app.use("/api/arena", arenaRoutes);
+app.use("/api/guilds", guildRoutes);
+
+// Route de santé de l'API
+app.get("/", (req: Request, res: Response) => {
+  res.json({
+    message: "Unity Gacha Game API is running",
+    version: "1.0.0",
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    environment: NODE_ENV
+  });
+});
+
+// Route de santé détaillée
+app.get("/health", async (req: Request, res: Response) => {
+  const healthCheck = {
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    services: {
+      database: "unknown",
+      memory: process.memoryUsage(),
+      uptime: process.uptime()
+    }
+  };
+
+  try {
+    // Vérification de la connexion MongoDB
+    const dbState = mongoose.connection.readyState;
+    healthCheck.services.database = dbState === 1 ? "connected" : "disconnected";
+    
+    if (dbState !== 1) {
+      healthCheck.status = "degraded";
+    }
+
+    res.json(healthCheck);
+  } catch (err) {
+    healthCheck.status = "unhealthy";
+    healthCheck.services.database = "error";
+    res.status(503).json(healthCheck);
+  }
+});
+
+// Route pour les métriques (optionnel, pour monitoring)
+app.get("/metrics", async (req: Request, res: Response) => {
+  try {
+    if (mongoose.connection.db) {
+      const stats = await mongoose.connection.db.stats();
+      const metrics = {
+        database: {
+          collections: stats.collections,
+          dataSize: stats.dataSize,
+          indexSize: stats.indexSize,
+          storageSize: stats.storageSize
+        },
+        server: {
+          memory: process.memoryUsage(),
+          uptime: process.uptime(),
+          cpu: process.cpuUsage()
+        }
+      };
+      res.json(metrics);
+    } else {
+      res.status(500).json({ error: "Database not connected" });
+    }
+  } catch (err) {
+    res.status(500).json({ error: "Unable to retrieve metrics" });
+  }
 });
 
 // Middleware de gestion des erreurs globales
@@ -198,105 +307,6 @@ const connectDB = async (): Promise<void> => {
   }
 };
 
-// Routes avec middlewares spécifiques
-app.use("/api/auth", authLimiter, authRoutes);
-app.use("/api/player", playerRoutes);
-app.use("/api/inventory", inventoryRoutes);
-app.use("/api/heroes", heroesRoutes);
-app.use("/api/gacha", gachaLimiter, gachaRoutes);
-app.use('/api/shops', shopRoutes); 
-app.use("/api/battle", battleRoutes);
-app.use("/api/servers", serverRoutes);
-app.use("/api/tower", towerRoutes);
-app.use("/api/events", eventsRoutes);
-app.use("/api/afk", authMiddleware, touchLastSeen, afkRouter);
-app.use("/api/campaign", campaignRoutes);
-app.use("/api/items", itemsRoutes);
-app.use("/api/forge", forgeRoutes);
-app.use("/api/leaderboard", leaderboardRoutes);
-app.use("/api/hero-fusion", heroFusionRoutes);
-app.use("/api/mail", mailRoutes);
-app.use("/api/afk-farming", afkFarmingRoutes);
-app.use("/api/notifications", notificationRoutes);
-app.use("/api/tutorials", tutorialRoutes);
-app.use("/api/arena", arenaRoutes);
-app.use("/api/guilds", guildRoutes);
-
-// Route de santé de l'API
-app.get("/", (req: Request, res: Response) => {
-  res.json({
-    message: "Unity Gacha Game API is running",
-    version: "1.0.0",
-    status: "healthy",
-    timestamp: new Date().toISOString(),
-    environment: NODE_ENV
-  });
-});
-
-// Route de santé détaillée
-app.get("/health", async (req: Request, res: Response) => {
-  const healthCheck = {
-    status: "healthy",
-    timestamp: new Date().toISOString(),
-    services: {
-      database: "unknown",
-      memory: process.memoryUsage(),
-      uptime: process.uptime()
-    }
-  };
-
-  try {
-    // Vérification de la connexion MongoDB
-    const dbState = mongoose.connection.readyState;
-    healthCheck.services.database = dbState === 1 ? "connected" : "disconnected";
-    
-    if (dbState !== 1) {
-      healthCheck.status = "degraded";
-    }
-
-    res.json(healthCheck);
-  } catch (err) {
-    healthCheck.status = "unhealthy";
-    healthCheck.services.database = "error";
-    res.status(503).json(healthCheck);
-  }
-});
-
-// Test de configuration
-try {
-  validateEnvironment();
-  console.log('Panel config loaded:', panelConfig.server.port);
-} catch (error) {
-  console.error('Panel config error:', error);
-}
-
-// Route pour les métriques (optionnel, pour monitoring)
-app.get("/metrics", async (req: Request, res: Response) => {
-  try {
-    if (mongoose.connection.db) {
-      const stats = await mongoose.connection.db.stats();
-      const metrics = {
-        database: {
-          collections: stats.collections,
-          dataSize: stats.dataSize,
-          indexSize: stats.indexSize,
-          storageSize: stats.storageSize
-        },
-        server: {
-          memory: process.memoryUsage(),
-          uptime: process.uptime(),
-          cpu: process.cpuUsage()
-        }
-      };
-      res.json(metrics);
-    } else {
-      res.status(500).json({ error: "Database not connected" });
-    }
-  } catch (err) {
-    res.status(500).json({ error: "Unable to retrieve metrics" });
-  }
-});
-
 // ===== ⚠️ IMPORTANT: LE CATCH-ALL 404 DOIT ÊTRE EN TOUT DERNIER =====
 // Middleware pour les routes non trouvées (TOUJOURS EN DERNIER)
 app.use("*", (req: Request, res: Response) => {
@@ -316,16 +326,6 @@ const startServer = async (): Promise<void> => {
   try {
     // Connexion à la base de données
     await connectDB();
-    
-    // ===== 🔧 SETUP ADMIN PANEL AVANT TOUT LE RESTE =====
-    console.log("🔧 Configuration du panel admin...");
-    try {
-      setupAdminPanel(app);
-      console.log("✅ Panel admin configuré avec succès");
-    } catch (error) {
-      console.error("⚠️ Erreur configuration panel admin:", error);
-      console.log("ℹ️ Le serveur continuera sans le panel admin");
-    }
     
     // 🛒 INITIALISATION DES BOUTIQUES SYSTÈME
     console.log("🛒 Initialisation des boutiques système...");
