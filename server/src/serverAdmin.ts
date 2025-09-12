@@ -12,10 +12,10 @@ import dashboardRoutes from './PanelAdmin/routes/dashboard';
 import playersRoutes from './PanelAdmin/routes/players';
 import economyRoutes from './PanelAdmin/routes/economy';
 import inventoryRoutes from './PanelAdmin/routes/inventory';
+
 // Import des services pour l'initialisation
 import AdminService from './PanelAdmin/services/AdminService';
 import AnalyticsService from './PanelAdmin/services/AnalyticsService';
-import Admin from './PanelAdmin/models/Admin';
 import AuditLog from './PanelAdmin/models/AuditLog';
 
 export class AdminPanelServer {
@@ -31,13 +31,13 @@ export class AdminPanelServer {
       // Validation de la configuration
       this.validateAdminEnvironment();
 
-      // Configuration des middlewares admin
+      // Configuration des middlewares admin AVANT les routes
       this.setupAdminMiddlewares(app);
 
       // Configuration des routes admin
       this.setupAdminRoutes(app);
 
-      // Initialisation des services admin
+      // Initialisation des services admin (async mais non bloquant)
       this.initializeAdminServices();
 
       // Tâches de maintenance
@@ -105,9 +105,6 @@ export class AdminPanelServer {
     // Parser de cookies pour les sessions admin
     app.use('/api/admin', cookieParser());
     
-    // Routes de gestion économique
-    app.use('/api/admin/economy', economyRoutes);
-    app.use('/api/admin/inventory', inventoryRoutes);
     // Rate limiting global pour le panel admin
     const adminGlobalRateLimit = rateLimit({
       windowMs: panelConfig.server.rateLimiting.windowMs,
@@ -168,12 +165,19 @@ export class AdminPanelServer {
             authentication: 'operational',
             analytics: 'operational',
             audit: 'operational'
-          },
-          database: {
-            admins: await Admin.countDocuments(),
-            auditLogs: await AuditLog.countDocuments()
           }
         };
+
+        // Essayer de compter les logs d'audit sans faire échouer le health check
+        try {
+          const auditCount = await AuditLog.countDocuments();
+          (healthCheck as any).database = {
+            auditLogs: auditCount
+          };
+        } catch (error) {
+          console.warn('Health check: Could not access audit logs');
+          (healthCheck.services as any).audit = 'degraded';
+        }
 
         res.json(healthCheck);
       } catch (error) {
@@ -195,6 +199,9 @@ export class AdminPanelServer {
         endpoints: {
           authentication: '/api/admin/auth/*',
           dashboard: '/api/admin/dashboard/*',
+          players: '/api/admin/players/*',
+          economy: '/api/admin/economy/*',
+          inventory: '/api/admin/inventory/*',
           health: '/api/admin/health'
         },
         features: [
@@ -202,6 +209,7 @@ export class AdminPanelServer {
           'Real-time Analytics Dashboard',
           'Player Management',
           'Economy Monitoring',
+          'Inventory Management',
           'Audit Logging',
           'Security Alerts',
           'Data Export'
@@ -219,6 +227,12 @@ export class AdminPanelServer {
     // Routes de gestion des joueurs
     app.use('/api/admin/players', playersRoutes);
     
+    // Routes de gestion économique
+    app.use('/api/admin/economy', economyRoutes);
+    
+    // Routes de gestion d'inventaire
+    app.use('/api/admin/inventory', inventoryRoutes);
+    
     // Route 404 pour le panel admin
     app.use('/api/admin/*', (req: Request, res: Response) => {
       res.status(404).json({
@@ -229,12 +243,20 @@ export class AdminPanelServer {
           '/api/admin/health',
           '/api/admin/info',
           '/api/admin/auth/*',
-          '/api/admin/dashboard/*'
+          '/api/admin/dashboard/*',
+          '/api/admin/players/*',
+          '/api/admin/economy/*',
+          '/api/admin/inventory/*'
         ]
       });
     });
 
     console.log('✅ Admin routes configured');
+    console.log('   - /api/admin/auth/* (Authentication)');
+    console.log('   - /api/admin/dashboard/* (Dashboard & Analytics)');
+    console.log('   - /api/admin/players/* (Player Management)');
+    console.log('   - /api/admin/economy/* (Economy Management)');
+    console.log('   - /api/admin/inventory/* (Inventory Management)');
   }
 
   /**
@@ -260,14 +282,14 @@ export class AdminPanelServer {
   /**
    * S'assurer qu'un super admin existe
    */
-private static async ensureDefaultSuperAdmin(): Promise<void> {
-  try {
-    await AdminService.createDefaultSuperAdmin();
-  } catch (error) {
-    console.error('❌ Failed to ensure default super admin:', error);
-    throw error;
+  private static async ensureDefaultSuperAdmin(): Promise<void> {
+    try {
+      await AdminService.createDefaultSuperAdmin();
+    } catch (error) {
+      console.error('❌ Failed to ensure default super admin:', error);
+      // Ne pas faire échouer le démarrage, juste logger l'erreur
+    }
   }
-}
 
   /**
    * Nettoyer les logs d'audit anciens
@@ -341,17 +363,21 @@ private static async ensureDefaultSuperAdmin(): Promise<void> {
       console.log(`🧹 Cleared ${sessionsCleared} active admin sessions`);
       
       // Log de fermeture
-      await AuditLog.createLog({
-        adminId: 'system',
-        adminUsername: 'system',
-        adminRole: 'super_admin',
-        action: 'system.server_restart',
-        resource: 'admin_panel',
-        ipAddress: '127.0.0.1',
-        userAgent: 'System',
-        success: true,
-        severity: 'medium'
-      });
+      try {
+        await AuditLog.createLog({
+          adminId: 'system',
+          adminUsername: 'system',
+          adminRole: 'super_admin',
+          action: 'system.server_restart',
+          resource: 'admin_panel',
+          ipAddress: '127.0.0.1',
+          userAgent: 'System',
+          success: true,
+          severity: 'medium'
+        });
+      } catch (error) {
+        console.warn('Could not log shutdown event:', error);
+      }
 
       console.log('✅ Admin Panel shutdown completed');
     } catch (error) {
