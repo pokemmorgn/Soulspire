@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
+import path from "path";
 import { setupAdminPanel, shutdownAdminPanel } from './serverAdmin';
 // Import des routes
 import authRoutes from "./routes/auth";
@@ -219,6 +220,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/tutorials", tutorialRoutes);
 app.use("/api/arena", arenaRoutes);
 app.use("/api/guilds", guildRoutes);
+
 // Route de santé de l'API
 app.get("/", (req: Request, res: Response) => {
   res.json({
@@ -294,7 +296,8 @@ app.get("/metrics", async (req: Request, res: Response) => {
   }
 });
 
-// Middleware pour les routes non trouvées
+// ===== ⚠️ IMPORTANT: LE CATCH-ALL 404 DOIT ÊTRE EN TOUT DERNIER =====
+// Middleware pour les routes non trouvées (TOUJOURS EN DERNIER)
 app.use("*", (req: Request, res: Response) => {
   res.status(404).json({
     error: "Route not found",
@@ -312,7 +315,17 @@ const startServer = async (): Promise<void> => {
   try {
     // Connexion à la base de données
     await connectDB();
-    setupAdminPanel(app);
+    
+    // ===== 🔧 SETUP ADMIN PANEL AVANT TOUT LE RESTE =====
+    console.log("🔧 Configuration du panel admin...");
+    try {
+      setupAdminPanel(app);
+      console.log("✅ Panel admin configuré avec succès");
+    } catch (error) {
+      console.error("⚠️ Erreur configuration panel admin:", error);
+      console.log("ℹ️ Le serveur continuera sans le panel admin");
+    }
+    
     // 🛒 INITIALISATION DES BOUTIQUES SYSTÈME
     console.log("🛒 Initialisation des boutiques système...");
     try {
@@ -337,7 +350,6 @@ const startServer = async (): Promise<void> => {
       console.log("ℹ️ Les boutiques devront être mises à jour manuellement");
     }
     
-    // Démarrage du serveur
     // 🔥 Initialiser WebSocket AVANT de démarrer le serveur
     console.log("🔌 Initialisation WebSocket...");
     try {
@@ -355,6 +367,8 @@ const startServer = async (): Promise<void> => {
       console.log(`🌐 Environment: ${NODE_ENV}`);
       console.log(`📊 API Health: http://${publicIP}:${PORT}/health`);
       console.log(`🔌 WebSocket available at ws://${publicIP}:${PORT}`);
+      console.log(`👨‍💼 Admin Panel: http://${publicIP}:${PORT}/api/admin/health`);
+      
       // Affichage du statut des services après démarrage
       setTimeout(async () => {
         try {
@@ -403,7 +417,10 @@ const startServer = async (): Promise<void> => {
       } catch (error) {
         console.error("⚠️ Erreur fermeture WebSocket:", error);
       }
+      
+      // Arrêt du panel admin
       await shutdownAdminPanel();
+      
       server.close(async () => {
         console.log("🔌 HTTP server closed");
         
