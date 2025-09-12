@@ -6,7 +6,6 @@ import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 import path from "path";
 import { setupAdminPanel, shutdownAdminPanel } from './serverAdmin';
-
 // Import des routes
 import authRoutes from "./routes/auth";
 import playerRoutes from "./routes/player";
@@ -33,46 +32,24 @@ import notificationRoutes from "./routes/notifications";
 import tutorialRoutes from "./routes/tutorials";
 import arenaRoutes from "./routes/arena";
 import guildRoutes from "./routes/guild";
-
 // Import des services
 import { ShopService } from "./services/ShopService";
 import { SchedulerService } from "./services/SchedulerService";
 import { ArenaCache } from './services/arena/ArenaCache';
 import { WebSocketService } from './services/WebSocketService';
 
-// Panel Admin
+//Panel Admin
 import { panelConfig, validateEnvironment } from './PanelAdmin/config/panelConfig';
 
 // Configuration de l'environnement
 dotenv.config();
 
 const app: Application = express();
-
-// ===== CONFIGURATION SÉCURISÉE DU PROXY =====
-const NODE_ENV = process.env.NODE_ENV || "development";
-
-if (NODE_ENV === "production") {
-  // En production, configuration spécifique pour les proxies connus
-  // Ajustez ces valeurs selon votre infrastructure
-  const trustedProxies = [
-    'loopback', // 127.0.0.1/8, ::1/128
-    'linklocal', // 169.254.0.0/16, fe80::/10
-    'uniquelocal', // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, fc00::/7
-    // Ajoutez ici les IP spécifiques de votre load balancer/proxy si nécessaire
-    // '10.0.0.1', // Exemple d'IP de load balancer
-  ];
-  
-  app.set('trust proxy', trustedProxies);
-  console.log('✅ Proxy trust configured for production with specific trusted proxies');
-} else {
-  // En développement, configuration plus permissive mais sécurisée
-  app.set('trust proxy', 'loopback');
-  console.log('✅ Proxy trust configured for development (loopback only)');
-}
-
+app.set('trust proxy', true);
 const httpServer = createServer(app);
 const PORT: number = parseInt(process.env.PORT || "3000", 10);
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/unity-gacha-game";
+const NODE_ENV = process.env.NODE_ENV || "development";
 
 // Configuration CORS
 const corsOptions = {
@@ -84,67 +61,25 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
 };
 
-// ===== FONCTION SÉCURISÉE POUR OBTENIR L'IP CLIENT =====
-const getClientIP = (req: Request): string => {
-  // Méthode sécurisée pour obtenir la vraie IP du client
-  if (NODE_ENV === "production") {
-    // En production, vérifier d'abord X-Forwarded-For puis X-Real-IP
-    const forwardedFor = req.get('X-Forwarded-For');
-    if (forwardedFor) {
-      // Prendre la première IP de la liste (client original)
-      const clientIP = forwardedFor.split(',')[0].trim();
-      // Validation basique de l'IP
-      const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$|^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/;
-      if (ipRegex.test(clientIP)) {
-        return clientIP;
-      }
-    }
-    
-    const realIP = req.get('X-Real-IP');
-    if (realIP) {
-      return realIP;
-    }
-  }
-  
-  // Fallback vers req.ip (qui utilise trust proxy)
-  return req.ip || req.socket.remoteAddress || 'unknown';
-};
-
-// ===== CONFIGURATION RATE LIMITING SÉCURISÉE =====
+// Rate limiting pour prévenir les abus
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: NODE_ENV === "production" ? 100 : 1000,
+  max: NODE_ENV === "production" ? 100 : 1000, // Plus restrictif en production
   message: {
     error: "Too many requests from this IP, please try again later.",
     code: "RATE_LIMIT_EXCEEDED"
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // Utiliser notre fonction sécurisée pour obtenir l'IP
-  keyGenerator: (req: Request) => {
-    return getClientIP(req);
-  },
-  // Configuration supplémentaire pour la sécurité
-  skip: (req: Request) => {
-    // Optionnel: skip rate limiting pour certaines IP internes
-    const ip = getClientIP(req);
-    const internalIPs = ['127.0.0.1', '::1', 'localhost'];
-    return NODE_ENV === "development" && internalIPs.includes(ip);
-  }
 });
 
-// Rate limiting pour l'authentification
+// Rate limiting spécial pour l'authentification
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10, // Maximum 10 tentatives de connexion par IP
   message: {
     error: "Too many authentication attempts, please try again later.",
     code: "AUTH_RATE_LIMIT_EXCEEDED"
-  },
-  keyGenerator: (req: Request) => getClientIP(req),
-  // En cas de dépassement, bloquer plus longtemps
-  onLimitReached: (req: Request) => {
-    console.warn(`🚨 Auth rate limit exceeded for IP: ${getClientIP(req)}`);
   }
 });
 
@@ -155,8 +90,7 @@ const gachaLimiter = rateLimit({
   message: {
     error: "Too many gacha pulls, please slow down.",
     code: "GACHA_RATE_LIMIT_EXCEEDED"
-  },
-  keyGenerator: (req: Request) => getClientIP(req)
+  }
 });
 
 // Nettoyage automatique toutes les 10 minutes
@@ -179,12 +113,12 @@ app.use(serverMiddleware);
 // Application du rate limiting
 app.use(limiter);
 
-// Middleware de logging personnalisé avec IP sécurisée
+// Middleware de logging personnalisé
 app.use((req: Request, res: Response, next: NextFunction) => {
   const timestamp = new Date().toISOString();
   const method = req.method;
   const url = req.originalUrl;
-  const ip = getClientIP(req);
+  const ip = req.ip || req.connection.remoteAddress;
   
   console.log(`[${timestamp}] ${method} ${url} - IP: ${ip}`);
   next();
@@ -331,9 +265,9 @@ app.get("/health", async (req: Request, res: Response) => {
 // Test de configuration
 try {
   validateEnvironment();
-  console.log('✅ Panel config loaded:', panelConfig.server.port);
+  console.log('Panel config loaded:', panelConfig.server.port);
 } catch (error) {
-  console.error('⚠️ Panel config error:', error);
+  console.error('Panel config error:', error);
 }
 
 // Route pour les métriques (optionnel, pour monitoring)
@@ -432,7 +366,6 @@ const startServer = async (): Promise<void> => {
 
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`🌐 Environment: ${NODE_ENV}`);
-      console.log(`🔒 Proxy trust: ${NODE_ENV === 'production' ? 'Production (secured)' : 'Development (loopback)'}`);
       console.log(`📊 API Health: http://${publicIP}:${PORT}/health`);
       console.log(`🔌 WebSocket available at ws://${publicIP}:${PORT}`);
       console.log(`👨‍💼 Admin Panel: http://${publicIP}:${PORT}/admin-panel/index.html`);
