@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Panel - Test</title>
+    <title>Admin Panel - Test Simple</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 400px;
+            max-width: 600px;
             margin: 50px auto;
             padding: 20px;
             background: #f5f5f5;
@@ -26,32 +26,25 @@
             margin-bottom: 30px;
         }
         
-        .form-group {
-            margin-bottom: 15px;
-        }
-        
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        
-        input {
-            width: 100%;
-            padding: 10px;
+        .test-section {
+            margin-bottom: 20px;
+            padding: 15px;
             border: 1px solid #ddd;
             border-radius: 4px;
-            font-size: 16px;
+        }
+        
+        .test-section h3 {
+            margin-top: 0;
+            color: #666;
         }
         
         button {
-            width: 100%;
-            padding: 12px;
+            padding: 10px 15px;
+            margin: 5px;
             background: #007bff;
             color: white;
             border: none;
             border-radius: 4px;
-            font-size: 16px;
             cursor: pointer;
         }
         
@@ -64,227 +57,204 @@
             cursor: not-allowed;
         }
         
-        .message {
+        .result {
+            margin-top: 10px;
             padding: 10px;
-            margin: 10px 0;
             border-radius: 4px;
-            display: none;
-        }
-        
-        .error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        
-        .success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        
-        .info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-        }
-        
-        .response {
-            margin-top: 20px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 4px;
-            border-left: 4px solid #007bff;
             font-family: monospace;
             font-size: 12px;
             max-height: 200px;
             overflow-y: auto;
-            display: none;
         }
         
-        .status-indicator {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            margin-right: 5px;
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        
+        .form-group {
+            margin-bottom: 15px;
         }
         
-        .status-success { background: #28a745; }
-        .status-error { background: #dc3545; }
-        .status-warning { background: #ffc107; }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🎮 Admin Panel Test</h1>
+        <h1>🔧 Admin Panel Test</h1>
         
-        <div id="message" class="message"></div>
+        <!-- Test de connexion API -->
+        <div class="test-section">
+            <h3>1. Test de connexion API</h3>
+            <button onclick="testApiHealth()">Test /api/admin/health</button>
+            <button onclick="testApiInfo()">Test /api/admin/info</button>
+            <div id="api-result" class="result" style="display:none;"></div>
+        </div>
         
-        <form id="loginForm">
+        <!-- Test de login -->
+        <div class="test-section">
+            <h3>2. Test de login</h3>
             <div class="form-group">
-                <label for="username">Username:</label>
-                <input type="text" id="username" name="username" value="superadmin" required>
+                <label>Username:</label>
+                <input type="text" id="username" value="superadmin">
             </div>
-            
             <div class="form-group">
-                <label for="password">Password:</label>
-                <input type="password" id="password" name="password" value="ChangeMe123!" required>
+                <label>Password:</label>
+                <input type="password" id="password" value="ChangeMe123!">
             </div>
-            
-            <button type="submit" id="loginBtn">Test Login</button>
-        </form>
+            <button onclick="testLogin()">Test Login</button>
+            <div id="login-result" class="result" style="display:none;"></div>
+        </div>
         
-        <div id="response" class="response"></div>
+        <!-- Test avec token -->
+        <div class="test-section">
+            <h3>3. Test avec authentication</h3>
+            <button onclick="testAuthenticatedRequest()" id="auth-test-btn" disabled>Test /api/admin/dashboard/quick-stats</button>
+            <div id="auth-result" class="result" style="display:none;"></div>
+        </div>
         
-        <div style="margin-top: 20px; font-size: 12px; color: #666;">
-            <p><strong>API Status:</strong> <span id="apiStatus">Checking...</span></p>
-            <p><strong>Server:</strong> <span id="serverInfo">Unknown</span></p>
+        <!-- Logs -->
+        <div class="test-section">
+            <h3>4. Logs de débogage</h3>
+            <div id="debug-logs" class="result info" style="display:block; height: 150px;">
+                Prêt pour les tests...<br>
+            </div>
         </div>
     </div>
 
     <script>
-        class AdminTest {
-            constructor() {
-                this.form = document.getElementById('loginForm');
-                this.loginBtn = document.getElementById('loginBtn');
-                this.message = document.getElementById('message');
-                this.response = document.getElementById('response');
-                this.apiStatus = document.getElementById('apiStatus');
-                this.serverInfo = document.getElementById('serverInfo');
-                
-                this.init();
-            }
-            
-            init() {
-                this.form.addEventListener('submit', (e) => this.handleLogin(e));
-                this.checkApiHealth();
-            }
-            
-            async checkApiHealth() {
-                try {
-                    const response = await fetch('/api/admin/health');
-                    const data = await response.json();
-                    
-                    if (response.ok) {
-                        this.apiStatus.innerHTML = '<span class="status-indicator status-success"></span>API Online';
-                        this.serverInfo.textContent = `Panel v${data.panel?.version || '1.0.0'}`;
-                    } else {
-                        this.apiStatus.innerHTML = '<span class="status-indicator status-error"></span>API Error';
+        let authToken = null;
+        
+        function log(message, type = 'info') {
+            const debugLogs = document.getElementById('debug-logs');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'color: red' : type === 'success' ? 'color: green' : 'color: blue';
+            debugLogs.innerHTML += `<span style="${className}">[${timestamp}] ${message}</span><br>`;
+            debugLogs.scrollTop = debugLogs.scrollHeight;
+        }
+        
+        async function makeRequest(url, options = {}) {
+            log(`Making request to: ${url}`);
+            try {
+                const response = await fetch(url, {
+                    ...options,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+                        ...options.headers
                     }
-                } catch (error) {
-                    this.apiStatus.innerHTML = '<span class="status-indicator status-error"></span>API Offline';
-                    console.error('Health check failed:', error);
-                }
-            }
-            
-            async handleLogin(e) {
-                e.preventDefault();
+                });
                 
-                const formData = new FormData(this.form);
-                const loginData = {
-                    username: formData.get('username'),
-                    password: formData.get('password')
-                };
+                log(`Response status: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
                 
-                this.setLoading(true);
-                this.clearMessage();
-                this.clearResponse();
-                
-                try {
-                    console.log('Sending login request...', { username: loginData.username });
-                    
-                    const response = await fetch('/api/admin/auth/login', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        credentials: 'include',
-                        body: JSON.stringify(loginData)
-                    });
-                    
-                    const result = await response.json();
-                    
-                    console.log('Response:', { status: response.status, result });
-                    
-                    this.showResponse({
-                        status: response.status,
-                        statusText: response.statusText,
-                        data: result
-                    });
-                    
-                    if (response.ok && result.success) {
-                        this.showMessage('✅ Login successful!', 'success');
-                        
-                        // Test getting admin info
-                        setTimeout(() => this.testAdminInfo(), 1000);
-                        
-                    } else if (result.requiresTwoFactor) {
-                        this.showMessage('🔐 2FA required (not implemented in test)', 'info');
-                    } else {
-                        this.showMessage(`❌ Login failed: ${result.error || 'Unknown error'}`, 'error');
-                    }
-                    
-                } catch (error) {
-                    console.error('Login error:', error);
-                    this.showMessage(`🚫 Connection error: ${error.message}`, 'error');
-                    this.showResponse({
-                        error: error.message,
-                        stack: error.stack
-                    });
-                } finally {
-                    this.setLoading(false);
-                }
-            }
-            
-            async testAdminInfo() {
-                try {
-                    const response = await fetch('/api/admin/auth/me', {
-                        credentials: 'include'
-                    });
-                    
-                    const result = await response.json();
-                    
-                    if (response.ok) {
-                        this.showMessage(`👤 Logged in as: ${result.data.admin.username} (${result.data.admin.role})`, 'success');
-                        this.showResponse({
-                            adminInfo: result.data.admin,
-                            session: result.data.session
-                        });
-                    }
-                } catch (error) {
-                    console.error('Get admin info error:', error);
-                }
-            }
-            
-            setLoading(loading) {
-                this.loginBtn.disabled = loading;
-                this.loginBtn.textContent = loading ? 'Testing...' : 'Test Login';
-            }
-            
-            showMessage(text, type) {
-                this.message.textContent = text;
-                this.message.className = `message ${type}`;
-                this.message.style.display = 'block';
-            }
-            
-            clearMessage() {
-                this.message.style.display = 'none';
-            }
-            
-            showResponse(data) {
-                this.response.textContent = JSON.stringify(data, null, 2);
-                this.response.style.display = 'block';
-            }
-            
-            clearResponse() {
-                this.response.style.display = 'none';
+                const data = await response.json();
+                return { response, data };
+            } catch (error) {
+                log(`Request error: ${error.message}`, 'error');
+                throw error;
             }
         }
         
-        // Initialize when DOM is loaded
-        document.addEventListener('DOMContentLoaded', () => {
-            new AdminTest();
+        async function testApiHealth() {
+            try {
+                const { response, data } = await makeRequest('/api/admin/health');
+                document.getElementById('api-result').style.display = 'block';
+                document.getElementById('api-result').className = 'result ' + (response.ok ? 'success' : 'error');
+                document.getElementById('api-result').textContent = JSON.stringify(data, null, 2);
+                log('Health check completed', response.ok ? 'success' : 'error');
+            } catch (error) {
+                document.getElementById('api-result').style.display = 'block';
+                document.getElementById('api-result').className = 'result error';
+                document.getElementById('api-result').textContent = `Error: ${error.message}`;
+                log(`Health check failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testApiInfo() {
+            try {
+                const { response, data } = await makeRequest('/api/admin/info');
+                document.getElementById('api-result').style.display = 'block';
+                document.getElementById('api-result').className = 'result ' + (response.ok ? 'success' : 'error');
+                document.getElementById('api-result').textContent = JSON.stringify(data, null, 2);
+                log('Info endpoint completed', response.ok ? 'success' : 'error');
+            } catch (error) {
+                document.getElementById('api-result').style.display = 'block';
+                document.getElementById('api-result').className = 'result error';
+                document.getElementById('api-result').textContent = `Error: ${error.message}`;
+                log(`Info endpoint failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testLogin() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            if (!username || !password) {
+                log('Username and password required', 'error');
+                return;
+            }
+            
+            try {
+                const { response, data } = await makeRequest('/api/admin/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify({ username, password })
+                });
+                
+                document.getElementById('login-result').style.display = 'block';
+                document.getElementById('login-result').className = 'result ' + (response.ok ? 'success' : 'error');
+                document.getElementById('login-result').textContent = JSON.stringify(data, null, 2);
+                
+                if (response.ok && data.success && data.data && data.data.token) {
+                    authToken = data.data.token;
+                    document.getElementById('auth-test-btn').disabled = false;
+                    log('Login successful! Token saved.', 'success');
+                } else {
+                    log('Login failed or no token received', 'error');
+                }
+            } catch (error) {
+                document.getElementById('login-result').style.display = 'block';
+                document.getElementById('login-result').className = 'result error';
+                document.getElementById('login-result').textContent = `Error: ${error.message}`;
+                log(`Login failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testAuthenticatedRequest() {
+            if (!authToken) {
+                log('No auth token available. Please login first.', 'error');
+                return;
+            }
+            
+            try {
+                const { response, data } = await makeRequest('/api/admin/dashboard/quick-stats');
+                
+                document.getElementById('auth-result').style.display = 'block';
+                document.getElementById('auth-result').className = 'result ' + (response.ok ? 'success' : 'error');
+                document.getElementById('auth-result').textContent = JSON.stringify(data, null, 2);
+                log('Authenticated request completed', response.ok ? 'success' : 'error');
+            } catch (error) {
+                document.getElementById('auth-result').style.display = 'block';
+                document.getElementById('auth-result').className = 'result error';
+                document.getElementById('auth-result').textContent = `Error: ${error.message}`;
+                log(`Authenticated request failed: ${error.message}`, 'error');
+            }
+        }
+        
+        // Auto-test de connectivité au chargement
+        window.addEventListener('load', () => {
+            log('Page loaded. Testing basic connectivity...', 'info');
+            setTimeout(testApiHealth, 1000);
         });
     </script>
 </body>
