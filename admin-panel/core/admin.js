@@ -68,26 +68,36 @@ class AdminCore {
      * Afficher une alerte globale
      */
     showAlert(message, type = 'info', duration = 5000) {
-        const alertContainer = document.getElementById('globalAlert');
+        let alertContainer = document.getElementById('globalAlert');
         
-        alertContainer.innerHTML = `
-            <div class="alert ${type} slide-in">
+        // Créer le container s'il n'existe pas
+        if (!alertContainer) {
+            alertContainer = document.createElement('div');
+            alertContainer.id = 'globalAlert';
+            alertContainer.className = 'global-alert';
+            document.body.appendChild(alertContainer);
+        }
+        
+        const alertId = Date.now();
+        const alertHTML = `
+            <div class="alert ${type} slide-in" id="alert-${alertId}">
                 <span class="alert-icon">
                     ${type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️'}
                 </span>
                 <span class="alert-message">${message}</span>
-                <button class="alert-close" onclick="this.parentElement.remove()">×</button>
+                <button class="alert-close" onclick="document.getElementById('alert-${alertId}').remove()">×</button>
             </div>
         `;
         
+        alertContainer.insertAdjacentHTML('beforeend', alertHTML);
         alertContainer.style.display = 'block';
         
         if (duration > 0) {
             setTimeout(() => {
-                const alert = alertContainer.querySelector('.alert');
-                if (alert) {
-                    alert.classList.add('slide-out');
-                    setTimeout(() => alertContainer.style.display = 'none', 300);
+                const alertElement = document.getElementById(`alert-${alertId}`);
+                if (alertElement) {
+                    alertElement.classList.add('slide-out');
+                    setTimeout(() => alertElement.remove(), 300);
                 }
             }, duration);
         }
@@ -223,7 +233,7 @@ class AdminCore {
             healthElement.textContent = this.capitalizeFirst(health || 'Unknown');
             
             // Mettre à jour la classe CSS selon la santé
-            const healthCard = healthElement.closest('.stat-card');
+            const healthCard = document.getElementById('healthCard');
             healthCard.className = `stat-card health-card health-${health || 'unknown'}`;
             
         } catch (error) {
@@ -368,10 +378,9 @@ class AdminCore {
             tab.classList.remove('active');
         });
         
-        // Afficher la section sélectionnée
+        // Afficher la section sélectionnée et activer l'onglet
         const sectionElement = document.getElementById(sectionName + 'Section');
-        const tabElement = event?.target?.classList.contains('nav-tab') ? event.target : 
-            document.querySelector(`.nav-tab[onclick*="${sectionName}"]`);
+        const tabElement = document.querySelector(`.nav-tab[onclick*="${sectionName}"]`);
         
         if (sectionElement) sectionElement.classList.add('active');
         if (tabElement) tabElement.classList.add('active');
@@ -386,8 +395,13 @@ class AdminCore {
     loadSectionData(sectionName) {
         switch(sectionName) {
             case 'players':
-                if (window.PlayersModule && window.PlayersModule.loadData) {
-                    window.PlayersModule.loadData();
+                // Utiliser le module PlayersModule si disponible
+                if (window.PlayersModule && typeof PlayersModule.loadData === 'function') {
+                    console.log('📋 Loading players data via PlayersModule...');
+                    PlayersModule.loadData();
+                } else {
+                    console.warn('PlayersModule not available, showing placeholder');
+                    this.showPlaceholder('playersContent', 'Players', '👥');
                 }
                 break;
             case 'economy':
@@ -398,6 +412,10 @@ class AdminCore {
                 break;
             case 'system':
                 this.loadSystemInfo();
+                break;
+            case 'overview':
+                // Recharger les données d'aperçu si nécessaire
+                this.loadOverviewData();
                 break;
         }
     }
@@ -435,14 +453,16 @@ class AdminCore {
      */
     showPlaceholder(contentId, moduleName, icon) {
         const content = document.getElementById(contentId);
-        content.innerHTML = `
-            <div class="placeholder">
-                <div class="placeholder-icon">${icon}</div>
-                <h3>🚧 ${moduleName} Module</h3>
-                <p>This module is coming soon...</p>
-                <p class="placeholder-hint">This will include comprehensive ${moduleName.toLowerCase()} management tools.</p>
-            </div>
-        `;
+        if (content) {
+            content.innerHTML = `
+                <div class="placeholder">
+                    <div class="placeholder-icon">${icon}</div>
+                    <h3>🚧 ${moduleName} Module</h3>
+                    <p>This module is coming soon...</p>
+                    <p class="placeholder-hint">This will include comprehensive ${moduleName.toLowerCase()} management tools.</p>
+                </div>
+            `;
+        }
     }
 
     /**
