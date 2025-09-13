@@ -8,10 +8,8 @@
 </head>
 <body>
     <div class="admin-container">
-        <!-- Global Alert Container -->
         <div id="globalAlert" class="global-alert"></div>
 
-        <!-- Login Form -->
         <div id="loginSection" class="login-form">
             <h1>🎮 Admin Panel</h1>
             <div id="loginAlert"></div>
@@ -26,14 +24,12 @@
                 <input type="password" id="password" value="ChangeMe123!" required>
             </div>
             
-            <button id="loginBtn" class="btn" onclick="AdminCore.login()">
+            <button id="loginBtn" class="btn" onclick="window.AdminCore.login()">
                 Login to Admin Panel
             </button>
         </div>
 
-        <!-- Dashboard -->
         <div id="dashboardSection" class="dashboard">
-            <!-- Header -->
             <div class="header">
                 <h1>🎮 Idle Gacha Admin</h1>
                 <div class="user-info">
@@ -46,7 +42,6 @@
                 </div>
             </div>
 
-            <!-- Stats Cards -->
             <div class="stats-grid" id="statsGrid">
                 <div class="stat-card">
                     <div class="stat-icon">👥</div>
@@ -70,18 +65,15 @@
                 </div>
             </div>
 
-            <!-- Navigation -->
             <div class="nav-tabs">
-                <div class="nav-tab active" onclick="AdminCore.showSection('overview')">📊 Overview</div>
-                <div class="nav-tab" onclick="AdminCore.showSection('players')">👥 Players</div>
-                <div class="nav-tab" onclick="AdminCore.showSection('economy')">💰 Economy</div>
-                <div class="nav-tab" onclick="AdminCore.showSection('logs')">📜 Audit Logs</div>
-                <div class="nav-tab" onclick="AdminCore.showSection('system')">⚙️ System</div>
+                <div class="nav-tab active" onclick="window.AdminCore.showSection('overview')">📊 Overview</div>
+                <div class="nav-tab" onclick="window.AdminCore.showSection('players')">👥 Players</div>
+                <div class="nav-tab" onclick="window.AdminCore.showSection('economy')">💰 Economy</div>
+                <div class="nav-tab" onclick="window.AdminCore.showSection('logs')">📜 Audit Logs</div>
+                <div class="nav-tab" onclick="window.AdminCore.showSection('system')">⚙️ System</div>
             </div>
 
-            <!-- Content Container -->
             <div class="content-container">
-                <!-- Overview Section -->
                 <div id="overviewSection" class="content-section active">
                     <h2 class="section-title">📊 System Overview</h2>
                     <div id="overviewContent">
@@ -92,7 +84,6 @@
                     </div>
                 </div>
 
-                <!-- Players Section -->
                 <div id="playersSection" class="content-section">
                     <h2 class="section-title">👥 Player Management</h2>
                     <div id="playersContent">
@@ -103,7 +94,6 @@
                     </div>
                 </div>
 
-                <!-- Economy Section -->
                 <div id="economySection" class="content-section">
                     <h2 class="section-title">💰 Economy Analytics</h2>
                     <div id="economyContent">
@@ -116,7 +106,6 @@
                     </div>
                 </div>
 
-                <!-- Logs Section -->
                 <div id="logsSection" class="content-section">
                     <div class="placeholder">
                         <div class="placeholder-icon">📜</div>
@@ -126,7 +115,6 @@
                     </div>
                 </div>
 
-                <!-- System Section -->
                 <div id="systemSection" class="content-section">
                     <h2 class="section-title">⚙️ System Information</h2>
                     <div id="systemContent">
@@ -140,23 +128,16 @@
         </div>
     </div>
 
-    <!-- Script AdminCore -->
     <script>
-        /**
-         * AdminCore - Système principal du panel admin
-         * Gère l'authentification, les requêtes API et la navigation
-         */
         class AdminCore {
             constructor() {
                 this.token = localStorage.getItem('adminToken');
                 this.adminUser = null;
                 this.refreshInterval = null;
                 this.currentSection = 'overview';
+                this.apiBaseUrl = '/api/admin';
             }
 
-            /**
-             * Initialiser le panel admin
-             */
             init() {
                 console.log('🔧 Initializing Admin Core...');
                 
@@ -165,7 +146,6 @@
                     this.loadDashboardData();
                 }
                 
-                // Écouter les erreurs d'API pour déconnecter si token invalide
                 window.addEventListener('unhandledrejection', (event) => {
                     if (event.reason && event.reason.message && event.reason.message.includes('TOKEN_')) {
                         this.logout();
@@ -175,9 +155,6 @@
                 console.log('✅ Admin Core initialized');
             }
 
-            /**
-             * Faire une requête API avec authentification
-             */
             async makeRequest(url, options = {}) {
                 const config = {
                     ...options,
@@ -193,7 +170,6 @@
                     const data = await response.json();
                     
                     if (!response.ok) {
-                        // Si token expiré, déconnecter automatiquement
                         if (response.status === 401 || response.status === 403) {
                             this.logout();
                             throw new Error('Session expired. Please login again.');
@@ -208,13 +184,9 @@
                 }
             }
 
-            /**
-             * Afficher une alerte globale
-             */
             showAlert(message, type = 'info', duration = 5000) {
                 let alertContainer = document.getElementById('globalAlert');
                 
-                // Créer le container s'il n'existe pas
                 if (!alertContainer) {
                     alertContainer = document.createElement('div');
                     alertContainer.id = 'globalAlert';
@@ -247,9 +219,6 @@
                 }
             }
 
-            /**
-             * Connexion administrateur
-             */
             async login() {
                 const username = document.getElementById('username').value;
                 const password = document.getElementById('password').value;
@@ -264,40 +233,7 @@
                 loginBtn.textContent = 'Logging in...';
 
                 try {
-                    // Simuler une connexion réussie pour le test
-                    // Remplacez cette section par votre vraie API
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    
-                    // Simulation des données retournées par l'API
-                    const mockResponse = {
-                        success: true,
-                        data: {
-                            token: 'mock_token_' + Date.now(),
-                            admin: {
-                                username: username,
-                                role: 'super_admin'
-                            }
-                        }
-                    };
-
-                    if (mockResponse.success && mockResponse.data.token) {
-                        this.token = mockResponse.data.token;
-                        this.adminUser = mockResponse.data.admin;
-                        localStorage.setItem('adminToken', this.token);
-                        
-                        this.showAlert('Login successful! Loading dashboard...', 'success');
-                        
-                        setTimeout(() => {
-                            this.showDashboard();
-                            this.loadDashboardData();
-                        }, 1000);
-                    } else {
-                        throw new Error('Login failed');
-                    }
-
-                    /* 
-                    // Code réel pour votre API :
-                    const { data } = await this.makeRequest('/api/admin/auth/login', {
+                    const { data } = await this.makeRequest(`${this.apiBaseUrl}/auth/login`, {
                         method: 'POST',
                         body: JSON.stringify({ username, password })
                     });
@@ -316,29 +252,23 @@
                     } else {
                         throw new Error(data.message || 'Login failed');
                     }
-                    */
                 } catch (error) {
-                    this.showAlert('Login failed: ' + error.message, 'error');
+                    this.showAlert(error.message || 'Login failed', 'error');
                 } finally {
                     loginBtn.disabled = false;
                     loginBtn.textContent = 'Login to Admin Panel';
                 }
             }
 
-            /**
-             * Déconnexion
-             */
             async logout() {
                 try {
-                    // Tenter de faire un logout propre sur le serveur
                     if (this.token) {
-                        // await this.makeRequest('/api/admin/auth/logout', { method: 'POST' });
+                        await this.makeRequest(`${this.apiBaseUrl}/auth/logout`, { method: 'POST' });
                     }
                 } catch (error) {
                     console.warn('Logout request failed:', error);
                 }
                 
-                // Nettoyer le côté client
                 localStorage.removeItem('adminToken');
                 this.token = null;
                 this.adminUser = null;
@@ -347,20 +277,15 @@
                     clearInterval(this.refreshInterval);
                 }
                 
-                // Réinitialiser l'interface
                 document.getElementById('loginSection').style.display = 'block';
                 document.getElementById('dashboardSection').style.display = 'none';
                 
-                // Reset form
-                document.getElementById('username').value = 'superadmin';
-                document.getElementById('password').value = 'ChangeMe123!';
+                document.getElementById('username').value = '';
+                document.getElementById('password').value = '';
                 
                 this.showAlert('Logged out successfully', 'info');
             }
 
-            /**
-             * Afficher le dashboard
-             */
             showDashboard() {
                 document.getElementById('loginSection').style.display = 'none';
                 document.getElementById('dashboardSection').style.display = 'block';
@@ -372,20 +297,12 @@
                 }
             }
 
-            /**
-             * Charger les données du dashboard
-             */
             async loadDashboardData() {
                 try {
                     console.log('📊 Loading dashboard data...');
                     
-                    // Charger les stats rapides
                     await this.loadQuickStats();
-                    
-                    // Charger les données d'aperçu
                     await this.loadOverviewData();
-                    
-                    // Démarrer l'actualisation automatique
                     this.startAutoRefresh();
                     
                     console.log('✅ Dashboard data loaded');
@@ -395,80 +312,33 @@
                 }
             }
 
-            /**
-             * Charger les statistiques rapides
-             */
             async loadQuickStats() {
                 try {
-                    // Simulation de données pour le test
-                    const mockData = {
-                        activePlayers: 1234,
-                        todayRevenue: 567.89,
-                        onlineAdmins: 3,
-                        systemHealth: 'good'
-                    };
+                    const { data } = await this.makeRequest(`${this.apiBaseUrl}/dashboard/quick-stats`);
                     
-                    document.getElementById('totalPlayers').textContent = this.formatNumber(mockData.activePlayers || 0);
-                    document.getElementById('todayRevenue').textContent = `$${(mockData.todayRevenue || 0).toFixed(2)}`;
-                    document.getElementById('onlineAdmins').textContent = mockData.onlineAdmins || 0;
+                    document.getElementById('totalPlayers').textContent = this.formatNumber(data.activePlayers || 0);
+                    document.getElementById('todayRevenue').textContent = `$${(data.todayRevenue || 0).toFixed(2)}`;
+                    document.getElementById('onlineAdmins').textContent = data.onlineAdmins || 0;
                     
                     const healthElement = document.getElementById('systemHealth');
-                    const health = mockData.systemHealth;
+                    const health = data.systemHealth;
                     healthElement.textContent = this.capitalizeFirst(health || 'Unknown');
                     
-                    // Mettre à jour la classe CSS selon la santé
                     const healthCard = document.getElementById('healthCard');
                     healthCard.className = `stat-card health-card health-${health || 'unknown'}`;
                     
                 } catch (error) {
                     console.error('Quick stats error:', error);
-                    // Ne pas afficher d'erreur pour les stats, juste logger
+                    this.showAlert('Failed to load quick stats', 'warning');
                 }
             }
 
-            /**
-             * Charger les données d'aperçu
-             */
             async loadOverviewData() {
                 try {
-                    // Simulation de données pour le test
-                    const mockData = {
-                        overview: {
-                            uptime: 86400,
-                            totalPlayers: 5000,
-                            activePlayers24h: 1200,
-                            newPlayers24h: 50,
-                            errorRate: 2.1
-                        },
-                        economy: {
-                            revenue: {
-                                total: 15000,
-                                daily: 500
-                            },
-                            conversion: {
-                                payingUsers: 150,
-                                conversionRate: 12.5,
-                                averageRevenuePerUser: 25.30
-                            }
-                        },
-                        players: {
-                            retention: {
-                                day1: 78.5,
-                                day7: 45.2,
-                                day30: 23.1
-                            },
-                            progression: {
-                                averageLevel: 25.6
-                            },
-                            engagement: {
-                                averagePlaytime: 120
-                            }
-                        },
-                        alerts: []
-                    };
+                    const { data } = await this.makeRequest(`${this.apiBaseUrl}/dashboard/overview`);
                     
                     const overviewContent = document.getElementById('overviewContent');
-                    overviewContent.innerHTML = this.renderOverviewContent(mockData);
+                    overviewContent.innerHTML = this.renderOverviewContent(data);
                     
                 } catch (error) {
                     console.error('Overview data error:', error);
@@ -477,9 +347,6 @@
                 }
             }
 
-            /**
-             * Rendu du contenu d'aperçu
-             */
             renderOverviewContent(data) {
                 return `
                     <div class="overview-grid">
@@ -579,41 +446,30 @@
                 `;
             }
 
-            /**
-             * Afficher une section spécifique
-             */
             showSection(sectionName) {
-                // Sauvegarder la section actuelle
                 this.currentSection = sectionName;
                 
-                // Masquer toutes les sections
                 document.querySelectorAll('.content-section').forEach(section => {
                     section.classList.remove('active');
                 });
                 
-                // Retirer active de tous les onglets
                 document.querySelectorAll('.nav-tab').forEach(tab => {
                     tab.classList.remove('active');
                 });
                 
-                // Afficher la section sélectionnée et activer l'onglet
                 const sectionElement = document.getElementById(sectionName + 'Section');
                 const tabElement = document.querySelector(`.nav-tab[onclick*="${sectionName}"]`);
                 
                 if (sectionElement) sectionElement.classList.add('active');
                 if (tabElement) tabElement.classList.add('active');
                 
-                // Charger les données spécifiques à la section
                 this.loadSectionData(sectionName);
             }
 
-            /**
-             * Charger les données d'une section
-             */
-            loadSectionData(sectionName) {
+            async loadSectionData(sectionName) {
                 switch(sectionName) {
                     case 'players':
-                        this.showPlaceholder('playersContent', 'Players', '👥');
+                        await this.loadPlayersData();
                         break;
                     case 'economy':
                         this.showPlaceholder('economyContent', 'Economy', '💰');
@@ -622,46 +478,57 @@
                         this.showPlaceholder('logsContent', 'Audit Logs', '📜');
                         break;
                     case 'system':
-                        this.loadSystemInfo();
+                        await this.loadSystemInfo();
                         break;
                     case 'overview':
-                        // Recharger les données d'aperçu si nécessaire
-                        this.loadOverviewData();
+                        await this.loadOverviewData();
                         break;
                 }
             }
 
-            /**
-             * Charger les informations système
-             */
+            async loadPlayersData() {
+                const content = document.getElementById('playersContent');
+                content.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading player data...</p></div>';
+                
+                try {
+                    const { data } = await this.makeRequest(`${this.apiBaseUrl}/players/search?limit=10`);
+                    
+                    content.innerHTML = `
+                        <div class="players-summary">
+                            <h3>Recent Players</h3>
+                            <p>Found ${data.total} players total</p>
+                            <div class="players-list">
+                                ${data.players.map(player => `
+                                    <div class="player-card">
+                                        <strong>${player.username}</strong>
+                                        <span class="player-level">Level: ${player.summary.highestLevel}</span>
+                                        <span class="player-status ${player.accountStatus}">${player.accountStatus}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                } catch (error) {
+                    content.innerHTML = `<div class="alert error">Failed to load player data: ${error.message}</div>`;
+                }
+            }
+
             async loadSystemInfo() {
                 const content = document.getElementById('systemContent');
                 content.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading system information...</p></div>';
                 
                 try {
-                    // Simulation de données système
-                    const mockData = {
-                        uptime: 86400,
-                        system: {
-                            memory: {
-                                heapUsed: 50 * 1024 * 1024,
-                                heapTotal: 100 * 1024 * 1024
-                            },
-                            nodeVersion: 'v18.17.0',
-                            platform: 'linux'
-                        }
-                    };
-
+                    const { data } = await this.makeRequest(`${this.apiBaseUrl}/dashboard/server-metrics`);
                     content.innerHTML = `
                         <div class="system-info-grid">
                             <div class="info-card">
                                 <h3>🖥️ Server Status</h3>
                                 <table class="info-table">
-                                    <tr><td>Uptime</td><td>${this.formatUptime(mockData.uptime)}</td></tr>
-                                    <tr><td>Memory Usage</td><td>${(mockData.system.memory.heapUsed / 1024 / 1024).toFixed(2)} MB</td></tr>
-                                    <tr><td>Memory Total</td><td>${(mockData.system.memory.heapTotal / 1024 / 1024).toFixed(2)} MB</td></tr>
-                                    <tr><td>Node.js Version</td><td>${mockData.system.nodeVersion}</td></tr>
-                                    <tr><td>Platform</td><td>${this.capitalizeFirst(mockData.system.platform)}</td></tr>
+                                    <tr><td>Uptime</td><td>${this.formatUptime(data.uptime)}</td></tr>
+                                    <tr><td>Memory Usage</td><td>${(data.system.memory.heapUsed / 1024 / 1024).toFixed(2)} MB</td></tr>
+                                    <tr><td>Memory Total</td><td>${(data.system.memory.heapTotal / 1024 / 1024).toFixed(2)} MB</td></tr>
+                                    <tr><td>Node.js Version</td><td>${data.system.nodeVersion}</td></tr>
+                                    <tr><td>Platform</td><td>${this.capitalizeFirst(data.system.platform)}</td></tr>
                                 </table>
                             </div>
                         </div>
@@ -671,9 +538,6 @@
                 }
             }
 
-            /**
-             * Afficher un placeholder pour les modules non implémentés
-             */
             showPlaceholder(contentId, moduleName, icon) {
                 const content = document.getElementById(contentId);
                 if (content) {
@@ -688,9 +552,6 @@
                 }
             }
 
-            /**
-             * Démarrer l'actualisation automatique
-             */
             startAutoRefresh() {
                 if (this.refreshInterval) {
                     clearInterval(this.refreshInterval);
@@ -699,14 +560,11 @@
                 this.refreshInterval = setInterval(() => {
                     this.loadQuickStats();
                     
-                    // Actualiser aussi les données de la section active
                     if (this.currentSection === 'overview') {
                         this.loadOverviewData();
                     }
-                }, 30000); // 30 secondes
+                }, 30000);
             }
-
-            // === UTILITAIRES DE FORMATAGE ===
 
             formatNumber(num) {
                 if (num >= 1000000) {
@@ -754,24 +612,71 @@
             }
         }
 
-        // Créer l'instance globale
         window.AdminCore = new AdminCore();
     </script>
 
-    <!-- Script d'initialisation -->
+    <style>
+        .players-summary {
+            padding: 20px;
+        }
+        
+        .players-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .player-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .player-level {
+            font-size: 14px;
+            color: #6c757d;
+        }
+        
+        .player-status {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            align-self: flex-start;
+        }
+        
+        .player-status.active {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .player-status.suspended {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .player-status.banned {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+
     <script>
-        // Initialisation après le chargement complet
         window.addEventListener('load', () => {
             console.log('🚀 Initializing Admin Panel...');
             
-            // Initialiser le core
             if (window.AdminCore) {
                 window.AdminCore.init();
                 console.log('✅ Admin core initialized');
             }
         });
 
-        // Gestion globale des erreurs
         window.addEventListener('unhandledrejection', (event) => {
             console.error('Unhandled promise rejection:', event.reason);
             if (window.AdminCore && window.AdminCore.showAlert) {
