@@ -491,6 +491,34 @@
                 content.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading player data...</p></div>';
                 
                 try {
+                    if (!this.token || this.token.startsWith('demo_')) {
+                        content.innerHTML = `
+                            <div class="players-summary">
+                                <h3>Demo Players</h3>
+                                <p>Found 42 players total (demo data)</p>
+                                <div class="players-list">
+                                    <div class="player-card">
+                                        <strong>DemoPlayer1</strong>
+                                        <span class="player-level">Level: 25</span>
+                                        <span class="player-status active">active</span>
+                                    </div>
+                                    <div class="player-card">
+                                        <strong>TestUser</strong>
+                                        <span class="player-level">Level: 18</span>
+                                        <span class="player-status active">active</span>
+                                    </div>
+                                    <div class="player-card">
+                                        <strong>GuestPlayer</strong>
+                                        <span class="player-level">Level: 5</span>
+                                        <span class="player-status suspended">suspended</span>
+                                    </div>
+                                </div>
+                                <p><em>This is demo data. Implement server routes to see real players.</em></p>
+                            </div>
+                        `;
+                        return;
+                    }
+
                     const { data } = await this.makeRequest(`${this.apiBaseUrl}/players/search?limit=10`);
                     
                     content.innerHTML = `
@@ -518,6 +546,25 @@
                 content.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading system information...</p></div>';
                 
                 try {
+                    if (!this.token || this.token.startsWith('demo_')) {
+                        content.innerHTML = `
+                            <div class="system-info-grid">
+                                <div class="info-card">
+                                    <h3>🖥️ Demo Server Status</h3>
+                                    <table class="info-table">
+                                        <tr><td>Uptime</td><td>1d 2h 15m</td></tr>
+                                        <tr><td>Memory Usage</td><td>45.20 MB</td></tr>
+                                        <tr><td>Memory Total</td><td>128.00 MB</td></tr>
+                                        <tr><td>Node.js Version</td><td>v18.17.0</td></tr>
+                                        <tr><td>Platform</td><td>Demo</td></tr>
+                                    </table>
+                                    <p><em>This is demo data. Implement server routes to see real metrics.</em></p>
+                                </div>
+                            </div>
+                        `;
+                        return;
+                    }
+
                     const { data } = await this.makeRequest(`${this.apiBaseUrl}/dashboard/server-metrics`);
                     content.innerHTML = `
                         <div class="system-info-grid">
