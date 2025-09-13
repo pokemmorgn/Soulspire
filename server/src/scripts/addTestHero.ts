@@ -141,7 +141,7 @@ async function assignHeroToPlayer(options: HeroAssignmentOptions): Promise<void>
 
     // Vérifier si le joueur a déjà ce héros
     const existingHero = player.heroes.find((h: any) => 
-      h.heroId.toString() === hero._id.toString()
+     h.heroId.toString() === hero._id?.toString()
     );
 
     if (existingHero) {
@@ -166,7 +166,7 @@ async function assignHeroToPlayer(options: HeroAssignmentOptions): Promise<void>
     } else {
       // Ajouter le nouveau héros
       const newHero = {
-        heroId: hero._id,
+        heroId: hero._id?.toString() || "",
         level: options.level || 1,
         stars: options.stars || 1,
         equipped: options.equipped || false,
@@ -283,12 +283,12 @@ async function givePlayerLegendaryTeam(accountId?: string, serverId?: string): P
     for (const hero of legendaryHeroes) {
       // Vérifier si déjà possédé
       const existing = player.heroes.find((h: any) => 
-        h.heroId.toString() === hero._id.toString()
+        h.heroId.toString() === hero._id?.toString()
       );
 
       if (!existing) {
         player.heroes.push({
-          heroId: hero._id,
+          heroId: hero._id?.toString() || "",
           level: 25,
           stars: 3,
           equipped: false,
