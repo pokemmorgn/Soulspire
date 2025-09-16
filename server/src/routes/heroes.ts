@@ -246,10 +246,11 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
       return;
     }
 
-    // ✅ CORRECTION: Recherche avec la bonne query
+    // ✅ CORRECTION: Le populate fonctionne, on l'utilise
     const player = await Player.findOne(playerQuery).populate({
       path: "heroes.heroId",
-      select: "_id heroId name role element rarity baseStats spells",
+      model: "Hero",
+      select: "_id name role element rarity baseStats spells",
     });
 
     if (!player) {
@@ -258,25 +259,54 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
       return;
     }
 
+    console.log("✅ Player found, heroes count:", player.heroes.length);
+
+    if (player.heroes.length === 0) {
+      res.json({
+        message: "Player heroes retrieved successfully",
+        serverId: identifiers.serverId,
+        heroes: [],
+        summary: { total: 0, equipped: 0, maxLevel: 0, maxStars: 0 },
+      });
+      return;
+    }
+
     const { role, element, rarity } = req.query as any;
 
     const filtered = player.heroes.filter((ph: any) => {
-      const h = ph.heroId;
-      if (!h) return false;
-      if (role && h.role !== role) return false;
-      if (element && h.element !== element) return false;
-      if (rarity && h.rarity !== rarity) return false;
+      const heroData = ph.heroId;
+      if (!heroData || typeof heroData === 'string') {
+        console.log("⚠️ Hero not populated:", heroData);
+        return false;
+      }
+      if (role && heroData.role !== role) return false;
+      if (element && heroData.element !== element) return false;
+      if (rarity && heroData.rarity !== rarity) return false;
       return true;
     });
 
+    console.log("Filtered heroes count:", filtered.length);
+
     const enriched = filtered.map((ph: any) => {
-      const heroDoc = ph.heroId;
-      const obj = heroDoc.toObject();
+      const heroDoc = heroesMap.get(ph.heroId);
+      
+      if (!heroDoc) {
+        console.log("❌ Hero data not found for ID:", ph.heroId);
+        return null;
+      }
+      
+      // ✅ Conversion sécurisée en objet
+      let obj;
+      if (heroDoc.toObject && typeof heroDoc.toObject === 'function') {
+        obj = heroDoc.toObject();
+      } else {
+        obj = heroDoc;
+      }
       const keys = buildGenericKeys(obj);
 
       const currentStats = heroDoc.getStatsAtLevel(ph.level, ph.stars);
       const basicPower = currentStats.hp + currentStats.atk + currentStats.def;
-      const powerLevel = Math.floor(basicPower * heroDoc.getRarityMultiplier());
+      const powerLevel = Math.floor(basicPower * (heroDoc.getRarityMultiplier ? heroDoc.getRarityMultiplier() : 1));
 
       return {
         playerHeroId: ph._id,
@@ -302,17 +332,20 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
         currentStats,
         powerLevel,
       };
-    }).sort((a: any, b: any) => b.powerLevel - a.powerLevel);
+    }).filter(Boolean)); // Filtrer les null
+
+    // Trier par power level
+    const sortedEnriched = enriched.sort((a: any, b: any) => b.powerLevel - a.powerLevel);
 
     res.json({
       message: "Player heroes retrieved successfully",
       serverId: identifiers.serverId,
-      heroes: enriched,
+      heroes: sortedEnriched,
       summary: {
-        total: enriched.length,
-        equipped: enriched.filter(h => h.equipped).length,
-        maxLevel: Math.max(...enriched.map(h => h.level), 0),
-        maxStars: Math.max(...enriched.map(h => h.stars), 0),
+        total: sortedEnriched.length,
+        equipped: sortedEnriched.filter(h => h.equipped).length,
+        maxLevel: Math.max(...sortedEnriched.map(h => h.level), 0),
+        maxStars: Math.max(...sortedEnriched.map(h => h.stars), 0),
       },
     });
   } catch (err) {
