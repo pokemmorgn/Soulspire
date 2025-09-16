@@ -288,20 +288,15 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
     console.log("Filtered heroes count:", filtered.length);
 
     const enriched = filtered.map((ph: any) => {
-      const heroDoc = heroesMap.get(ph.heroId);
+      const heroDoc = ph.heroId; // Document MongoDB peuplé
       
-      if (!heroDoc) {
-        console.log("❌ Hero data not found for ID:", ph.heroId);
+      if (!heroDoc || typeof heroDoc === 'string') {
+        console.log("❌ Hero not populated:", ph.heroId);
         return null;
       }
       
-      // ✅ Conversion sécurisée en objet
-      let obj;
-      if (heroDoc.toObject && typeof heroDoc.toObject === 'function') {
-        obj = heroDoc.toObject();
-      } else {
-        obj = heroDoc;
-      }
+      // ✅ CORRECTION: Document Mongoose déjà peuplé, pas besoin de toObject()
+      const obj = heroDoc; // Le document peuplé EST l'objet qu'on veut
       const keys = buildGenericKeys(obj);
 
       const currentStats = heroDoc.getStatsAtLevel(ph.level, ph.stars);
@@ -332,7 +327,7 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
         currentStats,
         powerLevel,
       };
-    }).filter(Boolean)); // Filtrer les null
+    }).filter(Boolean); // Filtrer les null
 
     // Trier par power level
     const sortedEnriched = enriched.sort((a: any, b: any) => b.powerLevel - a.powerLevel);
