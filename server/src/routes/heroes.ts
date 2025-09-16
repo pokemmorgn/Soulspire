@@ -39,6 +39,40 @@ function buildGenericKeys(hero: any) {
   };
 }
 
+// Fonction utilitaire pour récupérer les identifiants corrects
+function getPlayerIdentifiers(req: Request): { accountId?: string; playerId?: string; serverId: string } {
+  // Priorité au nouveau format Account/Player
+  if (req.accountId && req.playerId && req.serverId) {
+    return {
+      accountId: req.accountId,
+      playerId: req.playerId,
+      serverId: req.serverId
+    };
+  }
+  
+  // Format legacy avec userId
+  return {
+    playerId: req.userId,
+    serverId: req.serverId || "S1"
+  };
+}
+
+// Fonction pour construire la query de recherche Player
+function buildPlayerQuery(identifiers: { accountId?: string; playerId?: string; serverId: string }) {
+  const query: any = { serverId: identifiers.serverId };
+  
+  // Si on a accountId, on l'utilise (architecture Account/Player)
+  if (identifiers.accountId) {
+    query.accountId = identifiers.accountId;
+  }
+  // Sinon on utilise playerId (architecture legacy)
+  else if (identifiers.playerId) {
+    query.playerId = identifiers.playerId;
+  }
+  
+  return query;
+}
+
 // === VALIDATION SCHEMAS ===
 
 const heroFilterSchema = Joi.object({
@@ -198,9 +232,13 @@ router.get("/catalog/:heroId", async (req: Request, res: Response): Promise<void
 
 router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser accountId et serverId cohérents
-    const accountId = req.userId!;
-    const serverId = req.serverId!;
+    // ✅ CORRECTION: Utiliser les bons identifiants
+    const identifiers = getPlayerIdentifiers(req);
+    const playerQuery = buildPlayerQuery(identifiers);
+
+    console.log("🔍 Heroes /my - Debug info:");
+    console.log("  Identifiers:", identifiers);
+    console.log("  Player query:", playerQuery);
 
     const { error } = heroFilterSchema.validate(req.query);
     if (error) {
@@ -208,13 +246,14 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
       return;
     }
 
-    // ✅ CORRECTION: Recherche avec accountId et serverId
-    const player = await Player.findOne({ accountId, serverId }).populate({
+    // ✅ CORRECTION: Recherche avec la bonne query
+    const player = await Player.findOne(playerQuery).populate({
       path: "heroes.heroId",
       select: "_id heroId name role element rarity baseStats spells",
     });
 
     if (!player) {
+      console.log("❌ Player not found with query:", playerQuery);
       res.status(404).json({ error: "Player not found", code: "PLAYER_NOT_FOUND" });
       return;
     }
@@ -267,7 +306,7 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
 
     res.json({
       message: "Player heroes retrieved successfully",
-      serverId,
+      serverId: identifiers.serverId,
       heroes: enriched,
       summary: {
         total: enriched.length,
@@ -284,15 +323,17 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
 
 router.get("/my/overview", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser accountId cohérent
-    const accountId = req.userId!;
-    const serverId = req.serverId!;
+    // ✅ CORRECTION: Utiliser les bons identifiants
+    const identifiers = getPlayerIdentifiers(req);
     
-    const result = await HeroUpgradeService.getPlayerHeroesUpgradeOverview(accountId, serverId);
+    const result = await HeroUpgradeService.getPlayerHeroesUpgradeOverview(
+      identifiers.accountId || identifiers.playerId!, 
+      identifiers.serverId
+    );
     
     res.json({
       message: "Heroes upgrade overview retrieved successfully",
-      serverId,
+      serverId: identifiers.serverId,
       ...result
     });
   } catch (err) {
@@ -303,15 +344,17 @@ router.get("/my/overview", authMiddleware, async (req: Request, res: Response): 
 
 router.get("/my/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser accountId cohérent
-    const accountId = req.userId!;
-    const serverId = req.serverId!;
+    // ✅ CORRECTION: Utiliser les bons identifiants
+    const identifiers = getPlayerIdentifiers(req);
     
-    const result = await HeroUpgradeService.getHeroUpgradeStats(accountId, serverId);
+    const result = await HeroUpgradeService.getHeroUpgradeStats(
+      identifiers.accountId || identifiers.playerId!, 
+      identifiers.serverId
+    );
     
     res.json({
       message: "Hero upgrade stats retrieved successfully",
-      serverId,
+      serverId: identifiers.serverId,
       ...result
     });
   } catch (err) {
@@ -324,16 +367,19 @@ router.get("/my/stats", authMiddleware, async (req: Request, res: Response): Pro
 
 router.get("/upgrade/:heroInstanceId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser accountId cohérent
-    const accountId = req.userId!;
-    const serverId = req.serverId!;
+    // ✅ CORRECTION: Utiliser les bons identifiants
+    const identifiers = getPlayerIdentifiers(req);
     const { heroInstanceId } = req.params;
     
-    const result = await HeroUpgradeService.getHeroUpgradeInfo(accountId, serverId, heroInstanceId);
+    const result = await HeroUpgradeService.getHeroUpgradeInfo(
+      identifiers.accountId || identifiers.playerId!, 
+      identifiers.serverId, 
+      heroInstanceId
+    );
     
     res.json({
       message: "Hero upgrade info retrieved successfully",
-      serverId,
+      serverId: identifiers.serverId,
       ...result
     });
   } catch (err) {
@@ -344,9 +390,8 @@ router.get("/upgrade/:heroInstanceId", authMiddleware, async (req: Request, res:
 
 router.post("/upgrade/level", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser accountId cohérent
-    const accountId = req.userId!;
-    const serverId = req.serverId!;
+    // ✅ CORRECTION: Utiliser les bons identifiants
+    const identifiers = getPlayerIdentifiers(req);
 
     const { error } = levelUpSchema.validate(req.body);
     if (error) {
@@ -356,7 +401,12 @@ router.post("/upgrade/level", authMiddleware, requireFeature("hero_upgrade"), as
 
     const { heroInstanceId, targetLevel } = req.body;
     
-    const result = await HeroUpgradeService.levelUpHero(accountId, serverId, heroInstanceId, targetLevel);
+    const result = await HeroUpgradeService.levelUpHero(
+      identifiers.accountId || identifiers.playerId!, 
+      identifiers.serverId, 
+      heroInstanceId, 
+      targetLevel
+    );
     
     if (!result.success) {
       res.status(400).json({ error: result.error, code: result.code });
@@ -365,7 +415,7 @@ router.post("/upgrade/level", authMiddleware, requireFeature("hero_upgrade"), as
 
     res.json({
       message: "Hero level upgraded successfully",
-      serverId,
+      serverId: identifiers.serverId,
       ...result
     });
   } catch (err) {
@@ -376,9 +426,8 @@ router.post("/upgrade/level", authMiddleware, requireFeature("hero_upgrade"), as
 
 router.post("/upgrade/stars", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser accountId cohérent
-    const accountId = req.userId!;
-    const serverId = req.serverId!;
+    // ✅ CORRECTION: Utiliser les bons identifiants
+    const identifiers = getPlayerIdentifiers(req);
 
     const { error } = starUpgradeSchema.validate(req.body);
     if (error) {
@@ -388,7 +437,11 @@ router.post("/upgrade/stars", authMiddleware, requireFeature("hero_upgrade"), as
 
     const { heroInstanceId } = req.body;
     
-    const result = await HeroUpgradeService.upgradeHeroStars(accountId, serverId, heroInstanceId);
+    const result = await HeroUpgradeService.upgradeHeroStars(
+      identifiers.accountId || identifiers.playerId!, 
+      identifiers.serverId, 
+      heroInstanceId
+    );
     
     if (!result.success) {
       res.status(400).json({ error: result.error, code: result.code });
@@ -397,7 +450,7 @@ router.post("/upgrade/stars", authMiddleware, requireFeature("hero_upgrade"), as
 
     res.json({
       message: "Hero stars upgraded successfully",
-      serverId,
+      serverId: identifiers.serverId,
       ...result
     });
   } catch (err) {
@@ -408,9 +461,8 @@ router.post("/upgrade/stars", authMiddleware, requireFeature("hero_upgrade"), as
 
 router.post("/upgrade/skill", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser accountId cohérent
-    const accountId = req.userId!;
-    const serverId = req.serverId!;
+    // ✅ CORRECTION: Utiliser les bons identifiants
+    const identifiers = getPlayerIdentifiers(req);
 
     const { error } = skillUpgradeSchema.validate(req.body);
     if (error) {
@@ -420,7 +472,12 @@ router.post("/upgrade/skill", authMiddleware, requireFeature("hero_upgrade"), as
 
     const { heroInstanceId, skillSlot } = req.body;
     
-    const result = await HeroUpgradeService.upgradeHeroSkill(accountId, serverId, heroInstanceId, skillSlot);
+    const result = await HeroUpgradeService.upgradeHeroSkill(
+      identifiers.accountId || identifiers.playerId!, 
+      identifiers.serverId, 
+      heroInstanceId, 
+      skillSlot
+    );
     
     if (!result.success) {
       res.status(400).json({ error: result.error, code: "SKILL_UPGRADE_FAILED" });
@@ -429,7 +486,7 @@ router.post("/upgrade/skill", authMiddleware, requireFeature("hero_upgrade"), as
 
     res.json({
       message: "Hero skill upgraded successfully",
-      serverId,
+      serverId: identifiers.serverId,
       ...result
     });
   } catch (err) {
@@ -440,9 +497,8 @@ router.post("/upgrade/skill", authMiddleware, requireFeature("hero_upgrade"), as
 
 router.post("/upgrade/evolve", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser accountId cohérent
-    const accountId = req.userId!;
-    const serverId = req.serverId!;
+    // ✅ CORRECTION: Utiliser les bons identifiants
+    const identifiers = getPlayerIdentifiers(req);
 
     const { error } = evolutionSchema.validate(req.body);
     if (error) {
@@ -452,7 +508,11 @@ router.post("/upgrade/evolve", authMiddleware, requireFeature("hero_upgrade"), a
 
     const { heroInstanceId } = req.body;
     
-    const result = await HeroUpgradeService.evolveHero(accountId, serverId, heroInstanceId);
+    const result = await HeroUpgradeService.evolveHero(
+      identifiers.accountId || identifiers.playerId!, 
+      identifiers.serverId, 
+      heroInstanceId
+    );
     
     if (!result.success) {
       res.status(400).json({ error: result.error, code: "EVOLUTION_FAILED" });
@@ -461,7 +521,7 @@ router.post("/upgrade/evolve", authMiddleware, requireFeature("hero_upgrade"), a
 
     res.json({
       message: "Hero evolved successfully",
-      serverId,
+      serverId: identifiers.serverId,
       ...result
     });
   } catch (err) {
@@ -472,9 +532,8 @@ router.post("/upgrade/evolve", authMiddleware, requireFeature("hero_upgrade"), a
 
 router.post("/upgrade/auto", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser accountId cohérent
-    const accountId = req.userId!;
-    const serverId = req.serverId!;
+    // ✅ CORRECTION: Utiliser les bons identifiants
+    const identifiers = getPlayerIdentifiers(req);
 
     const { error } = autoUpgradeSchema.validate(req.body);
     if (error) {
@@ -485,8 +544,8 @@ router.post("/upgrade/auto", authMiddleware, requireFeature("hero_upgrade"), asy
     const { heroInstanceId, maxGoldToSpend, upgradeStars } = req.body;
     
     const result = await HeroUpgradeService.autoUpgradeHero(
-      accountId, 
-      serverId, 
+      identifiers.accountId || identifiers.playerId!, 
+      identifiers.serverId, 
       heroInstanceId, 
       maxGoldToSpend, 
       upgradeStars
@@ -494,7 +553,7 @@ router.post("/upgrade/auto", authMiddleware, requireFeature("hero_upgrade"), asy
     
     res.json({
       message: "Hero auto-upgraded successfully",
-      serverId,
+      serverId: identifiers.serverId,
       ...result
     });
   } catch (err) {
@@ -505,9 +564,8 @@ router.post("/upgrade/auto", authMiddleware, requireFeature("hero_upgrade"), asy
 
 router.post("/upgrade/bulk-level", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser accountId cohérent
-    const accountId = req.userId!;
-    const serverId = req.serverId!;
+    // ✅ CORRECTION: Utiliser les bons identifiants
+    const identifiers = getPlayerIdentifiers(req);
 
     const { error } = bulkLevelUpSchema.validate(req.body);
     if (error) {
@@ -518,15 +576,15 @@ router.post("/upgrade/bulk-level", authMiddleware, requireFeature("hero_upgrade"
     const { heroInstanceIds, maxGoldToSpend } = req.body;
     
     const result = await HeroUpgradeService.bulkLevelUpHeroes(
-      accountId, 
-      serverId, 
+      identifiers.accountId || identifiers.playerId!, 
+      identifiers.serverId, 
       heroInstanceIds, 
       maxGoldToSpend
     );
     
     res.json({
       message: "Heroes bulk level up completed successfully",
-      serverId,
+      serverId: identifiers.serverId,
       ...result
     });
   } catch (err) {
@@ -537,15 +595,17 @@ router.post("/upgrade/bulk-level", authMiddleware, requireFeature("hero_upgrade"
 
 router.get("/upgrade/recommendations", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser accountId cohérent
-    const accountId = req.userId!;
-    const serverId = req.serverId!;
+    // ✅ CORRECTION: Utiliser les bons identifiants
+    const identifiers = getPlayerIdentifiers(req);
     
-    const result = await HeroUpgradeService.getUpgradeRecommendations(accountId, serverId);
+    const result = await HeroUpgradeService.getUpgradeRecommendations(
+      identifiers.accountId || identifiers.playerId!, 
+      identifiers.serverId
+    );
     
     res.json({
       message: "Upgrade recommendations retrieved successfully",
-      serverId,
+      serverId: identifiers.serverId,
       ...result
     });
   } catch (err) {
@@ -558,9 +618,9 @@ router.get("/upgrade/recommendations", authMiddleware, async (req: Request, res:
 
 router.post("/equip", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser accountId cohérent
-    const accountId = req.userId!;
-    const serverId = req.serverId!;
+    // ✅ CORRECTION: Utiliser les bons identifiants
+    const identifiers = getPlayerIdentifiers(req);
+    const playerQuery = buildPlayerQuery(identifiers);
 
     const { error } = equipHeroSchema.validate(req.body);
     if (error) {
@@ -570,8 +630,8 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
 
     const { heroId, equipped } = req.body;
 
-    // ✅ CORRECTION: Recherche avec accountId et serverId
-    const player = await Player.findOne({ accountId, serverId });
+    // ✅ CORRECTION: Recherche avec la bonne query
+    const player = await Player.findOne(playerQuery);
     if (!player) {
       res.status(404).json({ error: "Player not found", code: "PLAYER_NOT_FOUND" });
       return;
@@ -596,7 +656,7 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
 
     res.json({
       message: `Hero ${equipped ? "equipped" : "unequipped"} successfully`,
-      serverId,
+      serverId: identifiers.serverId,
       heroId,
       equipped: playerHero.equipped,
       totalEquipped: player.heroes.filter((h: any) => h.equipped).length,
