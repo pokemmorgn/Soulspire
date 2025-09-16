@@ -1,9 +1,9 @@
 // Script de debug pour vérifier la structure des données
-// À exécuter dans le répertoire server avec: npx ts-node debug_heroes.ts
+// À exécuter dans le répertoire server avec: npx ts-node src/scripts/debug_heroes.ts
 
 import mongoose from "mongoose";
-import Player from "./src/models/Player";
-import Hero from "./src/models/Hero";
+import Player from "../models/Player";
+import Hero from "../models/Hero";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -32,7 +32,7 @@ async function debugPlayerHeroes() {
 
     if (player.heroes.length > 0) {
       console.log("\n🎭 Structure des héros:");
-      player.heroes.slice(0, 3).forEach((hero, index) => {
+      player.heroes.slice(0, 3).forEach((hero: any, index: number) => {
         console.log(`Héros ${index + 1}:`, {
           heroId: hero.heroId,
           heroIdType: typeof hero.heroId,
