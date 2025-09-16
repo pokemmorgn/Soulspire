@@ -327,7 +327,7 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
         currentStats,
         powerLevel,
       };
-    }).filter(Boolean); // Filtrer les null
+    }).filter((hero): hero is NonNullable<typeof hero> => hero !== null);
 
     // Trier par power level
     const sortedEnriched = enriched.sort((a: any, b: any) => b.powerLevel - a.powerLevel);
@@ -338,9 +338,9 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
       heroes: sortedEnriched,
       summary: {
         total: sortedEnriched.length,
-        equipped: sortedEnriched.filter(h => h.equipped).length,
-        maxLevel: Math.max(...sortedEnriched.map(h => h.level), 0),
-        maxStars: Math.max(...sortedEnriched.map(h => h.stars), 0),
+      equipped: sortedEnriched.filter(h => h && h.equipped).length,
+      maxLevel: sortedEnriched.length > 0 ? Math.max(...sortedEnriched.filter(h => h).map(h => h!.level)) : 0,
+      maxStars: sortedEnriched.length > 0 ? Math.max(...sortedEnriched.filter(h => h).map(h => h!.stars)) : 0,
       },
     });
   } catch (err) {
@@ -696,3 +696,4 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
 });
 
 export default router;
+
