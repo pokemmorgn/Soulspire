@@ -143,7 +143,11 @@ app.get('/admin-panel', (req, res) => {
 });
 
 // Routes du jeu avec middlewares spécifiques
-app.use("/api/auth", authLimiter, authRoutes);
+if (NODE_ENV === "production") {
+  app.use("/api/auth", authLimiter, authRoutes);
+} else {
+  app.use("/api/auth", authRoutes); // Pas de rate limiting en dev
+}
 app.use("/api/player", playerRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/heroes", heroesRoutes);
