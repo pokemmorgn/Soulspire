@@ -13,7 +13,7 @@ const TEST_PLAYER_CONFIG = {
   displayName: "testt", // Nom à rechercher
   updates: {
     level: 50,
-    experience: 1200, // XP pour level 4
+    experience: 9999999999, // XP pour level 4
     gold: 50000,
     gems: 2000,
     paidGems: 500,
