@@ -12,7 +12,7 @@ const TEST_PLAYER_CONFIG = {
   serverId: "S1",
   displayName: "testt", // Nom à rechercher
   updates: {
-    level: 4,
+    level: 50,
     experience: 1200, // XP pour level 4
     gold: 50000,
     gems: 2000,
