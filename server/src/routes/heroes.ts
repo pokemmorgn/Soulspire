@@ -560,7 +560,7 @@ router.post("/my/:heroInstanceId/unequip", authMiddleware, async (req: Request, 
       return;
     }
 
-    const heroDoc = playerHero.heroId;
+    const heroDoc = playerHero.heroId as any;
     if (!heroDoc || !heroDoc.equipment) {
       res.status(500).json({ error: "Hero data not found", code: "HERO_DATA_ERROR" });
       return;
@@ -626,7 +626,7 @@ router.get("/my/:heroInstanceId/stats", authMiddleware, async (req: Request, res
       return;
     }
 
-    const heroDoc = playerHero.heroId;
+    const heroDoc = playerHero.heroId as any;
     if (!heroDoc) {
       res.status(500).json({ error: "Hero data not found", code: "HERO_DATA_ERROR" });
       return;
@@ -1031,7 +1031,7 @@ router.get("/my/:heroInstanceId/equipment/recommendations", authMiddleware, asyn
       return;
     }
 
-    const heroDoc = playerHero.heroId;
+    const heroDoc = playerHero.heroId as any;
     if (!heroDoc) {
       res.status(500).json({ error: "Hero data not found", code: "HERO_DATA_ERROR" });
       return;
@@ -1062,7 +1062,7 @@ router.get("/my/:heroInstanceId/equipment/recommendations", authMiddleware, asyn
 
     for (const { slot, category } of slots) {
       const currentItemId = currentEquipment[slot];
-      const availableItems = storage[category] || [];
+      const availableItems = (storage as any)[category] || [];
       
       const candidates = availableItems.filter((item: any) => 
         !item.isEquipped || item.equippedTo === heroInstanceId
@@ -1150,7 +1150,7 @@ router.post("/my/:heroInstanceId/equipment/optimize", authMiddleware, async (req
       return;
     }
 
-    const heroDoc = playerHero.heroId;
+    const heroDoc = playerHero.heroId as any;
     const currentStats = await heroDoc.getTotalStats(playerHero.level, playerHero.stars, player._id.toString());
 
     const optimizationResults = {
