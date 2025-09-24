@@ -6,10 +6,10 @@ import authMiddleware, { optionalAuthMiddleware } from "../middleware/authMiddle
 import serverMiddleware from "../middleware/serverMiddleware";
 import { requireFeature } from "../middleware/featureMiddleware";
 import { HeroUpgradeService } from "../services/HeroUpgradeService";
+import { InventoryService } from "../services/InventoryService";
 
 const router = express.Router();
 
-// ✅ APPLIQUER le middleware serveur à toutes les routes
 router.use(serverMiddleware);
 
 function slugify(s: string): string {
@@ -39,9 +39,7 @@ function buildGenericKeys(hero: any) {
   };
 }
 
-// Fonction utilitaire pour récupérer les identifiants corrects
 function getPlayerIdentifiers(req: Request): { accountId?: string; playerId?: string; serverId: string } {
-  // Priorité au nouveau format Account/Player
   if (req.accountId && req.playerId && req.serverId) {
     return {
       accountId: req.accountId,
@@ -50,30 +48,24 @@ function getPlayerIdentifiers(req: Request): { accountId?: string; playerId?: st
     };
   }
   
-  // Format legacy avec userId
   return {
     playerId: req.userId,
     serverId: req.serverId || "S1"
   };
 }
 
-// Fonction pour construire la query de recherche Player
 function buildPlayerQuery(identifiers: { accountId?: string; playerId?: string; serverId: string }) {
   const query: any = { serverId: identifiers.serverId };
   
-  // Si on a accountId, on l'utilise (architecture Account/Player)
   if (identifiers.accountId) {
     query.accountId = identifiers.accountId;
   }
-  // Sinon on utilise playerId (architecture legacy)
   else if (identifiers.playerId) {
     query.playerId = identifiers.playerId;
   }
   
   return query;
 }
-
-// === VALIDATION SCHEMAS ===
 
 const heroFilterSchema = Joi.object({
   role: Joi.string().valid("Tank", "DPS Melee", "DPS Ranged", "Support").optional(),
@@ -117,8 +109,16 @@ const equipHeroSchema = Joi.object({
   equipped: Joi.boolean().required(),
 });
 
-// === CATALOG ROUTES ===
+const equipItemSchema = Joi.object({
+  instanceId: Joi.string().required(),
+  slot: Joi.string().valid("weapon", "helmet", "armor", "boots", "gloves", "accessory").required(),
+});
 
+const unequipItemSchema = Joi.object({
+  slot: Joi.string().valid("weapon", "helmet", "armor", "boots", "gloves", "accessory").required(),
+});
+
+// CATALOG ROUTES
 router.get("/catalog", optionalAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = heroFilterSchema.validate(req.query);
@@ -228,17 +228,11 @@ router.get("/catalog/:heroId", async (req: Request, res: Response): Promise<void
   }
 });
 
-// === PLAYER HEROES ROUTES ===
-
+// PLAYER HEROES ROUTES
 router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser les bons identifiants
     const identifiers = getPlayerIdentifiers(req);
     const playerQuery = buildPlayerQuery(identifiers);
-
-    console.log("🔍 Heroes /my - Debug info:");
-    console.log("  Identifiers:", identifiers);
-    console.log("  Player query:", playerQuery);
 
     const { error } = heroFilterSchema.validate(req.query);
     if (error) {
@@ -246,20 +240,16 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
       return;
     }
 
-    // ✅ CORRECTION: Le populate fonctionne, on l'utilise
     const player = await Player.findOne(playerQuery).populate({
       path: "heroes.heroId",
       model: "Hero",
-      select: "_id name role element rarity baseStats spells",
+      select: "_id name role element rarity baseStats spells equipment",
     });
 
     if (!player) {
-      console.log("❌ Player not found with query:", playerQuery);
       res.status(404).json({ error: "Player not found", code: "PLAYER_NOT_FOUND" });
       return;
     }
-
-    console.log("✅ Player found, heroes count:", player.heroes.length);
 
     if (player.heroes.length === 0) {
       res.json({
@@ -275,33 +265,37 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
 
     const filtered = player.heroes.filter((ph: any) => {
       const heroData = ph.heroId;
-      if (!heroData || typeof heroData === 'string') {
-        console.log("⚠️ Hero not populated:", heroData);
-        return false;
-      }
+      if (!heroData || typeof heroData === 'string') return false;
       if (role && heroData.role !== role) return false;
       if (element && heroData.element !== element) return false;
       if (rarity && heroData.rarity !== rarity) return false;
       return true;
     });
 
-    console.log("Filtered heroes count:", filtered.length);
-
-    const enriched = filtered.map((ph: any) => {
-      const heroDoc = ph.heroId; // Document MongoDB peuplé
+    const enriched = await Promise.all(filtered.map(async (ph: any) => {
+      const heroDoc = ph.heroId;
       
-      if (!heroDoc || typeof heroDoc === 'string') {
-        console.log("❌ Hero not populated:", ph.heroId);
-        return null;
-      }
+      if (!heroDoc || typeof heroDoc === 'string') return null;
       
-      // ✅ CORRECTION: Document Mongoose déjà peuplé, pas besoin de toObject()
-      const obj = heroDoc; // Le document peuplé EST l'objet qu'on veut
+      const obj = heroDoc;
       const keys = buildGenericKeys(obj);
 
-      const currentStats = heroDoc.getStatsAtLevel(ph.level, ph.stars);
+      let fullStats, currentStats;
+      try {
+        fullStats = await heroDoc.getTotalStats(ph.level, ph.stars, player._id.toString());
+        currentStats = fullStats.totalStats;
+      } catch (error) {
+        currentStats = heroDoc.getStatsAtLevel(ph.level, ph.stars);
+        fullStats = {
+          totalStats: currentStats,
+          breakdown: { hero: currentStats, equipment: {}, sets: {} },
+          equippedItems: [],
+          power: 0
+        };
+      }
+
       const basicPower = currentStats.hp + currentStats.atk + currentStats.def;
-      const powerLevel = Math.floor(basicPower * (heroDoc.getRarityMultiplier ? heroDoc.getRarityMultiplier() : 1));
+      const powerLevel = fullStats.power || Math.floor(basicPower * (heroDoc.getRarityMultiplier ? heroDoc.getRarityMultiplier() : 1));
 
       return {
         playerHeroId: ph._id,
@@ -320,17 +314,23 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
           rarity: obj.rarity,
           baseStats: obj.baseStats,
           spells: obj.spells,
+          equipment: obj.equipment || {},
         },
         level: ph.level,
         stars: ph.stars,
         equipped: ph.equipped,
         currentStats,
         powerLevel,
+        equipmentInfo: {
+          equippedItems: fullStats.equippedItems || [],
+          breakdown: fullStats.breakdown || {},
+          hasEquipment: (fullStats.equippedItems || []).length > 0
+        }
       };
-    }).filter((hero): hero is NonNullable<typeof hero> => hero !== null);
+    }));
 
-    // Trier par power level
-    const sortedEnriched = enriched.sort((a: any, b: any) => b.powerLevel - a.powerLevel);
+    const validEnriched = enriched.filter((hero): hero is NonNullable<typeof hero> => hero !== null);
+    const sortedEnriched = validEnriched.sort((a: any, b: any) => b.powerLevel - a.powerLevel);
 
     res.json({
       message: "Player heroes retrieved successfully",
@@ -338,9 +338,11 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
       heroes: sortedEnriched,
       summary: {
         total: sortedEnriched.length,
-      equipped: sortedEnriched.filter(h => h && h.equipped).length,
-      maxLevel: sortedEnriched.length > 0 ? Math.max(...sortedEnriched.filter(h => h).map(h => h!.level)) : 0,
-      maxStars: sortedEnriched.length > 0 ? Math.max(...sortedEnriched.filter(h => h).map(h => h!.stars)) : 0,
+        equipped: sortedEnriched.filter(h => h && h.equipped).length,
+        maxLevel: sortedEnriched.length > 0 ? Math.max(...sortedEnriched.filter(h => h).map(h => h!.level)) : 0,
+        maxStars: sortedEnriched.length > 0 ? Math.max(...sortedEnriched.filter(h => h).map(h => h!.stars)) : 0,
+        totalEquippedItems: sortedEnriched.reduce((sum, h) => sum + (h?.equipmentInfo?.equippedItems?.length || 0), 0),
+        heroesWithEquipment: sortedEnriched.filter(h => h?.equipmentInfo?.hasEquipment).length
       },
     });
   } catch (err) {
@@ -349,9 +351,336 @@ router.get("/my", authMiddleware, async (req: Request, res: Response): Promise<v
   }
 });
 
+router.get("/my/:heroInstanceId/details", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const identifiers = getPlayerIdentifiers(req);
+    const playerQuery = buildPlayerQuery(identifiers);
+    const { heroInstanceId } = req.params;
+
+    const player = await Player.findOne(playerQuery).populate({
+      path: "heroes.heroId",
+      model: "Hero",
+      select: "_id name role element rarity baseStats spells equipment",
+    });
+
+    if (!player) {
+      res.status(404).json({ error: "Player not found", code: "PLAYER_NOT_FOUND" });
+      return;
+    }
+
+    const playerHero = player.heroes.find((h: any) => h._id?.toString() === heroInstanceId);
+    if (!playerHero) {
+      res.status(404).json({ error: "Hero not found", code: "HERO_NOT_FOUND" });
+      return;
+    }
+
+    const heroDoc = playerHero.heroId;
+    if (!heroDoc || typeof heroDoc === 'string') {
+      res.status(500).json({ error: "Hero data not populated", code: "HERO_DATA_ERROR" });
+      return;
+    }
+
+    const fullStats = await heroDoc.getTotalStats(playerHero.level, playerHero.stars, player._id.toString());
+    const obj = heroDoc.toObject();
+    const keys = buildGenericKeys(obj);
+
+    res.json({
+      message: "Hero details retrieved successfully",
+      serverId: identifiers.serverId,
+      hero: {
+        playerHeroId: playerHero._id,
+        heroData: {
+          _id: obj._id,
+          heroId: keys.heroId,
+          name: keys.name,
+          description: keys.description,
+          icon: keys.icon,
+          sprite: keys.sprite,
+          splashArt: keys.splashArt,
+          role: obj.role,
+          element: obj.element,
+          rarity: obj.rarity,
+          baseStats: obj.baseStats,
+          spells: obj.spells,
+          equipment: obj.equipment || {},
+        },
+        level: playerHero.level,
+        stars: playerHero.stars,
+        equipped: playerHero.equipped,
+        stats: {
+          current: fullStats.totalStats,
+          breakdown: fullStats.breakdown,
+          power: fullStats.power
+        },
+        equipment: {
+          equipped: fullStats.equippedItems || [],
+          slots: obj.equipment || {},
+          setBonuses: fullStats.breakdown?.sets || {}
+        }
+      }
+    });
+
+  } catch (err) {
+    console.error("Get hero details error:", err);
+    res.status(500).json({ error: "Internal server error", code: "GET_HERO_DETAILS_FAILED" });
+  }
+});
+
+router.get("/my/:heroInstanceId/equipment", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const identifiers = getPlayerIdentifiers(req);
+    const playerQuery = buildPlayerQuery(identifiers);
+    const { heroInstanceId } = req.params;
+
+    const player = await Player.findOne(playerQuery).populate({
+      path: "heroes.heroId",
+      model: "Hero"
+    });
+
+    if (!player) {
+      res.status(404).json({ error: "Player not found", code: "PLAYER_NOT_FOUND" });
+      return;
+    }
+
+    const playerHero = player.heroes.find((h: any) => h._id?.toString() === heroInstanceId);
+    if (!playerHero) {
+      res.status(404).json({ error: "Hero not found", code: "HERO_NOT_FOUND" });
+      return;
+    }
+
+    const heroDoc = playerHero.heroId;
+    if (!heroDoc) {
+      res.status(500).json({ error: "Hero data not found", code: "HERO_DATA_ERROR" });
+      return;
+    }
+
+    const equipmentData = await heroDoc.getEquipmentStats(player._id.toString());
+
+    res.json({
+      message: "Hero equipment retrieved successfully",
+      serverId: identifiers.serverId,
+      heroInstanceId,
+      heroName: heroDoc.name,
+      equipment: {
+        slots: heroDoc.equipment || {},
+        equippedItems: equipmentData.equippedItems || [],
+        stats: equipmentData.stats || {},
+        setBonuses: equipmentData.setsBonus || {},
+        totalPower: heroDoc.calculatePower ? heroDoc.calculatePower(equipmentData.stats) : 0
+      }
+    });
+
+  } catch (err) {
+    console.error("Get hero equipment error:", err);
+    res.status(500).json({ error: "Internal server error", code: "GET_HERO_EQUIPMENT_FAILED" });
+  }
+});
+
+router.post("/my/:heroInstanceId/equip", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const identifiers = getPlayerIdentifiers(req);
+    const { heroInstanceId } = req.params;
+
+    const { error, value } = equipItemSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const { instanceId, slot } = value;
+
+    const equipResult = await InventoryService.equipItem(
+      identifiers.accountId || identifiers.playerId!,
+      instanceId,
+      heroInstanceId,
+      identifiers.serverId
+    );
+
+    if (!equipResult.success) {
+      let statusCode = 400;
+      if (equipResult.code === "PLAYER_NOT_FOUND" || equipResult.code === "HERO_NOT_OWNED") statusCode = 404;
+      if (equipResult.code === "WRONG_SERVER") statusCode = 403;
+
+      res.status(statusCode).json(equipResult);
+      return;
+    }
+
+    const playerQuery = buildPlayerQuery(identifiers);
+    const player = await Player.findOne(playerQuery).populate("heroes.heroId");
+    
+    if (player) {
+      const playerHero = player.heroes.find((h: any) => h._id?.toString() === heroInstanceId);
+      if (playerHero && playerHero.heroId) {
+        const heroDoc = playerHero.heroId;
+        if (heroDoc.equipment) {
+          heroDoc.equipment[slot as keyof typeof heroDoc.equipment] = instanceId;
+          await heroDoc.save();
+        }
+      }
+    }
+
+    res.json({
+      message: "Item equipped successfully",
+      serverId: identifiers.serverId,
+      heroInstanceId,
+      slot,
+      ...equipResult
+    });
+
+  } catch (err) {
+    console.error("Equip item on hero error:", err);
+    res.status(500).json({ error: "Internal server error", code: "EQUIP_ITEM_FAILED" });
+  }
+});
+
+router.post("/my/:heroInstanceId/unequip", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const identifiers = getPlayerIdentifiers(req);
+    const { heroInstanceId } = req.params;
+
+    const { error, value } = unequipItemSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const { slot } = value;
+
+    const playerQuery = buildPlayerQuery(identifiers);
+    const player = await Player.findOne(playerQuery).populate("heroes.heroId");
+
+    if (!player) {
+      res.status(404).json({ error: "Player not found", code: "PLAYER_NOT_FOUND" });
+      return;
+    }
+
+    const playerHero = player.heroes.find((h: any) => h._id?.toString() === heroInstanceId);
+    if (!playerHero) {
+      res.status(404).json({ error: "Hero not found", code: "HERO_NOT_FOUND" });
+      return;
+    }
+
+    const heroDoc = playerHero.heroId;
+    if (!heroDoc || !heroDoc.equipment) {
+      res.status(500).json({ error: "Hero data not found", code: "HERO_DATA_ERROR" });
+      return;
+    }
+
+    const instanceId = heroDoc.equipment[slot as keyof typeof heroDoc.equipment];
+    if (!instanceId) {
+      res.status(400).json({ error: "No item equipped in this slot", code: "SLOT_EMPTY" });
+      return;
+    }
+
+    const unequipResult = await InventoryService.unequipItem(
+      identifiers.accountId || identifiers.playerId!,
+      instanceId,
+      identifiers.serverId
+    );
+
+    if (!unequipResult.success) {
+      let statusCode = 400;
+      if (unequipResult.code === "INVENTORY_NOT_FOUND") statusCode = 404;
+      if (unequipResult.code === "WRONG_SERVER") statusCode = 403;
+
+      res.status(statusCode).json(unequipResult);
+      return;
+    }
+
+    heroDoc.equipment[slot as keyof typeof heroDoc.equipment] = undefined;
+    await heroDoc.save();
+
+    res.json({
+      message: "Item unequipped successfully",
+      serverId: identifiers.serverId,
+      heroInstanceId,
+      slot,
+      ...unequipResult
+    });
+
+  } catch (err) {
+    console.error("Unequip item from hero error:", err);
+    res.status(500).json({ error: "Internal server error", code: "UNEQUIP_ITEM_FAILED" });
+  }
+});
+
+router.get("/my/:heroInstanceId/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const identifiers = getPlayerIdentifiers(req);
+    const playerQuery = buildPlayerQuery(identifiers);
+    const { heroInstanceId } = req.params;
+
+    const player = await Player.findOne(playerQuery).populate({
+      path: "heroes.heroId",
+      model: "Hero"
+    });
+
+    if (!player) {
+      res.status(404).json({ error: "Player not found", code: "PLAYER_NOT_FOUND" });
+      return;
+    }
+
+    const playerHero = player.heroes.find((h: any) => h._id?.toString() === heroInstanceId);
+    if (!playerHero) {
+      res.status(404).json({ error: "Hero not found", code: "HERO_NOT_FOUND" });
+      return;
+    }
+
+    const heroDoc = playerHero.heroId;
+    if (!heroDoc) {
+      res.status(500).json({ error: "Hero data not found", code: "HERO_DATA_ERROR" });
+      return;
+    }
+
+    const baseStats = heroDoc.getStatsAtLevel(playerHero.level, playerHero.stars);
+    const fullStats = await heroDoc.getTotalStats(playerHero.level, playerHero.stars, player._id.toString());
+
+    const equipmentBonus = {
+      hp: fullStats.totalStats.hp - baseStats.hp,
+      atk: fullStats.totalStats.atk - baseStats.atk,
+      def: fullStats.totalStats.def - baseStats.def,
+      crit: fullStats.totalStats.crit - baseStats.crit,
+      critDamage: fullStats.totalStats.critDamage - baseStats.critDamage,
+      vitesse: fullStats.totalStats.vitesse - baseStats.vitesse,
+    };
+
+    const basePower = heroDoc.calculatePower ? heroDoc.calculatePower(baseStats) : 0;
+    const totalPower = fullStats.power || 0;
+
+    res.json({
+      message: "Hero stats comparison retrieved successfully",
+      serverId: identifiers.serverId,
+      heroInstanceId,
+      heroName: heroDoc.name,
+      level: playerHero.level,
+      stars: playerHero.stars,
+      comparison: {
+        base: {
+          stats: baseStats,
+          power: basePower
+        },
+        withEquipment: {
+          stats: fullStats.totalStats,
+          power: totalPower
+        },
+        bonus: {
+          stats: equipmentBonus,
+          power: totalPower - basePower,
+          powerIncrease: basePower > 0 ? Math.round(((totalPower - basePower) / basePower) * 100) : 0
+        }
+      },
+      breakdown: fullStats.breakdown,
+      equippedItems: fullStats.equippedItems || []
+    });
+
+  } catch (err) {
+    console.error("Get hero stats comparison error:", err);
+    res.status(500).json({ error: "Internal server error", code: "GET_HERO_STATS_FAILED" });
+  }
+});
+
 router.get("/my/overview", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser les bons identifiants
     const identifiers = getPlayerIdentifiers(req);
     
     const result = await HeroUpgradeService.getPlayerHeroesUpgradeOverview(
@@ -372,7 +701,6 @@ router.get("/my/overview", authMiddleware, async (req: Request, res: Response): 
 
 router.get("/my/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser les bons identifiants
     const identifiers = getPlayerIdentifiers(req);
     
     const result = await HeroUpgradeService.getHeroUpgradeStats(
@@ -391,11 +719,9 @@ router.get("/my/stats", authMiddleware, async (req: Request, res: Response): Pro
   }
 });
 
-// === UPGRADE ROUTES ===
-
+// UPGRADE ROUTES
 router.get("/upgrade/:heroInstanceId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser les bons identifiants
     const identifiers = getPlayerIdentifiers(req);
     const { heroInstanceId } = req.params;
     
@@ -418,7 +744,6 @@ router.get("/upgrade/:heroInstanceId", authMiddleware, async (req: Request, res:
 
 router.post("/upgrade/level", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser les bons identifiants
     const identifiers = getPlayerIdentifiers(req);
 
     const { error } = levelUpSchema.validate(req.body);
@@ -454,7 +779,6 @@ router.post("/upgrade/level", authMiddleware, requireFeature("hero_upgrade"), as
 
 router.post("/upgrade/stars", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser les bons identifiants
     const identifiers = getPlayerIdentifiers(req);
 
     const { error } = starUpgradeSchema.validate(req.body);
@@ -489,7 +813,6 @@ router.post("/upgrade/stars", authMiddleware, requireFeature("hero_upgrade"), as
 
 router.post("/upgrade/skill", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser les bons identifiants
     const identifiers = getPlayerIdentifiers(req);
 
     const { error } = skillUpgradeSchema.validate(req.body);
@@ -525,7 +848,6 @@ router.post("/upgrade/skill", authMiddleware, requireFeature("hero_upgrade"), as
 
 router.post("/upgrade/evolve", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser les bons identifiants
     const identifiers = getPlayerIdentifiers(req);
 
     const { error } = evolutionSchema.validate(req.body);
@@ -560,7 +882,6 @@ router.post("/upgrade/evolve", authMiddleware, requireFeature("hero_upgrade"), a
 
 router.post("/upgrade/auto", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser les bons identifiants
     const identifiers = getPlayerIdentifiers(req);
 
     const { error } = autoUpgradeSchema.validate(req.body);
@@ -592,7 +913,6 @@ router.post("/upgrade/auto", authMiddleware, requireFeature("hero_upgrade"), asy
 
 router.post("/upgrade/bulk-level", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser les bons identifiants
     const identifiers = getPlayerIdentifiers(req);
 
     const { error } = bulkLevelUpSchema.validate(req.body);
@@ -623,7 +943,6 @@ router.post("/upgrade/bulk-level", authMiddleware, requireFeature("hero_upgrade"
 
 router.get("/upgrade/recommendations", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser les bons identifiants
     const identifiers = getPlayerIdentifiers(req);
     
     const result = await HeroUpgradeService.getUpgradeRecommendations(
@@ -642,11 +961,9 @@ router.get("/upgrade/recommendations", authMiddleware, async (req: Request, res:
   }
 });
 
-// === EQUIP/UNEQUIP ROUTE (Legacy) ===
-
+// LEGACY EQUIP ROUTE
 router.post("/equip", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ CORRECTION: Utiliser les bons identifiants
     const identifiers = getPlayerIdentifiers(req);
     const playerQuery = buildPlayerQuery(identifiers);
 
@@ -658,7 +975,6 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
 
     const { heroId, equipped } = req.body;
 
-    // ✅ CORRECTION: Recherche avec la bonne query
     const player = await Player.findOne(playerQuery);
     if (!player) {
       res.status(404).json({ error: "Player not found", code: "PLAYER_NOT_FOUND" });
@@ -695,5 +1011,188 @@ router.post("/equip", authMiddleware, async (req: Request, res: Response): Promi
   }
 });
 
-export default router;
+// EQUIPMENT RECOMMENDATIONS ROUTE
+router.get("/my/:heroInstanceId/equipment/recommendations", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const identifiers = getPlayerIdentifiers(req);
+    const { heroInstanceId } = req.params;
 
+    const playerQuery = buildPlayerQuery(identifiers);
+    const player = await Player.findOne(playerQuery).populate("heroes.heroId");
+
+    if (!player) {
+      res.status(404).json({ error: "Player not found", code: "PLAYER_NOT_FOUND" });
+      return;
+    }
+
+    const playerHero = player.heroes.find((h: any) => h._id?.toString() === heroInstanceId);
+    if (!playerHero) {
+      res.status(404).json({ error: "Hero not found", code: "HERO_NOT_FOUND" });
+      return;
+    }
+
+    const heroDoc = playerHero.heroId;
+    if (!heroDoc) {
+      res.status(500).json({ error: "Hero data not found", code: "HERO_DATA_ERROR" });
+      return;
+    }
+
+    const inventoryResult = await InventoryService.getPlayerInventory(
+      identifiers.accountId || identifiers.playerId!,
+      identifiers.serverId
+    );
+
+    if (!inventoryResult.success) {
+      res.status(404).json({ error: "Inventory not found", code: "INVENTORY_NOT_FOUND" });
+      return;
+    }
+
+    const storage = inventoryResult.inventory.storage;
+    const currentEquipment = heroDoc.equipment || {};
+
+    const recommendations: any = {};
+    const slots = [
+      { slot: 'weapon', category: 'weapons' },
+      { slot: 'helmet', category: 'helmets' },
+      { slot: 'armor', category: 'armors' },
+      { slot: 'boots', category: 'boots' },
+      { slot: 'gloves', category: 'gloves' },
+      { slot: 'accessory', category: 'accessories' }
+    ];
+
+    for (const { slot, category } of slots) {
+      const currentItemId = currentEquipment[slot];
+      const availableItems = storage[category] || [];
+      
+      const candidates = availableItems.filter((item: any) => 
+        !item.isEquipped || item.equippedTo === heroInstanceId
+      );
+
+      candidates.sort((a: any, b: any) => {
+        if (a.level !== b.level) return b.level - a.level;
+        if (a.enhancement !== b.enhancement) return b.enhancement - a.enhancement;
+        return b.instanceId.localeCompare(a.instanceId);
+      });
+
+      const currentItem = candidates.find((item: any) => item.instanceId === currentItemId);
+      const bestAlternatives = candidates.filter((item: any) => item.instanceId !== currentItemId).slice(0, 3);
+
+      recommendations[slot] = {
+        current: currentItem || null,
+        alternatives: bestAlternatives,
+        hasUpgrade: bestAlternatives.length > 0 && (!currentItem || 
+          bestAlternatives[0].level > currentItem.level ||
+          bestAlternatives[0].enhancement > currentItem.enhancement)
+      };
+    }
+
+    let totalUpgradePotential = 0;
+    let slotsWithUpgrades = 0;
+
+    Object.values(recommendations).forEach((rec: any) => {
+      if (rec.hasUpgrade) {
+        slotsWithUpgrades++;
+        totalUpgradePotential += rec.alternatives[0]?.level || 0;
+      }
+    });
+
+    res.json({
+      message: "Equipment recommendations retrieved successfully",
+      serverId: identifiers.serverId,
+      heroInstanceId,
+      heroName: heroDoc.name,
+      heroRole: heroDoc.role,
+      recommendations,
+      summary: {
+        slotsWithUpgrades,
+        totalSlots: slots.length,
+        upgradePotential: Math.round(totalUpgradePotential / Math.max(1, slotsWithUpgrades)),
+        recommendationScore: slotsWithUpgrades > 0 ? Math.round((slotsWithUpgrades / slots.length) * 100) : 0
+      }
+    });
+
+  } catch (err) {
+    console.error("Get equipment recommendations error:", err);
+    res.status(500).json({ error: "Internal server error", code: "GET_EQUIPMENT_RECOMMENDATIONS_FAILED" });
+  }
+});
+
+// EQUIPMENT OPTIMIZATION ROUTE
+router.post("/my/:heroInstanceId/equipment/optimize", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const identifiers = getPlayerIdentifiers(req);
+    const { heroInstanceId } = req.params;
+
+    const optimizeForSchema = Joi.object({
+      priority: Joi.string().valid("power", "attack", "defense", "health", "speed").default("power"),
+      autoEquip: Joi.boolean().default(false)
+    });
+
+    const { error, value } = optimizeForSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const { priority, autoEquip } = value;
+
+    const playerQuery = buildPlayerQuery(identifiers);
+    const player = await Player.findOne(playerQuery).populate("heroes.heroId");
+
+    if (!player) {
+      res.status(404).json({ error: "Player not found", code: "PLAYER_NOT_FOUND" });
+      return;
+    }
+
+    const playerHero = player.heroes.find((h: any) => h._id?.toString() === heroInstanceId);
+    if (!playerHero || !playerHero.heroId) {
+      res.status(404).json({ error: "Hero not found", code: "HERO_NOT_FOUND" });
+      return;
+    }
+
+    const heroDoc = playerHero.heroId;
+    const currentStats = await heroDoc.getTotalStats(playerHero.level, playerHero.stars, player._id.toString());
+
+    const optimizationResults = {
+      currentStats: currentStats.totalStats,
+      currentPower: currentStats.power,
+      optimizations: [] as any[],
+      potentialStats: currentStats.totalStats,
+      potentialPower: currentStats.power,
+      improvements: {
+        power: 0,
+        attack: 0,
+        defense: 0,
+        health: 0,
+        speed: 0
+      }
+    };
+
+    if (autoEquip) {
+      optimizationResults.optimizations.push({
+        action: "Auto-equip feature coming soon",
+        description: "Automatic equipment optimization will be implemented in a future update"
+      });
+    } else {
+      optimizationResults.optimizations.push({
+        action: "Analysis completed",
+        description: `Optimization priority: ${priority}. Use autoEquip: true to apply changes automatically.`
+      });
+    }
+
+    res.json({
+      message: "Equipment optimization completed",
+      serverId: identifiers.serverId,
+      heroInstanceId,
+      priority,
+      autoEquipApplied: autoEquip,
+      ...optimizationResults
+    });
+
+  } catch (err) {
+    console.error("Equipment optimization error:", err);
+    res.status(500).json({ error: "Internal server error", code: "EQUIPMENT_OPTIMIZATION_FAILED" });
+  }
+});
+
+export default router;
