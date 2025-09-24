@@ -374,7 +374,7 @@ router.get("/my/:heroInstanceId/details", authMiddleware, async (req: Request, r
       return;
     }
 
-    const heroDoc = playerHero.heroId;
+    const heroDoc = playerHero.heroId as any;
     if (!heroDoc || typeof heroDoc === 'string') {
       res.status(500).json({ error: "Hero data not populated", code: "HERO_DATA_ERROR" });
       return;
@@ -388,7 +388,7 @@ router.get("/my/:heroInstanceId/details", authMiddleware, async (req: Request, r
       message: "Hero details retrieved successfully",
       serverId: identifiers.serverId,
       hero: {
-        playerHeroId: playerHero._id,
+        playerHeroId: (playerHero as any)._id,
         heroData: {
           _id: obj._id,
           heroId: keys.heroId,
@@ -448,7 +448,7 @@ router.get("/my/:heroInstanceId/equipment", authMiddleware, async (req: Request,
       return;
     }
 
-    const heroDoc = playerHero.heroId;
+    const heroDoc = playerHero.heroId as any;
     if (!heroDoc) {
       res.status(500).json({ error: "Hero data not found", code: "HERO_DATA_ERROR" });
       return;
@@ -511,7 +511,7 @@ router.post("/my/:heroInstanceId/equip", authMiddleware, async (req: Request, re
     if (player) {
       const playerHero = player.heroes.find((h: any) => h._id?.toString() === heroInstanceId);
       if (playerHero && playerHero.heroId) {
-        const heroDoc = playerHero.heroId;
+        const heroDoc = playerHero.heroId as any;
         if (heroDoc.equipment) {
           heroDoc.equipment[slot as keyof typeof heroDoc.equipment] = instanceId;
           await heroDoc.save();
