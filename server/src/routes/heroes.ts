@@ -489,7 +489,7 @@ router.post("/my/:heroInstanceId/equip", authMiddleware, async (req: Request, re
 
     const { instanceId, slot } = value;
 
-    // ✅ CORRECTION : Trouver le joueur et récupérer le vrai heroId AVANT l'appel InventoryService
+    // Trouver le joueur et récupérer le héros
     const playerQuery = buildPlayerQuery(identifiers);
     const player = await Player.findOne(playerQuery).populate("heroes.heroId");
 
@@ -504,20 +504,43 @@ router.post("/my/:heroInstanceId/equip", authMiddleware, async (req: Request, re
       return;
     }
 
-    // ✅ RÉCUPÉRER L'ID MONGODB DU HÉROS (pas l'instance du joueur)
+    // ✅ DEBUG ET GESTION DES CAS D'ERREUR
+    console.log("playerHero:", playerHero);
+    console.log("playerHero.heroId:", playerHero.heroId);
+    console.log("typeof playerHero.heroId:", typeof playerHero.heroId);
+
     const heroDoc = playerHero.heroId as any;
+    
     if (!heroDoc) {
-      res.status(500).json({ error: "Hero data not found", code: "HERO_DATA_ERROR" });
+      res.status(500).json({ error: "Hero not populated", code: "HERO_NOT_POPULATED" });
       return;
     }
 
-    const mongoHeroId = heroDoc._id.toString();
+    // ✅ GESTION FLEXIBLE DE L'ID
+    let mongoHeroId: string;
+    
+    if (typeof heroDoc === 'string') {
+      // Si heroId n'est pas populé, c'est juste l'ID string
+      mongoHeroId = heroDoc;
+    } else if (heroDoc._id) {
+      // Si c'est un objet populé avec _id
+      mongoHeroId = heroDoc._id.toString();
+    } else if (heroDoc.id) {
+      // Parfois c'est .id au lieu de ._id
+      mongoHeroId = heroDoc.id.toString();
+    } else {
+      console.error("Cannot extract hero ID from:", heroDoc);
+      res.status(500).json({ error: "Cannot extract hero ID", code: "HERO_ID_ERROR" });
+      return;
+    }
 
-    // ✅ UTILISER LE BON ID MONGODB POUR L'INVENTAIRE SERVICE
+    console.log("Using mongoHeroId:", mongoHeroId);
+
+    // UTILISER LE BON ID MONGODB POUR L'INVENTAIRE SERVICE
     const equipResult = await InventoryService.equipItem(
       identifiers.accountId || identifiers.playerId!,
       instanceId,
-      mongoHeroId, // ← UTILISER L'ID MongoDB du héros, pas l'instance
+      mongoHeroId,
       identifiers.serverId
     );
 
@@ -530,8 +553,8 @@ router.post("/my/:heroInstanceId/equip", authMiddleware, async (req: Request, re
       return;
     }
 
-    // ✅ METTRE À JOUR L'ÉQUIPEMENT SUR LE DOCUMENT HÉROS
-    if (heroDoc.equipment) {
+    // METTRE À JOUR L'ÉQUIPEMENT SUR LE DOCUMENT HÉROS (seulement si populé)
+    if (typeof heroDoc === 'object' && heroDoc.equipment) {
       heroDoc.equipment[slot as keyof typeof heroDoc.equipment] = instanceId;
       await heroDoc.save();
     }
@@ -1213,4 +1236,5 @@ router.post("/my/:heroInstanceId/equipment/optimize", authMiddleware, async (req
 });
 
 export default router;
+
 
