@@ -504,7 +504,6 @@ router.post("/my/:heroInstanceId/equip", authMiddleware, async (req: Request, re
       return;
     }
 
-    // ✅ DEBUG ET GESTION DES CAS D'ERREUR
     console.log("playerHero:", playerHero);
     console.log("playerHero.heroId:", playerHero.heroId);
     console.log("typeof playerHero.heroId:", typeof playerHero.heroId);
@@ -516,31 +515,15 @@ router.post("/my/:heroInstanceId/equip", authMiddleware, async (req: Request, re
       return;
     }
 
-    // ✅ GESTION FLEXIBLE DE L'ID
-    let mongoHeroId: string;
-    
-    if (typeof heroDoc === 'string') {
-      // Si heroId n'est pas populé, c'est juste l'ID string
-      mongoHeroId = heroDoc;
-    } else if (heroDoc._id) {
-      // Si c'est un objet populé avec _id
-      mongoHeroId = heroDoc._id.toString();
-    } else if (heroDoc.id) {
-      // Parfois c'est .id au lieu de ._id
-      mongoHeroId = heroDoc.id.toString();
-    } else {
-      console.error("Cannot extract hero ID from:", heroDoc);
-      res.status(500).json({ error: "Cannot extract hero ID", code: "HERO_ID_ERROR" });
-      return;
-    }
+    // ✅ CORRECTION: Utiliser heroInstanceId (l'_id de l'instance dans player.heroes)
+    // PLUTÔT QUE l'_id du document Hero
+    console.log("Using heroInstanceId for inventory:", heroInstanceId);
 
-    console.log("Using mongoHeroId:", mongoHeroId);
-
-    // UTILISER LE BON ID MONGODB POUR L'INVENTAIRE SERVICE
+    // Appeler InventoryService avec l'ID de l'instance du héros dans player.heroes
     const equipResult = await InventoryService.equipItem(
       identifiers.accountId || identifiers.playerId!,
       instanceId,
-      mongoHeroId,
+      heroInstanceId, // ✅ CORRECTION: Utiliser heroInstanceId directement
       identifiers.serverId
     );
 
@@ -1236,5 +1219,6 @@ router.post("/my/:heroInstanceId/equipment/optimize", authMiddleware, async (req
 });
 
 export default router;
+
 
 
