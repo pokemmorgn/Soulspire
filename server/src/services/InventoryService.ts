@@ -316,77 +316,74 @@ export class InventoryService {
     }
   }
 
-  // === ÉQUIPER UN OBJET SUR UN HÉROS ===
   public static async equipItem(
-    playerId: string,
-    instanceId: string,
-    heroId: string,
-    serverId?: string
-  ): Promise<EquipmentResult> {
-    try {
-      console.log(`⚔️ Équipement ${instanceId} sur héros ${heroId} pour ${playerId}`);
+  playerId: string,
+  instanceId: string,
+  heroId: string,
+  serverId?: string
+): Promise<EquipmentResult> {
+  try {
+    console.log(`⚔️ Équipement ${instanceId} sur héros ${heroId} pour ${playerId}`);
 
-      // ✅ CORRECTION: Utiliser findById au lieu de findOne({ playerId })
-      const [player, inventory] = await Promise.all([
-        Player.findById(playerId),
-        Inventory.findOne({ playerId })
-      ]);
+    const [player, inventory] = await Promise.all([
+      Player.findById(playerId),
+      Inventory.findOne({ playerId })
+    ]);
 
-      if (!player) {
-        return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
-      }
-
-      // ✅ VÉRIFICATION SERVEUR
-      if (serverId && player.serverId !== serverId) {
-        return { success: false, error: "Player not found on this server", code: "WRONG_SERVER" };
-      }
-
-      if (!inventory) {
-        return { success: false, error: "Inventory not found", code: "INVENTORY_NOT_FOUND" };
-      }
-
-      // Vérifier que le joueur possède ce héros
-      const playerHero = player.heroes.find(h => h.heroId.toString() === heroId);
-      if (!playerHero) {
-        return { success: false, error: "Hero not owned", code: "HERO_NOT_OWNED" };
-      }
-
-      // Récupérer l'objet à équiper
-      const itemToEquip = inventory.getItem(instanceId);
-      if (!itemToEquip) {
-        return { success: false, error: "Equipment not found", code: "EQUIPMENT_NOT_FOUND" };
-      }
-
-      // Vérifier que c'est un équipement
-      const itemData = await Item.findOne({ itemId: itemToEquip.itemId });
-      if (!itemData || itemData.category !== "Equipment") {
-        return { success: false, error: "Item is not equipment", code: "NOT_EQUIPMENT" };
-      }
-
-      // Récupérer l'ancien équipement du même slot (s'il existe)
-      const equippedItems = inventory.getEquippedItems(heroId);
-      const oldEquipment = equippedItems.find(item => {
-        // ✅ TODO: Améliorer la logique selon le slot d'équipement
-        return true;
-      });
-
-      // Équiper le nouvel objet
-      const success = await inventory.equipItem(instanceId, heroId);
-      if (!success) {
-        return { success: false, error: "Failed to equip item", code: "EQUIP_FAILED" };
-      }
-
-      return {
-        success: true,
-        newItem: itemToEquip,
-        previousItem: oldEquipment || null
-      };
-
-    } catch (error: any) {
-      console.error("❌ Erreur equipItem:", error);
-      return { success: false, error: error.message, code: "EQUIP_ITEM_FAILED" };
+    if (!player) {
+      return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
     }
+
+    if (serverId && player.serverId !== serverId) {
+      return { success: false, error: "Player not found on this server", code: "WRONG_SERVER" };
+    }
+
+    if (!inventory) {
+      return { success: false, error: "Inventory not found", code: "INVENTORY_NOT_FOUND" };
+    }
+
+    // ✅ CORRECTION: Comparer avec h._id au lieu de h.heroId
+    const playerHero = player.heroes.find(h => h._id?.toString() === heroId);
+    if (!playerHero) {
+      return { success: false, error: "Hero not owned", code: "HERO_NOT_OWNED" };
+    }
+
+    // Récupérer l'objet à équiper
+    const itemToEquip = inventory.getItem(instanceId);
+    if (!itemToEquip) {
+      return { success: false, error: "Equipment not found", code: "EQUIPMENT_NOT_FOUND" };
+    }
+
+    // Vérifier que c'est un équipement
+    const itemData = await Item.findOne({ itemId: itemToEquip.itemId });
+    if (!itemData || itemData.category !== "Equipment") {
+      return { success: false, error: "Item is not equipment", code: "NOT_EQUIPMENT" };
+    }
+
+    // Récupérer l'ancien équipement du même slot (s'il existe)
+    const equippedItems = inventory.getEquippedItems(heroId);
+    const oldEquipment = equippedItems.find(item => {
+      // TODO: Améliorer la logique selon le slot d'équipement
+      return true;
+    });
+
+    // Équiper le nouvel objet
+    const success = await inventory.equipItem(instanceId, heroId);
+    if (!success) {
+      return { success: false, error: "Failed to equip item", code: "EQUIP_FAILED" };
+    }
+
+    return {
+      success: true,
+      newItem: itemToEquip,
+      previousItem: oldEquipment || null
+    };
+
+  } catch (error: any) {
+    console.error("❌ Erreur equipItem:", error);
+    return { success: false, error: error.message, code: "EQUIP_ITEM_FAILED" };
   }
+}
 
   // === DÉSÉQUIPER UN OBJET ===
   public static async unequipItem(
