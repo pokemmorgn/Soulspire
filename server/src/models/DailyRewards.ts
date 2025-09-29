@@ -226,9 +226,10 @@ dailyRewardsSchema.pre('save', function(next) {
     this.longestStreak = this.currentStreak;
   }
   
-  // Garder seulement les 90 derniers claims dans l'historique
-  if (this.claimHistory.length > 90) {
-    this.claimHistory = this.claimHistory.slice(-90);
+  // 🔥 UTILISER LA CONFIG pour la taille de l'historique
+  const maxHistorySize = DailyRewardsConfig.config.maxHistorySize;
+  if (this.claimHistory.length > maxHistorySize) {
+    this.claimHistory = this.claimHistory.slice(-maxHistorySize);
   }
   
   next();
@@ -348,8 +349,9 @@ dailyRewardsSchema.methods.claimDailyReward = async function(
   this.consecutiveMissedDays = 0;
   this.monthlyClaimsCount += 1;
   
-  // Incrémenter le jour (cycle de 1-30)
-  this.currentDay = this.currentDay >= 30 ? 1 : this.currentDay + 1;
+  // Incrémenter le jour (cycle configurable)
+  const cycleDays = DailyRewardsConfig.config.cycleDays;
+  this.currentDay = this.currentDay >= cycleDays ? 1 : this.currentDay + 1;
   
   // Mettre à jour la prochaine reset date
   const tomorrow = new Date();
@@ -381,15 +383,18 @@ dailyRewardsSchema.methods.checkAndResetStreak = async function(): Promise<boole
   const diffTime = now.getTime() - lastClaim.getTime();
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
   
+  // 🔥 UTILISER LA CONFIG
+  const resetThreshold = DailyRewardsConfig.config.streakResetAfterMissedDays;
+  
   // Si plus d'un jour s'est écoulé
   if (diffDays > 1) {
     const missedDays = diffDays - 1;
     this.consecutiveMissedDays += missedDays;
     this.totalMissedDays += missedDays;
     
-    // Reset le streak si 2 jours ou plus ratés
-    if (missedDays >= 2) {
-      console.log(`⚠️ Streak reset pour ${this.playerId}: ${missedDays} jours ratés`);
+    // Reset le streak si threshold dépassé
+    if (missedDays >= resetThreshold) {
+      console.log(`⚠️ Streak reset pour ${this.playerId}: ${missedDays} jours ratés (seuil: ${resetThreshold})`);
       this.currentStreak = 0;
       this.currentDay = 1;
       this.streakStartDate = now;
@@ -403,14 +408,21 @@ dailyRewardsSchema.methods.checkAndResetStreak = async function(): Promise<boole
 // Obtenir la prochaine récompense
 dailyRewardsSchema.methods.getNextReward = function(): { 
   day: number; 
-  rewards: IDailyRewardItem[] 
+  rewards: IDailyRewardItem[];
+  title?: string;
+  isSpecial?: boolean;
 } {
   const nextDay = this.canClaimToday() ? this.currentDay : this.currentDay + 1;
-  const normalizedDay = nextDay > 30 ? 1 : nextDay;
+  const normalizedDay = nextDay > DailyRewardsConfig.config.cycleDays ? 1 : nextDay;
+  
+  // 🔥 RÉCUPÉRER LES INFOS DEPUIS LA CONFIG
+  const dayConfig = DailyRewardsConfig.getDayConfig(normalizedDay);
   
   return {
     day: normalizedDay,
-    rewards: this.calculateRewards(normalizedDay, 0) // Sans bonus VIP pour preview
+    rewards: this.calculateRewards(normalizedDay, 0), // Sans bonus VIP pour preview
+    title: dayConfig?.title,
+    isSpecial: dayConfig?.isSpecial
   };
 };
 
@@ -435,12 +447,16 @@ dailyRewardsSchema.methods.getClaimStatus = function() {
     missedToday = diffDays > 0 && !canClaim;
   }
   
+  const cycleDays = DailyRewardsConfig.config.cycleDays;
+  
   return {
     canClaim,
     timeUntilNext,
     currentStreak: this.currentStreak,
-    nextDay: canClaim ? this.currentDay : (this.currentDay >= 30 ? 1 : this.currentDay + 1),
-    missedToday
+    nextDay: canClaim ? this.currentDay : (this.currentDay >= cycleDays ? 1 : this.currentDay + 1),
+    missedToday,
+    streakTier: DailyRewardsConfig.getStreakTierName(this.currentStreak),
+    streakMultiplier: DailyRewardsConfig.getStreakMultiplier(this.currentStreak)
   };
 };
 
