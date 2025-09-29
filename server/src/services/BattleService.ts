@@ -428,7 +428,7 @@ for (const slot of sortedSlots) {
   const combatStats = this.calculateCombatStats(heroData, playerHero.level, playerHero.stars);
   
   // ✅ NOUVEAU : Appliquer les bonus de synergie
-  const bonusedStats = this.applyFormationBonuses(combatStats, elementDistribution);
+  const bonusedStats = this.applyFormationBonuses(combatStats, elementDistribution, heroData.element);
   
   const participant: IBattleParticipant = {
     heroId: (heroData._id as any).toString(),
@@ -522,7 +522,7 @@ private static async generateEnemyTeamWithSpells(
       };
       
       // ✅ NOUVEAU : Appliquer les bonus de synergie aux ennemis
-      const enemyStats = this.applyFormationBonuses(baseEnemyStats, elementDistribution);
+      const enemyStats = this.applyFormationBonuses(baseEnemyStats, elementDistribution, heroData.element);
       
       const enemyId = `enemy_${heroData._id}_${i}`;
       const enemy: IBattleParticipant = {
