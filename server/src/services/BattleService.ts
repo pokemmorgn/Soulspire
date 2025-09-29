@@ -7,7 +7,7 @@ import { BattleEngine, IBattleOptions } from "./BattleEngine";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
 import { HeroSpells } from "../gameplay/SpellManager";
-
+import { calculateFormationSynergies } from "../config/FormationBonusConfig";
 export class BattleService {
 
   public static async startCampaignBattle(
@@ -288,82 +288,33 @@ private static async buildPlayerTeamWithSpells(player: any): Promise<{
     isActive: true
   });
 
-  // ✅ Fallback : Si pas de formation active, utiliser les héros équipés (ancien système)
-  if (!activeFormation || activeFormation.slots.length === 0) {
-    console.warn(`⚠️ Pas de formation active pour ${player._id}, utilisation des héros équipés`);
-    
-    const equippedHeroes = player.heroes.filter((hero: any) => hero.equipped);
-    
-    // Assigner des positions par défaut (1, 2, 3, 4, 5)
-    for (let i = 0; i < equippedHeroes.length; i++) {
-      const playerHero = equippedHeroes[i];
-      const position = i + 1; // Position 1, 2, 3, 4, 5
-      
-      let heroData;
-      if (typeof playerHero.heroId === 'string') {
-        heroData = await Hero.findById(playerHero.heroId);
-      } else {
-        heroData = playerHero.heroId;
-      }
-      
-      if (!heroData) {
-        console.warn(`⚠️ Héros non trouvé: ${playerHero.heroId}`);
-        continue;
-      }
-
-      if (!heroData.baseStats || !heroData.baseStats.hp) {
-        console.error(`❌ Stats manquantes pour le héros: ${heroData.name}`);
-        continue;
-      }
-
-      const combatStats = this.calculateCombatStats(heroData, playerHero.level, playerHero.stars);
-      
-      const participant: IBattleParticipant = {
-        heroId: (heroData._id as any).toString(),
-        name: heroData.name,
-        position, // ✅ Position assignée
-        role: heroData.role,
-        element: heroData.element,
-        rarity: heroData.rarity,
-        level: playerHero.level,
-        stars: playerHero.stars,
-        stats: combatStats,
-        currentHp: combatStats.hp,
-        energy: 0,
-        status: {
-          alive: true,
-          buffs: [],
-          debuffs: []
-        }
-      };
-      
-      team.push(participant);
-
-      const heroSpells = this.extractHeroSpells(heroData);
-      spells.set(participant.heroId, heroSpells);
+// ✅ Fallback : Si pas de formation active, utiliser les héros équipés (ancien système)
+if (!activeFormation || activeFormation.slots.length === 0) {
+  console.warn(`⚠️ Pas de formation active pour ${player._id}, utilisation des héros équipés`);
+  
+  const equippedHeroes = player.heroes.filter((hero: any) => hero.equipped);
+  
+  // ✅ NOUVEAU : Calculer la distribution élémentaire pour les héros équipés
+  const elementDistribution: Record<string, number> = {};
+  
+  for (const playerHero of equippedHeroes) {
+    let heroData;
+    if (typeof playerHero.heroId === 'string') {
+      heroData = await Hero.findById(playerHero.heroId);
+    } else {
+      heroData = playerHero.heroId;
     }
     
-    return { playerTeam: team, playerSpells: spells };
+    if (heroData && heroData.element) {
+      elementDistribution[heroData.element] = (elementDistribution[heroData.element] || 0) + 1;
+    }
   }
-
-  // ✅ NOUVEAU : Utiliser la formation active
-  console.log(`✅ Utilisation formation: "${activeFormation.name}" (${activeFormation.slots.length} héros)`);
   
-  // Trier les slots par position (1 -> 5)
-  const sortedSlots = [...activeFormation.slots].sort((a, b) => a.slot - b.slot);
-  
-  for (const slot of sortedSlots) {
-    // Trouver le héros dans player.heroes
-    const playerHero = player.heroes.find((h: any) => 
-      h._id?.toString() === slot.heroId
-    );
+  // Assigner des positions par défaut (1, 2, 3, 4, 5)
+  for (let i = 0; i < equippedHeroes.length; i++) {
+    const playerHero = equippedHeroes[i];
+    const position = i + 1;
     
-    if (!playerHero) {
-      console.warn(`⚠️ Héros ${slot.heroId} dans formation mais pas dans player.heroes`);
-      continue;
-    }
-    
-    // Récupérer les données du héros
     let heroData;
     if (typeof playerHero.heroId === 'string') {
       heroData = await Hero.findById(playerHero.heroId);
@@ -383,17 +334,20 @@ private static async buildPlayerTeamWithSpells(player: any): Promise<{
 
     const combatStats = this.calculateCombatStats(heroData, playerHero.level, playerHero.stars);
     
+    // ✅ NOUVEAU : Appliquer les bonus de synergie même en fallback
+    const bonusedStats = this.applyFormationBonuses(combatStats, elementDistribution);
+    
     const participant: IBattleParticipant = {
       heroId: (heroData._id as any).toString(),
       name: heroData.name,
-      position: slot.slot, // ✅ Position depuis la formation
+      position, // Position assignée
       role: heroData.role,
       element: heroData.element,
       rarity: heroData.rarity,
       level: playerHero.level,
       stars: playerHero.stars,
-      stats: combatStats,
-      currentHp: combatStats.hp,
+      stats: bonusedStats, // ✅ NOUVEAU : Stats avec bonus
+      currentHp: bonusedStats.hp, // ✅ NOUVEAU : HP avec bonus
       energy: 0,
       status: {
         alive: true,
@@ -406,9 +360,98 @@ private static async buildPlayerTeamWithSpells(player: any): Promise<{
 
     const heroSpells = this.extractHeroSpells(heroData);
     spells.set(participant.heroId, heroSpells);
-    
-    console.log(`⚡ ${heroData.name} en position ${slot.slot}`);
   }
+  
+  return { playerTeam: team, playerSpells: spells };
+}
+
+// ✅ NOUVEAU : Utiliser la formation active
+console.log(`✅ Utilisation formation: "${activeFormation.name}" (${activeFormation.slots.length} héros)`);
+
+// Trier les slots par position (1 -> 5)
+const sortedSlots = [...activeFormation.slots].sort((a, b) => a.slot - b.slot);
+
+// ✅ NOUVEAU : Calculer la distribution élémentaire AVANT de créer les participants
+const elementDistribution: Record<string, number> = {};
+
+for (const slot of sortedSlots) {
+  const playerHero = player.heroes.find((h: any) => 
+    h._id?.toString() === slot.heroId
+  );
+  
+  if (!playerHero) continue;
+  
+  let heroData;
+  if (typeof playerHero.heroId === 'string') {
+    heroData = await Hero.findById(playerHero.heroId);
+  } else {
+    heroData = playerHero.heroId;
+  }
+  
+  if (heroData && heroData.element) {
+    elementDistribution[heroData.element] = (elementDistribution[heroData.element] || 0) + 1;
+  }
+}
+
+// ✅ NOUVEAU : Maintenant créer les participants avec les bonus appliqués
+for (const slot of sortedSlots) {
+  const playerHero = player.heroes.find((h: any) => 
+    h._id?.toString() === slot.heroId
+  );
+  
+  if (!playerHero) {
+    console.warn(`⚠️ Héros ${slot.heroId} dans formation mais pas dans player.heroes`);
+    continue;
+  }
+  
+  let heroData;
+  if (typeof playerHero.heroId === 'string') {
+    heroData = await Hero.findById(playerHero.heroId);
+  } else {
+    heroData = playerHero.heroId;
+  }
+  
+  if (!heroData) {
+    console.warn(`⚠️ Héros non trouvé: ${playerHero.heroId}`);
+    continue;
+  }
+
+  if (!heroData.baseStats || !heroData.baseStats.hp) {
+    console.error(`❌ Stats manquantes pour le héros: ${heroData.name}`);
+    continue;
+  }
+
+  const combatStats = this.calculateCombatStats(heroData, playerHero.level, playerHero.stars);
+  
+  // ✅ NOUVEAU : Appliquer les bonus de synergie
+  const bonusedStats = this.applyFormationBonuses(combatStats, elementDistribution);
+  
+  const participant: IBattleParticipant = {
+    heroId: (heroData._id as any).toString(),
+    name: heroData.name,
+    position: slot.slot, // Position depuis la formation
+    role: heroData.role,
+    element: heroData.element,
+    rarity: heroData.rarity,
+    level: playerHero.level,
+    stars: playerHero.stars,
+    stats: bonusedStats, // ✅ NOUVEAU : Stats avec bonus
+    currentHp: bonusedStats.hp, // ✅ NOUVEAU : HP avec bonus
+    energy: 0,
+    status: {
+      alive: true,
+      buffs: [],
+      debuffs: []
+    }
+  };
+  
+  team.push(participant);
+
+  const heroSpells = this.extractHeroSpells(heroData);
+  spells.set(participant.heroId, heroSpells);
+  
+  console.log(`⚡ ${heroData.name} en position ${slot.slot}`);
+}
   
   return { playerTeam: team, playerSpells: spells };
 }
@@ -611,6 +654,43 @@ private static async buildPlayerTeamWithSpells(player: any): Promise<{
     };
   }
 
+  /**
+ * Appliquer les bonus de synergie élémentaire aux stats de combat
+ */
+private static applyFormationBonuses(
+  stats: any,
+  elementDistribution: Record<string, number>
+): any {
+  const synergies = calculateFormationSynergies(elementDistribution);
+  const bonuses = synergies.bonuses;
+
+  // Appliquer les bonus en pourcentage
+  if (bonuses.hp > 0 || bonuses.atk > 0 || bonuses.def > 0) {
+    const bonusedStats = {
+      hp: Math.floor(stats.hp * (1 + bonuses.hp / 100)),
+      maxHp: Math.floor(stats.maxHp * (1 + bonuses.hp / 100)),
+      atk: Math.floor(stats.atk * (1 + bonuses.atk / 100)),
+      def: Math.floor(stats.def * (1 + bonuses.def / 100)),
+      defMagique: stats.defMagique,
+      vitesse: stats.vitesse,
+      intelligence: stats.intelligence,
+      force: stats.force,
+      moral: stats.moral,
+      precision: stats.precision,
+      esquive: stats.esquive,
+      speed: stats.speed
+    };
+
+    console.log(
+      `🔥 Bonus synergie appliqués: HP +${bonuses.hp}%, ATK +${bonuses.atk}%, DEF +${bonuses.def}%`
+    );
+
+    return bonusedStats;
+  }
+
+  return stats;
+}
+  
   private static getEnemyType(levelId: number): "normal" | "elite" | "boss" {
     if (levelId % 10 === 0) return "boss";
     if (levelId % 5 === 0) return "elite";
