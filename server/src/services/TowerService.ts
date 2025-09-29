@@ -6,6 +6,7 @@ import { BattleEngine } from "./BattleEngine";
 import { IBattleParticipant } from "../models/Battle";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
+import { calculateFormationSynergies } from "../config/FormationBonusConfig";
 
 export class TowerService {
   
@@ -360,54 +361,87 @@ export class TowerService {
   }
 
   // === GÉNÉRER LES ENNEMIS D'UN ÉTAGE ===
-  private static async generateTowerEnemies(floorConfig: any): Promise<IBattleParticipant[]> {
-    
-    const { floor, enemyConfig, difficultyMultiplier } = floorConfig;
-    const enemies: IBattleParticipant[] = [];
+private static async generateTowerEnemies(floorConfig: any): Promise<IBattleParticipant[]> {
+  const { floor, enemyConfig, difficultyMultiplier } = floorConfig;
+  const enemies: IBattleParticipant[] = [];
 
-    // Récupérer des héros aléatoires comme base
-    const baseHeroes = await Hero.aggregate([{ $sample: { size: enemyConfig.enemyCount } }]);
+  const baseHeroes = await Hero.aggregate([{ $sample: { size: enemyConfig.enemyCount } }]);
 
-    for (let i = 0; i < baseHeroes.length; i++) {
-      const heroData = baseHeroes[i];
-      
-      // Stats adaptées à l'étage
-      const baseMultiplier = difficultyMultiplier * (1 + (floor - 1) * 0.15);
-      
-      const enemyStats = {
-        hp: Math.floor(heroData.baseStats.hp * baseMultiplier),
-        maxHp: Math.floor(heroData.baseStats.hp * baseMultiplier),
-        atk: Math.floor(heroData.baseStats.atk * baseMultiplier),
-        def: Math.floor(heroData.baseStats.def * baseMultiplier),
-        speed: 90 + Math.floor(floor * 0.5)
-      };
-
-      const enemy: IBattleParticipant = {
-        heroId: `tower_enemy_${floor}_${i}`,
-        name: enemyConfig.bossFloor ? `Tower Boss ${heroData.name}` : `Tower Guardian ${heroData.name}`,
-        position: i + 1, // ✅ NOUVEAU : Position 1, 2, 3
-        role: heroData.role,
-        element: heroData.element,
-        rarity: enemyConfig.bossFloor ? "Legendary" : "Epic",
-        level: enemyConfig.baseLevel,
-        stars: enemyConfig.bossFloor ? 6 : 4,
-        stats: enemyStats,
-        currentHp: enemyStats.hp,
-        energy: enemyConfig.bossFloor ? 50 : 0, // Boss commence avec de l'énergie
-        status: {
-          alive: true,
-          buffs: enemyConfig.bossFloor ? ["boss_aura"] : [],
-          debuffs: []
-        }
-      };
-
-      enemies.push(enemy);
+  // ✅ NOUVEAU : Calculer d'abord la distribution élémentaire
+  const elementDistribution: Record<string, number> = {};
+  
+  for (const heroData of baseHeroes) {
+    if (heroData.element) {
+      elementDistribution[heroData.element] = (elementDistribution[heroData.element] || 0) + 1;
     }
-
-    console.log(`👹 Générés ${enemies.length} ennemis étage ${floor} (${enemyConfig.bossFloor ? 'BOSS' : 'Normal'})`);
-    return enemies;
   }
 
+  // ✅ Créer les ennemis avec les bonus appliqués
+  for (let i = 0; i < baseHeroes.length; i++) {
+    const heroData = baseHeroes[i];
+    
+    const baseMultiplier = difficultyMultiplier * (1 + (floor - 1) * 0.15);
+    
+    const baseEnemyStats = {
+      hp: Math.floor(heroData.baseStats.hp * baseMultiplier),
+      maxHp: Math.floor(heroData.baseStats.hp * baseMultiplier),
+      atk: Math.floor(heroData.baseStats.atk * baseMultiplier),
+      def: Math.floor(heroData.baseStats.def * baseMultiplier),
+      speed: 90 + Math.floor(floor * 0.5)
+    };
+    
+    // ✅ NOUVEAU : Appliquer les bonus de synergie
+    const enemyStats = this.applyFormationBonuses(baseEnemyStats, elementDistribution);
+
+    const enemy: IBattleParticipant = {
+      heroId: `tower_enemy_${floor}_${i}`,
+      name: enemyConfig.bossFloor ? `Tower Boss ${heroData.name}` : `Tower Guardian ${heroData.name}`,
+      position: i + 1,
+      role: heroData.role,
+      element: heroData.element,
+      rarity: enemyConfig.bossFloor ? "Legendary" : "Epic",
+      level: enemyConfig.baseLevel,
+      stars: enemyConfig.bossFloor ? 6 : 4,
+      stats: enemyStats, // ✅ NOUVEAU : Stats avec bonus
+      currentHp: enemyStats.hp, // ✅ NOUVEAU : HP avec bonus
+      energy: enemyConfig.bossFloor ? 50 : 0,
+      status: {
+        alive: true,
+        buffs: enemyConfig.bossFloor ? ["boss_aura"] : [],
+        debuffs: []
+      }
+    };
+
+    enemies.push(enemy);
+  }
+
+  console.log(`👹 Générés ${enemies.length} ennemis étage ${floor} (${enemyConfig.bossFloor ? 'BOSS' : 'Normal'})`);
+  return enemies;
+}
+
+  /**
+ * Appliquer les bonus de synergie élémentaire aux ennemis de la tour
+ */
+private static applyFormationBonuses(
+  stats: any,
+  elementDistribution: Record<string, number>
+): any {
+  const synergies = calculateFormationSynergies(elementDistribution);
+  const bonuses = synergies.bonuses;
+
+  if (bonuses.hp > 0 || bonuses.atk > 0 || bonuses.def > 0) {
+    return {
+      hp: Math.floor(stats.hp * (1 + bonuses.hp / 100)),
+      maxHp: Math.floor(stats.maxHp * (1 + bonuses.hp / 100)),
+      atk: Math.floor(stats.atk * (1 + bonuses.atk / 100)),
+      def: Math.floor(stats.def * (1 + bonuses.def / 100)),
+      speed: stats.speed
+    };
+  }
+
+  return stats;
+}
+  
   // === CALCULER LES RÉCOMPENSES D'UN ÉTAGE ===
   private static calculateFloorRewards(floorConfig: any) {
     return {
