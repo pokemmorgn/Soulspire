@@ -2,6 +2,7 @@ import Battle, { IBattleParticipant, IBattleResult } from "../models/Battle";
 import Player from "../models/Player";
 import Hero from "../models/Hero";
 import LevelProgress from "../models/LevelProgress";
+import Formation from "../models/Formation";
 import { BattleEngine, IBattleOptions } from "./BattleEngine";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
@@ -273,18 +274,32 @@ export class BattleService {
     }
   }
 
-  private static async buildPlayerTeamWithSpells(player: any): Promise<{
-    playerTeam: IBattleParticipant[];
-    playerSpells: Map<string, HeroSpells>;
-  }> {
-    const team: IBattleParticipant[] = [];
-    const spells = new Map<string, HeroSpells>();
+private static async buildPlayerTeamWithSpells(player: any): Promise<{
+  playerTeam: IBattleParticipant[];
+  playerSpells: Map<string, HeroSpells>;
+}> {
+  const team: IBattleParticipant[] = [];
+  const spells = new Map<string, HeroSpells>();
+  
+  // ✅ NOUVEAU : Récupérer la formation active
+  const activeFormation = await Formation.findOne({
+    playerId: player._id,
+    serverId: player.serverId,
+    isActive: true
+  });
+
+  // ✅ Fallback : Si pas de formation active, utiliser les héros équipés (ancien système)
+  if (!activeFormation || activeFormation.slots.length === 0) {
+    console.warn(`⚠️ Pas de formation active pour ${player._id}, utilisation des héros équipés`);
     
     const equippedHeroes = player.heroes.filter((hero: any) => hero.equipped);
     
-    for (const playerHero of equippedHeroes) {
-      let heroData;
+    // Assigner des positions par défaut (1, 2, 3, 4, 5)
+    for (let i = 0; i < equippedHeroes.length; i++) {
+      const playerHero = equippedHeroes[i];
+      const position = i + 1; // Position 1, 2, 3, 4, 5
       
+      let heroData;
       if (typeof playerHero.heroId === 'string') {
         heroData = await Hero.findById(playerHero.heroId);
       } else {
@@ -306,6 +321,7 @@ export class BattleService {
       const participant: IBattleParticipant = {
         heroId: (heroData._id as any).toString(),
         name: heroData.name,
+        position, // ✅ Position assignée
         role: heroData.role,
         element: heroData.element,
         rarity: heroData.rarity,
@@ -325,12 +341,77 @@ export class BattleService {
 
       const heroSpells = this.extractHeroSpells(heroData);
       spells.set(participant.heroId, heroSpells);
-      
-      console.log(`⚡ ${heroData.name} équipé avec sorts:`, heroSpells);
     }
     
     return { playerTeam: team, playerSpells: spells };
   }
+
+  // ✅ NOUVEAU : Utiliser la formation active
+  console.log(`✅ Utilisation formation: "${activeFormation.name}" (${activeFormation.slots.length} héros)`);
+  
+  // Trier les slots par position (1 -> 5)
+  const sortedSlots = [...activeFormation.slots].sort((a, b) => a.slot - b.slot);
+  
+  for (const slot of sortedSlots) {
+    // Trouver le héros dans player.heroes
+    const playerHero = player.heroes.find((h: any) => 
+      h._id?.toString() === slot.heroId
+    );
+    
+    if (!playerHero) {
+      console.warn(`⚠️ Héros ${slot.heroId} dans formation mais pas dans player.heroes`);
+      continue;
+    }
+    
+    // Récupérer les données du héros
+    let heroData;
+    if (typeof playerHero.heroId === 'string') {
+      heroData = await Hero.findById(playerHero.heroId);
+    } else {
+      heroData = playerHero.heroId;
+    }
+    
+    if (!heroData) {
+      console.warn(`⚠️ Héros non trouvé: ${playerHero.heroId}`);
+      continue;
+    }
+
+    if (!heroData.baseStats || !heroData.baseStats.hp) {
+      console.error(`❌ Stats manquantes pour le héros: ${heroData.name}`);
+      continue;
+    }
+
+    const combatStats = this.calculateCombatStats(heroData, playerHero.level, playerHero.stars);
+    
+    const participant: IBattleParticipant = {
+      heroId: (heroData._id as any).toString(),
+      name: heroData.name,
+      position: slot.slot, // ✅ Position depuis la formation
+      role: heroData.role,
+      element: heroData.element,
+      rarity: heroData.rarity,
+      level: playerHero.level,
+      stars: playerHero.stars,
+      stats: combatStats,
+      currentHp: combatStats.hp,
+      energy: 0,
+      status: {
+        alive: true,
+        buffs: [],
+        debuffs: []
+      }
+    };
+    
+    team.push(participant);
+
+    const heroSpells = this.extractHeroSpells(heroData);
+    spells.set(participant.heroId, heroSpells);
+    
+    console.log(`⚡ ${heroData.name} en position ${slot.slot}`);
+  }
+  
+  return { playerTeam: team, playerSpells: spells };
+}
 
   private static async generateEnemyTeamWithSpells(
     worldId: number, 
@@ -381,6 +462,7 @@ export class BattleService {
       const enemy: IBattleParticipant = {
         heroId: enemyId,
         name: `${enemyType === "boss" ? "Boss " : enemyType === "elite" ? "Elite " : ""}${heroData.name}`,
+        position: i + 1, // ✅ NOUVEAU : Positions 1, 2, 3 pour les ennemis
         role: heroData.role,
         element: heroData.element,
         rarity: heroData.rarity,
