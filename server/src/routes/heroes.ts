@@ -380,6 +380,42 @@ router.get("/my/:heroInstanceId/details", authMiddleware, async (req: Request, r
       return;
     }
 
+    // ✅ CORRECTION: Récupérer les items équipés depuis l'inventaire
+    const Inventory = mongoose.model('Inventory');
+    const inventory = await Inventory.findOne({ playerId: player._id.toString() });
+    
+    const equippedItems: any[] = [];
+    
+    if (inventory && heroDoc.equipment) {
+      const equipmentCategories = ['weapons', 'helmets', 'armors', 'boots', 'gloves', 'accessories'];
+      const slotMapping: Record<string, string> = {
+        weapons: 'weapon',
+        helmets: 'helmet', 
+        armors: 'armor',
+        boots: 'boots',
+        gloves: 'gloves',
+        accessories: 'accessory'
+      };
+
+      for (const category of equipmentCategories) {
+        const items = inventory.storage[category as keyof typeof inventory.storage];
+        if (Array.isArray(items)) {
+          for (const item of items) {
+            if (item.isEquipped && item.equippedTo === heroInstanceId) {
+              equippedItems.push({
+                slot: slotMapping[category] || category,
+                instanceId: item.instanceId,
+                itemId: item.itemId,
+                name: item.itemId, // TODO: Récupérer le vrai nom depuis Item
+                level: item.level,
+                enhancement: item.enhancement
+              });
+            }
+          }
+        }
+      }
+    }
+
     const fullStats = await heroDoc.getTotalStats(playerHero.level, playerHero.stars, player._id.toString());
     const obj = heroDoc.toObject();
     const keys = buildGenericKeys(obj);
@@ -413,7 +449,7 @@ router.get("/my/:heroInstanceId/details", authMiddleware, async (req: Request, r
           power: fullStats.power
         },
         equipment: {
-          equipped: fullStats.equippedItems || [],
+          equipped: equippedItems,  // ✅ Les items équipés depuis l'inventaire
           slots: obj.equipment || {},
           setBonuses: fullStats.breakdown?.sets || {}
         }
@@ -1205,6 +1241,7 @@ router.post("/my/:heroInstanceId/equipment/optimize", authMiddleware, async (req
 });
 
 export default router;
+
 
 
 
