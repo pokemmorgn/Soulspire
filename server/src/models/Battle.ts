@@ -3,6 +3,7 @@ import mongoose, { Document, Schema } from "mongoose";
 export interface IBattleParticipant {
   heroId: string;
   name: string;
+  position: number;  // ✅ NOUVEAU : Position dans la formation (1-5)
   role: "Tank" | "DPS Melee" | "DPS Ranged" | "Support";
   element: "Fire" | "Water" | "Wind" | "Electric" | "Light" | "Dark";
   rarity: "Common" | "Rare" | "Epic" | "Legendary";
@@ -113,6 +114,7 @@ interface IBattleDocument extends Document {
 const participantSchema = new Schema<IBattleParticipant>({
   heroId: { type: String, required: true },
   name: { type: String, required: true },
+  position: { type: Number, required: true, min: 1, max: 5 },  // ✅ NOUVEAU
   role: { 
     type: String, 
     enum: ["Tank", "DPS Melee", "DPS Ranged", "Support"],
