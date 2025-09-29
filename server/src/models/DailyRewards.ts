@@ -1,8 +1,14 @@
 // server/src/models/DailyRewards.ts
 import mongoose, { Document, Schema } from "mongoose";
 import { IdGenerator } from "../utils/idGenerator";
-// 🔥 IMPORT CONFIG CENTRALISÉE
-import * as DailyRewardsConfig from "../config/DailyRewardsConfig";
+// 🔥 IMPORT CONFIG CENTRALISÉE - FIX TYPESCRIPT
+import { 
+  DAILY_REWARDS_CONFIG,
+  getDayConfig,
+  getStreakMultiplier,
+  getStreakTierName,
+  DailyRewardItemConfig
+} from "../config/DailyRewardsConfig";
 
 // === INTERFACES ===
 
@@ -227,7 +233,7 @@ dailyRewardsSchema.pre('save', function(next) {
   }
   
   // 🔥 UTILISER LA CONFIG pour la taille de l'historique
-  const maxHistorySize = DailyRewardsConfig.config.maxHistorySize;
+  const maxHistorySize = DAILY_REWARDS_CONFIG.maxHistorySize;
   if (this.claimHistory.length > maxHistorySize) {
     this.claimHistory = this.claimHistory.slice(-maxHistorySize);
   }
@@ -263,22 +269,21 @@ dailyRewardsSchema.methods.calculateRewards = function(
   vipLevel: number
 ): IDailyRewardItem[] {
   // 🔥 UTILISER LA CONFIG EXTERNE
-  const DailyRewardsConfig = require('../config/DailyRewardsConfig');
-  const dayConfig = DailyRewardsConfig.getDayConfig(day);
+  const dayConfig = getDayConfig(day);
   
   if (!dayConfig) {
     console.warn(`⚠️ No config found for day ${day}, using day 1 as fallback`);
-    const fallback = DailyRewardsConfig.getDayConfig(1);
+    const fallback = getDayConfig(1);
     return fallback ? [...fallback.rewards] : [];
   }
   
-  // Copier les récompenses de base
-  const baseRewards = dayConfig.rewards.map(r => ({ ...r }));
+  // Copier les récompenses de base avec typage explicite
+  const baseRewards: IDailyRewardItem[] = dayConfig.rewards.map((r: DailyRewardItemConfig) => ({ ...r }));
   
   // Appliquer le bonus VIP (multiplicateur sur toutes les quantités)
-  const vipMultiplier = 1.0 + (vipLevel * DailyRewardsConfig.config.vipBonusPerLevel);
+  const vipMultiplier = 1.0 + (vipLevel * DAILY_REWARDS_CONFIG.vipBonusPerLevel);
   
-  baseRewards.forEach(reward => {
+  baseRewards.forEach((reward: IDailyRewardItem) => {
     reward.quantity = Math.floor(reward.quantity * vipMultiplier);
   });
   
@@ -350,7 +355,7 @@ dailyRewardsSchema.methods.claimDailyReward = async function(
   this.monthlyClaimsCount += 1;
   
   // Incrémenter le jour (cycle configurable)
-  const cycleDays = DailyRewardsConfig.config.cycleDays;
+  const cycleDays = DAILY_REWARDS_CONFIG.cycleDays;
   this.currentDay = this.currentDay >= cycleDays ? 1 : this.currentDay + 1;
   
   // Mettre à jour la prochaine reset date
@@ -366,8 +371,7 @@ dailyRewardsSchema.methods.claimDailyReward = async function(
 // Obtenir le bonus de streak
 dailyRewardsSchema.methods.getStreakBonus = function(): number {
   // 🔥 UTILISER LA CONFIG EXTERNE
-  const DailyRewardsConfig = require('../config/DailyRewardsConfig');
-  return DailyRewardsConfig.getStreakMultiplier(this.currentStreak);
+  return getStreakMultiplier(this.currentStreak);
 };
 
 // Vérifier et reset le streak si nécessaire
@@ -384,7 +388,7 @@ dailyRewardsSchema.methods.checkAndResetStreak = async function(): Promise<boole
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
   
   // 🔥 UTILISER LA CONFIG
-  const resetThreshold = DailyRewardsConfig.config.streakResetAfterMissedDays;
+  const resetThreshold = DAILY_REWARDS_CONFIG.streakResetAfterMissedDays;
   
   // Si plus d'un jour s'est écoulé
   if (diffDays > 1) {
@@ -413,10 +417,10 @@ dailyRewardsSchema.methods.getNextReward = function(): {
   isSpecial?: boolean;
 } {
   const nextDay = this.canClaimToday() ? this.currentDay : this.currentDay + 1;
-  const normalizedDay = nextDay > DailyRewardsConfig.config.cycleDays ? 1 : nextDay;
+  const normalizedDay = nextDay > DAILY_REWARDS_CONFIG.cycleDays ? 1 : nextDay;
   
   // 🔥 RÉCUPÉRER LES INFOS DEPUIS LA CONFIG
-  const dayConfig = DailyRewardsConfig.getDayConfig(normalizedDay);
+  const dayConfig = getDayConfig(normalizedDay);
   
   return {
     day: normalizedDay,
@@ -447,7 +451,7 @@ dailyRewardsSchema.methods.getClaimStatus = function() {
     missedToday = diffDays > 0 && !canClaim;
   }
   
-  const cycleDays = DailyRewardsConfig.config.cycleDays;
+  const cycleDays = DAILY_REWARDS_CONFIG.cycleDays;
   
   return {
     canClaim,
@@ -455,8 +459,8 @@ dailyRewardsSchema.methods.getClaimStatus = function() {
     currentStreak: this.currentStreak,
     nextDay: canClaim ? this.currentDay : (this.currentDay >= cycleDays ? 1 : this.currentDay + 1),
     missedToday,
-    streakTier: DailyRewardsConfig.getStreakTierName(this.currentStreak),
-    streakMultiplier: DailyRewardsConfig.getStreakMultiplier(this.currentStreak)
+    streakTier: getStreakTierName(this.currentStreak),
+    streakMultiplier: getStreakMultiplier(this.currentStreak)
   };
 };
 
