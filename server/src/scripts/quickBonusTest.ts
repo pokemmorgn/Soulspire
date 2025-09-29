@@ -1,93 +1,101 @@
 // server/src/scripts/quickBonusTest.ts
-import { calculateFormationSynergies } from "../config/FormationBonusConfig";
+import { getElementBonus } from "../config/FormationBonusConfig";
 
-interface TestCase {
-  name: string;
-  distribution: Record<string, number>;
-  expectedBonus?: number;
-}
-
-const testCases: TestCase[] = [
-  // === Tests éléments standards ===
-  { name: "2 Fire", distribution: { Fire: 2 }, expectedBonus: 5 },
-  { name: "3 Water", distribution: { Water: 3 }, expectedBonus: 10 },
-  { name: "4 Wind", distribution: { Wind: 4 }, expectedBonus: 15 },
-  { name: "5 Electric (pure)", distribution: { Electric: 5 }, expectedBonus: 25 },
-  
-  // === Tests éléments rares (Light/Dark) ===
-  { name: "2 Light", distribution: { Light: 2 }, expectedBonus: 8 },
-  { name: "3 Dark", distribution: { Dark: 3 }, expectedBonus: 15 },
-  { name: "5 Light (pure)", distribution: { Light: 5 }, expectedBonus: 35 },
-  { name: "5 Dark (pure)", distribution: { Dark: 5 }, expectedBonus: 35 },
-  
-  // === Tests mixtes intéressants ===
-  { name: "2 Light + 3 Dark (max Dark)", distribution: { Light: 2, Dark: 3 }, expectedBonus: 15 },
-  { name: "3 Fire + 2 Water (max Fire)", distribution: { Fire: 3, Water: 2 }, expectedBonus: 10 },
-  { name: "2 Light + 2 Dark + 1 Fire", distribution: { Light: 2, Dark: 2, Fire: 1 }, expectedBonus: 8 },
-  { name: "1 de chaque (aucun bonus)", distribution: { Fire: 1, Water: 1, Wind: 1, Electric: 1, Light: 1 } },
-  
-  // === Tests edge cases ===
-  { name: "4 Fire + 1 Light", distribution: { Fire: 4, Light: 1 }, expectedBonus: 15 },
-  { name: "3 Light + 2 Fire (max Light rare)", distribution: { Light: 3, Fire: 2 }, expectedBonus: 15 }
-];
-
-console.log("🧪 TEST DES BONUS DE FORMATION\n");
+console.log("🧪 TEST DES BONUS INDIVIDUELS PAR ÉLÉMENT\n");
 console.log("=" .repeat(70));
 
-let passedTests = 0;
-let failedTests = 0;
+// Scénario 1 : Formation 3 Fire + 2 Water
+console.log("\n📋 SCÉNARIO 1: Formation 3 Fire + 2 Water\n");
 
-for (const test of testCases) {
-  const result = calculateFormationSynergies(test.distribution);
-  const bonus = result.bonuses.hp; // hp, atk, def sont identiques
-  
-  console.log(`\n📋 ${test.name}`);
-  console.log(`   Distribution:`, test.distribution);
-  
-  if (result.details.length > 0) {
-    result.details.forEach(detail => {
-      const rareMark = detail.isRare ? " ⭐ RARE" : "";
-      console.log(`   → ${detail.count}x ${detail.element}${rareMark}: +${detail.bonus.hp}% stats`);
-    });
-    console.log(`   ✅ Bonus final appliqué: +${bonus}% toutes stats`);
-  } else {
-    console.log(`   ❌ Aucun bonus (besoin de 2+ héros du même élément)`);
-  }
-  
-  // Vérification si attendu
-  if (test.expectedBonus !== undefined) {
-    if (bonus === test.expectedBonus) {
-      console.log(`   ✓ Test RÉUSSI (attendu: ${test.expectedBonus}%)`);
-      passedTests++;
-    } else {
-      console.log(`   ✗ Test ÉCHOUÉ (attendu: ${test.expectedBonus}%, obtenu: ${bonus}%)`);
-      failedTests++;
-    }
-  }
-}
+const formation1 = { Fire: 3, Water: 2 };
 
-console.log("\n" + "=".repeat(70));
-console.log(`\n📊 RÉSULTAT: ${passedTests} réussis, ${failedTests} échoués\n`);
+console.log("Héros Fire dans cette formation:");
+const fireBonus = getElementBonus("Fire", formation1.Fire);
+console.log(`  → ${formation1.Fire}x Fire = +${fireBonus.hp}% stats (bonus standard)`);
 
-// Exemple concret avec calcul de stats
-console.log("=" .repeat(70));
-console.log("\n💡 EXEMPLE CONCRET:\n");
+console.log("\nHéros Water dans cette formation:");
+const waterBonus = getElementBonus("Water", formation1.Water);
+console.log(`  → ${formation1.Water}x Water = +${waterBonus.hp}% stats (bonus standard)`);
 
-const exampleStats = {
-  hp: 5000,
-  atk: 400,
-  def: 200
+console.log("\nExemple concret:");
+const baseStats = { hp: 5000, atk: 400, def: 200 };
+
+const fireStats = {
+  hp: Math.floor(baseStats.hp * (1 + fireBonus.hp / 100)),
+  atk: Math.floor(baseStats.atk * (1 + fireBonus.atk / 100)),
+  def: Math.floor(baseStats.def * (1 + fireBonus.def / 100))
 };
 
-const exampleFormation = { Light: 3, Fire: 2 };
-const exampleResult = calculateFormationSynergies(exampleFormation);
-const exampleBonus = exampleResult.bonuses.hp;
+const waterStats = {
+  hp: Math.floor(baseStats.hp * (1 + waterBonus.hp / 100)),
+  atk: Math.floor(baseStats.atk * (1 + waterBonus.atk / 100)),
+  def: Math.floor(baseStats.def * (1 + waterBonus.def / 100))
+};
 
-console.log(`Formation: 3 Light + 2 Fire`);
-console.log(`Bonus appliqué: +${exampleBonus}% (3 Light = rare)`);
-console.log(`\nHéros avec stats de base:`);
-console.log(`  HP ${exampleStats.hp} → ${Math.floor(exampleStats.hp * (1 + exampleBonus / 100))} (+${Math.floor(exampleStats.hp * exampleBonus / 100)})`);
-console.log(`  ATK ${exampleStats.atk} → ${Math.floor(exampleStats.atk * (1 + exampleBonus / 100))} (+${Math.floor(exampleStats.atk * exampleBonus / 100)})`);
-console.log(`  DEF ${exampleStats.def} → ${Math.floor(exampleStats.def * (1 + exampleBonus / 100))} (+${Math.floor(exampleStats.def * exampleBonus / 100)})`);
+console.log(`  Héros Fire: HP ${baseStats.hp} → ${fireStats.hp}, ATK ${baseStats.atk} → ${fireStats.atk}, DEF ${baseStats.def} → ${fireStats.def}`);
+console.log(`  Héros Water: HP ${baseStats.hp} → ${waterStats.hp}, ATK ${baseStats.atk} → ${waterStats.atk}, DEF ${baseStats.def} → ${waterStats.def}`);
 
+// Scénario 2 : Formation 5 Light (pure)
+console.log("\n" + "=".repeat(70));
+console.log("\n📋 SCÉNARIO 2: Formation 5 Light (pure rare)\n");
+
+const formation2 = { Light: 5 };
+const lightBonus = getElementBonus("Light", formation2.Light);
+
+console.log(`Tous les héros Light dans cette formation:`);
+console.log(`  → ${formation2.Light}x Light ⭐ RARE = +${lightBonus.hp}% stats`);
+
+const lightStats = {
+  hp: Math.floor(baseStats.hp * (1 + lightBonus.hp / 100)),
+  atk: Math.floor(baseStats.atk * (1 + lightBonus.atk / 100)),
+  def: Math.floor(baseStats.def * (1 + lightBonus.def / 100))
+};
+
+console.log(`  Stats: HP ${baseStats.hp} → ${lightStats.hp}, ATK ${baseStats.atk} → ${lightStats.atk}, DEF ${baseStats.def} → ${lightStats.def}`);
+
+// Scénario 3 : Formation 2 Light + 3 Dark
+console.log("\n" + "=".repeat(70));
+console.log("\n📋 SCÉNARIO 3: Formation 2 Light + 3 Dark (rares mixés)\n");
+
+const formation3 = { Light: 2, Dark: 3 };
+
+const light2Bonus = getElementBonus("Light", formation3.Light);
+const dark3Bonus = getElementBonus("Dark", formation3.Dark);
+
+console.log(`Héros Light dans cette formation:`);
+console.log(`  → ${formation3.Light}x Light ⭐ RARE = +${light2Bonus.hp}% stats`);
+
+console.log(`\nHéros Dark dans cette formation:`);
+console.log(`  → ${formation3.Dark}x Dark ⭐ RARE = +${dark3Bonus.hp}% stats`);
+
+const light2Stats = {
+  hp: Math.floor(baseStats.hp * (1 + light2Bonus.hp / 100)),
+  atk: Math.floor(baseStats.atk * (1 + light2Bonus.atk / 100))
+};
+
+const dark3Stats = {
+  hp: Math.floor(baseStats.hp * (1 + dark3Bonus.hp / 100)),
+  atk: Math.floor(baseStats.atk * (1 + dark3Bonus.atk / 100))
+};
+
+console.log(`\n  Héros Light: HP ${baseStats.hp} → ${light2Stats.hp} (+${light2Bonus.hp}%)`);
+console.log(`  Héros Dark: HP ${baseStats.hp} → ${dark3Stats.hp} (+${dark3Bonus.hp}%)`);
+
+// Scénario 4 : Héros seul (pas de bonus)
+console.log("\n" + "=".repeat(70));
+console.log("\n📋 SCÉNARIO 4: Formation 1 Fire + 1 Water + 1 Wind + 1 Electric + 1 Light\n");
+
+console.log("Aucun héros n'a de bonus (tous seuls de leur élément)");
+console.log(`  Chaque héros garde ses stats de base: HP ${baseStats.hp}, ATK ${baseStats.atk}, DEF ${baseStats.def}`);
+
+// Résumé
+console.log("\n" + "=".repeat(70));
+console.log("\n💡 RÉSUMÉ DU SYSTÈME:\n");
+console.log("Chaque héros reçoit un bonus selon COMBIEN de héros du");
+console.log("MÊME élément sont présents dans la formation.");
+console.log("\n2 héros identiques = +5% (standard) ou +8% (rare)");
+console.log("3 héros identiques = +10% (standard) ou +15% (rare)");
+console.log("4 héros identiques = +15% (standard) ou +22% (rare)");
+console.log("5 héros identiques = +25% (standard) ou +35% (rare)");
+console.log("\nÉléments rares: Light, Dark");
 console.log("\n" + "=".repeat(70) + "\n");
