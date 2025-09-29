@@ -27,6 +27,8 @@ export class BattleEngine {
   private pendingManualActions: IPendingManualAction[];
   private actualBattleDuration: number;
 
+  private playerPositions: Map<string, number>;
+  private enemyPositions: Map<string, number>;
   constructor(
     playerTeam: IBattleParticipant[], 
     enemyTeam: IBattleParticipant[],
@@ -44,11 +46,22 @@ export class BattleEngine {
     this.battleOptions = this.validateBattleOptions(battleOptions);
     this.pendingManualActions = [];
     this.actualBattleDuration = 0;
-    
+    this.playerPositions = new Map();
+    this.enemyPositions = new Map();
+      // Stocker les positions des héros
+      for (const hero of this.playerTeam) {
+        this.playerPositions.set(hero.heroId, hero.position);
+      }
+      
+      for (const enemy of this.enemyTeam) {
+        this.enemyPositions.set(enemy.heroId, enemy.position);
+      }
     this.initializeBattleState();
     SpellManager.initialize();
     
     console.log(`🎮 Combat démarré en mode ${this.battleOptions.mode} (vitesse x${this.battleOptions.speed})`);
+    console.log(`👥 Formation joueur: ${this.getFormationSummary(this.playerTeam, this.playerPositions)}`);
+    console.log(`👹 Formation ennemie: ${this.getFormationSummary(this.enemyTeam, this.enemyPositions)}`);
   }
   
   private validateBattleOptions(options: IBattleOptions): IBattleOptions {
@@ -256,10 +269,14 @@ export class BattleEngine {
     }
   }
 
-  private determineAction(participant: IBattleParticipant, skipUltimate: boolean = false): IBattleAction | null {
-    const isPlayerTeam = this.playerTeam.includes(participant);
-    const targets = isPlayerTeam ? this.getAliveEnemies() : this.getAlivePlayers();
-    const allies = isPlayerTeam ? this.getAlivePlayers() : this.getAliveEnemies();
+private determineAction(participant: IBattleParticipant, skipUltimate: boolean = false): IBattleAction | null {
+  const isPlayerTeam = this.playerTeam.includes(participant);
+  
+  // ✅ NOUVEAU : Utiliser getAvailableTargets pour respecter la protection du back-line
+  const allEnemies = isPlayerTeam ? this.getAliveEnemies() : this.getAlivePlayers();
+  const targets = this.getAvailableTargets(participant, allEnemies);
+  
+  const allies = isPlayerTeam ? this.getAlivePlayers() : this.getAliveEnemies();
     
     const heroSpells = isPlayerTeam ? 
       this.playerSpells.get(participant.heroId) : 
@@ -385,22 +402,129 @@ export class BattleEngine {
     return Math.floor(damage);
   }
 
-  private selectTarget(actor: IBattleParticipant, possibleTargets: IBattleParticipant[]): IBattleParticipant {
-    if (possibleTargets.length === 1) return possibleTargets[0];
-    
-    if (actor.role === "DPS Melee" || actor.role === "DPS Ranged") {
-      const supports = possibleTargets.filter(t => t.role === "Support");
-      if (supports.length > 0) return supports[0];
+/**
+ * Sélectionner une cible en fonction de la position et du rôle
+ */
+private selectTarget(actor: IBattleParticipant, possibleTargets: IBattleParticipant[]): IBattleParticipant {
+  if (possibleTargets.length === 1) return possibleTargets[0];
+  
+  const isPlayerTeam = this.playerTeam.includes(actor);
+  const actorPosition = isPlayerTeam ? 
+    this.playerPositions.get(actor.heroId) : 
+    this.enemyPositions.get(actor.heroId);
+  
+  const targetPositions = isPlayerTeam ? this.enemyPositions : this.playerPositions;
+  
+  // ✅ NOUVEAU : Logique de ciblage basée sur les positions
+  
+  // 1. Séparer front-line et back-line des cibles
+  const frontLineTargets = possibleTargets.filter(t => {
+    const pos = targetPositions.get(t.heroId);
+    return pos !== undefined && pos <= 2; // Positions 1-2 = front
+  });
+  
+  const backLineTargets = possibleTargets.filter(t => {
+    const pos = targetPositions.get(t.heroId);
+    return pos !== undefined && pos >= 3; // Positions 3-5 = back
+  });
+  
+  // 2. Si acteur est en front (positions 1-2), il attaque prioritairement le front ennemi
+  if (actorPosition !== undefined && actorPosition <= 2) {
+    if (frontLineTargets.length > 0) {
+      // Attaquer le front ennemi
+      return this.selectBestTargetByRole(actor, frontLineTargets);
+    }
+    // Si pas de front, attaquer le back
+    return this.selectBestTargetByRole(actor, backLineTargets);
+  }
+  
+  // 3. Si acteur est en back (positions 3-5), il peut cibler n'importe où
+  if (actorPosition !== undefined && actorPosition >= 3) {
+    // DPS Range et Support visent souvent le back ennemi
+    if (actor.role === "DPS Ranged" || actor.role === "Support") {
+      // Priorité aux supports ennemis
+      const enemySupports = backLineTargets.filter(t => t.role === "Support");
+      if (enemySupports.length > 0) {
+        return this.selectWeakestTarget(enemySupports);
+      }
       
-      const otherDps = possibleTargets.filter(t => t.role.includes("DPS"));
-      if (otherDps.length > 0) return otherDps[0];
+      // Sinon, viser le back
+      if (backLineTargets.length > 0) {
+        return this.selectBestTargetByRole(actor, backLineTargets);
+      }
     }
     
-    return possibleTargets.reduce((weakest, target) => 
-      (target.currentHp / target.stats.maxHp) < (weakest.currentHp / weakest.stats.maxHp) ? target : weakest
-    );
+    // Sinon, cibler selon le rôle (logique classique)
+    return this.selectBestTargetByRole(actor, possibleTargets);
   }
+  
+  // 4. Fallback : sélection classique
+  return this.selectBestTargetByRole(actor, possibleTargets);
+}
 
+/**
+ * Sélectionner la meilleure cible selon le rôle de l'acteur
+ */
+private selectBestTargetByRole(actor: IBattleParticipant, targets: IBattleParticipant[]): IBattleParticipant {
+  if (targets.length === 0) return targets[0];
+  
+  // DPS et Tanks visent les supports en priorité
+  if (actor.role === "DPS Melee" || actor.role === "DPS Ranged" || actor.role === "Tank") {
+    const supports = targets.filter(t => t.role === "Support");
+    if (supports.length > 0) {
+      return this.selectWeakestTarget(supports);
+    }
+    
+    // Sinon, viser les autres DPS
+    const otherDps = targets.filter(t => t.role.includes("DPS"));
+    if (otherDps.length > 0) {
+      return this.selectWeakestTarget(otherDps);
+    }
+  }
+  
+  // Support vise le plus faible (pour focus fire)
+  return this.selectWeakestTarget(targets);
+}
+
+/**
+ * Sélectionner la cible la plus faible (% HP)
+ */
+private selectWeakestTarget(targets: IBattleParticipant[]): IBattleParticipant {
+  return targets.reduce((weakest, target) => 
+    (target.currentHp / target.stats.maxHp) < (weakest.currentHp / weakest.stats.maxHp) ? target : weakest
+  );
+}
+
+  /**
+ * Obtenir les cibles disponibles (avec protection du back-line)
+ */
+private getAvailableTargets(attacker: IBattleParticipant, allTargets: IBattleParticipant[]): IBattleParticipant[] {
+  const isPlayerTeam = this.playerTeam.includes(attacker);
+  const targetPositions = isPlayerTeam ? this.enemyPositions : this.playerPositions;
+  
+  // Séparer front et back
+  const frontLine = allTargets.filter(t => {
+    const pos = targetPositions.get(t.heroId);
+    return t.status.alive && pos !== undefined && pos <= 2;
+  });
+  
+  const backLine = allTargets.filter(t => {
+    const pos = targetPositions.get(t.heroId);
+    return t.status.alive && pos !== undefined && pos >= 3;
+  });
+  
+  // ✅ RÈGLE PRINCIPALE : Si le front-line est vivant, le back-line est protégé
+  if (frontLine.length > 0) {
+    // Seul le front est ciblable
+    return frontLine;
+  } else {
+    // Front mort = back exposé, tout est ciblable
+    if (backLine.length > 0) {
+      console.log(`🛡️ Front-line éliminé ! Back-line maintenant exposé.`);
+    }
+    return allTargets.filter(t => t.status.alive);
+  }
+}
   private rollCritical(participant: IBattleParticipant): boolean {
     const baseChance = 0.08;
     const vitesseBonus = ((participant.stats as any).vitesse || 80) / 1000;
@@ -668,4 +792,11 @@ export class BattleEngine {
       battleOptions: this.battleOptions
     };
   }
+  /**
+ * Résumé de formation pour les logs
+ */
+private getFormationSummary(team: IBattleParticipant[], positions: Map<string, number>): string {
+  const summary = team.map(hero => `${hero.name}(${positions.get(hero.heroId)})`).join(", ");
+  return summary;
+}
 }
