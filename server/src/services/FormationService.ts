@@ -2,6 +2,7 @@
 import Player from "../models/Player";
 import Formation, { IFormationSlot } from "../models/Formation";
 import Hero from "../models/Hero";
+import { calculateFormationSynergies, ElementBonuses } from "../config/FormationBonusConfig";
 import { FormationValidator, ValidationResult } from "./FormationValidator";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
@@ -26,6 +27,18 @@ export interface FormationStats {
   averageStars: number;
   frontLineCount: number;
   backLineCount: number;
+  // ✅ NOUVEAU : Bonus de synergie
+  synergyBonuses?: {
+    hp: number;
+    atk: number;
+    def: number;
+  };
+  synergyDetails?: Array<{
+    element: string;
+    count: number;
+    bonus: ElementBonuses;
+    isRare: boolean;
+  }>;
 }
 
 export interface FormationResult {
@@ -470,64 +483,71 @@ export class FormationService {
   /**
    * Calculer les stats d'une formation
    */
-  static async calculateFormationStats(
-    formation: any,
-    playerHeroes: any[]
-  ): Promise<FormationStats> {
-    try {
-      const totalPower = await formation.getTotalPower(playerHeroes);
-      const roleDistribution = formation.getRoleDistribution(playerHeroes);
-      const elementDistribution = formation.getElementDistribution(playerHeroes);
+static async calculateFormationStats(
+  formation: any,
+  playerHeroes: any[]
+): Promise<FormationStats> {
+  try {
+    const totalPower = await formation.getTotalPower(playerHeroes);
+    const roleDistribution = formation.getRoleDistribution(playerHeroes);
+    const elementDistribution = formation.getElementDistribution(playerHeroes);
 
-      let totalLevel = 0;
-      let totalStars = 0;
-      let heroCount = 0;
-      let frontLineCount = 0;
-      let backLineCount = 0;
+    let totalLevel = 0;
+    let totalStars = 0;
+    let heroCount = 0;
+    let frontLineCount = 0;
+    let backLineCount = 0;
 
-      for (const slot of formation.slots) {
-        const heroInstance = playerHeroes.find((h: any) => 
-          h._id?.toString() === slot.heroId
-        );
+    for (const slot of formation.slots) {
+      const heroInstance = playerHeroes.find((h: any) => 
+        h._id?.toString() === slot.heroId
+      );
 
-        if (heroInstance) {
-          totalLevel += heroInstance.level || 1;
-          totalStars += heroInstance.stars || 1;
-          heroCount++;
+      if (heroInstance) {
+        totalLevel += heroInstance.level || 1;
+        totalStars += heroInstance.stars || 1;
+        heroCount++;
 
-          if (FormationValidator.isFrontLine(slot.slot)) {
-            frontLineCount++;
-          } else if (FormationValidator.isBackLine(slot.slot)) {
-            backLineCount++;
-          }
+        if (FormationValidator.isFrontLine(slot.slot)) {
+          frontLineCount++;
+        } else if (FormationValidator.isBackLine(slot.slot)) {
+          backLineCount++;
         }
       }
-
-      return {
-        totalPower,
-        heroCount,
-        roleDistribution,
-        elementDistribution,
-        averageLevel: heroCount > 0 ? Math.round((totalLevel / heroCount) * 10) / 10 : 0,
-        averageStars: heroCount > 0 ? Math.round((totalStars / heroCount) * 10) / 10 : 0,
-        frontLineCount,
-        backLineCount
-      };
-
-    } catch (error) {
-      console.error("Error calculating formation stats:", error);
-      return {
-        totalPower: 0,
-        heroCount: 0,
-        roleDistribution: {},
-        elementDistribution: {},
-        averageLevel: 0,
-        averageStars: 0,
-        frontLineCount: 0,
-        backLineCount: 0
-      };
     }
+
+    // ✅ NOUVEAU : Calculer les bonus de synergie
+    const synergies = calculateFormationSynergies(elementDistribution);
+
+    return {
+      totalPower,
+      heroCount,
+      roleDistribution,
+      elementDistribution,
+      averageLevel: heroCount > 0 ? Math.round((totalLevel / heroCount) * 10) / 10 : 0,
+      averageStars: heroCount > 0 ? Math.round((totalStars / heroCount) * 10) / 10 : 0,
+      frontLineCount,
+      backLineCount,
+      synergyBonuses: synergies.bonuses,        // ✅ NOUVEAU
+      synergyDetails: synergies.details         // ✅ NOUVEAU
+    };
+
+  } catch (error) {
+    console.error("Error calculating formation stats:", error);
+    return {
+      totalPower: 0,
+      heroCount: 0,
+      roleDistribution: {},
+      elementDistribution: {},
+      averageLevel: 0,
+      averageStars: 0,
+      frontLineCount: 0,
+      backLineCount: 0,
+      synergyBonuses: { hp: 0, atk: 0, def: 0 }, // ✅ NOUVEAU
+      synergyDetails: []                          // ✅ NOUVEAU
+    };
   }
+}
 
   /**
    * Obtenir la formation active d'un joueur
