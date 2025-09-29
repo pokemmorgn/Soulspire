@@ -339,7 +339,7 @@ if (!activeFormation || activeFormation.slots.length === 0) {
     const combatStats = this.calculateCombatStats(heroData, playerHero.level, playerHero.stars);
     
     // ✅ NOUVEAU : Appliquer les bonus de synergie même en fallback
-    const bonusedStats = this.applyFormationBonuses(combatStats, elementDistribution);
+    const bonusedStats = this.applyFormationBonuses(combatStats, elementDistribution, heroData.element);
     
     const participant: IBattleParticipant = {
       heroId: (heroData._id as any).toString(),
@@ -687,18 +687,26 @@ private static async generateEnemyTeamWithSpells(
  */
 private static applyFormationBonuses(
   stats: any,
-  elementDistribution: Record<string, number>
+  elementDistribution: Record<string, number>,
+  heroElement: string
 ): any {
-  const synergies = calculateFormationSynergies(elementDistribution);
-  const bonuses = synergies.bonuses;
+  const count = elementDistribution[heroElement] || 0;
+  
+  // Pas de bonus si le héros est seul de son élément
+  if (count < 2) {
+    return stats;
+  }
+  
+  // Importer la fonction depuis la config
+  const { getElementBonus } = require("../config/FormationBonusConfig");
+  const bonus = getElementBonus(heroElement, count);
 
-  // Appliquer les bonus en pourcentage
-  if (bonuses.hp > 0 || bonuses.atk > 0 || bonuses.def > 0) {
+  if (bonus.hp > 0 || bonus.atk > 0 || bonus.def > 0) {
     const bonusedStats = {
-      hp: Math.floor(stats.hp * (1 + bonuses.hp / 100)),
-      maxHp: Math.floor(stats.maxHp * (1 + bonuses.hp / 100)),
-      atk: Math.floor(stats.atk * (1 + bonuses.atk / 100)),
-      def: Math.floor(stats.def * (1 + bonuses.def / 100)),
+      hp: Math.floor(stats.hp * (1 + bonus.hp / 100)),
+      maxHp: Math.floor(stats.maxHp * (1 + bonus.hp / 100)),
+      atk: Math.floor(stats.atk * (1 + bonus.atk / 100)),
+      def: Math.floor(stats.def * (1 + bonus.def / 100)),
       defMagique: stats.defMagique,
       vitesse: stats.vitesse,
       intelligence: stats.intelligence,
@@ -710,7 +718,7 @@ private static applyFormationBonuses(
     };
 
     console.log(
-      `🔥 Bonus synergie appliqués: HP +${bonuses.hp}%, ATK +${bonuses.atk}%, DEF +${bonuses.def}%`
+      `🔥 ${heroElement}: ${count}x = +${bonus.hp}% stats (bonus individuel)`
     );
 
     return bonusedStats;
