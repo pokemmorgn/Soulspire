@@ -7,6 +7,7 @@ import serverMiddleware from "../middleware/serverMiddleware";
 import { requireFeature } from "../middleware/featureMiddleware";
 import { HeroUpgradeService } from "../services/HeroUpgradeService";
 import { InventoryService } from "../services/InventoryService";
+import mongoose from "mongoose";
 
 const router = express.Router();
 
@@ -1241,6 +1242,7 @@ router.post("/my/:heroInstanceId/equipment/optimize", authMiddleware, async (req
 });
 
 export default router;
+
 
 
 
