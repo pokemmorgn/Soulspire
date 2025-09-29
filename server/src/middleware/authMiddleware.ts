@@ -76,7 +76,7 @@ const authMiddleware = (req: Request, res: Response, next: NextFunction): void =
     const decoded = jwt.verify(token, jwtSecret) as ExtendedJWTPayload;
 
     // Vérifications de base
-    if (!decoded.id && !decoded.playerId) {
+    if (!decoded.id && !decoded.playerId && !decoded.accountId) {
       res.status(403).json({ 
         error: "Invalid token payload - missing ID",
         code: "TOKEN_PAYLOAD_INVALID"
@@ -85,23 +85,23 @@ const authMiddleware = (req: Request, res: Response, next: NextFunction): void =
     }
 
     // Support de l'ancien format (pour compatibilité)
-    if (decoded.id && !decoded.playerId) {
+    if (decoded.id && !decoded.playerId && !decoded.accountId) {
       req.userId = decoded.id;
       req.user = decoded;
     } 
-    // Nouveau format Account/Player
+    // ✅ NOUVEAU FORMAT Account/Player (CORRIGÉ)
     else if (decoded.accountId && decoded.playerId && decoded.serverId) {
       req.accountId = decoded.accountId;
       req.playerId = decoded.playerId;
       req.serverId = decoded.serverId;
-      req.userId = decoded.playerId; // Pour compatibilité
+      req.userId = decoded.accountId; // ✅ CORRECTION : userId = accountId pour compatibilité
       req.user = decoded;
     }
-    // Format hybride (pendant la migration)
+    // ✅ FORMAT HYBRIDE (pendant la migration) (CORRIGÉ)
     else if (decoded.id) {
-      req.userId = decoded.id;
+      req.userId = decoded.id; // Dans l'ancien format, id = accountId
+      req.accountId = decoded.accountId || decoded.id; // ✅ CORRECTION : Garder cohérence
       req.playerId = decoded.playerId || decoded.id;
-      req.accountId = decoded.accountId;
       req.serverId = decoded.serverId || "S1";
       req.user = decoded;
     }
@@ -164,15 +164,17 @@ const optionalAuthMiddleware = (req: Request, res: Response, next: NextFunction)
       if (jwtSecret && token) {
         const decoded = jwt.verify(token, jwtSecret) as ExtendedJWTPayload;
         
-        // Injection des données selon le format du token
+        // ✅ CORRECTION : Injection des données selon le format du token
         if (decoded.accountId && decoded.playerId && decoded.serverId) {
           req.accountId = decoded.accountId;
           req.playerId = decoded.playerId;
           req.serverId = decoded.serverId;
-          req.userId = decoded.playerId;
+          req.userId = decoded.accountId; // ✅ CORRECTION : userId = accountId
         } else if (decoded.id) {
           req.userId = decoded.id;
-          req.playerId = decoded.id;
+          req.accountId = decoded.accountId || decoded.id; // ✅ CORRECTION
+          req.playerId = decoded.playerId || decoded.id;
+          req.serverId = decoded.serverId || "S1";
         }
         
         req.user = decoded;
