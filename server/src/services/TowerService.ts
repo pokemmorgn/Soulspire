@@ -391,7 +391,7 @@ private static async generateTowerEnemies(floorConfig: any): Promise<IBattlePart
     };
     
     // ✅ NOUVEAU : Appliquer les bonus de synergie
-    const enemyStats = this.applyFormationBonuses(baseEnemyStats, elementDistribution);
+    const enemyStats = this.applyFormationBonuses(baseEnemyStats, elementDistribution, heroData.element);
 
     const enemy: IBattleParticipant = {
       heroId: `tower_enemy_${floor}_${i}`,
@@ -424,17 +424,24 @@ private static async generateTowerEnemies(floorConfig: any): Promise<IBattlePart
  */
 private static applyFormationBonuses(
   stats: any,
-  elementDistribution: Record<string, number>
+  elementDistribution: Record<string, number>,
+  heroElement: string
 ): any {
-  const synergies = calculateFormationSynergies(elementDistribution);
-  const bonuses = synergies.bonuses;
+  const count = elementDistribution[heroElement] || 0;
+  
+  if (count < 2) {
+    return stats;
+  }
+  
+  const { getElementBonus } = require("../config/FormationBonusConfig");
+  const bonus = getElementBonus(heroElement, count);
 
-  if (bonuses.hp > 0 || bonuses.atk > 0 || bonuses.def > 0) {
+  if (bonus.hp > 0 || bonus.atk > 0 || bonus.def > 0) {
     return {
-      hp: Math.floor(stats.hp * (1 + bonuses.hp / 100)),
-      maxHp: Math.floor(stats.maxHp * (1 + bonuses.hp / 100)),
-      atk: Math.floor(stats.atk * (1 + bonuses.atk / 100)),
-      def: Math.floor(stats.def * (1 + bonuses.def / 100)),
+      hp: Math.floor(stats.hp * (1 + bonus.hp / 100)),
+      maxHp: Math.floor(stats.maxHp * (1 + bonus.hp / 100)),
+      atk: Math.floor(stats.atk * (1 + bonus.atk / 100)),
+      def: Math.floor(stats.def * (1 + bonus.def / 100)),
       speed: stats.speed
     };
   }
