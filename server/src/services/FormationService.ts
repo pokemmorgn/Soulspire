@@ -636,9 +636,10 @@ export class FormationService {
     action: string
   ) {
     try {
+      // Utiliser des types de progression existants
       await Promise.all([
-        MissionService.updateProgress(playerId, serverId, "formation_actions", 1, { action }),
-        EventService.updatePlayerProgress(playerId, serverId, "formation_actions", 1, { action })
+        MissionService.updateProgress(playerId, serverId, "heroes_owned", 0, { action: "formation_created" }),
+        EventService.updatePlayerProgress(playerId, serverId, "collect_items", 0, { itemType: "formation", action })
       ]);
     } catch (error) {
       console.error("⚠️ Erreur mise à jour progression formation:", error);
