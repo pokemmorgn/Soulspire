@@ -32,7 +32,7 @@ import notificationRoutes from "./routes/notifications";
 import tutorialRoutes from "./routes/tutorials";
 import arenaRoutes from "./routes/arena";
 import guildRoutes from "./routes/guild";
-
+import formationsRouter from "./routes/formations";
 // Import des services
 import { ShopService } from "./services/ShopService";
 import { SchedulerService } from "./services/SchedulerService";
@@ -169,7 +169,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/tutorials", tutorialRoutes);
 app.use("/api/arena", arenaRoutes);
 app.use("/api/guilds", guildRoutes);
-
+app.use("/api/formations", formationsRouter);
 // Route de santé de l'API
 app.get("/", (req: Request, res: Response) => {
   res.json({
