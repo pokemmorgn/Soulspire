@@ -337,6 +337,7 @@ export class TowerService {
       const participant: IBattleParticipant = {
         heroId: (heroData._id as any).toString(),
         name: heroData.name,
+        position: team.length + 1, // ✅ NOUVEAU : Position 1, 2, 3, 4
         role: heroData.role,
         element: heroData.element,
         rarity: heroData.rarity,
@@ -384,6 +385,7 @@ export class TowerService {
       const enemy: IBattleParticipant = {
         heroId: `tower_enemy_${floor}_${i}`,
         name: enemyConfig.bossFloor ? `Tower Boss ${heroData.name}` : `Tower Guardian ${heroData.name}`,
+        position: i + 1, // ✅ NOUVEAU : Position 1, 2, 3
         role: heroData.role,
         element: heroData.element,
         rarity: enemyConfig.bossFloor ? "Legendary" : "Epic",
