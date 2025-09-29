@@ -1,6 +1,8 @@
 // server/src/models/DailyRewards.ts
 import mongoose, { Document, Schema } from "mongoose";
 import { IdGenerator } from "../utils/idGenerator";
+// 🔥 IMPORT CONFIG CENTRALISÉE
+import * as DailyRewardsConfig from "../config/DailyRewardsConfig";
 
 // === INTERFACES ===
 
@@ -259,61 +261,27 @@ dailyRewardsSchema.methods.calculateRewards = function(
   day: number, 
   vipLevel: number
 ): IDailyRewardItem[] {
-  const rewards: IDailyRewardItem[] = [];
+  // 🔥 UTILISER LA CONFIG EXTERNE
+  const DailyRewardsConfig = require('../config/DailyRewardsConfig');
+  const dayConfig = DailyRewardsConfig.getDayConfig(day);
   
-  // Récompenses de base selon le jour
-  const baseGold = 500 + (day * 100);
-  const baseGems = Math.floor(day / 3) * 5;
-  
-  // Or
-  rewards.push({
-    type: "gold",
-    quantity: baseGold
-  });
-  
-  // Gemmes (à partir du jour 3)
-  if (day >= 3) {
-    rewards.push({
-      type: "gems",
-      quantity: baseGems
-    });
+  if (!dayConfig) {
+    console.warn(`⚠️ No config found for day ${day}, using day 1 as fallback`);
+    const fallback = DailyRewardsConfig.getDayConfig(1);
+    return fallback ? [...fallback.rewards] : [];
   }
   
-  // Tickets (jours 5, 10, 15, 20, 25, 30)
-  if (day % 5 === 0) {
-    rewards.push({
-      type: "tickets",
-      quantity: Math.floor(day / 5)
-    });
-  }
+  // Copier les récompenses de base
+  const baseRewards = dayConfig.rewards.map(r => ({ ...r }));
   
-  // Fragments de héros (jour 7, 14, 21, 28)
-  if (day % 7 === 0) {
-    rewards.push({
-      type: "hero_fragment",
-      itemId: "random_hero_fragment",
-      quantity: Math.floor(day / 7) * 5,
-      rarity: day >= 28 ? "Epic" : day >= 14 ? "Rare" : "Common"
-    });
-  }
+  // Appliquer le bonus VIP (multiplicateur sur toutes les quantités)
+  const vipMultiplier = 1.0 + (vipLevel * DailyRewardsConfig.config.vipBonusPerLevel);
   
-  // Matériaux spéciaux (jour 10, 20, 30)
-  if (day % 10 === 0) {
-    rewards.push({
-      type: "material",
-      itemId: day === 30 ? "legendary_essence" : "rare_essence",
-      quantity: day / 10,
-      rarity: day === 30 ? "Legendary" : "Rare"
-    });
-  }
-  
-  // Bonus VIP (multiplicateur sur toutes les quantités)
-  const vipMultiplier = 1.0 + (vipLevel * 0.1); // +10% par niveau VIP
-  rewards.forEach(reward => {
+  baseRewards.forEach(reward => {
     reward.quantity = Math.floor(reward.quantity * vipMultiplier);
   });
   
-  return rewards;
+  return baseRewards;
 };
 
 // Réclamer les récompenses quotidiennes
@@ -395,10 +363,9 @@ dailyRewardsSchema.methods.claimDailyReward = async function(
 
 // Obtenir le bonus de streak
 dailyRewardsSchema.methods.getStreakBonus = function(): number {
-  if (this.currentStreak >= 30) return 2.0; // 30+ jours = 100% bonus
-  if (this.currentStreak >= 14) return 1.5; // 14+ jours = 50% bonus
-  if (this.currentStreak >= 7) return 1.25; // 7+ jours = 25% bonus
-  return 1.0; // Pas de bonus
+  // 🔥 UTILISER LA CONFIG EXTERNE
+  const DailyRewardsConfig = require('../config/DailyRewardsConfig');
+  return DailyRewardsConfig.getStreakMultiplier(this.currentStreak);
 };
 
 // Vérifier et reset le streak si nécessaire
