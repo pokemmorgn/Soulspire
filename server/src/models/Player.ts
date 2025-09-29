@@ -3,6 +3,7 @@ import { IdGenerator } from "../utils/idGenerator"; // 🔥 NOUVEAU IMPORT
 
 // ----- Sous-interfaces -----
 export interface IPlayerHero {
+  _id?: mongoose.Types.ObjectId;  // ✅ AJOUTER CETTE LIGNE
   heroId: string;
   level: number;
   stars: number;
@@ -513,3 +514,4 @@ playerSchema.methods.performDailyReset = function() {
 };
 
 export default mongoose.model<IPlayerDocument>("Player", playerSchema);
+
