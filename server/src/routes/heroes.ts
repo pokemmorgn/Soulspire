@@ -489,7 +489,6 @@ router.post("/my/:heroInstanceId/equip", authMiddleware, async (req: Request, re
 
     const { instanceId, slot } = value;
 
-    // Trouver le joueur et récupérer le héros
     const playerQuery = buildPlayerQuery(identifiers);
     const player = await Player.findOne(playerQuery).populate("heroes.heroId");
 
@@ -498,32 +497,18 @@ router.post("/my/:heroInstanceId/equip", authMiddleware, async (req: Request, re
       return;
     }
 
+    // ✅ VÉRIFIER que le héros appartient au joueur
     const playerHero = player.heroes.find((h: any) => h._id?.toString() === heroInstanceId);
     if (!playerHero) {
       res.status(404).json({ error: "Hero not found", code: "HERO_NOT_FOUND" });
       return;
     }
 
-    console.log("playerHero:", playerHero);
-    console.log("playerHero.heroId:", playerHero.heroId);
-    console.log("typeof playerHero.heroId:", typeof playerHero.heroId);
-
-    const heroDoc = playerHero.heroId as any;
-    
-    if (!heroDoc) {
-      res.status(500).json({ error: "Hero not populated", code: "HERO_NOT_POPULATED" });
-      return;
-    }
-
-    // ✅ CORRECTION: Utiliser heroInstanceId (l'_id de l'instance dans player.heroes)
-    // PLUTÔT QUE l'_id du document Hero
-    console.log("Using heroInstanceId for inventory:", heroInstanceId);
-
-    // Appeler InventoryService avec l'ID de l'instance du héros dans player.heroes
+    // ✅ CORRECTION: Utiliser player._id (le vrai playerId) au lieu de heroInstanceId
     const equipResult = await InventoryService.equipItem(
-      identifiers.accountId || identifiers.playerId!,
+      player._id.toString(),  // ✅ Le vrai playerId
       instanceId,
-      heroInstanceId, // ✅ CORRECTION: Utiliser heroInstanceId directement
+      heroInstanceId,         // L'ID du héros dans player.heroes
       identifiers.serverId
     );
 
@@ -536,7 +521,8 @@ router.post("/my/:heroInstanceId/equip", authMiddleware, async (req: Request, re
       return;
     }
 
-    // METTRE À JOUR L'ÉQUIPEMENT SUR LE DOCUMENT HÉROS (seulement si populé)
+    // Mettre à jour l'équipement sur le document Hero si nécessaire
+    const heroDoc = playerHero.heroId as any;
     if (typeof heroDoc === 'object' && heroDoc.equipment) {
       heroDoc.equipment[slot as keyof typeof heroDoc.equipment] = instanceId;
       await heroDoc.save();
@@ -1219,6 +1205,7 @@ router.post("/my/:heroInstanceId/equipment/optimize", authMiddleware, async (req
 });
 
 export default router;
+
 
 
 
