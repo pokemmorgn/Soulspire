@@ -37,7 +37,11 @@ export class BattleService {
         throw new Error("No equipped heroes found");
       }
 
-      const { enemyTeam, enemySpells } = await this.generateEnemyTeamWithSpells(worldId, levelId, difficulty);
+      // Mapper la difficulté et les paramètres du niveau
+      const enemyCount = 3 + Math.floor(worldId / 5);
+      const levelMultiplier = 1 + (worldId * 0.15) + (levelId * 0.05);
+      const enemyType: "normal" | "elite" | "boss" = this.getEnemyType(levelId);
+      const { enemyTeam, enemySpells } = await this.generateEnemyTeamWithSpells(enemyCount, levelMultiplier, enemyType);
 
       const battle = new Battle({
         playerId,
