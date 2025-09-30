@@ -5,7 +5,7 @@ import Banner from "../models/Banner";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
 import { WebSocketGacha } from "./websocket/WebSocketGacha";
-
+import { CollectionService } from "./CollectionService";
 // Configuration de base (fallback seulement)
 const FALLBACK_CONFIG = {
   pity: {
@@ -636,18 +636,12 @@ export class GachaService {
     return legendaryCount[0]?.count || 0;
   }
 
-  /**
-   * Obtenir la progression de collection du joueur
-   */
-  private static async getPlayerCollectionProgress(playerId: string): Promise<any> {
-    const player = await Player.findById(playerId);
-    const totalHeroes = await Hero.countDocuments();
-    
-    return {
-      totalHeroes,
-      ownedHeroes: player?.heroes.length || 0
-    };
-  }
+    /**
+     * Obtenir la progression de collection du joueur
+     */
+    private static async getPlayerCollectionProgress(playerId: string): Promise<any> {
+      return await CollectionService.getPlayerCollectionProgress(playerId);
+    }
 
   /**
    * Obtenir le nombre global de drops d'un héros
