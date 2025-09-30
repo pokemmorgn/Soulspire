@@ -1,7 +1,8 @@
 // server/src/models/DailyRewards.ts
+
 import mongoose, { Document, Schema } from "mongoose";
 import { IdGenerator } from "../utils/idGenerator";
-// 🔥 IMPORT CONFIG CENTRALISÉE - FIX TYPESCRIPT
+
 import { 
   DAILY_REWARDS_CONFIG,
   getDayConfig,
