@@ -29,7 +29,7 @@ const DEFAULT_TEST_PLAYER: TestPlayerConfig = {
   email: "gacha@test.com",
   password: "test123456",
   serverId: "S1",
-  gems: 10000,      // 10k gems = ~33 pulls
+  gems: 1000000,      // 10k gems = ~33 pulls
   tickets: 50,      // 50 tickets = 50 pulls gratuits
   gold: 100000,     // 100k gold pour upgrades
   level: 10         // Level 10 pour déblocker features
