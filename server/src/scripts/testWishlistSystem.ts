@@ -22,7 +22,6 @@ async function testWishlistSystem() {
     let player = await Player.findOne({ displayName: "wishlist_tester" });
     
     if (!player) {
-      console.log("❌ Player 'wishlist_tester' not found");
       console.log("Creating test player...\n");
       
       player = new Player({
@@ -55,7 +54,7 @@ async function testWishlistSystem() {
       const result = await WishlistService.addHeroToWishlist(
         player._id,
         player.serverId,
-        hero._id.toString()
+        (hero as any)._id.toString()
       );
       console.log(`   ${result.success ? "✅" : "❌"} ${hero.name} (${hero.element} ${hero.role})`);
     }
@@ -67,7 +66,7 @@ async function testWishlistSystem() {
     console.log(`   Pity Counter: ${stats.pityCounter}/${stats.pityThreshold}`);
     console.log(`   Pulls until pity: ${stats.pullsUntilPity}`);
 
-    // 4. Simuler 50 pulls normaux (ne devrait PAS déclencher wishlist pity)
+    // 4. Simuler 50 pulls normaux
     console.log("\n🎰 Phase 1: Testing 50 normal pulls (no wishlist pity yet)...\n");
 
     const banner = await Banner.findOne({ type: "Standard" });
@@ -77,7 +76,6 @@ async function testWishlistSystem() {
     }
 
     let totalLegendaries = 0;
-    let totalSaryel = 0;
 
     for (let batch = 0; batch < 5; batch++) {
       console.log(`\n--- Batch ${batch + 1}/5 (10 pulls) ---`);
@@ -89,32 +87,23 @@ async function testWishlistSystem() {
         10
       );
 
-      const legendaries = pullResult.results.filter((r: any) => r.rarity === "Legendary");
-      const wishlistHits = legendaries.filter((r: any) => r.isWishlistPity);
+      const legendaryResults = pullResult.results.filter((r: any) => r.rarity === "Legendary");
+      const wishlistHits = legendaryResults.filter((r: any) => (r as any).isWishlistPity);
       
-      totalLegendaries += legendaries.length;
+      totalLegendaries += legendaryResults.length;
       
-      console.log(`   Legendary: ${legendaries.length}`);
+      console.log(`   Legendary: ${legendaryResults.length}`);
       console.log(`   Wishlist pity: ${wishlistHits.length > 0 ? "✅ YES" : "❌ NO"}`);
       console.log(`   Pity counter: ${pullResult.pityStatus.pullsSinceLegendary}/50`);
-      
-      if (pullResult.pityStatus.wishlistPityCounter !== undefined) {
-        console.log(`   Wishlist pity: ${pullResult.pityStatus.wishlistPityCounter}/100`);
-      }
 
       // Afficher les héros obtenus
-      if (legendaries.length > 0) {
+      if (legendaryResults.length > 0) {
         console.log(`   Heroes:`);
-        legendaries.forEach((leg: any) => {
-          const isInWishlist = legendaries.some((h: any) => 
-            stats && legendaries.find(wh => wh._id.toString() === leg.hero._id.toString())
-          );
+        legendaryResults.forEach((leg: any) => {
           console.log(`      - ${leg.hero.name} ${leg.isWishlistPity ? "🎯 WISHLIST" : ""}`);
-          if (leg.hero.name === "Saryel") totalSaryel++;
         });
       }
 
-      // Attendre un peu entre les batchs
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
@@ -122,7 +111,7 @@ async function testWishlistSystem() {
     console.log(`   Total pulls: 50`);
     console.log(`   Total Legendary: ${totalLegendaries}`);
 
-    // 5. Forcer le pity wishlist à 99 pour tester le déclenchement
+    // 5. Forcer le pity wishlist à 99
     console.log("\n🔧 Forcing wishlist pity to 99 for testing...");
     
     const wishlist = await WishlistService["getOrCreateWishlist"](player._id, player.serverId);
@@ -142,9 +131,11 @@ async function testWishlistSystem() {
       1
     );
 
-    const pityHero = pityPullResult.results[0];
-    const isWishlistPityTriggered = pityHero.isWishlistPity;
-    const isInWishlist = legendaries.some(h => h._id.toString() === pityHero.hero._id.toString());
+    const pityHero = pityPullResult.results[0] as any;
+    const isWishlistPityTriggered = pityHero.isWishlistPity || false;
+    const isInWishlist = legendaries.some((h: any) => 
+      h._id.toString() === pityHero.hero._id.toString()
+    );
 
     console.log("═══════════════════════════════════════");
     console.log("           🎯 WISHLIST PITY RESULT");
@@ -166,8 +157,8 @@ async function testWishlistSystem() {
     console.log("═══════════════════════════════════════");
     console.log(`Total pulls: 51`);
     console.log(`Total Legendary: ${totalLegendaries + 1}`);
-    console.log(`Wishlist heroes:`);
-    legendaries.forEach(h => console.log(`   - ${h.name}`));
+    console.log(`\nWishlist heroes:`);
+    legendaries.forEach((h: any) => console.log(`   - ${h.name}`));
     console.log(`\nWishlist pity triggered: ${isWishlistPityTriggered ? "✅ YES" : "❌ NO"}`);
     console.log(`Hero from wishlist: ${isInWishlist ? "✅ YES" : "❌ NO"}`);
     
