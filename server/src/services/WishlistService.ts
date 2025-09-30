@@ -392,27 +392,32 @@ export class WishlistService {
   /**
    * Vérifier si le pity wishlist est déclenché
    */
-  static async isWishlistPityTriggered(
-    playerId: string, 
-    serverId: string
-  ): Promise<boolean> {
-    try {
-      const wishlist = await Wishlist.findOne({ 
-        playerId, 
-        serverId,
-        type: "normal"
-      });
+static async isWishlistPityTriggered(
+  playerId: string, 
+  serverId: string
+): Promise<boolean> {
+  try {
+    const wishlist = await Wishlist.findOne({ 
+      playerId, 
+      serverId,
+      type: "normal"
+    });
 
-      if (!wishlist) {
-        return false;
-      }
-
-      return wishlist.isPityTriggered();
-    } catch (error: any) {
-      console.error("❌ Error isWishlistPityTriggered:", error);
+    if (!wishlist) {
       return false;
     }
+
+    const triggered = wishlist.isPityTriggered();
+    
+    // ✅ AJOUTER CE LOG
+    console.log(`🔍 Wishlist pity check: counter=${wishlist.pityCounter}, threshold=${wishlist.pityThreshold}, triggered=${triggered}`);
+    
+    return triggered;
+  } catch (error: any) {
+    console.error("❌ Error isWishlistPityTriggered:", error);
+    return false;
   }
+}
 
   /**
    * Obtenir un héros aléatoire de la wishlist
