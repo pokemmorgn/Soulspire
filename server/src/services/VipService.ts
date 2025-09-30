@@ -285,6 +285,13 @@ export class VipService {
   // Obtenir le niveau VIP d'un joueur
   public static async getPlayerVipLevel(playerId: string, serverId: string): Promise<number> {
     try {
+      // 🔥 FIX: Chercher d'abord dans Player.vipLevel
+      const player = await Player.findOne({ _id: playerId, serverId }).select('vipLevel');
+      if (player && typeof player.vipLevel === 'number') {
+        return player.vipLevel;
+      }
+      
+      // Fallback: chercher dans VipProgress si pas dans Player
       const vipProgress = await VipProgress.findOne({ playerId, serverId });
       return vipProgress ? vipProgress.currentLevel : 0;
     } catch (error) {
