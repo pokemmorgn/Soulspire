@@ -94,7 +94,7 @@ export class WishlistService {
       const enrichedWishlist = {
         ...wishlist.toObject(),
         heroes: wishlist.heroes.map(wh => {
-          const heroData = heroes.find(h => h._id.toString() === wh.heroId);
+          const heroData = heroes.find((h: any) => h._id.toString() === wh.heroId);
           return {
             ...wh,
             heroData: heroData || null
@@ -137,7 +137,7 @@ export class WishlistService {
       }
 
       // Vérifier si le héros existe déjà dans la wishlist
-      if (wishlist.heroes.some(h => h.heroId === heroId)) {
+      if (wishlist.heroes.some((h: any) => h.heroId === heroId)) {
         return {
           success: false,
           error: "Hero already in wishlist"
