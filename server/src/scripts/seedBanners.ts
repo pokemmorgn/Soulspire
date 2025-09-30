@@ -172,8 +172,16 @@ async function createLimitedBanner(focusHeroName: string) {
 
   const focusHero = await getHeroByName(focusHeroName);
 
+  if (!focusHero) {
+    throw new Error(`❌ Focus hero "${focusHeroName}" not found in DB`);
+  }
+
+  if (focusHero.rarity !== "Legendary") {
+    throw new Error(`❌ Focus hero "${focusHeroName}" is not Legendary (found: ${focusHero.rarity})`);
+  }
+
   return {
-    bannerId: "divine_guardian_rateup_001",
+    bannerId: `limited_${focusHeroName.toLowerCase()}_rateup`,
     name: `${focusHeroName} Rate-Up`,
     type: "Limited" as const,
     description: `Limited-time banner featuring ${focusHeroName.toUpperCase()}! Increased drop rates and guaranteed on your first Legendary pull. Available for 14 days only!`,
@@ -188,9 +196,7 @@ async function createLimitedBanner(focusHeroName: string) {
     sortOrder: 200,
 
     heroPool: { includeAll: true, specificHeroes: [], excludedHeroes: [], rarityFilters: [] },
-    focusHeroes: focusHero
-      ? [{ heroId: focusHero._id, rateUpMultiplier: 2.5, guaranteed: true }]
-      : [],
+    focusHeroes: [{ heroId: focusHero._id, rateUpMultiplier: 2.5, guaranteed: true }],
 
     rates: { Common: 40, Rare: 35, Epic: 20, Legendary: 5, focusRateUp: 50 },
     costs: {
@@ -251,9 +257,9 @@ const seedBanners = async () => {
     await Banner.deleteMany({});
     console.log("🗑️ Cleared existing banners");
 
-    // Lire argument CLI
+    // Argument CLI ou fallback sur Saryel
     const focusArg = process.argv.find((arg) => arg.startsWith("--focus="));
-    const focusHeroName = focusArg ? focusArg.split("=")[1] : "Aureon";
+    const focusHeroName = focusArg ? focusArg.split("=")[1] : "Saryel";
 
     console.log(`🎯 Limited Banner focus hero: ${focusHeroName}`);
 
@@ -264,8 +270,8 @@ const seedBanners = async () => {
     await Banner.insertMany([beginner, standard, limited]);
 
     console.log("✅ Created 3 banners successfully!");
-  } catch (error) {
-    console.error("❌ Banner seeding failed:", error);
+  } catch (error: any) {
+    console.error("❌ Banner seeding failed:", error.message || error);
   } finally {
     await mongoose.disconnect();
     console.log("🔌 Disconnected from MongoDB");
