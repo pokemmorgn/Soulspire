@@ -60,11 +60,17 @@ export class CollectionService {
    * Obtenir la progression détaillée avec répartition par rareté
    */
   public static async getDetailedCollectionProgress(playerId: string): Promise<DetailedCollectionProgress> {
-    const player = await Player.findById(playerId).populate('heroes.heroId', 'rarity');
+    const player = await Player.findById(playerId);
     
     if (!player) {
       throw new Error("Player not found");
     }
+
+    // ✅ CORRECTION : Récupérer les IDs des héros possédés
+    const ownedHeroIds = player.heroes.map(h => h.heroId);
+
+    // ✅ CORRECTION : Récupérer les héros complets depuis la collection Hero
+    const ownedHeroesData = await Hero.find({ _id: { $in: ownedHeroIds } });
 
     // Compter les héros par rareté
     const ownedByRarity = {
@@ -74,8 +80,8 @@ export class CollectionService {
       Legendary: 0
     };
 
-    player.heroes.forEach((playerHero: any) => {
-      const rarity = playerHero.heroId?.rarity;
+    ownedHeroesData.forEach((hero: any) => {
+      const rarity = hero.rarity;
       if (rarity && rarity in ownedByRarity) {
         ownedByRarity[rarity as keyof typeof ownedByRarity]++;
       }
@@ -129,15 +135,21 @@ export class CollectionService {
    * Obtenir la progression par élément
    */
   public static async getCollectionByElement(playerId: string): Promise<CollectionByElement> {
-    const player = await Player.findById(playerId).populate('heroes.heroId', 'element');
+    const player = await Player.findById(playerId);
     
     if (!player) {
       throw new Error("Player not found");
     }
 
+    // ✅ CORRECTION : Récupérer les IDs des héros possédés
+    const ownedHeroIds = player.heroes.map(h => h.heroId);
+
+    // ✅ CORRECTION : Récupérer les héros complets depuis la collection Hero
+    const ownedHeroesData = await Hero.find({ _id: { $in: ownedHeroIds } });
+
     const ownedByElement: Record<string, number> = {};
-    player.heroes.forEach((playerHero: any) => {
-      const element = playerHero.heroId?.element;
+    ownedHeroesData.forEach((hero: any) => {
+      const element = hero.element;
       if (element) {
         ownedByElement[element] = (ownedByElement[element] || 0) + 1;
       }
@@ -169,15 +181,21 @@ export class CollectionService {
    * Obtenir la progression par rôle
    */
   public static async getCollectionByRole(playerId: string): Promise<CollectionByRole> {
-    const player = await Player.findById(playerId).populate('heroes.heroId', 'role');
+    const player = await Player.findById(playerId);
     
     if (!player) {
       throw new Error("Player not found");
     }
 
+    // ✅ CORRECTION : Récupérer les IDs des héros possédés
+    const ownedHeroIds = player.heroes.map(h => h.heroId);
+
+    // ✅ CORRECTION : Récupérer les héros complets depuis la collection Hero
+    const ownedHeroesData = await Hero.find({ _id: { $in: ownedHeroIds } });
+
     const ownedByRole: Record<string, number> = {};
-    player.heroes.forEach((playerHero: any) => {
-      const role = playerHero.heroId?.role;
+    ownedHeroesData.forEach((hero: any) => {
+      const role = hero.role;
       if (role) {
         ownedByRole[role] = (ownedByRole[role] || 0) + 1;
       }
