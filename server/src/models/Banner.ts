@@ -6,6 +6,7 @@ export interface IBannerRates {
   Rare: number;
   Epic: number;
   Legendary: number;
+  [key: string]: number | undefined; // ✅ Ajouter cette ligne
   // ❌ SUPPRIMÉ : focusRateUp (obsolète, remplacé par focusChance dans IFocusHero)
 }
 
