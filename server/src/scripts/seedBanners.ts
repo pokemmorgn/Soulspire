@@ -198,7 +198,7 @@ async function createLimitedBanner(focusHeroName: string) {
     heroPool: { includeAll: true, specificHeroes: [], excludedHeroes: [], rarityFilters: [] },
     focusHeroes: [{ heroId: focusHero._id, rateUpMultiplier: 2.5, guaranteed: true }],
 
-    rates: { Common: 40, Rare: 34, Epic: 24, Legendary: 2, focusRateUp: 25 }
+    rates: { Common: 40, Rare: 34, Epic: 24, Legendary: 2, focusRateUp: 25 },
     costs: {
       singlePull: { gems: 300, tickets: 1 },
       multiPull: { gems: 2700 },
