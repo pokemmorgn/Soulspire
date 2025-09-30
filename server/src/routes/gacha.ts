@@ -1,6 +1,6 @@
 import express, { Request, Response } from "express";
 import Joi from "joi";
-import authMiddleware from "../middleware/authMiddleware";
+import authMiddleware, { optionalAuthMiddleware } from "../middleware/authMiddleware"; // ✅ Ajout import
 import { requireFeature } from "../middleware/featureMiddleware";
 import { GachaService } from "../services/GachaService";
 import { WebSocketService } from "../services/WebSocketService";
@@ -22,17 +22,27 @@ const bannerRatesSchema = Joi.object({
   bannerId: Joi.string().required()
 });
 
-// === GET ACTIVE BANNERS ===
-router.get("/banners", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+// === GET ACTIVE BANNERS (✅ MODIFIÉ - Auth optionnelle) ===
+router.get("/banners", optionalAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    console.log(`📋 ${req.userId} récupère les bannières actives (serveur ${req.serverId})`);
+    // ✅ Utiliser serverId du middleware ou défaut
+    const serverId = req.serverId || "S1";
+    const userId = req.userId; // Peut être undefined si non connecté
+    
+    if (userId) {
+      console.log(`📋 ${userId} récupère les bannières actives (serveur ${serverId})`);
+    } else {
+      console.log(`📋 Utilisateur non connecté récupère les bannières actives (serveur ${serverId})`);
+    }
 
-    const result = await GachaService.getActiveBanners(req.serverId!);
+    const result = await GachaService.getActiveBanners(serverId);
 
     res.json({
       message: "Active banners retrieved successfully",
       banners: result.banners,
-      totalBanners: result.banners.length
+      totalBanners: result.banners.length,
+      serverId: serverId,
+      authenticated: !!userId // Indique si l'utilisateur est connecté
     });
 
   } catch (err: any) {
@@ -44,8 +54,8 @@ router.get("/banners", authMiddleware, async (req: Request, res: Response): Prom
   }
 });
 
-// === GET BANNER RATES ===
-router.get("/banner/rates", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+// === GET BANNER RATES (✅ MODIFIÉ - Auth optionnelle) ===
+router.get("/banner/rates", optionalAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = bannerRatesSchema.validate(req.query);
     if (error) {
@@ -57,8 +67,9 @@ router.get("/banner/rates", authMiddleware, async (req: Request, res: Response):
     }
 
     const { bannerId } = req.query;
+    const serverId = req.serverId || "S1";
 
-    const result = await GachaService.getBannerRates(bannerId as string, req.serverId!);
+    const result = await GachaService.getBannerRates(bannerId as string, serverId);
 
     res.json({
       message: "Banner rates retrieved successfully",
@@ -83,7 +94,7 @@ router.get("/banner/rates", authMiddleware, async (req: Request, res: Response):
   }
 });
 
-// === PULL ON SPECIFIC BANNER (VERSION ENRICHIE AVEC WEBSOCKET) ===
+// === PULL ON SPECIFIC BANNER (Auth OBLIGATOIRE) ===
 router.post("/pull", authMiddleware, requireFeature("gacha"), async (req: Request, res: Response): Promise<void> => {
   try {
     const { error } = bannerPullSchema.validate(req.body);
@@ -565,7 +576,7 @@ router.post("/test", authMiddleware, requireFeature("gacha"), async (req: Reques
   }
 });
 
-// === ROUTE D'INFORMATION SYSTÈME GACHA (VERSION ENRICHIE) ===
+// === ROUTE D'INFORMATION SYSTÈME GACHA (✅ MODIFIÉ - Public) ===
 router.get("/info", async (req: Request, res: Response): Promise<void> => {
   try {
     const info = {
@@ -645,12 +656,12 @@ router.get("/info", async (req: Request, res: Response): Promise<void> => {
       message: "Advanced gacha system information with WebSocket integration",
       info,
       endpoints: {
-        banners: "GET /api/gacha/banners - List active banners",
-        bannerRates: "GET /api/gacha/banner/rates?bannerId=X - Get banner rates",
-        pull: "POST /api/gacha/pull - Pull on specific banner (with WebSocket notifications)",
-        history: "GET /api/gacha/history - Summon history",
-        stats: "GET /api/gacha/stats - Personal statistics",
-        test: "POST /api/gacha/test - Test pulls (dev only)"
+        banners: "GET /api/gacha/banners - List active banners (public)",
+        bannerRates: "GET /api/gacha/banner/rates?bannerId=X - Get banner rates (public)",
+        pull: "POST /api/gacha/pull - Pull on specific banner (auth required)",
+        history: "GET /api/gacha/history - Summon history (auth required)",
+        stats: "GET /api/gacha/stats - Personal statistics (auth required)",
+        test: "POST /api/gacha/test - Test pulls (dev only, auth required)"
       },
       websocketEvents: {
         client: [
