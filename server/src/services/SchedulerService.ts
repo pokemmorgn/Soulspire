@@ -4,6 +4,7 @@ import { ShopService } from './ShopService';
 import { ArenaService } from './arena';
 import { GuildManagementService } from './guild/GuildManagementService';
 import { GuildActivityService } from './guild/GuildActivityService';
+import { DailyRewardsService } from './DailyRewardsService';
 import { WebSocketService } from './WebSocketService';
 import Guild from '../models/Guild';
 import { IdGenerator } from '../utils/idGenerator';
@@ -33,7 +34,43 @@ export class SchedulerService {
       console.log("📆 Reset mensuel des boutiques...");
       await ShopService.processShopResets();
     });
+// ===== DAILY REWARDS =====
+    // Reset quotidien des Daily Rewards - tous les jours à minuit
+    this.scheduleTask('daily-rewards-reset', '0 0 * * *', async () => {
+      console.log("🎁 Reset quotidien des Daily Rewards...");
+      try {
+        const result = await DailyRewardsService.performDailyReset();
+        
+        if (result.success) {
+          console.log(`✅ Reset Daily Rewards terminé: ${result.processed} joueurs traités, ${result.errors} erreurs`);
+          
+          // Notifier via WebSocket si besoin
+          if (result.processed > 0) {
+            WebSocketService.broadcastToServer('S1', 'daily_rewards:daily_reset_completed', {
+              processed: result.processed,
+              errors: result.errors,
+              timestamp: new Date()
+            });
+          }
+        } else {
+          console.error("❌ Échec du reset Daily Rewards");
+        }
+      } catch (error) {
+        console.error("❌ Erreur reset Daily Rewards:", error);
+      }
+    });
 
+    // Rappels Daily Rewards - tous les jours à 18h (6h avant minuit)
+    this.scheduleTask('daily-rewards-reminder', '0 18 * * *', async () => {
+      console.log("⏰ Envoi des rappels Daily Rewards...");
+      try {
+        // TODO: Implémenter l'envoi de rappels aux joueurs qui n'ont pas claim
+        // Pour l'instant, juste un log
+        console.log("📬 Rappels Daily Rewards à implémenter (feature future)");
+      } catch (error) {
+        console.error("❌ Erreur rappels Daily Rewards:", error);
+      }
+    });
     // ===== ARÈNE =====
     // Maintenance quotidienne de l'arène - tous les jours à 1h du matin
     this.scheduleTask('arena-daily-maintenance', '0 1 * * *', async () => {
@@ -543,6 +580,16 @@ export class SchedulerService {
       case 'guild-weekend-events':
         console.log("🎉 Événements weekend guildes manuel...");
         await this.activateWeekendGuildEvents();
+        break;
+        // ===== TÂCHES DAILY REWARDS =====
+      case 'daily-rewards-reset':
+        console.log("🎁 Reset Daily Rewards manuel...");
+        const resetResult = await DailyRewardsService.performDailyReset();
+        console.log(`✅ ${resetResult.processed} joueurs traités, ${resetResult.errors} erreurs`);
+        break;
+      case 'daily-rewards-reminder':
+        console.log("⏰ Rappels Daily Rewards manuel...");
+        console.log("📬 Rappels Daily Rewards à implémenter (feature future)");
         break;
       default:
         throw new Error(`Tâche inconnue: ${taskName}`);
