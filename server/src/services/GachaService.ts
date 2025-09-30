@@ -1007,51 +1007,40 @@ private static async hasPlayerPulledLegendaryOnBanner(
 }
 
   // Calculer le nouveau statut pity (version enrichie)
-  private static calculateNewPityStatus(
-    oldStatus: any,
-    results: GachaPullResult[],
-    count: number,
-    pityConfig: any
-  ) {
-    let newStatus = {
-      pullsSinceLegendary: oldStatus.pullsSinceLegendary + count,
-      pullsSinceEpic: oldStatus.pullsSinceEpic + count,
-      legendaryPityIn: 0,
-      epicPityIn: 0
-    };
+private static calculateNewPityStatus(
+  oldStatus: any,
+  results: GachaPullResult[],
+  count: number,
+  pityConfig: any
+) {
+  let newStatus = {
+    pullsSinceLegendary: oldStatus.pullsSinceLegendary + count,
+    pullsSinceEpic: 0,  // ❌ Toujours 0 (non utilisé)
+    legendaryPityIn: 0,
+    epicPityIn: 0       // ❌ Toujours 0 (non utilisé)
+  };
 
-    // Reset pity si des légendaires/épiques ont été obtenus
-    const legendaryCount = results.filter(r => r.rarity === "Legendary").length;
-    const epicCount = results.filter(r => r.rarity === "Epic").length;
-    
-    if (legendaryCount > 0) {
-      // Trouver le dernier légendaire pour reset précis
-      let pullsToLastLegendary = 0;
-      for (let i = results.length - 1; i >= 0; i--) {
-        if (results[i].rarity === "Legendary") {
-          pullsToLastLegendary = results.length - i - 1;
-          break;
-        }
+  // Reset pity si des légendaires ont été obtenus
+  const legendaryCount = results.filter(r => r.rarity === "Legendary").length;
+  
+  if (legendaryCount > 0) {
+    // Trouver le dernier légendaire pour reset précis
+    let pullsToLastLegendary = 0;
+    for (let i = results.length - 1; i >= 0; i--) {
+      if (results[i].rarity === "Legendary") {
+        pullsToLastLegendary = results.length - i - 1;
+        break;
       }
-      newStatus.pullsSinceLegendary = pullsToLastLegendary;
-      newStatus.pullsSinceEpic = pullsToLastLegendary;
-    } else if (epicCount > 0) {
-      // Trouver le dernier épique pour reset précis
-      let pullsToLastEpic = 0;
-      for (let i = results.length - 1; i >= 0; i--) {
-        if (results[i].rarity === "Epic") {
-          pullsToLastEpic = results.length - i - 1;
-          break;
-        }
-      }
-      newStatus.pullsSinceEpic = pullsToLastEpic;
     }
-
-    newStatus.legendaryPityIn = Math.max(0, pityConfig.legendaryPity - newStatus.pullsSinceLegendary);
-    newStatus.epicPityIn = Math.max(0, pityConfig.epicPity - newStatus.pullsSinceEpic);
-
-    return newStatus;
+    newStatus.pullsSinceLegendary = pullsToLastLegendary;
   }
+
+  newStatus.legendaryPityIn = Math.max(0, pityConfig.legendaryPity - newStatus.pullsSinceLegendary);
+  // ❌ Epic pity supprimé
+  newStatus.epicPityIn = 0;
+
+  return newStatus;
+}
 
   // Calculer les stats avec focus heroes (version enrichie)
   private static calculatePullStats(results: GachaPullResult[]) {
