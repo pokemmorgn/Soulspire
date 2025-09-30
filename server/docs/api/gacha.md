@@ -37,17 +37,14 @@ https://your-api-domain.com/api/gacha
 
 ## Endpoints API
 
-### 1. 🎰 Récupérer les bannières actives
+### 1. Récupérer les bannières actives
 
 **GET** `/api/gacha/banners`
 
 Récupère toutes les bannières actives du serveur.
 
-#### ⚠️ Auth requise
+#### Auth requise
 ❌ **Non** (Public) - Permet d'afficher les bannières sur l'écran de login
-
-#### Query Parameters
-Aucun
 
 #### Réponse succès (200)
 
@@ -62,16 +59,9 @@ Aucun
       "description": "Limited-time banner featuring AUREON...",
       "endTime": "2025-10-14T05:46:38.098Z",
       "costs": {
-        "singlePull": {
-          "gems": 300,
-          "tickets": 1
-        },
-        "multiPull": {
-          "gems": 2700
-        },
-        "firstPullDiscount": {
-          "gems": 200
-        }
+        "singlePull": { "gems": 300, "tickets": 1 },
+        "multiPull": { "gems": 2700 },
+        "firstPullDiscount": { "gems": 200 }
       },
       "rates": {
         "Common": 40,
@@ -89,63 +79,7 @@ Aucun
       ],
       "bannerImage": "https://cdn.placeholder.com/banners/divine_guardian_aureon.png",
       "iconImage": "https://cdn.placeholder.com/icons/divine_guardian_icon.png",
-      "tags": ["limited", "rate-up", "aureon", "light-element", "tank", "event"],
-      "category": "Character",
       "timeRemaining": 1209301113,
-      "pityConfig": {
-        "legendaryPity": 90,
-        "epicPity": 10,
-        "sharedPity": false,
-        "resetOnBannerEnd": true
-      },
-      "specialMechanics": [
-        "Rate-up Heroes",
-        "Milestone Rewards",
-        "Limited Time"
-      ],
-      "recommendedFor": [
-        "Featured heroes available",
-        "First pull discount available"
-      ]
-    },
-    {
-      "bannerId": "beginner_blessing_001",
-      "name": "Starter's Blessing",
-      "type": "Beginner",
-      "description": "Perfect for new adventurers!...",
-      "costs": {
-        "singlePull": { "gems": 150, "tickets": 1 },
-        "multiPull": { "gems": 1350 },
-        "firstPullDiscount": { "gems": 50 }
-      },
-      "rates": {
-        "Common": 45,
-        "Rare": 35,
-        "Epic": 17,
-        "Legendary": 3
-      },
-      "pityConfig": {
-        "legendaryPity": 60,
-        "epicPity": 10
-      },
-      "timeRemaining": 315359701079
-    },
-    {
-      "bannerId": "standard_summon_001",
-      "name": "Hero Summoning - Standard",
-      "type": "Standard",
-      "description": "The standard summoning pool...",
-      "costs": {
-        "singlePull": { "gems": 300, "tickets": 1 },
-        "multiPull": { "gems": 2700 },
-        "firstPullDiscount": { "gems": 150 }
-      },
-      "rates": {
-        "Common": 50,
-        "Rare": 30,
-        "Epic": 15,
-        "Legendary": 5
-      },
       "pityConfig": {
         "legendaryPity": 90,
         "epicPity": 10
@@ -158,30 +92,12 @@ Aucun
 }
 ```
 
-#### 📊 Informations importantes
-
-**Types de bannières** :
-- `"Beginner"` : Pour nouveaux joueurs, limité à 60 pulls
-- `"Standard"` : Pool complet permanent
-- `"Limited"` : Temporaire avec héros focus
-
-**timeRemaining** : Millisecondes avant expiration (convertir en jours/heures)
-
-**focusHeroes** : Héros avec taux augmentés (uniquement Limited)
-
----
-
-### 2. 📊 Obtenir les taux d'une bannière
+### 2. Obtenir les taux d'une bannière
 
 **GET** `/api/gacha/banner/rates?bannerId=beginner_blessing_001`
 
-Obtient les détails des taux et du pity system d'une bannière.
-
-#### ⚠️ Auth requise
-❌ **Non** (Public) - Affichage transparent des taux (requis légalement)
-
-#### Query Parameters
-- `bannerId` (required) : ID de la bannière
+#### Auth requise
+❌ **Non** (Public)
 
 #### Réponse succès (200)
 
@@ -198,46 +114,20 @@ Obtient les détails des taux et du pity system d'une bannière.
   },
   "costs": {
     "singlePull": { "gems": 150, "tickets": 1 },
-    "multiPull": { "gems": 1350 },
-    "firstPullDiscount": { "gems": 50 }
+    "multiPull": { "gems": 1350 }
   },
   "pity": {
     "legendaryPity": 60,
     "epicPity": 10
-  },
-  "info": {
-    "guarantees": {
-      "epic": "1 Epic minimum every 10 pulls",
-      "legendary": "1 Legendary guaranteed after 60 pulls without one"
-    },
-    "multiPullBonus": "10x pull discount available",
-    "focusRateUp": null,
-    "specialMechanics": [
-      "Reduced Pity",
-      "Milestone Rewards"
-    ]
   }
 }
 ```
 
-#### Erreurs possibles
-
-```json
-{
-  "error": "Banner not found or not available on this server",
-  "code": "BANNER_NOT_FOUND"
-}
-```
-
----
-
-### 3. 🎲 Effectuer un pull
+### 3. Effectuer un pull
 
 **POST** `/api/gacha/pull`
 
-Effectue une invocation (1 ou 10 pulls).
-
-#### ⚠️ Auth requise
+#### Auth requise
 ✅ **Oui** (JWT Token obligatoire)
 
 #### Headers
@@ -255,10 +145,6 @@ Content-Type: application/json
 }
 ```
 
-**Paramètres** :
-- `bannerId` (string, required) : ID de la bannière
-- `count` (number, required) : 1 ou 10 uniquement
-
 #### Réponse succès (200)
 
 ```json
@@ -275,18 +161,7 @@ Content-Type: application/json
         "baseStats": {
           "hp": 1200,
           "atk": 80,
-          "def": 150,
-          "crit": 5,
-          "critDamage": 50,
-          "vitesse": 80,
-          "moral": 50
-        },
-        "spells": {
-          "spell1": { "id": "heal", "level": 1 },
-          "spell2": { "id": "group_heal", "level": 1 },
-          "spell3": { "id": "divine_blessing", "level": 1 },
-          "ultimate": { "id": "lightning_strike", "level": 1 },
-          "passive": { "id": "basic_passive", "level": 1 }
+          "def": 150
         }
       },
       "rarity": "Common",
@@ -299,10 +174,7 @@ Content-Type: application/json
     "legendary": 0,
     "epic": 0,
     "rare": 0,
-    "common": 1,
-    "newHeroes": 1,
-    "totalFragments": 0,
-    "focusHeroes": 0
+    "common": 1
   },
   "cost": {
     "gems": 50
@@ -316,170 +188,23 @@ Content-Type: application/json
     "pullsSinceEpic": 1,
     "legendaryPityIn": 59,
     "epicPityIn": 9
-  },
-  "bannerInfo": {
-    "bannerId": "beginner_blessing_001",
-    "name": "Starter's Blessing",
-    "focusHeroes": []
-  },
-  "specialEffects": {
-    "hasPityBreak": false,
-    "hasMultipleLegendary": false,
-    "perfectPull": false,
-    "luckyStreakCount": 0
-  },
-  "animations": {
-    "pullType": "single",
-    "hasLegendary": false,
-    "hasMultipleLegendary": false,
-    "perfectPull": false,
-    "luckyStreak": 0,
-    "pityTriggered": false
   }
 }
 ```
 
-#### 📊 Informations importantes
-
-**isNew** : `true` = nouveau héros ajouté au roster, `false` = dupliqué (fragments)
-
-**fragmentsGained** : Nombre de fragments obtenus si héros dupliqué
-- Common : 5 fragments
-- Rare : 10 fragments
-- Epic : 15 fragments
-- Legendary : 25 fragments
-
-**pityStatus** : Compteur de pity personnalisé par bannière
-
-**animations** : Métadonnées pour déclencher les animations Unity
-
-#### Erreurs possibles
-
-```json
-// Gems insuffisantes
-{
-  "error": "Insufficient gems. Required: 300, Available: 150",
-  "code": "INSUFFICIENT_RESOURCES"
-}
-
-// Bannière invalide
-{
-  "error": "Banner not found or not active",
-  "code": "BANNER_NOT_FOUND"
-}
-
-// Joueur non trouvé
-{
-  "error": "Player not found on this server",
-  "code": "PLAYER_NOT_FOUND"
-}
-
-// Limite atteinte (Beginner)
-{
-  "error": "Cannot pull on this banner",
-  "code": "PULL_NOT_ALLOWED"
-}
-```
-
----
-
-### 4. 📜 Historique des invocations
+### 4. Historique des invocations
 
 **GET** `/api/gacha/history?page=1&limit=20`
 
-Récupère l'historique des invocations du joueur.
-
-#### ⚠️ Auth requise
+#### Auth requise
 ✅ **Oui**
 
-#### Query Parameters
-- `page` (number, optional) : Page (défaut: 1)
-- `limit` (number, optional) : Résultats par page (1-50, défaut: 20)
-
-#### Réponse succès (200)
-
-```json
-{
-  "message": "Summon history retrieved successfully",
-  "summons": [
-    {
-      "_id": "670a1b2c3d4e5f6a7b8c9d0e",
-      "playerId": "PLAYER_abc123",
-      "heroesObtained": [
-        {
-          "heroId": {
-            "_id": "670a1b2c3d4e5f6a7b8c9d0f",
-            "name": "Aureon",
-            "rarity": "Legendary",
-            "role": "Tank",
-            "element": "Light"
-          },
-          "rarity": "Legendary"
-        }
-      ],
-      "type": "Limited",
-      "createdAt": "2025-09-30T10:30:00.000Z",
-      "luckScore": 95,
-      "summary": {
-        "legendary": 1,
-        "epic": 0,
-        "newHeroes": 1
-      }
-    }
-  ],
-  "pagination": {
-    "page": 1,
-    "limit": 20,
-    "total": 45,
-    "pages": 3
-  }
-}
-```
-
----
-
-### 5. 📊 Statistiques personnelles
+### 5. Statistiques personnelles
 
 **GET** `/api/gacha/stats`
 
-Récupère les statistiques gacha du joueur.
-
-#### ⚠️ Auth requise
+#### Auth requise
 ✅ **Oui**
-
-#### Réponse succès (200)
-
-```json
-{
-  "message": "Summon statistics retrieved successfully",
-  "stats": {
-    "totalSummons": 150,
-    "totalSessions": 35,
-    "rarityDistribution": {
-      "Common": 75,
-      "Rare": 45,
-      "Epic": 23,
-      "Legendary": 7
-    },
-    "commonRate": "50.00%",
-    "rareRate": "30.00%",
-    "epicRate": "15.33%",
-    "legendaryRate": "4.67%",
-    "averageLuckScore": 52,
-    "bestLuckScore": 98,
-    "recentActivity": {
-      "lastPull": "2025-09-30T10:30:00.000Z",
-      "pullsLast7Days": 25,
-      "favoriteRarity": "Common"
-    },
-    "pityStatus": {
-      "pullsSinceLegendary": 45,
-      "pullsSinceEpic": 3,
-      "efficiency": 87
-    }
-  }
-}
-```
 
 ---
 
@@ -503,20 +228,16 @@ public class Banner
 {
     public string bannerId;
     public string name;
-    public string type;              // "Beginner", "Standard", "Limited"
+    public string type;
     public string description;
-    public string endTime;            // ISO 8601 format
+    public string endTime;
     public BannerCosts costs;
     public BannerRates rates;
     public FocusHero[] focusHeroes;
     public string bannerImage;
     public string iconImage;
-    public string[] tags;
-    public string category;
-    public long timeRemaining;        // Millisecondes
+    public long timeRemaining;
     public PityConfig pityConfig;
-    public string[] specialMechanics;
-    public string[] recommendedFor;
 }
 
 [System.Serializable]
@@ -541,24 +262,13 @@ public class BannerRates
     public float Rare;
     public float Epic;
     public float Legendary;
-    public float focusRateUp;         // Uniquement pour Limited
-}
-
-[System.Serializable]
-public class FocusHero
-{
-    public string heroId;
-    public float rateUpMultiplier;    // 2.5 = taux x2.5
-    public bool guaranteed;
 }
 
 [System.Serializable]
 public class PityConfig
 {
-    public int legendaryPity;         // Ex: 90 pulls
-    public int epicPity;              // Ex: 10 pulls
-    public bool sharedPity;
-    public bool resetOnBannerEnd;
+    public int legendaryPity;
+    public int epicPity;
 }
 ```
 
@@ -574,9 +284,6 @@ public class PullResponse
     public PullCost cost;
     public PlayerResources remaining;
     public PityStatus pityStatus;
-    public BannerInfo bannerInfo;
-    public SpecialEffects specialEffects;
-    public AnimationData animations;
 }
 
 [System.Serializable]
@@ -594,11 +301,10 @@ public class Hero
 {
     public string id;
     public string name;
-    public string role;              // "Tank", "DPS Melee", "DPS Ranged", "Support"
-    public string element;           // "Fire", "Water", "Wind", "Electric", "Light", "Dark"
+    public string role;
+    public string element;
     public string rarity;
     public HeroStats baseStats;
-    public HeroSpells spells;
 }
 
 [System.Serializable]
@@ -607,32 +313,6 @@ public class HeroStats
     public int hp;
     public int atk;
     public int def;
-    public float crit;
-    public float critDamage;
-    public int vitesse;
-    public int moral;
-    public float reductionCooldown;
-    public float healthleech;
-    public int healingBonus;
-    public int shieldBonus;
-    public int energyRegen;
-}
-
-[System.Serializable]
-public class HeroSpells
-{
-    public Spell spell1;
-    public Spell spell2;
-    public Spell spell3;
-    public Spell ultimate;
-    public Spell passive;
-}
-
-[System.Serializable]
-public class Spell
-{
-    public string id;
-    public int level;
 }
 
 [System.Serializable]
@@ -642,9 +322,6 @@ public class PullStats
     public int epic;
     public int rare;
     public int common;
-    public int newHeroes;
-    public int totalFragments;
-    public int focusHeroes;
 }
 
 [System.Serializable]
@@ -662,34 +339,6 @@ public class PityStatus
     public int legendaryPityIn;
     public int epicPityIn;
 }
-
-[System.Serializable]
-public class BannerInfo
-{
-    public string bannerId;
-    public string name;
-    public string[] focusHeroes;
-}
-
-[System.Serializable]
-public class SpecialEffects
-{
-    public bool hasPityBreak;
-    public bool hasMultipleLegendary;
-    public bool perfectPull;
-    public int luckyStreakCount;
-}
-
-[System.Serializable]
-public class AnimationData
-{
-    public string pullType;          // "single" ou "multi"
-    public bool hasLegendary;
-    public bool hasMultipleLegendary;
-    public bool perfectPull;
-    public int luckyStreak;
-    public bool pityTriggered;
-}
 ```
 
 ---
@@ -705,130 +354,31 @@ SocketIO socket = new SocketIO("https://your-api.com");
 
 socket.On("connect", response =>
 {
-    Debug.Log("Connected to server");
-    // S'abonner aux notifications gacha
     socket.Emit("gacha:join_room");
 });
 
 socket.ConnectAsync();
 ```
 
-### Événements disponibles
+### Événements principaux
 
-#### 1. Pull result (Single)
-
+#### Pull result
 **Event:** `gacha:pull_result`
 
-```json
-{
-  "hero": {
-    "id": "670a1b2c3d4e5f6a7b8c9d0e",
-    "name": "Aureon",
-    "rarity": "Legendary",
-    "element": "Light",
-    "role": "Tank"
-  },
-  "isNew": true,
-  "fragmentsGained": 0,
-  "isFocus": true,
-  "bannerId": "divine_guardian_rateup_001",
-  "bannerName": "Divine Guardian Rate-Up",
-  "cost": { "gems": 300 },
-  "pullNumber": 45
-}
-```
-
-#### 2. Multi-pull result
-
+#### Multi-pull result
 **Event:** `gacha:multi_pull_result`
 
-```json
-{
-  "bannerId": "beginner_blessing_001",
-  "bannerName": "Starter's Blessing",
-  "heroes": [
-    {
-      "hero": { ... },
-      "rarity": "Epic",
-      "isNew": true,
-      "fragmentsGained": 0,
-      "isFocus": false
-    }
-  ],
-  "summary": {
-    "legendary": 1,
-    "epic": 2,
-    "rare": 3,
-    "common": 4
-  },
-  "cost": { "gems": 1350 },
-  "specialEffects": {
-    "hasPityBreak": false,
-    "hasMultipleLegendary": false,
-    "perfectPull": false
-  }
-}
-```
-
-#### 3. Legendary drop
-
+#### Legendary drop
 **Event:** `gacha:legendary_drop`
 
-```json
-{
-  "hero": {
-    "id": "670a1b2c3d4e5f6a7b8c9d0e",
-    "name": "Aureon",
-    "rarity": "Legendary",
-    "element": "Light",
-    "role": "Tank"
-  },
-  "bannerId": "divine_guardian_rateup_001",
-  "bannerName": "Divine Guardian Rate-Up",
-  "isFirstTime": true,
-  "isFocus": true,
-  "pullsSinceLast": 45,
-  "totalLegendaryCount": 7,
-  "dropRate": 5
-}
-```
-
-#### 4. Pity progress
-
+#### Pity progress
 **Event:** `gacha:pity_progress`
-
-```json
-{
-  "bannerId": "beginner_blessing_001",
-  "bannerName": "Starter's Blessing",
-  "currentPulls": 55,
-  "pityThreshold": 60,
-  "pullsRemaining": 5,
-  "pityType": "legendary",
-  "progressPercentage": 91.67,
-  "isSharedPity": false
-}
-```
-
-#### 5. Lucky streak
-
-**Event:** `gacha:lucky_streak`
-
-```json
-{
-  "consecutiveRareDrops": 3,
-  "streakType": "epic_streak",
-  "recentHeroes": ["Zephyra", "Thalrik", "Glacius"],
-  "probability": 0.008,
-  "bonusReward": { "gems": 30 }
-}
-```
 
 ---
 
 ## Exemples d'intégration Unity
 
-### 1. Afficher les bannières
+### 1. Charger les bannières
 
 ```csharp
 using UnityEngine;
@@ -837,19 +387,11 @@ using System.Collections;
 
 public class GachaManager : MonoBehaviour
 {
-    [SerializeField] private string baseURL = "https://your-api.com/api/gacha";
-    [SerializeField] private GameObject bannerPrefab;
-    [SerializeField] private Transform bannersContainer;
-
-    void Start()
-    {
-        StartCoroutine(LoadBanners());
-    }
+    private string baseURL = "https://your-api.com/api/gacha";
 
     IEnumerator LoadBanners()
     {
-        UnityWebRequest request = UnityWebRequest.Get($"{baseURL}/banners");
-        
+        UnityWebRequest request = UnityWebRequest.Get(baseURL + "/banners");
         yield return request.SendWebRequest();
 
         if (request.result == UnityWebRequest.Result.Success)
@@ -861,31 +403,11 @@ public class GachaManager : MonoBehaviour
                 DisplayBanner(banner);
             }
         }
-        else
-        {
-            Debug.LogError($"Failed to load banners: {request.error}");
-        }
     }
 
     void DisplayBanner(Banner banner)
     {
-        GameObject bannerObj = Instantiate(bannerPrefab, bannersContainer);
-        BannerUI bannerUI = bannerObj.GetComponent<BannerUI>();
-        
-        bannerUI.SetBanner(banner);
-        bannerUI.SetTimeRemaining(banner.timeRemaining);
-        bannerUI.SetCosts(banner.costs);
-        bannerUI.SetRates(banner.rates);
-        
-        // Marquer les bannières spéciales
-        if (banner.type == "Limited")
-        {
-            bannerUI.ShowLimitedBadge();
-        }
-        else if (banner.type == "Beginner")
-        {
-            bannerUI.ShowBeginnerBadge();
-        }
+        Debug.Log("Banner: " + banner.name);
     }
 }
 ```
@@ -894,14 +416,11 @@ public class GachaManager : MonoBehaviour
 
 ```csharp
 using UnityEngine;
-using UnityEngine.UI;
 using System;
 
 public class BannerTimer : MonoBehaviour
 {
-    [SerializeField] private Text timerText;
     private long timeRemainingMs;
-    private bool isExpired = false;
 
     public void SetTimeRemaining(long milliseconds)
     {
@@ -910,38 +429,18 @@ public class BannerTimer : MonoBehaviour
 
     void Update()
     {
-        if (isExpired) return;
+        if (timeRemainingMs <= 0) return;
 
         timeRemainingMs -= (long)(Time.deltaTime * 1000);
-
-        if (timeRemainingMs <= 0)
-        {
-            isExpired = true;
-            timerText.text = "EXPIRED";
-            OnBannerExpired();
-            return;
-        }
-
         TimeSpan timeSpan = TimeSpan.FromMilliseconds(timeRemainingMs);
         
-        if (timeSpan.TotalDays >= 1)
-        {
-            timerText.text = $"{timeSpan.Days}d {timeSpan.Hours}h {timeSpan.Minutes}m";
-        }
-        else if (timeSpan.TotalHours >= 1)
-        {
-            timerText.text = $"{timeSpan.Hours}h {timeSpan.Minutes}m {timeSpan.Seconds}s";
-        }
-        else
-        {
-            timerText.text = $"{timeSpan.Minutes}m {timeSpan.Seconds}s";
-        }
-    }
-
-    void OnBannerExpired()
-    {
-        // Reload banners
-        FindObjectOfType<GachaManager>().StartCoroutine(FindObjectOfType<GachaManager>().LoadBanners());
+        string display = string.Format("{0}d {1}h {2}m", 
+            timeSpan.Days, 
+            timeSpan.Hours, 
+            timeSpan.Minutes
+        );
+        
+        Debug.Log(display);
     }
 }
 ```
@@ -949,30 +448,26 @@ public class BannerTimer : MonoBehaviour
 ### 3. Effectuer un pull
 
 ```csharp
-using System.Collections;
 using UnityEngine;
 using UnityEngine.Networking;
+using System.Collections;
+using System.Text;
 
 public class GachaPuller : MonoBehaviour
 {
-    [SerializeField] private string baseURL = "https://your-api.com/api/gacha";
-    private string jwtToken;
+    private string baseURL = "https://your-api.com/api/gacha";
+    private string jwtToken = "YOUR_JWT_TOKEN";
 
-    public IEnumerator PerformPull(string bannerId, int count)
+    IEnumerator PerformPull(string bannerId, int count)
     {
-        // Créer le body JSON
-        string jsonBody = JsonUtility.ToJson(new PullRequest 
-        { 
-            bannerId = bannerId, 
-            count = count 
-        });
-
-        UnityWebRequest request = new UnityWebRequest($"{baseURL}/pull", "POST");
-        byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonBody);
+        string jsonBody = "{\"bannerId\":\"" + bannerId + "\",\"count\":" + count + "}";
+        
+        UnityWebRequest request = new UnityWebRequest(baseURL + "/pull", "POST");
+        byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
         request.uploadHandler = new UploadHandlerRaw(bodyRaw);
         request.downloadHandler = new DownloadHandlerBuffer();
         
-        request.SetRequestHeader("Authorization", $"Bearer {jwtToken}");
+        request.SetRequestHeader("Authorization", "Bearer " + jwtToken);
         request.SetRequestHeader("Content-Type", "application/json");
 
         yield return request.SendWebRequest();
@@ -981,62 +476,274 @@ public class GachaPuller : MonoBehaviour
         {
             PullResponse response = JsonUtility.FromJson<PullResponse>(request.downloadHandler.text);
             
-            // Mettre à jour les ressources du joueur
-            UpdatePlayerResources(response.remaining);
-            
-            // Lancer les animations
-            if (count == 1)
+            foreach (PullResult result in response.results)
             {
-                PlaySinglePullAnimation(response);
-            }
-            else
-            {
-                PlayMultiPullAnimation(response);
+                Debug.Log("Obtained: " + result.hero.name + " (" + result.rarity + ")");
+                
+                if (result.isNew)
+                {
+                    Debug.Log("NEW HERO!");
+                }
             }
             
-            // Afficher les résultats
-            ShowPullResults(response.results);
-            
-            // Mettre à jour le pity counter
-            UpdatePityDisplay(response.pityStatus);
+            Debug.Log("Gems remaining: " + response.remaining.gems);
+            Debug.Log("Pity counter: " + response.pityStatus.pullsSinceLegendary);
         }
         else
         {
-            HandlePullError(request);
+            Debug.LogError("Pull failed: " + request.error);
         }
     }
+}
+```
 
-    void PlaySinglePullAnimation(PullResponse response)
+### 4. Animations par rareté
+
+```csharp
+using UnityEngine;
+
+public class PullAnimator : MonoBehaviour
+{
+    public void PlayPullAnimation(PullResult result)
     {
-        PullResult result = response.results[0];
-        
-        // Déterminer le type d'animation selon la rareté
         switch (result.rarity)
         {
             case "Legendary":
-                AnimationManager.Instance.PlayAnimation("LegendaryPull");
-                AudioManager.Instance.PlaySound("LegendarySound");
-                ParticleManager.Instance.PlayParticles("GoldenLight");
+                PlayLegendaryAnimation();
+                PlaySound("legendary_sound");
+                PlayParticles("golden_light");
                 break;
+                
             case "Epic":
-                AnimationManager.Instance.PlayAnimation("EpicPull");
-                AudioManager.Instance.PlaySound("EpicSound");
-                ParticleManager.Instance.PlayParticles("PurpleLight");
+                PlayEpicAnimation();
+                PlaySound("epic_sound");
+                PlayParticles("purple_light");
                 break;
+                
+            case "Rare":
+                PlayRareAnimation();
+                PlaySound("rare_sound");
+                break;
+                
             default:
-                AnimationManager.Instance.PlayAnimation("StandardPull");
-                AudioManager.Instance.PlaySound("StandardSound");
+                PlayCommonAnimation();
+                PlaySound("common_sound");
                 break;
-        }
-
-        // Effets spéciaux
-        if (response.animations.pityTriggered)
-        {
-            ShowPityBreakEffect();
-        }
-
-        if (result.isNew)
-        {
-            ShowNewHeroBadge();
         }
     }
+
+    void PlayLegendaryAnimation()
+    {
+        // Votre animation légendaire
+    }
+
+    void PlaySound(string soundName)
+    {
+        // Jouer le son
+    }
+
+    void PlayParticles(string particleName)
+    {
+        // Jouer les particules
+    }
+}
+```
+
+### 5. Gestion des erreurs
+
+```csharp
+using UnityEngine;
+
+public class GachaErrorHandler : MonoBehaviour
+{
+    public void HandleError(string errorCode)
+    {
+        switch (errorCode)
+        {
+            case "INSUFFICIENT_RESOURCES":
+                ShowPopup("Gems insuffisantes!");
+                break;
+                
+            case "BANNER_NOT_FOUND":
+                ShowPopup("Bannière expirée");
+                ReloadBanners();
+                break;
+                
+            case "PULL_NOT_ALLOWED":
+                ShowPopup("Limite atteinte");
+                break;
+                
+            default:
+                ShowPopup("Une erreur est survenue");
+                break;
+        }
+    }
+
+    void ShowPopup(string message)
+    {
+        Debug.LogWarning(message);
+    }
+
+    void ReloadBanners()
+    {
+        // Recharger les bannières
+    }
+}
+```
+
+---
+
+## Gestion des erreurs
+
+### Codes d'erreur HTTP
+
+| Code | Description | Action |
+|------|-------------|--------|
+| 200 | Succès | OK |
+| 400 | Requête invalide | Vérifier paramètres |
+| 401 | Non authentifié | Login requis |
+| 404 | Bannière introuvable | Recharger |
+| 500 | Erreur serveur | Réessayer |
+
+### Codes d'erreur métier
+
+- `INSUFFICIENT_RESOURCES` : Gems insuffisantes
+- `BANNER_NOT_FOUND` : Bannière expirée
+- `PULL_NOT_ALLOWED` : Limite atteinte
+- `PLAYER_NOT_FOUND` : Joueur introuvable
+
+---
+
+## Best Practices
+
+### À FAIRE
+
+1. ✅ Toujours vérifier le statut avant pull
+2. ✅ Désactiver les boutons pendant loading
+3. ✅ Afficher le compteur de pity
+4. ✅ Animations fluides par rareté
+5. ✅ Gérer toutes les erreurs
+6. ✅ Afficher timer countdown
+7. ✅ Son différent par rareté
+8. ✅ Particules pour Legendary
+9. ✅ Cache local des bannières
+10. ✅ WebSocket pour notifications
+
+### À ÉVITER
+
+1. ❌ Ne pas spammer les requêtes
+2. ❌ Ne pas ignorer les erreurs
+3. ❌ Ne pas faire confiance au client
+4. ❌ Ne pas hardcoder les coûts
+5. ❌ Ne pas oublier le pity display
+6. ❌ Ne pas faire d'animations trop longues
+7. ❌ Ne pas cacher les informations
+8. ❌ Ne pas ignorer les WebSocket
+
+---
+
+## Checklist d'intégration
+
+### Phase 1 - Basique
+- [ ] Afficher les bannières
+- [ ] Afficher les taux
+- [ ] Effectuer un pull simple
+- [ ] Afficher les résultats
+- [ ] Mettre à jour les ressources
+
+### Phase 2 - Intermédiaire
+- [ ] Multi-pull (x10)
+- [ ] Animations par rareté
+- [ ] Gestion des erreurs
+- [ ] Compteur de pity
+- [ ] Timer countdown
+
+### Phase 3 - Avancé
+- [ ] WebSocket integration
+- [ ] Animations complexes
+- [ ] Collection progress
+- [ ] Historique des pulls
+- [ ] Statistiques
+
+---
+
+## Types de bannières
+
+### Beginner Banner
+- **Coût réduit** : 150 gems (vs 300)
+- **Premier pull** : 50 gems seulement
+- **Pity réduit** : 60 pulls (vs 90)
+- **Limite** : 60 pulls maximum par joueur
+- **Pool** : 15 héros équilibrés
+
+### Standard Banner
+- **Coût** : 300 gems
+- **Premier pull** : 150 gems
+- **Pity** : 90 pulls
+- **Limite** : Aucune
+- **Pool** : Tous les héros (32)
+
+### Limited Banner
+- **Coût** : 300 gems
+- **Focus hero** : Aureon (x2.5 rate-up)
+- **Pity** : 90 pulls
+- **Durée** : 14 jours
+- **Garanti** : Focus hero au premier Legendary
+
+---
+
+## Informations techniques
+
+### Fragments
+
+Quand un héros est dupliqué :
+- **Common** : 5 fragments
+- **Rare** : 10 fragments
+- **Epic** : 15 fragments
+- **Legendary** : 25 fragments
+
+### Système de pity
+
+- **Epic garanti** : Tous les 10 pulls
+- **Legendary garanti** : Après 60-90 pulls (selon bannière)
+- **Compteur indépendant** : Par bannière
+- **Reset** : Après obtention du héros garanti
+
+### Taux de drop
+
+**Standard Banner** :
+- Common : 50%
+- Rare : 30%
+- Epic : 15%
+- Legendary : 5%
+
+**Beginner Banner** :
+- Common : 45%
+- Rare : 35%
+- Epic : 17%
+- Legendary : 3%
+
+**Limited Banner** :
+- Common : 40%
+- Rare : 35%
+- Epic : 20%
+- Legendary : 5%
+  - Focus hero : 50% des Legendary (2.5% effectif)
+
+---
+
+## Support
+
+### Documentation API complète
+```
+GET /api/gacha/info
+```
+
+### Test en développement
+```
+POST /api/gacha/test
+```
+
+**Version:** 1.0.0  
+**Dernière mise à jour:** 30 septembre 2025  
+**Système:** Gacha Multi-Bannières avec Pity
