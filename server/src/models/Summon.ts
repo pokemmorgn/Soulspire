@@ -3,6 +3,7 @@ import { ISummon } from "../types/index";
 
 interface ISummonDocument extends Document {
   playerId: string;
+  bannerId?: string; // ✅ NOUVEAU : Identifier la bannière utilisée
   heroesObtained: {
     heroId: string;
     rarity: string;
@@ -19,6 +20,11 @@ const summonSchema = new Schema<ISummonDocument>({
   playerId: { 
     type: String,
     required: true
+  },
+  bannerId: { // ✅ NOUVEAU CHAMP
+    type: String,
+    required: false, // Optionnel pour compatibilité avec anciennes données
+    index: true // Index pour optimiser les requêtes par bannière
   },
   heroesObtained: [{
     heroId: { 
@@ -43,6 +49,7 @@ const summonSchema = new Schema<ISummonDocument>({
 
 // Index pour optimiser les requêtes
 summonSchema.index({ playerId: 1 });
+summonSchema.index({ playerId: 1, bannerId: 1 }); // ✅ NOUVEAU : Index composite pour first pull check
 summonSchema.index({ type: 1 });
 summonSchema.index({ createdAt: -1 });
 
@@ -75,6 +82,15 @@ summonSchema.statics.getTotalSummons = function(playerId: string) {
       totalSessions: { $sum: 1 }
     }}
   ]);
+};
+
+// ✅ NOUVELLE MÉTHODE : Vérifier si un joueur a déjà pullé sur une bannière spécifique
+summonSchema.statics.hasPlayerPulledOnBanner = async function(
+  playerId: string, 
+  bannerId: string
+): Promise<boolean> {
+  const existingPull = await this.findOne({ playerId, bannerId });
+  return !!existingPull;
 };
 
 // Méthodes d'instance
