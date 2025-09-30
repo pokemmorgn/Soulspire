@@ -64,7 +64,7 @@ async function createBeginnerBanner() {
     sortOrder: 100,
 
     heroPool: { includeAll: false, specificHeroes: poolHeroes, excludedHeroes: [], rarityFilters: [] },
-    focusHeroes: [],
+    focusHeroes: [], // Pas de focus heroes sur la bannière débutant
 
     rates: { Common: 45, Rare: 35, Epic: 17, Legendary: 3 },
     costs: {
@@ -125,7 +125,7 @@ function createStandardBanner() {
     sortOrder: 50,
 
     heroPool: { includeAll: true, specificHeroes: [], excludedHeroes: [], rarityFilters: [] },
-    focusHeroes: [],
+    focusHeroes: [], // Pas de focus heroes sur la bannière standard
 
     rates: { Common: 50, Rare: 30, Epic: 15, Legendary: 5 },
     costs: {
@@ -196,9 +196,20 @@ async function createLimitedBanner(focusHeroName: string) {
     sortOrder: 200,
 
     heroPool: { includeAll: true, specificHeroes: [], excludedHeroes: [], rarityFilters: [] },
-    focusHeroes: [{ heroId: focusHero._id, rateUpMultiplier: 2.5, guaranteed: true }],
+    
+    // ✅ MODIFICATION PRINCIPALE : Ajout de focusChance
+    focusHeroes: [
+      { 
+        heroId: focusHero._id, 
+        rateUpMultiplier: 2.5,        // Multiplicateur (non utilisé pour l'instant)
+        guaranteed: true,              // Premier legendary = focus garanti
+        focusChance: 0.75              // ✅ 75% de chance pour les legendaries suivants
+      }
+    ],
 
-    rates: { Common: 40, Rare: 34, Epic: 24, Legendary: 2, focusRateUp: 25 },
+    // ✅ Taux sans le champ obsolète focusRateUp
+    rates: { Common: 40, Rare: 34, Epic: 24, Legendary: 2 },
+    
     costs: {
       singlePull: { gems: 300, tickets: 1 },
       multiPull: { gems: 2700 },
@@ -255,7 +266,7 @@ const seedBanners = async () => {
     console.log("✅ Connected to MongoDB");
 
     await Banner.deleteMany({});
-    console.log("🗑️ Cleared existing banners");
+    console.log("🗑️  Cleared existing banners");
 
     // Argument CLI ou fallback sur Saryel
     const focusArg = process.argv.find((arg) => arg.startsWith("--focus="));
@@ -270,6 +281,11 @@ const seedBanners = async () => {
     await Banner.insertMany([beginner, standard, limited]);
 
     console.log("✅ Created 3 banners successfully!");
+    console.log("\n📋 Bannières créées:");
+    console.log(`   1. ${beginner.name} (Beginner)`);
+    console.log(`   2. ${standard.name} (Standard)`);
+    console.log(`   3. ${limited.name} (Limited) - Focus: ${focusHeroName} avec ${(limited.focusHeroes[0].focusChance * 100).toFixed(0)}% chance`);
+    console.log("");
   } catch (error: any) {
     console.error("❌ Banner seeding failed:", error.message || error);
   } finally {
