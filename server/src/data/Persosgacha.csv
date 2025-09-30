@@ -1,0 +1,254 @@
+Name,Rarity,Role,Element,Appearance,Personality,Strengths,Weaknesses,Sprite,Splash Art 
+Nerya,Common,Tank,Water,"Nerya is a serious-looking woman with long 
+dark blue hair tied into a thick braid.","Calm, wise",Great magic resistance,Slow,,
+Thalwen,Common,Support,Water,"A gaunt, elderly sea warlock with blue-tinted skin and 
+a long, tangled gray beard. He wears tattered 
+seaweed-like robes adorned with shells, 
+bones, and charms tied at his belt","Cryptic, bitter, and elusive",Can weaken enemies with curses,Healing is gradual,,
+Tynira,Common,Support,Electric,"A quirky young woman with messy short hair
+ held back by a metal clip. 
+She wears round goggles often smudged 
+with soot, a worn leather apron 
+over simple work clothes, and heavy gloves. 
+A tool belt filled with bolts, 
+coils, and screwdrivers hangs at her waist.
+ She wields an
+ electrified wrench that occasionally spits sparks.",Clumsy but inventive,"Provides small, random buffs
+ (attack, defense, speed).
+
+Can slightly restore allies’ energy with 
+her gadgets.
+Reliable as an early-game support.","Buffs are weak
+ and unstable.",,
+Braknor,Common,Ranged DPS,Wind,,,,,,
+Nora,Common,Ranged DPS,Water,"Young waterborne marksman with short, 
+tousled aqua-blue hair and sharp, focused blue eyes",Calm and calculating,Long-range water-based attacks,Poor mobility,,
+Halvar,Common,Tank,Wind,"Halvar is a rugged warrior with short grey-green hair and 
+a trimmed beard. He wears heavy armor composed of dull 
+bronze metal and dark green leather",Quiet and enduring,"Solid physical defense for a common rarity
+",No taunt or cc,,
+Zeyra,Common,Melee DPS,Electric,"A lean, agile young woman with spiky golden 
+hair tied in a short ponytail and sharp cyan eyes","Brash, impulsive, fiercely competitive",Fast melee strikes,"Fragile, no 
+ranged tools",,
+Goahn,Common,Melee DPS,Light,,,,,,
+Narud,Common,Melee DPS,Water,,,,,,
+Brakka,Common,Tank,Fire,"A broad-shouldered, stocky woman clad in heavy, 
+scorched iron armor trimmed with gold.
+and her face bears an old burn scar beneath a 
+battered helmet. She wields a large rectangular 
+shield and a worn furnace hammer","Blunt, dependable, pragmatic",High physical and fire resistance,"Slow 
+Poor 
+magic 
+resistance",,
+Korran,Rare,Tank,Fire,"A disciplined sentinel clad in heavy, blackened armor, 
+its surface scorched and cracked with glowing embers
+ seeping through the seams. He carries a massive rectangular 
+shield engraved with fiery runes, its edges 
+glowing as if freshly forged.",Silent and steadfast,"Excellent defense against physical attacks.
+Shield skills allow him to block 
+and reduce incoming damage.
+Aura of heated metal weakens 
+enemies’ weapons over time.","Struggles
+ against
+ magical or
+ piercing attacks.",,
+Sylvara,Rare,Ranged DPS,Wind,"A sleek and elegant harpy with a humanoid face, 
+sharp features, and piercing yellow eyes.","Proud, free-spirited, and impatient.","Fast ranged attacks with 
+wind-charged javelins.","Vulnerable 
+to crowd 
+control",,
+Elyos,Rare,Tank,Light,,,,,,
+Elyndra,Rare,Support,Wind,Eryndra is a graceful bard touched by the essence of the wind,"Gentle, serene, and inspiring",Can reduce enemy accuracy,Very fragile,,
+Liora,Rare,Ranged DPS,Light,"Liora is a graceful archer 
+with long flowing platinum 
+hair and sharp golden eyes","Calm, calculated, and composed","Strong long-range attacks, fast linear DPS",Fragile,,
+Ignara,Rare,Ranged DPS,Fire,"Long fiery red hair, 
+asymmetrical crimson & gold robe with 
+tattered sleeves, 
+floating grimoire with glowing runes.","Proud, determined, charismatic","High single-target damage, 
+persistent burn, synergy with tanks","Fragile, vulnerable
+ to melee and CC",,
+Nereida,Rare,Support,Water,"Long flowing teal hair, 
+elegant blue and white gown, 
+floating water orbs around her.","Calm, nurturing, strategic","Heals allies, buffs, water-based effects","Low defense, ",,
+Lyaria,Rare,Support,Light,"Blonde hair, white and gold robes, 
+staff topped with glowing crystal.","Gentle, wise, protective","Buffs allies, heals over time",Fragile,,
+Albert,Rare,Support,Fire,"A steampunk-fantasy inventor, dressed in a leather apron 
+scorched with burn marks and reinforced gloves. 
+He wears goggles with red-orange lenses and
+ has messy, spiky hair","Gruff, stubborn, and practical",Devastating AoE fire damage,"If the turret 
+is destroyed
+, his DPS
+ drops sharply.",,
+Kaelen,Rare,Melee DPS,Wind,"Short silver hair, 
+green armored tunic, dual swords.","Bold, agile, daring","Fast melee attacks, combo skills","Fragile, ",,
+Abomys,Epic,Melee DPS,Shadow,"Abomys is a wiry, shadow-born assassin with a lean, 
+predatory body 
+covered in a dark, almost obsidian skin tone.
+ Her hair bursts out in jagged, wild spikes
+ of black and violet hues, giving her a chaotic silhouette.
+ His grin reveals sharp, 
+unsettling teeth, radiating malice.","Sadistic, sly, and endlessly playful",Extremely high burst,Very fragile,,
+Vayna,Epic,Melee DPS,Water,"Vayna is a graceful yet dangerous figure, blending the allure
+ of a dancer with the menace of a pirate and the 
+mystique of the abyss. Her long wavy hair flows 
+like water, adorned with golden trinkets and shells","Seductive, unpredictable, 
+and merciless.","High single-target burst damage.
+Passive lifesteal on critical strikes.","Fragile and
+ vulnerable 
+to crowd 
+control.",,
+Chorath,Epic,Support,Shadow,"Nightmarish wraith-like figure with an elongated,
+ faceless head and hollow black eyes. His body is gaunt, with
+ twisted limbs and long clawed fingers. Dark, 
+tattered shadows drift from his back like torn cloth, 
+giving him a ghostly silhouette",Silent and cryptic,"Debuff Specialist: The toll of his bell 
+weakens enemy defenses and attack power.
+
+AoE Support: His aura reduces enemy morale 
+while strengthening nearby allies’ resistances.
+
+Fear Mechanic: Can occasionally cause 
+enemies to panic, interrupting their skills.",Fragile,,
+Grathul,Epic,Tank,Fire,"A towering beast of molten flesh and blackened stone,
+ wrapped in heavy runic 
+chains that glow with scorching heat. The chains constantly 
+shift and rattle as if alive, radiating 
+embers with every movement.",Wrathful and relentless,"Can immobilize
+Aura of fire damages nearby 
+enemies over time.
+Gains resilience the longer
+ he remains in combat.","Very slow
+Chains have
+ limited range,
+ vulnerable to 
+ranged units.",,
+Raiken,Epic,Melee DPS,Electric,"A muscular, bare-chested fighter with glowing lightning
+ tattoos across his arms and torso. 
+His fists are wrapped in reinforced metal gauntlets that
+ crackle with sparks. 
+He wears black combat pants with a yellow belt, and 
+short boots designed for agility. 
+His spiky hair stands up as if charged by 
+static electricity. 
+His stance is wide and aggressive, 
+ready to unleash rapid punches.","Hot-blooded, confident","Extremely fast melee combos
+Each strike builds up more 
+electrical damage
+Excellent burst damage in 
+short engagements","Fragile compared 
+to other 
+melee fighters",,
+Milia,Epic,Support,Electric,"Milia wears a deep navy-blue reinforced 
+armor with glowing electric lines running across 
+its plating. Her silhouette is elegant yet sturdy. She fights from a 
+distance by throwing a light, electrified hammer that acts as her 
+focus. Her long black hair is tied in a high ponytail","Calm, protective, and disciplined","High HP and resistance for a support unit 
+Regular defensive buffs for allies 
+Can attack from range 
+while fulfilling a support role 
+Great synergy with melee frontline units","Buffs are less potent
+Vulnerable to magic",,
+Zephyra,Epic,Ranged DPS,Wind,"Zephyra is an epic wind archer with long 
+flowing blonde hair and piercing green eyes. 
+She wears elegant emerald armor with leaf-like motifs, 
+blending agility and elegance. 
+Her massive dark green bow channels swirling wind energy","Calm, focused, and perceptive","Excellent long-range burst damage. 
+Can reposition quickly with wind 
+dashes. 
+High crit rate and evasion.","Relies on 
+movement to 
+survive. 
+Weak to fast 
+melee pressure.",,
+Seliora,Epic,Ranged DPS,Shadow,"Dark purple hair, black cloak with red accents, 
+floating daggers orbiting her.","Cunning, mysterious","High ranged damage, debuffs enemies",Low HP,,
+Thalrik,Epic,Tank,Electric,"Muscular build, armored in yellow & silver, 
+wielding massive hammer.","Bold, resilient, commanding","Absorbs damage, stuns enemies",Slow,,
+Drogath,Epic,Tank,Shadow,"Towering skeletal warrior, 
+black bone armor with violet runes, 
+massive halberd and bone shield.","Silent, relentless, intimidating","Immense durability, life-drain, 
+disrupts enemy formations",Very slow,,
+Aureon,Legendary,Tank,Light,"Aureon is an imposing warrior 
+clad in massive golden 
+and white armor adorned with
+ intricate solar runes. His left hand wields a 
+giant sun-shaped shield, while his 
+right grips a long, gleaming spear.","Stoic, protective, and unwavering, ","Exceptional damage absorption. 
+Partial immunity to debuffs. 
+Aura boosts defense and attack 
+of nearby allies.","Limited mobility. 
+Slow movement 
+and attack speed.",,
+Veyron,Legendary,Melee DPS,Wind,"Tall warrior with long silver-white 
+hair tied by a leaf-like ornament, 
+clad in elegant green and silver armor with 
+angular patterns. Carries two curved swords.","Bold, daring, strategic","Extremely fast melee combos, 
+high single-target burst, 
+strong mobility and repositioning tools","Low defense, 
+vulnerable to 
+ranged pressure 
+and crowd control",,
+Pyra,Legendary,Support,Fire,"Pyrrha is a tall, elegant woman with long dark red 
+hair tied in a high flaming ponytail. 
+She wears a red and black asymmetrical battle 
+robe with glowing ember accents and flame motifs","Wise, composed, 
+and quietly assertive","Provides powerful buffs 
+and healing over time. 
+Enhances fire-element allies. 
+Can mitigate damage 
+with shield effects. 
+Synergizes well in sustained fights","Limited 
+self-defense. 
+Vulnerable to burst 
+damage and 
+silence effects",,
+Kaelis,Legendary,Melee DPS,Water,"Kaelis is a feline-featured warrior with cerulean-blue skin, 
+sharp ocean-colored eyes, and tousled aqua hair. His 
+muscular upper body is bare, wrapped with battle-worn 
+bandages around his forearms.",Silent and focused,"High agility and sustained 
+melee damage.
+Resistant to crowd control via 
+passive fluid-like movement.
+Gains power the longer he 
+remains in combat.","Low range and 
+vulnerable to 
+burst.",,
+Voltrion,Legendary,Ranged DPS,Electric,"Voltrion is a sharp-eyed, lean male mage with wild silver hair 
+swept back. He wears a long, asymmetrical black and gold 
+coat adorned with stylized lightning motifs.",Calculated and efficient,"Powerful burst damage at range
+Electric attacks pierce through 
+shields or barriers
+High synergy with energy-based 
+units or debuffers","Low defense, 
+Vulnerable
+Long cooldowns",,
+Saryel,Legendary,Melee DPS,Fire,,"Commanding, wise and efficient","Extremely fast melee combos, 
+high aoe dmgs with dots
+fast and strong mobility","Vunerable to cc
+and dot purifying",,
+Nyxara,Legendary,Support,Shadow,"A tall, seductive sorceress with long silver hair
+Her form-fitting outfit blends 
+arcane elegance and sensual design: 
+a deep-cut corset, high boots etched with violet runes, 
+and a cloak with shadow motifs. 
+She holds a closed grimoire marked with a summoning seal.","Enigmatic, commanding, and distant","Specializes in summoning autonomous 
+shadow creatures to harass 
+and distract enemies.","Ineffective in 
+short fights 
+or high-burst 
+metas",,
+Solayne,Legendary,Ranged DPS,Light,"Solayne is a tall, graceful desert sorceress 
+radiating wisdom and divine elegance.
+Long, flowing platinum blonde, shimmering 
+faintly like sunlight on sand.
+Eyes: Golden, glowing with radiant energy.
+Weapon: A slender golden staff crowned with a glowing 
+sunstone crystal, radiating constant solar energy.
+","Serene, wise, and unwavering",,Fragile,,
+Aleyra,Legendary,Ranged DPS,Shadow,,,,,,
+Voltragar,Legendary,Tank,Electric,"A colossal mechanical golem forged from dark steel and
+ silver plates, pulsing with glowing blue and yellow circuits","Cold, unyielding, and built
+ for protection","Can taunt enemies and generate 
+electric shields for allies
+Titanic defense and HP",Extremely slow,,
