@@ -696,4 +696,4 @@ public IEnumerator ClaimWithRetry(int maxRetries = 3)
 ---
 
 **Version:** 1.0.0  
-**Dernière mise à jour:** 15 janvier 2025
+**Dernière mise à jour:** 30 septembre 2025
