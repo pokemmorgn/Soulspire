@@ -802,6 +802,10 @@ private static async checkAndDeductBannerCost(
 }
 
   // Exécuter les pulls avec la configuration de la bannière (version enrichie)
+/**
+ * Exécuter les pulls avec la configuration de la bannière
+ * Lit le focusChance depuis la config de la bannière pour chaque héros focus
+ */
 private static async executeBannerPulls(
   player: any,
   banner: any,
@@ -817,7 +821,7 @@ private static async executeBannerPulls(
     throw new Error("No heroes available in this banner");
   }
 
-  // ✅ Suivre le pity EN TEMPS RÉEL pendant la session de pulls
+  // Suivre le pity EN TEMPS RÉEL pendant la session de pulls
   let currentPullsSinceLegendary = pityStatus.pullsSinceLegendary;
   let currentPullsSinceEpic = pityStatus.pullsSinceEpic;
 
@@ -825,7 +829,7 @@ private static async executeBannerPulls(
     let rarity: string;
     let isPityTriggered = false;
     
-    // ✅ Vérifier si le pity doit se déclencher
+    // Vérifier si le pity doit se déclencher
     if (currentPullsSinceLegendary >= pityConfig.legendaryPity) {
       rarity = "Legendary";
       isPityTriggered = true;
@@ -839,19 +843,16 @@ private static async executeBannerPulls(
       rarity = this.rollRarity(banner.rates);
     }
 
-    // ✅ IMPORTANT : Reset immédiat des compteurs selon la rareté obtenue
+    // ✅ Reset immédiat des compteurs selon la rareté obtenue
     if (rarity === "Legendary") {
-      // Reset TOUS les compteurs pity
       currentPullsSinceLegendary = 0;
       currentPullsSinceEpic = 0;
       console.log(`🌟 Legendary obtenu ! Reset pity: legendary=${currentPullsSinceLegendary}, epic=${currentPullsSinceEpic}`);
     } else if (rarity === "Epic") {
-      // Reset uniquement le compteur Epic
       currentPullsSinceEpic = 0;
       currentPullsSinceLegendary++;
       console.log(`💎 Epic obtenu ! Reset epic pity: legendary=${currentPullsSinceLegendary}, epic=${currentPullsSinceEpic}`);
     } else {
-      // Incrémenter les deux compteurs pour Common/Rare
       currentPullsSinceLegendary++;
       currentPullsSinceEpic++;
     }
@@ -859,44 +860,54 @@ private static async executeBannerPulls(
     // Sélection d'un héros de cette rareté
     let heroesOfRarity = availableHeroes.filter((h: any) => h.rarity === rarity);
     if (heroesOfRarity.length === 0) {
-      // Fallback vers une rareté disponible
       console.warn(`⚠️ Aucun héros ${rarity} disponible, fallback sur un héros aléatoire`);
       const fallbackHero = availableHeroes[Math.floor(Math.random() * availableHeroes.length)];
       heroesOfRarity = [fallbackHero];
       rarity = fallbackHero.rarity;
     }
 
-    // ✅ Appliquer les rate-up pour les héros focus
+    // ✅ Système de Focus Hero avec lecture du focusChance depuis la bannière
     let selectedHero: any;
     let isFocus = false;
+    
     const isFocusRarity = rarity === "Legendary" || rarity === "Epic";
     const focusHeroesOfRarity = banner.focusHeroes.filter((f: any) => {
       const focusHero = availableHeroes.find((h: any) => h._id.toString() === f.heroId);
       return focusHero && focusHero.rarity === rarity;
     });
 
-    // ✅ Vérifier si c'est le PREMIER légendaire de cette session
-    const isFirstLegendaryInSession = rarity === "Legendary" && 
-      results.filter(r => r.rarity === "Legendary").length === 0;
-    
     if (isFocusRarity && focusHeroesOfRarity.length > 0) {
-      // ✅ Si guaranteed: true ET c'est le premier legendary → 100% focus
-      // Sinon, 50% de chance
+      // Vérifier si c'est le PREMIER légendaire GLOBAL du joueur sur cette bannière
+      const hasPlayerEverPulledLegendary = await this.hasPlayerPulledLegendaryOnBanner(
+        player._id.toString(), 
+        banner.bannerId
+      );
+      
+      const isFirstLegendaryEver = rarity === "Legendary" && !hasPlayerEverPulledLegendary;
+
+      // ✅ Récupérer la configuration du focus hero
       const focusHeroConfig = focusHeroesOfRarity[0];
-      const focusChance = focusHeroConfig.guaranteed && isFirstLegendaryInSession ? 1.0 : 0.5;
+      let focusChance: number;
+      
+      if (isFirstLegendaryEver && focusHeroConfig.guaranteed) {
+        // 🎯 Premier legendary avec guaranteed: true → 100%
+        focusChance = 1.0;
+        console.log(`🎯 [GUARANTEED] Premier Legendary EVER sur ${banner.name} → 100% Focus`);
+      } else {
+        // 🎯 Lire le taux focusChance depuis la config de la bannière
+        focusChance = focusHeroConfig.focusChance ?? 0.5;  // Défaut 50% si non défini
+        console.log(`🎯 [RATE-UP] ${rarity} avec ${(focusChance * 100).toFixed(0)}% chance Focus (depuis config bannière)`);
+      }
       
       if (Math.random() < focusChance) {
+        // ✅ Sélectionner le focus hero
         const focusHero = focusHeroesOfRarity[Math.floor(Math.random() * focusHeroesOfRarity.length)];
         selectedHero = availableHeroes.find((h: any) => h._id.toString() === focusHero.heroId);
         isFocus = true;
         
-        if (focusHeroConfig.guaranteed && isFirstLegendaryInSession) {
-          console.log(`🎯 Premier Legendary garanti = Focus Hero: ${selectedHero.name}`);
-        } else {
-          console.log(`🎯 Focus Hero tiré (50% chance): ${selectedHero.name}`);
-        }
+        console.log(`✨ FOCUS HERO obtenu: ${selectedHero.name} (${rarity}) [chance: ${(focusChance * 100).toFixed(0)}%]`);
       } else {
-        // Sélection normale (non-focus)
+        // ❌ Échec du focus → sélection d'un héros normal (non-focus)
         const nonFocusHeroes = heroesOfRarity.filter((h: any) => 
           !focusHeroesOfRarity.some((f: any) => f.heroId === h._id.toString())
         );
@@ -908,7 +919,7 @@ private static async executeBannerPulls(
           selectedHero = heroesOfRarity[Math.floor(Math.random() * heroesOfRarity.length)];
         }
         
-        console.log(`🎲 Héros non-focus tiré: ${selectedHero.name}`);
+        console.log(`🎲 Héros NON-focus tiré: ${selectedHero.name} (${rarity})`);
       }
     } else {
       // Pas de focus heroes pour cette rareté → sélection normale
@@ -966,6 +977,7 @@ private static async executeBannerPulls(
 
   await player.save();
   
+  // Résumé final de la session
   console.log(`\n📊 Résumé de la session de ${count} pulls:`);
   console.log(`   - Legendary: ${results.filter(r => r.rarity === 'Legendary').length}`);
   console.log(`   - Epic: ${results.filter(r => r.rarity === 'Epic').length}`);
@@ -976,6 +988,22 @@ private static async executeBannerPulls(
   console.log(`   - Pity final: legendary=${currentPullsSinceLegendary}, epic=${currentPullsSinceEpic}\n`);
   
   return results;
+}
+
+/**
+ * Vérifier si le joueur a déjà obtenu un legendary sur cette bannière
+ */
+private static async hasPlayerPulledLegendaryOnBanner(
+  playerId: string,
+  bannerId: string
+): Promise<boolean> {
+  const summon = await Summon.findOne({
+    playerId,
+    bannerId,
+    "heroesObtained.rarity": "Legendary"
+  });
+  
+  return !!summon;
 }
 
   // Calculer le nouveau statut pity (version enrichie)
