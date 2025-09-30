@@ -23,18 +23,18 @@ async function testCollectionService() {
     
     if (!playerId) {
       console.log("ℹ️  Aucun playerId fourni, recherche du premier joueur...");
-      const firstPlayer = await Player.findOne().select('_id username');
+      const firstPlayer = await Player.findOne().select('_id displayName');
       if (!firstPlayer) {
         console.error("❌ Aucun joueur trouvé dans la base de données");
         process.exit(1);
       }
       playerId = firstPlayer._id.toString();
-      console.log(`✅ Joueur trouvé: ${firstPlayer.username} (${playerId})\n`);
+      console.log(`✅ Joueur trouvé: ${firstPlayer.displayName || playerId} (${playerId})\n`);
     }
 
-    console.log("=" .repeat(60));
+    console.log("=".repeat(60));
     console.log("🧪 TEST DU COLLECTION SERVICE");
-    console.log("=" .repeat(60));
+    console.log("=".repeat(60));
     console.log(`Player ID: ${playerId}\n`);
 
     // === TEST 1: Collection Progress Basique ===
@@ -61,7 +61,13 @@ async function testCollectionService() {
     console.log(`  ├─ Héros possédés: ${cachedProgress.ownedHeroes}`);
     console.log(`  └─ Pourcentage: ${cachedProgress.completionPercentage}%`);
     console.log(`⏱️  Temps d'exécution: ${duration2}ms`);
-    console.log(`⚡ Amélioration: ${Math.round(((duration1 - duration2) / duration1) * 100)}% plus rapide\n`);
+    
+    if (duration1 > 0) {
+      const improvement = Math.round(((duration1 - duration2) / duration1) * 100);
+      console.log(`⚡ Amélioration: ${improvement}% plus rapide\n`);
+    } else {
+      console.log(`⚡ Amélioration: Cache instantané\n`);
+    }
 
     // === TEST 3: Collection Détaillée par Rareté ===
     console.log("🎯 TEST 3: Collection Détaillée par Rareté");
@@ -88,7 +94,8 @@ async function testCollectionService() {
     
     console.log("Résultat:");
     Object.entries(byElement).forEach(([element, data]) => {
-      console.log(`  ├─ ${element.padEnd(10)}: ${data.owned}/${data.total} (${data.percentage}%)`);
+      const paddedElement = element.padEnd(10);
+      console.log(`  ├─ ${paddedElement}: ${data.owned}/${data.total} (${data.percentage}%)`);
     });
     console.log(`⏱️  Temps d'exécution: ${duration4}ms\n`);
 
@@ -101,7 +108,8 @@ async function testCollectionService() {
     
     console.log("Résultat:");
     Object.entries(byRole).forEach(([role, data]) => {
-      console.log(`  ├─ ${role.padEnd(15)}: ${data.owned}/${data.total} (${data.percentage}%)`);
+      const paddedRole = role.padEnd(15);
+      console.log(`  ├─ ${paddedRole}: ${data.owned}/${data.total} (${data.percentage}%)`);
     });
     console.log(`⏱️  Temps d'exécution: ${duration5}ms\n`);
 
@@ -117,7 +125,8 @@ async function testCollectionService() {
       console.log("  🎉 Collection complète ! Tous les héros sont possédés !");
     } else {
       missingHeroes.forEach((hero, index) => {
-        console.log(`  ${index + 1}. ${hero.name.padEnd(20)} [${hero.rarity}] - ${hero.element} ${hero.role}`);
+        const heroName = hero.name.padEnd(20);
+        console.log(`  ${index + 1}. ${heroName} [${hero.rarity}] - ${hero.element} ${hero.role}`);
       });
     }
     console.log(`⏱️  Temps d'exécution: ${duration6}ms\n`);
@@ -150,11 +159,11 @@ async function testCollectionService() {
     console.log(`⏱️  Temps d'exécution: ${duration8}ms (devrait être similaire au premier appel)\n`);
 
     // === RÉSUMÉ FINAL ===
-    console.log("=" .repeat(60));
+    console.log("=".repeat(60));
     console.log("📊 RÉSUMÉ DES PERFORMANCES");
-    console.log("=" .repeat(60));
+    console.log("=".repeat(60));
     console.log(`Test 1 (Basic - Cold):      ${duration1}ms`);
-    console.log(`Test 2 (Basic - Cached):    ${duration2}ms (${Math.round(((duration1 - duration2) / duration1) * 100)}% plus rapide)`);
+    console.log(`Test 2 (Basic - Cached):    ${duration2}ms (${duration1 > 0 ? Math.round(((duration1 - duration2) / duration1) * 100) : 100}% plus rapide)`);
     console.log(`Test 3 (Detailed):          ${duration3}ms`);
     console.log(`Test 4 (By Element):        ${duration4}ms`);
     console.log(`Test 5 (By Role):           ${duration5}ms`);
@@ -162,7 +171,7 @@ async function testCollectionService() {
     console.log(`Test 7 (Acquisition Stats): ${duration7}ms`);
     console.log(`Test 8 (Refresh):           ${duration8}ms`);
     console.log("\n✅ Tous les tests terminés avec succès !");
-    console.log("=" .repeat(60));
+    console.log("=".repeat(60));
 
   } catch (error: any) {
     console.error("\n❌ Erreur lors du test:", error.message);
