@@ -64,15 +64,30 @@ async function createBeginnerBanner() {
     sortOrder: 100,
 
     heroPool: { includeAll: false, specificHeroes: poolHeroes, excludedHeroes: [], rarityFilters: [] },
-    focusHeroes: [], // Pas de focus heroes sur la bannière débutant
+    focusHeroes: [],
 
-    rates: { Common: 45, Rare: 35, Epic: 17, Legendary: 3 },
+    // ✅ NOUVEAU : Bannière débutant plus généreuse
+    rates: { 
+      Common: 40, 
+      Rare: 35, 
+      Epic: 20, 
+      Legendary: 5  // ✅ 5% pour encourager les débutants
+    },
+    
     costs: {
       singlePull: { gems: 150, tickets: 1 },
       multiPull: { gems: 1350 },
       firstPullDiscount: { gems: 50 },
     },
-    pityConfig: { legendaryPity: 60, epicPity: 10, sharedPity: false, resetOnBannerEnd: false },
+    
+    // ✅ NOUVEAU : Pity réduit pour débutants
+    pityConfig: { 
+      legendaryPity: 40,  // ✅ 40 pulls pour débutants (plus court)
+      epicPity: 0, 
+      sharedPity: false, 
+      resetOnBannerEnd: false 
+    },
+    
     limits: { maxPullsPerPlayer: 60, maxPullsPerDay: -1, firstTimePullBonus: true },
 
     bonusRewards: {
@@ -113,7 +128,7 @@ function createStandardBanner() {
     bannerId: "standard_summon_001",
     name: "Hero Summoning - Standard",
     type: "Standard" as const,
-    description: "The standard summoning pool featuring all heroes. Pity system guarantees a Legendary hero within 90 pulls!",
+    description: "The standard summoning pool featuring all heroes. Pity system guarantees a Legendary hero within 50 pulls!",
 
     startTime: now,
     endTime: tenYearsLater,
@@ -125,15 +140,30 @@ function createStandardBanner() {
     sortOrder: 50,
 
     heroPool: { includeAll: true, specificHeroes: [], excludedHeroes: [], rarityFilters: [] },
-    focusHeroes: [], // Pas de focus heroes sur la bannière standard
+    focusHeroes: [],
 
-    rates: { Common: 50, Rare: 30, Epic: 15, Legendary: 5 },
+    // ✅ NOUVEAU : Legendary à 4.5%
+    rates: { 
+      Common: 35.5, 
+      Rare: 36, 
+      Epic: 24, 
+      Legendary: 4.5  // ✅ Augmenté de 5% → 4.5%
+    },
+    
     costs: {
       singlePull: { gems: 300, tickets: 1 },
       multiPull: { gems: 2700 },
       firstPullDiscount: { gems: 150 },
     },
-    pityConfig: { legendaryPity: 90, sharedPity: false, resetOnBannerEnd: false },
+    
+    // ✅ NOUVEAU : Pity à 50 pulls
+    pityConfig: { 
+      legendaryPity: 50,  // ✅ Réduit de 90 → 50
+      epicPity: 0, 
+      sharedPity: false, 
+      resetOnBannerEnd: false 
+    },
+    
     limits: { maxPullsPerPlayer: -1, maxPullsPerDay: -1, firstTimePullBonus: true },
 
     bonusRewards: {
@@ -184,7 +214,7 @@ async function createLimitedBanner(focusHeroName: string) {
     bannerId: `limited_${focusHeroName.toLowerCase()}_rateup`,
     name: `${focusHeroName} Rate-Up`,
     type: "Limited" as const,
-    description: `Limited-time banner featuring ${focusHeroName.toUpperCase()}! Increased drop rates and guaranteed on your first Legendary pull. Available for 14 days only!`,
+    description: `Limited-time banner featuring ${focusHeroName.toUpperCase()}! Guaranteed on your first Legendary pull, then 40% rate-up. Available for 14 days only!`,
 
     startTime: now,
     endTime: twoWeeksLater,
@@ -197,25 +227,38 @@ async function createLimitedBanner(focusHeroName: string) {
 
     heroPool: { includeAll: true, specificHeroes: [], excludedHeroes: [], rarityFilters: [] },
     
-    // ✅ MODIFICATION PRINCIPALE : Ajout de focusChance
+    // ✅ NOUVEAU : focusChance à 40%
     focusHeroes: [
       { 
         heroId: focusHero._id, 
-        rateUpMultiplier: 2.5,        // Multiplicateur (non utilisé pour l'instant)
-        guaranteed: true,              // Premier legendary = focus garanti
-        focusChance: 0.75              // ✅ 75% de chance pour les legendaries suivants
+        rateUpMultiplier: 2.5,
+        guaranteed: true,              // Premier legendary = 100% focus
+        focusChance: 0.40              // ✅ 40% de chance pour les legendaries suivants
       }
     ],
 
-    // ✅ Taux sans le champ obsolète focusRateUp
-    rates: { Common: 40, Rare: 34, Epic: 24, Legendary: 2 },
+    // ✅ NOUVEAU : Legendary à 4.5%
+    rates: { 
+      Common: 35.5, 
+      Rare: 36, 
+      Epic: 24, 
+      Legendary: 4.5  // ✅ Augmenté de 2% → 4.5%
+    },
     
     costs: {
       singlePull: { gems: 300, tickets: 1 },
       multiPull: { gems: 2700 },
       firstPullDiscount: { gems: 200 },
     },
-    pityConfig: { legendaryPity: 90, sharedPity: false, resetOnBannerEnd: true },
+    
+    // ✅ NOUVEAU : Pity à 50 pulls
+    pityConfig: { 
+      legendaryPity: 50,  // ✅ Réduit de 90 → 50
+      epicPity: 0, 
+      sharedPity: false, 
+      resetOnBannerEnd: true 
+    },
+    
     limits: { maxPullsPerPlayer: -1, maxPullsPerDay: -1, firstTimePullBonus: true },
 
     bonusRewards: {
@@ -283,8 +326,12 @@ const seedBanners = async () => {
     console.log("✅ Created 3 banners successfully!");
     console.log("\n📋 Bannières créées:");
     console.log(`   1. ${beginner.name} (Beginner)`);
+    console.log(`      └─ Legendary: ${beginner.rates.Legendary}%, Pity: ${beginner.pityConfig?.legendaryPity || 'N/A'}`);
     console.log(`   2. ${standard.name} (Standard)`);
-    console.log(`   3. ${limited.name} (Limited) - Focus: ${focusHeroName} avec ${(limited.focusHeroes[0].focusChance * 100).toFixed(0)}% chance`);
+    console.log(`      └─ Legendary: ${standard.rates.Legendary}%, Pity: ${standard.pityConfig?.legendaryPity || 'N/A'}`);
+    console.log(`   3. ${limited.name} (Limited)`);
+    console.log(`      └─ Legendary: ${limited.rates.Legendary}%, Pity: ${limited.pityConfig?.legendaryPity || 'N/A'}`);
+    console.log(`      └─ Focus: ${focusHeroName} avec ${(limited.focusHeroes[0].focusChance! * 100).toFixed(0)}% chance (guaranteed first)`);
     console.log("");
   } catch (error: any) {
     console.error("❌ Banner seeding failed:", error.message || error);
