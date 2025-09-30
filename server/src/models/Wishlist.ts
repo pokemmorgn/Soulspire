@@ -188,7 +188,7 @@ wishlistSchema.methods.resetPity = function(): void {
 };
 
 wishlistSchema.methods.isPityTriggered = function(): boolean {
-  return this.pityCounter >= this.pityThreshold;
+  return this.pityCounter >= this.pityThreshold - 1; // Déclenche à 99
 };
 
 export type { IWishlistDocument };
