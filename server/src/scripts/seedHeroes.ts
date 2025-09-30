@@ -102,7 +102,7 @@ const seedHeroes = async () => {
     await new Promise<void>((resolve, reject) => {
       fs.createReadStream(filePath)
         .pipe(csvParser())
-        .on("data", (row) => {
+        .on("data", (row: any) => {
           const normalizedRole = normalizeRole(row.Role);
           const normalizedElement = normalizeElement(row.Element);
           const stats = calculateBaseStats(normalizedRole, row.Rarity);
