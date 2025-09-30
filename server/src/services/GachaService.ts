@@ -2,11 +2,13 @@ import Player from "../models/Player";
 import Hero from "../models/Hero";
 import Summon from "../models/Summon";
 import Banner from "../models/Banner";
+import BannerPity from "../models/BannerPity";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
 import { WebSocketGacha } from "./websocket/WebSocketGacha";
 import { CollectionService } from "./CollectionService";
 import { WishlistService } from "./WishlistService";
+
 // Configuration de base (fallback seulement)
 const FALLBACK_CONFIG = {
   pity: {
@@ -141,137 +143,136 @@ export class GachaService {
   }
 
   // === EFFECTUER UNE INVOCATION SUR UNE BANNIÈRE SPÉCIFIQUE (VERSION ENRICHIE) ===
-  public static async performPullOnBanner(
-    playerId: string,
-    serverId: string,
-    bannerId: string,
-    count: number = 1
-  ): Promise<GachaResponse> {
-    try {
-      console.log(`🎰 ${playerId} effectue ${count} pulls sur bannière ${bannerId} (serveur ${serverId})`);
+public static async performPullOnBanner(
+  playerId: string,
+  serverId: string,
+  bannerId: string,
+  count: number = 1
+): Promise<GachaResponse> {
+  try {
+    console.log(`🎰 ${playerId} effectue ${count} pulls sur bannière ${bannerId} (serveur ${serverId})`);
 
-      // Notifier le début du pull avec animation
-      await this.notifyPullStarted(playerId, bannerId, count);
+    // Notifier le début du pull avec animation
+    await this.notifyPullStarted(playerId, bannerId, count);
 
-      // Récupérer la bannière
-      const banner = await Banner.findOne({
-        bannerId,
-        isActive: true,
-        isVisible: true,
-        startTime: { $lte: new Date() },
-        endTime: { $gte: new Date() },
-        $or: [
-          { "serverConfig.allowedServers": serverId },
-          { "serverConfig.allowedServers": "ALL" }
-        ]
-      });
+    // Récupérer la bannière
+    const banner = await Banner.findOne({
+      bannerId,
+      isActive: true,
+      isVisible: true,
+      startTime: { $lte: new Date() },
+      endTime: { $gte: new Date() },
+      $or: [
+        { "serverConfig.allowedServers": serverId },
+        { "serverConfig.allowedServers": "ALL" }
+      ]
+    });
 
-      if (!banner) {
-        throw new Error("Banner not found or not active");
-      }
-
-      // Récupérer le joueur
-      const player = await Player.findOne({ _id: playerId, serverId });
-      if (!player) {
-        throw new Error("Player not found on this server");
-      }
-
-      // Vérifier les permissions du joueur pour cette bannière
-      const canPull = await banner.canPlayerPull(playerId);
-      if (!canPull.canPull) {
-        throw new Error(canPull.reason || "Cannot pull on this banner");
-      }
-
-      // Vérifier et déduire le coût
-      const costCheck = await this.checkAndDeductBannerCost(player, banner, count);
-      if (!costCheck.success) {
-        throw new Error(costCheck.error);
-      }
-
-      // Calculer le système de pity
-      const pityConfig = {
-        legendaryPity: banner.pityConfig?.legendaryPity || FALLBACK_CONFIG.pity.legendary,
-        epicPity: banner.pityConfig?.epicPity || FALLBACK_CONFIG.pity.epic
-      };
-      const pityStatus = await this.calculatePityStatus(playerId, serverId, bannerId);
-
-      // Effectuer les pulls avec la configuration de la bannière
-      const pullResults = await this.executeBannerPulls(
-        player,
-        banner,
-        count,
-        pityStatus,
-        pityConfig
-      );
-
-      // Calculer les effets spéciaux
-      const specialEffects = this.calculateSpecialEffects(pullResults, pityStatus, count);
-
-      // Enregistrer l'invocation
-      await this.recordSummon(playerId, pullResults, banner.type, bannerId);
-
-      // Mettre à jour les statistiques de la bannière
-      const rarities = pullResults.map(r => r.rarity);
-      await banner.updateStats(count, rarities);
-
-      // Calculer le nouveau statut pity
-      const newPityStatus = this.calculateNewPityStatus(
-        pityStatus,
-        pullResults,
-        count,
-        pityConfig
-      );
-
-      // Calculer les statistiques finales
-      const finalStats = this.calculatePullStats(pullResults);
-
-      // Construire la réponse
-      const response: GachaResponse = {
-        success: true,
-        results: pullResults,
-        stats: finalStats,
-        cost: costCheck.cost || { gems: 0, tickets: 0 },
-        remaining: {
-          gems: player.gems,
-          tickets: player.tickets
-        },
-        pityStatus: newPityStatus,
-        bannerInfo: {
-          bannerId: banner.bannerId,
-          name: banner.name,
-          focusHeroes: banner.focusHeroes.map(f => f.heroId)
-        },
-        specialEffects,
-        notifications: {
-          hasLegendary: finalStats.legendary > 0,
-          hasUltraRare: pullResults.some(r => r.dropRate && r.dropRate < GACHA_CONFIG.rareDrop.legendaryThreshold),
-          hasLuckyStreak: specialEffects.luckyStreakCount >= GACHA_CONFIG.rareDrop.streakThreshold,
-          hasPityTrigger: specialEffects.hasPityBreak,
-          hasNewHero: finalStats.newHeroes > 0,
-          hasCollectionProgress: true
-        }
-      };
-
-      // === SYSTÈME DE NOTIFICATIONS WEBSOCKET ENRICHI ===
-      await this.processGachaNotifications(playerId, serverId, response, banner);
-
-      // Mettre à jour les missions et événements
-      await this.updateProgressTracking(playerId, serverId, count);
-
-      // Recommandations intelligentes (asynchrones)
-      this.generateSmartRecommendations(playerId, serverId, response, banner).catch(err => {
-        console.warn("⚠️ Erreur génération recommandations:", err);
-      });
-
-      console.log(`✅ Gacha complété sur ${banner.name}: ${pullResults.length} héros obtenus`);
-
-      return response;
-
-    } catch (error: any) {
-      console.error("❌ Erreur performPullOnBanner:", error);
-      throw error;
+    if (!banner) {
+      throw new Error("Banner not found or not active");
     }
+
+    // Récupérer le joueur
+    const player = await Player.findOne({ _id: playerId, serverId });
+    if (!player) {
+      throw new Error("Player not found on this server");
+    }
+
+    // Vérifier les permissions du joueur pour cette bannière
+    const canPull = await banner.canPlayerPull(playerId);
+    if (!canPull.canPull) {
+      throw new Error(canPull.reason || "Cannot pull on this banner");
+    }
+
+    // Vérifier et déduire le coût
+    const costCheck = await this.checkAndDeductBannerCost(player, banner, count);
+    if (!costCheck.success) {
+      throw new Error(costCheck.error);
+    }
+
+    // Calculer le système de pity
+    const pityConfig = {
+      legendaryPity: banner.pityConfig?.legendaryPity || FALLBACK_CONFIG.pity.legendary,
+      epicPity: banner.pityConfig?.epicPity || FALLBACK_CONFIG.pity.epic
+    };
+    const pityStatus = await this.calculatePityStatus(playerId, serverId, bannerId);
+
+    // Effectuer les pulls avec la configuration de la bannière
+    const pullResponse = await this.executeBannerPulls(
+      playerId,
+      serverId,
+      banner.bannerId,
+      count
+    );
+
+    // Extraire les résultats
+    const pullResults = pullResponse.results;
+
+    // Calculer les effets spéciaux
+    const specialEffects = this.calculateSpecialEffects(pullResults, pityStatus, count);
+
+    // Enregistrer l'invocation
+    await this.recordSummon(playerId, pullResults, banner.type, bannerId);
+
+    // Mettre à jour les statistiques de la bannière
+    const rarities = pullResults.map((r: any) => r.rarity);
+    await banner.updateStats(count, rarities);
+
+    // Utiliser le pityState retourné par executeBannerPulls
+    const newPityStatus = {
+      pullsSinceLegendary: pullResponse.pityState.pullsSinceLegendary,
+      pullsSinceEpic: 0,
+      legendaryPityIn: Math.max(0, (banner.pityConfig?.legendaryPity || 90) - pullResponse.pityState.pullsSinceLegendary),
+      epicPityIn: 0
+    };
+
+    // Calculer les statistiques finales
+    const finalStats = this.calculatePullStats(pullResults);
+
+    // Construire la réponse
+    const response: GachaResponse = {
+      success: true,
+      results: pullResults,
+      stats: finalStats,
+      cost: costCheck.cost || { gems: 0, tickets: 0 },
+      remaining: pullResponse.currency,
+      pityStatus: newPityStatus,
+      bannerInfo: {
+        bannerId: banner.bannerId,
+        name: banner.name,
+        focusHeroes: banner.focusHeroes.map((f: any) => f.heroId)
+      },
+      specialEffects,
+      notifications: {
+        hasLegendary: finalStats.legendary > 0,
+        hasUltraRare: pullResults.some((r: any) => r.dropRate && r.dropRate < GACHA_CONFIG.rareDrop.legendaryThreshold),
+        hasLuckyStreak: specialEffects.luckyStreakCount >= GACHA_CONFIG.rareDrop.streakThreshold,
+        hasPityTrigger: specialEffects.hasPityBreak,
+        hasNewHero: finalStats.newHeroes > 0,
+        hasCollectionProgress: true
+      }
+    };
+
+    // === SYSTÈME DE NOTIFICATIONS WEBSOCKET ENRICHI ===
+    await this.processGachaNotifications(playerId, serverId, response, banner);
+
+    // Mettre à jour les missions et événements
+    await this.updateProgressTracking(playerId, serverId, count);
+
+    // Recommandations intelligentes (asynchrones)
+    this.generateSmartRecommendations(playerId, serverId, response, banner).catch(err => {
+      console.warn("⚠️ Erreur génération recommandations:", err);
+    });
+
+    console.log(`✅ Gacha complété sur ${banner.name}: ${pullResults.length} héros obtenus`);
+
+    return response;
+
+  } catch (error: any) {
+    console.error("❌ Erreur performPullOnBanner:", error);
+    throw error;
   }
+}
 
   // === NOUVELLES MÉTHODES POUR LES NOTIFICATIONS WEBSOCKET ===
 
