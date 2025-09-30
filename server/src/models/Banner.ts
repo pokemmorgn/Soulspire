@@ -6,15 +6,15 @@ export interface IBannerRates {
   Rare: number;
   Epic: number;
   Legendary: number;
-  // Taux spéciaux pour les héros focus
-  focusRateUp?: number; // % supplémentaire pour les héros focus
+  // ❌ SUPPRIMÉ : focusRateUp (obsolète, remplacé par focusChance dans IFocusHero)
 }
 
 // Interface pour un héros focus/rate-up
 export interface IFocusHero {
   heroId: string;
-  rateUpMultiplier: number; // ex: 2.0 = taux x2
+  rateUpMultiplier: number; // ex: 2.0 = taux x2 (non utilisé pour l'instant)
   guaranteed?: boolean; // Garanti au premier legendary
+  focusChance?: number; // ✅ NOUVEAU : Probabilité d'obtenir ce héros focus (0-1, ex: 0.75 = 75%)
 }
 
 // Interface pour les coûts de bannière
@@ -275,6 +275,7 @@ const bannerSchema = new Schema<IBannerDocument>({
     }]
   },
   
+  // ✅ MODIFICATION : Ajout de focusChance
   focusHeroes: [{
     heroId: {
       type: String,
@@ -289,9 +290,16 @@ const bannerSchema = new Schema<IBannerDocument>({
     guaranteed: {
       type: Boolean,
       default: false
+    },
+    focusChance: {
+      type: Number,
+      default: 0.5,  // Défaut 50%
+      min: 0.0,      // Minimum 0% (jamais focus)
+      max: 1.0       // Maximum 100% (toujours focus)
     }
   }],
   
+  // ✅ MODIFICATION : Suppression de focusRateUp obsolète
   rates: {
     Common: {
       type: Number,
@@ -316,12 +324,8 @@ const bannerSchema = new Schema<IBannerDocument>({
       required: true,
       min: 0,
       max: 100
-    },
-    focusRateUp: {
-      type: Number,
-      min: 0,
-      max: 50
     }
+    // ❌ SUPPRIMÉ : focusRateUp (obsolète)
   },
   
   costs: {
