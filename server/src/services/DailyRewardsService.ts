@@ -508,25 +508,31 @@ export class DailyRewardsService {
       let processed = 0;
       let errors = 0;
 
-      for (const reward of allRewards) {
-        try {
-          // Vérifier si le joueur a raté son claim
-          if (reward.lastClaimDate) {
-            const now = new Date();
-            const lastClaim = new Date(reward.lastClaimDate);
-            const diffDays = Math.floor((now.getTime() - lastClaim.getTime()) / (1000 * 60 * 60 * 24));
-
-            if (diffDays > 0 && !reward.canClaimToday()) {
-              // Joueur a raté un jour
-              await this.handleMissedDay(reward.playerId, reward.serverId);
-            }
+    for (const reward of allRewards) {
+      try {
+        // 🔥 VÉRIFIER ET RESET LE STREAK SI NÉCESSAIRE
+        const wasReset = await reward.checkAndResetStreak();
+        if (wasReset) {
+          console.log(`⚠️ Streak reset pour ${reward.playerId} après jours ratés`);
+        }
+        
+        // Vérifier si le joueur a raté son claim
+        if (reward.lastClaimDate) {
+          const now = new Date();
+          const lastClaim = new Date(reward.lastClaimDate);
+          const diffDays = Math.floor((now.getTime() - lastClaim.getTime()) / (1000 * 60 * 60 * 24));
+    
+          if (diffDays > 0 && !reward.canClaimToday()) {
+            // Joueur a raté un jour
+            await this.handleMissedDay(reward.playerId, reward.serverId);
           }
-
-          // Mettre à jour nextResetDate
-          const tomorrow = new Date();
-          tomorrow.setHours(24, 0, 0, 0);
-          reward.nextResetDate = tomorrow;
-          await reward.save();
+        }
+    
+        // Mettre à jour nextResetDate
+        const tomorrow = new Date();
+        tomorrow.setHours(24, 0, 0, 0);
+        reward.nextResetDate = tomorrow;
+        await reward.save();
 
           processed++;
 
