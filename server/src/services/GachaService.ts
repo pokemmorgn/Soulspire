@@ -806,6 +806,10 @@ private static async checkAndDeductBannerCost(
  * Exécuter les pulls avec la configuration de la bannière
  * Lit le focusChance depuis la config de la bannière pour chaque héros focus
  */
+/**
+ * Exécuter les pulls avec la configuration de la bannière
+ * Version sans Pity Epic (style AFK Arena)
+ */
 private static async executeBannerPulls(
   player: any,
   banner: any,
@@ -823,38 +827,34 @@ private static async executeBannerPulls(
 
   // Suivre le pity EN TEMPS RÉEL pendant la session de pulls
   let currentPullsSinceLegendary = pityStatus.pullsSinceLegendary;
-  let currentPullsSinceEpic = pityStatus.pullsSinceEpic;
+
+  console.log(`\n🎲 === SESSION DE ${count} PULLS ===`);
+  console.log(`📊 État Pity Initial:`);
+  console.log(`   - Legendary: ${currentPullsSinceLegendary}/${pityConfig.legendaryPity} (${pityConfig.legendaryPity - currentPullsSinceLegendary} restants)\n`);
 
   for (let i = 0; i < count; i++) {
     let rarity: string;
     let isPityTriggered = false;
     
-    // Vérifier si le pity doit se déclencher
+    // ✅ Vérifier uniquement le pity LEGENDARY
     if (currentPullsSinceLegendary >= pityConfig.legendaryPity) {
       rarity = "Legendary";
       isPityTriggered = true;
-      console.log(`🎰 Pity Legendary déclenché au pull ${i + 1} (${currentPullsSinceLegendary} pulls depuis dernier legendary)`);
-    } else if (currentPullsSinceEpic >= pityConfig.epicPity) {
-      rarity = "Epic";
-      isPityTriggered = true;
-      console.log(`🎰 Pity Epic déclenché au pull ${i + 1} (${currentPullsSinceEpic} pulls depuis dernier epic)`);
+      console.log(`\n🔔 [PULL ${i + 1}] PITY LEGENDARY DÉCLENCHÉ !`);
+      console.log(`   └─ ${currentPullsSinceLegendary} pulls sans legendary → Garanti maintenant`);
     } else {
       // Tirage normal basé sur les taux de la bannière
       rarity = this.rollRarity(banner.rates);
     }
 
-    // ✅ Reset immédiat des compteurs selon la rareté obtenue
+    // ✅ Reset immédiat du compteur si Legendary obtenu
     if (rarity === "Legendary") {
+      console.log(`\n🌟 [PULL ${i + 1}] LEGENDARY OBTENU !${isPityTriggered ? ' (via Pity)' : ' (Naturel)'}`);
       currentPullsSinceLegendary = 0;
-      currentPullsSinceEpic = 0;
-      console.log(`🌟 Legendary obtenu ! Reset pity: legendary=${currentPullsSinceLegendary}, epic=${currentPullsSinceEpic}`);
-    } else if (rarity === "Epic") {
-      currentPullsSinceEpic = 0;
-      currentPullsSinceLegendary++;
-      console.log(`💎 Epic obtenu ! Reset epic pity: legendary=${currentPullsSinceLegendary}, epic=${currentPullsSinceEpic}`);
+      console.log(`   └─ Pity RESET → 0/${pityConfig.legendaryPity}`);
     } else {
+      // Incrémenter le compteur pour tous les autres pulls
       currentPullsSinceLegendary++;
-      currentPullsSinceEpic++;
     }
 
     // Sélection d'un héros de cette rareté
@@ -892,11 +892,11 @@ private static async executeBannerPulls(
       if (isFirstLegendaryEver && focusHeroConfig.guaranteed) {
         // 🎯 Premier legendary avec guaranteed: true → 100%
         focusChance = 1.0;
-        console.log(`🎯 [GUARANTEED] Premier Legendary EVER sur ${banner.name} → 100% Focus`);
+        console.log(`   🎯 [GUARANTEED] Premier Legendary EVER → 100% Focus`);
       } else {
         // 🎯 Lire le taux focusChance depuis la config de la bannière
-        focusChance = focusHeroConfig.focusChance ?? 0.5;  // Défaut 50% si non défini
-        console.log(`🎯 [RATE-UP] ${rarity} avec ${(focusChance * 100).toFixed(0)}% chance Focus (depuis config bannière)`);
+        focusChance = focusHeroConfig.focusChance ?? 0.5;
+        console.log(`   🎯 [RATE-UP] ${rarity} avec ${(focusChance * 100).toFixed(0)}% chance Focus`);
       }
       
       if (Math.random() < focusChance) {
@@ -905,7 +905,7 @@ private static async executeBannerPulls(
         selectedHero = availableHeroes.find((h: any) => h._id.toString() === focusHero.heroId);
         isFocus = true;
         
-        console.log(`✨ FOCUS HERO obtenu: ${selectedHero.name} (${rarity}) [chance: ${(focusChance * 100).toFixed(0)}%]`);
+        console.log(`   ✨ FOCUS HERO obtenu: ${selectedHero.name} (${rarity})`);
       } else {
         // ❌ Échec du focus → sélection d'un héros normal (non-focus)
         const nonFocusHeroes = heroesOfRarity.filter((h: any) => 
@@ -919,7 +919,7 @@ private static async executeBannerPulls(
           selectedHero = heroesOfRarity[Math.floor(Math.random() * heroesOfRarity.length)];
         }
         
-        console.log(`🎲 Héros NON-focus tiré: ${selectedHero.name} (${rarity})`);
+        console.log(`   🎲 Héros NON-focus tiré: ${selectedHero.name} (${rarity})`);
       }
     } else {
       // Pas de focus heroes pour cette rareté → sélection normale
@@ -943,7 +943,7 @@ private static async executeBannerPulls(
       const currentFragments = player.fragments.get(selectedHero._id.toString()) || 0;
       player.fragments.set(selectedHero._id.toString(), currentFragments + fragmentsGained);
       
-      console.log(`🔄 Héros dupliqué: ${selectedHero.name} (${rarity}) → +${fragmentsGained} fragments`);
+      console.log(`   🔄 Héros dupliqué: ${selectedHero.name} (${rarity}) → +${fragmentsGained} fragments`);
       
       results.push({
         hero: selectedHero,
@@ -962,7 +962,7 @@ private static async executeBannerPulls(
         equipped: false
       });
       
-      console.log(`✨ NOUVEAU héros: ${selectedHero.name} (${rarity})${isFocus ? ' [FOCUS]' : ''}`);
+      console.log(`   ✨ NOUVEAU héros: ${selectedHero.name} (${rarity})${isFocus ? ' [FOCUS]' : ''}`);
       
       results.push({
         hero: selectedHero,
@@ -985,7 +985,7 @@ private static async executeBannerPulls(
   console.log(`   - Common: ${results.filter(r => r.rarity === 'Common').length}`);
   console.log(`   - Focus Heroes: ${results.filter(r => r.isFocus).length}`);
   console.log(`   - Nouveaux héros: ${results.filter(r => r.isNew).length}`);
-  console.log(`   - Pity final: legendary=${currentPullsSinceLegendary}, epic=${currentPullsSinceEpic}\n`);
+  console.log(`   - Pity final: legendary=${currentPullsSinceLegendary}/${pityConfig.legendaryPity}\n`);
   
   return results;
 }
