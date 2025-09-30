@@ -2,12 +2,12 @@
 
 import express from "express";
 import { WishlistController } from "../controllers/WishlistController";
-import { authenticateToken } from "../middleware/auth";
+import authMiddleware from "../middleware/authMiddleware"; // ✅ CORRECTION
 
 const router = express.Router();
 
 // Toutes les routes nécessitent l'authentification
-router.use(authenticateToken);
+router.use(authMiddleware); // ✅ CORRECTION
 
 /**
  * GET /api/wishlist
