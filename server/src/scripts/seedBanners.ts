@@ -215,7 +215,7 @@ async function createLimitedBanner(focusHeroName: string) {
       multiPull: { gems: 2700 },
       firstPullDiscount: { gems: 200 },
     },
-    pityConfig: { legendaryPity: 90, epicPity: 10, sharedPity: false, resetOnBannerEnd: true },
+    pityConfig: { legendaryPity: 90, sharedPity: false, resetOnBannerEnd: true },
     limits: { maxPullsPerPlayer: -1, maxPullsPerDay: -1, firstTimePullBonus: true },
 
     bonusRewards: {
