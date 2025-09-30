@@ -191,4 +191,6 @@ wishlistSchema.methods.isPityTriggered = function(): boolean {
   return this.pityCounter >= this.pityThreshold;
 };
 
+export type { IWishlistDocument };
+
 export default mongoose.model<IWishlistDocument>("Wishlist", wishlistSchema);
