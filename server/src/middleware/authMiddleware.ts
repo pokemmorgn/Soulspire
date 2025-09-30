@@ -94,7 +94,8 @@ const authMiddleware = (req: Request, res: Response, next: NextFunction): void =
       req.accountId = decoded.accountId;
       req.playerId = decoded.playerId;
       req.serverId = decoded.serverId;
-      req.userId = decoded.accountId; // ✅ CORRECTION : userId = accountId pour compatibilité
+     // req.userId = decoded.accountId; // ✅ CORRECTION : userId = accountId pour compatibilité
+      req.userId = decoded.playerId;
       req.user = decoded;
     }
     // ✅ FORMAT HYBRIDE (pendant la migration) (CORRIGÉ)
@@ -169,7 +170,8 @@ const optionalAuthMiddleware = (req: Request, res: Response, next: NextFunction)
           req.accountId = decoded.accountId;
           req.playerId = decoded.playerId;
           req.serverId = decoded.serverId;
-          req.userId = decoded.accountId; // ✅ CORRECTION : userId = accountId
+         // req.userId = decoded.accountId; // ✅ CORRECTION : userId = accountId
+          req.userId = decoded.playerId;
         } else if (decoded.id) {
           req.userId = decoded.id;
           req.accountId = decoded.accountId || decoded.id; // ✅ CORRECTION
