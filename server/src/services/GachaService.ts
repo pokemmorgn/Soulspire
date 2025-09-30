@@ -959,34 +959,46 @@ export class GachaService {
   }
 
   // Enregistrer l'invocation avec bannière (version enrichie)
-  private static async recordSummon(
-    playerId: string,
-    results: GachaPullResult[],
-    bannerType: string,
-    bannerId: string
-  ) {
-    const summon = new Summon({
-      playerId,
-      heroesObtained: results.map(r => ({
-        heroId: r.hero._id,
-        rarity: r.rarity,
-        // Ajouter métadonnées si le modèle les supporte
-        isNew: r.isNew,
-        isFocus: r.isFocus,
-        fragmentsGained: r.fragmentsGained
-      })),
-      type: bannerType,
-      // Ajouter bannerId si le modèle Summon le supporte
-      bannerId: bannerId
-    });
-    
-    await summon.save();
-    
-    // Enregistrer dans l'historique détaillé (optionnel)
-    this.recordDetailedSummonHistory(playerId, results, bannerId).catch(err => {
-      console.warn("⚠️ Erreur enregistrement historique détaillé:", err);
-    });
+// Enregistrer l'invocation avec bannière (version enrichie)
+private static async recordSummon(
+  playerId: string,
+  results: GachaPullResult[],
+  bannerType: string,
+  bannerId: string
+) {
+  // ✅ CORRECTION: Mapper le type de bannière vers un type Summon valide
+  let summonType: "Standard" | "Limited" | "Ticket";
+  
+  if (bannerType === "Limited" || bannerType === "Event") {
+    summonType = "Limited";
+  } else if (bannerType === "Beginner" || bannerType === "Standard" || bannerType === "Weapon") {
+    summonType = "Standard";
+  } else {
+    summonType = "Standard"; // Par défaut
   }
+  
+  const summon = new Summon({
+    playerId,
+    heroesObtained: results.map(r => ({
+      heroId: r.hero._id,
+      rarity: r.rarity,
+      // Ajouter métadonnées si le modèle les supporte
+      isNew: r.isNew,
+      isFocus: r.isFocus,
+      fragmentsGained: r.fragmentsGained
+    })),
+    type: summonType  // ✅ Utiliser le type mappé
+    // Ajouter bannerId si le modèle Summon le supporte
+    // bannerId: bannerId
+  });
+  
+  await summon.save();
+  
+  // Enregistrer dans l'historique détaillé (optionnel)
+  this.recordDetailedSummonHistory(playerId, results, bannerId).catch(err => {
+    console.warn("⚠️ Erreur enregistrement historique détaillé:", err);
+  });
+}
 
   /**
    * Enregistrer un historique détaillé des invocations (optionnel)
