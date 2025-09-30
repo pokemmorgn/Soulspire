@@ -34,6 +34,7 @@ import arenaRoutes from "./routes/arena";
 import guildRoutes from "./routes/guild";
 import formationsRouter from "./routes/formations";
 import dailyRewardsRoutes from "./routes/dailyRewards";
+import collectionRouter from "./routes/collection";
 // Import des services
 import { ShopService } from "./services/ShopService";
 import { SchedulerService } from "./services/SchedulerService";
@@ -172,6 +173,7 @@ app.use("/api/arena", arenaRoutes);
 app.use("/api/guilds", guildRoutes);
 app.use("/api/formations", formationsRouter);
 app.use("/api/daily-rewards", dailyRewardsRoutes);
+app.use("/api/collection", collectionRouter);
 // Route de santé de l'API
 app.get("/", (req: Request, res: Response) => {
   res.json({
