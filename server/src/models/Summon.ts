@@ -1,9 +1,9 @@
-import mongoose, { Document, Schema } from "mongoose";
+import mongoose, { Document, Schema, Model } from "mongoose";
 import { ISummon } from "../types/index";
 
 interface ISummonDocument extends Document {
   playerId: string;
-  bannerId?: string; // ✅ NOUVEAU : Identifier la bannière utilisée
+  bannerId?: string; // ✅ NOUVEAU
   heroesObtained: {
     heroId: string;
     rarity: string;
@@ -16,15 +16,23 @@ interface ISummonDocument extends Document {
   getRarityDistribution(): any;
 }
 
-const summonSchema = new Schema<ISummonDocument>({
+// ✅ AJOUT : Interface pour les méthodes statiques
+interface ISummonModel extends Model<ISummonDocument> {
+  getPlayerSummonHistory(playerId: string, limit?: number): any;
+  getPlayerSummonStats(playerId: string): any;
+  getTotalSummons(playerId: string): any;
+  hasPlayerPulledOnBanner(playerId: string, bannerId: string): Promise<boolean>;
+}
+
+const summonSchema = new Schema<ISummonDocument, ISummonModel>({
   playerId: { 
     type: String,
     required: true
   },
   bannerId: { // ✅ NOUVEAU CHAMP
     type: String,
-    required: false, // Optionnel pour compatibilité avec anciennes données
-    index: true // Index pour optimiser les requêtes par bannière
+    required: false,
+    index: true
   },
   heroesObtained: [{
     heroId: { 
@@ -49,7 +57,7 @@ const summonSchema = new Schema<ISummonDocument>({
 
 // Index pour optimiser les requêtes
 summonSchema.index({ playerId: 1 });
-summonSchema.index({ playerId: 1, bannerId: 1 }); // ✅ NOUVEAU : Index composite pour first pull check
+summonSchema.index({ playerId: 1, bannerId: 1 }); // ✅ NOUVEAU
 summonSchema.index({ type: 1 });
 summonSchema.index({ createdAt: -1 });
 
@@ -122,4 +130,4 @@ summonSchema.methods.getRarityDistribution = function() {
   return distribution;
 };
 
-export default mongoose.model<ISummonDocument>("Summon", summonSchema);
+export default mongoose.model<ISummonDocument, ISummonModel>("Summon", summonSchema);
