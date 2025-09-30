@@ -468,17 +468,19 @@ export class DailyRewardsService {
   ): Promise<void> {
     try {
       await Promise.all([
+        // Mission: comptabiliser comme connexion quotidienne
         MissionService.updateProgress(
           playerId,
           serverId,
-          "daily_login",
+          "login", // Type de mission valide
           1,
-          { day: claim.day, streak: claim.streakBonus }
+          { day: claim.day, streak: claim.streakBonus, type: "daily_reward" }
         ),
+        // Événement: comptabiliser comme activité de collecte
         EventService.updatePlayerProgress(
           playerId,
           serverId,
-          "daily_activities",
+          "login_days", // Type d'événement valide
           1,
           { type: "daily_reward", day: claim.day }
         )
