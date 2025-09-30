@@ -8,7 +8,7 @@ const SERVER = "S1";
 
 // ✅ Configuration du pity pour la bannière Saryel (SANS Epic Pity)
 const PITY_CONFIG = {
-  legendaryPity: 90
+  legendaryPity: 50
 };
 
 async function main() {
