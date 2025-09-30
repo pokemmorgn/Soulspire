@@ -315,13 +315,13 @@ export class BattleSetupService {
 
       return {
         player: {
-          username: player.displayName || player.username,
+          displayName: player.displayName,
           level: player.level,
           power: playerPower,
           formation: playerFormation.formation
         },
         opponent: {
-          username: opponent.displayName || opponent.username,
+          displayName: opponent.displayName,
           level: opponent.level,
           power: opponentPower,
           formation: opponentFormation.formation
