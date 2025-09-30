@@ -6,10 +6,9 @@ const USERNAME = "gacha_tester";
 const PASSWORD = "test123456";
 const SERVER = "S1";
 
-// Configuration du pity pour la bannière Saryel
+// ✅ Configuration du pity pour la bannière Saryel (SANS Epic Pity)
 const PITY_CONFIG = {
-  legendaryPity: 90,
-  epicPity: 10
+  legendaryPity: 90
 };
 
 async function main() {
@@ -32,20 +31,21 @@ async function main() {
     let totalPulls = 0;
     let legendaryCount = 0;
     let epicCount = 0;
+    let rareCount = 0;
+    let commonCount = 0;
     let saryelCount = 0;
     let gotSaryel = false;
     const legendariesObtained: string[] = [];
     
-    // ✅ Tracking du Pity
+    // ✅ Tracking du Pity (UNIQUEMENT Legendary)
     let pityStatus = {
       legendaryPulls: 0,
-      epicPulls: 0,
-      legendaryPityTriggered: 0,
-      epicPityTriggered: 0
+      legendaryPityTriggered: 0
     };
 
     console.log("🎰 ════════════════════════════════════════");
     console.log("   SIMULATION DE 200 PULLS - BANNIÈRE SARYEL");
+    console.log("   Style: AFK Arena (Legendary Pity SEULEMENT)");
     console.log("════════════════════════════════════════\n");
 
     // 🔁 20 multi pulls de 10
@@ -58,7 +58,6 @@ async function main() {
       // Afficher l'état du pity AVANT le pull
       console.log(`📊 État Pity AVANT ce pull:`);
       console.log(`   🌟 Legendary: ${pityStatus.legendaryPulls}/${PITY_CONFIG.legendaryPity} (${PITY_CONFIG.legendaryPity - pityStatus.legendaryPulls} restants)`);
-      console.log(`   💎 Epic: ${pityStatus.epicPulls}/${PITY_CONFIG.epicPity} (${PITY_CONFIG.epicPity - pityStatus.epicPulls} restants)`);
 
       const pullRes = await fetch(`${API_URL}/gacha/pull`, {
         method: "POST",
@@ -84,18 +83,14 @@ async function main() {
       for (let pullIndex = 0; pullIndex < results.length; pullIndex++) {
         const r = results[pullIndex];
         
-        // Incrémenter les compteurs pity
+        // Incrémenter le compteur pity legendary
         pityStatus.legendaryPulls++;
-        pityStatus.epicPulls++;
         
-        // Vérifier si un pity va se déclencher
+        // Vérifier si le pity legendary va se déclencher
         const willTriggerLegendaryPity = pityStatus.legendaryPulls >= PITY_CONFIG.legendaryPity;
-        const willTriggerEpicPity = pityStatus.epicPulls >= PITY_CONFIG.epicPity;
         
         if (willTriggerLegendaryPity) {
           console.log(`   🔔 [Pull ${pullIndex + 1}/10] PITY LEGENDARY se déclenche !`);
-        } else if (willTriggerEpicPity) {
-          console.log(`   🔔 [Pull ${pullIndex + 1}/10] PITY EPIC se déclenche !`);
         }
         
         if (r.rarity === "Legendary") {
@@ -109,12 +104,11 @@ async function main() {
             pityStatus.legendaryPityTriggered++;
           }
           
-          console.log(`   🌟 [Pull ${pullIndex + 1}/10] LEGENDARY: ${heroName}${r.isFocus ? ' [FOCUS ✨]' : ''}${wasPity ? ' (via PITY 🔔)' : ''}`);
+          console.log(`   🌟 [Pull ${pullIndex + 1}/10] LEGENDARY: ${heroName}${r.isFocus ? ' [FOCUS ✨]' : ''}${wasPity ? ' (via PITY 🔔)' : ' (Naturel ✨)'}`);
           
           // Reset pity legendary
           pityStatus.legendaryPulls = 0;
-          pityStatus.epicPulls = 0;
-          console.log(`      └─ Pity RESET → Legendary: 0/${PITY_CONFIG.legendaryPity}, Epic: 0/${PITY_CONFIG.epicPity}`);
+          console.log(`      └─ Pity RESET → Legendary: 0/${PITY_CONFIG.legendaryPity}`);
           
           if (heroName === "Saryel") {
             saryelCount++;
@@ -126,31 +120,30 @@ async function main() {
           
         } else if (r.rarity === "Epic") {
           epicCount++;
-          
-          const wasPity = pityStatus.epicPulls >= PITY_CONFIG.epicPity;
-          if (wasPity) {
-            pityStatus.epicPityTriggered++;
-          }
-          
           const heroName = r.name || r.hero?.name || "Unknown";
-          console.log(`   💎 [Pull ${pullIndex + 1}/10] EPIC: ${heroName}${wasPity ? ' (via PITY 🔔)' : ''}`);
-          
-          // Reset pity epic seulement
-          pityStatus.epicPulls = 0;
-          pityStatus.legendaryPulls++;
-          console.log(`      └─ Epic Pity RESET → Epic: 0/${PITY_CONFIG.epicPity}, Legendary: ${pityStatus.legendaryPulls}/${PITY_CONFIG.legendaryPity}`);
+          // ✅ Log simplifié (pas de pity Epic)
+          if (pullIndex < 3 || pullIndex >= 7) { // Afficher seulement quelques epics pour ne pas polluer
+            console.log(`   💎 [Pull ${pullIndex + 1}/10] EPIC: ${heroName}`);
+          }
+        } else if (r.rarity === "Rare") {
+          rareCount++;
+        } else if (r.rarity === "Common") {
+          commonCount++;
         }
+      }
+      
+      // ✅ Résumé compact du pull si pas de legendary
+      if (results.filter((r: any) => r.rarity === "Legendary").length === 0) {
+        console.log(`   📊 Résumé: ${results.filter((r: any) => r.rarity === "Epic").length} Epic, ${results.filter((r: any) => r.rarity === "Rare").length} Rare, ${results.filter((r: any) => r.rarity === "Common").length} Common`);
       }
       
       // ✅ Afficher l'état du pity APRÈS le pull (depuis l'API si disponible)
       if (apiPityStatus) {
         console.log(`\n📊 État Pity APRÈS ce pull (depuis API):`);
         console.log(`   🌟 Legendary: ${apiPityStatus.pullsSinceLegendary}/${PITY_CONFIG.legendaryPity} (${apiPityStatus.legendaryPityIn} restants)`);
-        console.log(`   💎 Epic: ${apiPityStatus.pullsSinceEpic}/${PITY_CONFIG.epicPity} (${apiPityStatus.epicPityIn} restants)`);
         
         // Synchroniser avec le tracking local
         pityStatus.legendaryPulls = apiPityStatus.pullsSinceLegendary;
-        pityStatus.epicPulls = apiPityStatus.pullsSinceEpic;
       }
 
       // pause pour éviter rate limit
@@ -170,45 +163,76 @@ async function main() {
       console.log(`   └─ Taux de focus effectif: ${((saryelCount / legendaryCount) * 100).toFixed(1)}%`);
     } else {
       console.log("❌ SARYEL NON OBTENU");
-      console.log("   ⚠️  Statistiquement TRÈS improbable (0.39% de chance)");
+      console.log("   ⚠️  Statistiquement TRÈS improbable avec guaranteed = true");
     }
     
     console.log(`\n📊 Statistiques Générales:`);
     console.log(`   • Total pulls: ${totalPulls}`);
     console.log(`   • Legendary obtenus: ${legendaryCount} (${((legendaryCount / totalPulls) * 100).toFixed(2)}%)`);
     console.log(`   • Epic obtenus: ${epicCount} (${((epicCount / totalPulls) * 100).toFixed(2)}%)`);
+    console.log(`   • Rare obtenus: ${rareCount} (${((rareCount / totalPulls) * 100).toFixed(2)}%)`);
+    console.log(`   • Common obtenus: ${commonCount} (${((commonCount / totalPulls) * 100).toFixed(2)}%)`);
     
     console.log(`\n🔔 Statistiques Pity:`);
     console.log(`   • Pity Legendary déclenché: ${pityStatus.legendaryPityTriggered}× sur ${legendaryCount} legendaries`);
-    console.log(`   • Pity Epic déclenché: ${pityStatus.epicPityTriggered}× sur ${epicCount} epics`);
     console.log(`   • Legendary naturels: ${legendaryCount - pityStatus.legendaryPityTriggered} (${(((legendaryCount - pityStatus.legendaryPityTriggered) / totalPulls) * 100).toFixed(2)}% taux réel)`);
+    
+    // ✅ Calcul du taux théorique attendu
+    const expectedLegendaryRate = 2.0; // 2% configuré
+    const expectedLegendaries = (totalPulls * expectedLegendaryRate) / 100;
+    console.log(`   • Legendary attendus (théorique): ${expectedLegendaries.toFixed(1)} (${expectedLegendaryRate}% taux)`);
     
     console.log(`\n📈 État Pity Final:`);
     console.log(`   • Pulls depuis dernier Legendary: ${pityStatus.legendaryPulls}/${PITY_CONFIG.legendaryPity}`);
     console.log(`   • Pulls jusqu'au prochain Legendary garanti: ${PITY_CONFIG.legendaryPity - pityStatus.legendaryPulls}`);
-    console.log(`   • Pulls depuis dernier Epic: ${pityStatus.epicPulls}/${PITY_CONFIG.epicPity}`);
-    console.log(`   • Pulls jusqu'au prochain Epic garanti: ${PITY_CONFIG.epicPity - pityStatus.epicPulls}`);
+    
+    if (pityStatus.legendaryPulls >= 70) {
+      console.log(`   ⚠️  ATTENTION: Proche du pity ! (${pityStatus.legendaryPulls}/90)`);
+    }
     
     if (legendariesObtained.length > 0) {
       console.log(`\n📜 Liste des Legendaries obtenus:`);
       legendariesObtained.forEach((name, idx) => {
-        console.log(`   ${idx + 1}. ${name}${name === 'Saryel' ? ' ⭐' : ''}`);
+        const isSaryel = name === 'Saryel';
+        console.log(`   ${idx + 1}. ${name}${isSaryel ? ' ⭐' : ''}`);
       });
     }
     
     console.log("\n════════════════════════════════════════\n");
     
-    // ✅ Analyse qualitative
+    // ✅ Analyse qualitative détaillée
     if (!gotSaryel && legendaryCount > 0) {
       console.log("🔧 DIAGNOSTIC:");
-      console.log("   Le système de focus ne fonctionne pas correctement.");
-      console.log("   Vérifiez les logs serveur.\n");
-    } else if (saryelCount === legendaryCount) {
-      console.log("✅ PARFAIT: Tous les legendaries sont Saryel (focus 100%)!\n");
+      console.log("   ❌ Le système de focus ne fonctionne PAS correctement.");
+      console.log("   Le premier Legendary devrait TOUJOURS être Saryel (guaranteed: true).");
+      console.log("   Vérifiez hasPlayerPulledLegendaryOnBanner() dans GachaService.\n");
+    } else if (saryelCount === legendaryCount && legendaryCount > 1) {
+      console.log("✅ PARFAIT: Tous les legendaries sont Saryel (focus 100%)!");
+      console.log("   Le système fonctionne idéalement.\n");
+    } else if (legendaryCount === 1 && saryelCount === 1) {
+      console.log("✅ BON: Premier Legendary est Saryel (guaranteed fonctionne).");
+      console.log("   Pas assez de données pour tester le rate-up à 75%.\n");
     } else if (saryelCount / legendaryCount >= 0.6) {
-      console.log("✅ BON: Le système de focus fonctionne correctement (~75% attendu).\n");
+      console.log("✅ BON: Le système de focus fonctionne correctement.");
+      console.log(`   Taux observé: ${((saryelCount / legendaryCount) * 100).toFixed(1)}% (attendu: ~75%).\n`);
     } else if (saryelCount / legendaryCount >= 0.4) {
-      console.log("⚠️  MOYEN: Taux de focus un peu bas, mais statistiquement possible.\n");
+      console.log("⚠️  MOYEN: Taux de focus un peu bas.");
+      console.log(`   Taux observé: ${((saryelCount / legendaryCount) * 100).toFixed(1)}% (attendu: ~75%).`);
+      console.log("   Statistiquement possible avec petit échantillon, mais à surveiller.\n");
+    } else {
+      console.log("❌ PROBLÈME: Taux de focus trop bas !");
+      console.log(`   Taux observé: ${((saryelCount / legendaryCount) * 100).toFixed(1)}% (attendu: ~75%).`);
+      console.log("   Vérifiez focusChance dans la bannière.\n");
+    }
+    
+    // ✅ Analyse du taux de legendary
+    const legendaryRate = (legendaryCount / totalPulls) * 100;
+    if (legendaryRate < 1.5) {
+      console.log("⚠️  TAUX LEGENDARY BAS: Vous avez eu moins de chance que prévu.");
+    } else if (legendaryRate > 2.5) {
+      console.log("🍀 CHANCEUX: Vous avez eu plus de Legendary que le taux normal !");
+    } else {
+      console.log("✅ Taux de Legendary conforme aux attentes (~2%).");
     }
     
   } catch (err: any) {
