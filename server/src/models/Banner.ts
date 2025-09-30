@@ -347,7 +347,7 @@ const bannerSchema = new Schema<IBannerDocument>({
   
   pityConfig: {
     legendaryPity: { type: Number, min: 1, max: 200 },
-    epicPity: { type: Number, min: 1, max: 50 },
+    epicPity: { type: Number, min: 0, max: 50 },
     sharedPity: { type: Boolean, default: false },
     resetOnBannerEnd: { type: Boolean, default: false }
   },
