@@ -904,7 +904,7 @@ private static async executeBannerPulls(
       }
       // Roll normal
       else {
-        rarity = this.rollRarity(banner.rates);
+       rarity = this.rollRarity(banner.rates as any);
       }
 
       console.log(`   ├─ Rareté tirée: ${rarity}`);
@@ -1378,7 +1378,7 @@ public static async getBannerRates(bannerId: string, serverId: string) {
     return { pullsSinceLegendary, pullsSinceEpic };
   }
 
-  private static rollRarity(rates: Record<string, number>): string {
+  private static rollRarity(rates: any): string {
     const rand = Math.random() * 100;
     let cumulative = 0;
     
