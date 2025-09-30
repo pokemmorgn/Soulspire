@@ -19,6 +19,12 @@ async function getHeroByName(name: string) {
   return Hero.findOne({ name }).select("_id name rarity role element").lean();
 }
 
+// Tirage aléatoire de N héros
+function pickRandom<T>(array: T[], count: number): T[] {
+  const shuffled = [...array].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, Math.min(count, array.length));
+}
+
 // ============================================================
 // 1. BEGINNER BANNER - Pour nouveaux joueurs
 // ============================================================
@@ -30,15 +36,19 @@ async function createBeginnerBanner() {
   const commons = await getHeroesByRarity("Common");
   const rares = await getHeroesByRarity("Rare");
   const epics = await getHeroesByRarity("Epic");
-  const aureon = await getHeroByName("Aureon"); // focus Legendary beginner
+  const legendaries = await getHeroesByRarity("Legendary");
 
-  // Sélectionner quelques héros équilibrés
-  const rareSelection = rares.filter((h) =>
-    ["Ignar", "Kaelen", "Nereida", "Lyaria", "Ignara"].includes(h.name)
-  );
-  const epicSelection = epics.filter((h) =>
-    ["Zephyra", "Thalrik", "Glacius"].includes(h.name)
-  );
+  // Sélections dynamiques
+  const rareSelection = pickRandom(rares, 5);
+  const epicSelection = pickRandom(epics, 3);
+  const legendarySelection = pickRandom(legendaries, 1);
+
+  const poolHeroes = [
+    ...commons.map((h) => h._id),
+    ...rareSelection.map((h) => h._id),
+    ...epicSelection.map((h) => h._id),
+    ...legendarySelection.map((h) => h._id),
+  ];
 
   return {
     bannerId: "beginner_blessing_001",
@@ -51,10 +61,7 @@ async function createBeginnerBanner() {
     endTime: tenYearsLater,
     timezone: "UTC",
 
-    serverConfig: {
-      allowedServers: ["ALL"],
-      region: ["GLOBAL"],
-    },
+    serverConfig: { allowedServers: ["ALL"], region: ["GLOBAL"] },
 
     isActive: true,
     isVisible: true,
@@ -62,12 +69,7 @@ async function createBeginnerBanner() {
 
     heroPool: {
       includeAll: false,
-      specificHeroes: [
-        ...commons.map((h) => h._id),
-        ...rareSelection.map((h) => h._id),
-        ...epicSelection.map((h) => h._id),
-        aureon?._id,
-      ].filter(Boolean),
+      specificHeroes: poolHeroes,
       excludedHeroes: [],
       rarityFilters: [],
     },
@@ -217,13 +219,13 @@ function createStandardBanner() {
 }
 
 // ============================================================
-// 3. LIMITED BANNER - Focus Aureon
+// 3. LIMITED BANNER - Focus sur 1 Legendary
 // ============================================================
 async function createLimitedBanner() {
   const now = new Date();
   const twoWeeksLater = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
 
-  const aureon = await getHeroByName("Aureon");
+  const aureon = await getHeroByName("Aureon"); // HERO FOCUS
 
   return {
     bannerId: "divine_guardian_rateup_001",
