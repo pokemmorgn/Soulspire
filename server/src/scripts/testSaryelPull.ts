@@ -1,5 +1,3 @@
-import axios from "axios";
-
 const API_URL = "http://localhost:3000/api";
 const BANNER_ID = "limited_saryel_rateup";
 
@@ -11,12 +9,18 @@ const SERVER = "S1";
 async function main() {
   try {
     // 🔑 Login → récupérer token
-    const loginRes = await axios.post(`${API_URL}/auth/login`, {
-      username: USERNAME,
-      password: PASSWORD,
-      serverId: SERVER,
+    const loginRes = await fetch(`${API_URL}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: USERNAME,
+        password: PASSWORD,
+        serverId: SERVER,
+      }),
     });
-    const token = loginRes.data.accessToken;
+
+    const loginData = await loginRes.json();
+    const token = loginData.accessToken;
     console.log("✅ Token récupéré\n");
 
     let totalPulls = 0;
@@ -28,13 +32,20 @@ async function main() {
       totalPulls += 10;
       console.log(`🎰 Multi-pull ${i} (${totalPulls} pulls cumulés)...`);
 
-      const pullRes = await axios.post(
-        `${API_URL}/gacha/pull`,
-        { bannerId: BANNER_ID, count: 10 },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const pullRes = await fetch(`${API_URL}/gacha/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          bannerId: BANNER_ID,
+          count: 10,
+        }),
+      });
 
-      const results = pullRes.data.results || [];
+      const data = await pullRes.json();
+      const results = data.results || [];
 
       for (const r of results) {
         if (r.rarity === "Legendary") {
@@ -49,7 +60,7 @@ async function main() {
 
       if (gotSaryel) break;
 
-      // pause pour éviter le rate limit
+      // pause pour éviter rate limit
       await new Promise((res) => setTimeout(res, 1500));
     }
 
