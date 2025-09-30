@@ -4,6 +4,7 @@ import authMiddleware, { optionalAuthMiddleware } from "../middleware/authMiddle
 import { requireFeature } from "../middleware/featureMiddleware";
 import { GachaService } from "../services/GachaService";
 import { WebSocketService } from "../services/WebSocketService";
+import { CollectionService } from "../services/CollectionService"; 
 import Player from "../models/Player"; 
 import Hero from "../models/Hero";  
 const router = express.Router();
@@ -256,24 +257,20 @@ router.post("/pull", authMiddleware, requireFeature("gacha"), async (req: Reques
       // Notification nouveaux héros pour la collection
       const newHeroes = result.results.filter(r => r.isNew);
       for (const newHero of newHeroes) {
-        // ✅ Récupérer la vraie progression de collection
-        const player = await Player.findById(req.userId);
-        const totalHeroes = await Hero.countDocuments();
-        const ownedHeroes = player?.heroes.length || 0;
-        const completionPercentage = totalHeroes > 0 ? Math.round((ownedHeroes / totalHeroes) * 100) : 0;
+        // ✅ Utiliser le service avec cache
+        const collectionProgress = await CollectionService.getPlayerCollectionProgress(req.userId!);
       
         WebSocketService.notifyGachaNewHeroObtained(req.userId!, {
           hero: newHero.hero,
           bannerId: bannerId,
           bannerName: result.bannerInfo?.name || 'Unknown Banner',
-          collectionProgress: {
-            totalHeroes,           // ✅ Valeur dynamique
-            ownedHeroes,           // ✅ Valeur dynamique
-            completionPercentage   // ✅ Valeur calculée
-          }
+          collectionProgress
         });
       
-        console.log(`📚 New hero notification sent: ${newHero.hero.name} for ${req.userId} (Collection: ${ownedHeroes}/${totalHeroes})`);
+        console.log(`📚 New hero notification sent: ${newHero.hero.name} for ${req.userId} (Collection: ${collectionProgress.ownedHeroes}/${collectionProgress.totalHeroes})`);
+        
+        // ✅ Invalider le cache après l'ajout d'un héros
+        CollectionService.invalidateCache(req.userId!);
       }
 
       // Notification lucky streak si applicable
@@ -700,4 +697,5 @@ router.get("/info", async (req: Request, res: Response): Promise<void> => {
 });
 
 export default router;
+
 
