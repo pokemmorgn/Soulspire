@@ -1209,50 +1209,62 @@ private static async recordSummon(
     }
   }
 
-  public static async getBannerRates(bannerId: string, serverId: string) {
-    try {
-      const banner = await Banner.findOne({
-        bannerId,
-        $or: [
-          { "serverConfig.allowedServers": serverId },
-          { "serverConfig.allowedServers": "ALL" }
-        ]
-      });
+public static async getBannerRates(bannerId: string, serverId: string) {
+  try {
+    const banner = await Banner.findOne({
+      bannerId,
+      $or: [
+        { "serverConfig.allowedServers": serverId },
+        { "serverConfig.allowedServers": "ALL" }
+      ]
+    });
 
-      if (!banner) {
-        throw new Error("Banner not found");
-      }
-
-      return {
-        success: true,
-        bannerId: banner.bannerId,
-        name: banner.name,
-        rates: banner.rates,
-        costs: banner.costs,
-        pity: banner.pityConfig || {
-          legendaryPity: FALLBACK_CONFIG.pity.legendary,
-          epicPity: FALLBACK_CONFIG.pity.epic
-        },
-        focusHeroes: banner.focusHeroes,
-        info: {
-          guarantees: {
-            epic: `1 Epic minimum every ${banner.pityConfig?.epicPity || FALLBACK_CONFIG.pity.epic} pulls`,
-            legendary: `1 Legendary guaranteed after ${banner.pityConfig?.legendaryPity || FALLBACK_CONFIG.pity.legendary} pulls without one`
-          },
-          multiPullBonus: banner.costs.multiPull.gems && banner.costs.singlePull.gems ? 
-            `10x pull discount available` : null,
-          // Nouvelles informations
-          focusRateUp: banner.rates.focusRateUp ? 
-            `+${banner.rates.focusRateUp}% chance for focus heroes` : null,
-          specialMechanics: this.getBannerSpecialMechanics(banner)
-        }
-      };
-
-    } catch (error: any) {
-      console.error("❌ Erreur getBannerRates:", error);
-      throw error;
+    if (!banner) {
+      throw new Error("Banner not found");
     }
+
+    // ✅ Calculer les informations de focus depuis focusHeroes
+    let focusInfo: string | null = null;
+    if (banner.focusHeroes && banner.focusHeroes.length > 0) {
+      const focusHero = banner.focusHeroes[0];
+      if (focusHero.focusChance) {
+        focusInfo = `${(focusHero.focusChance * 100).toFixed(0)}% chance for focus heroes`;
+      }
+      if (focusHero.guaranteed) {
+        focusInfo = focusInfo 
+          ? `${focusInfo} (first legendary guaranteed)` 
+          : 'First legendary guaranteed as focus hero';
+      }
+    }
+
+    return {
+      success: true,
+      bannerId: banner.bannerId,
+      name: banner.name,
+      rates: banner.rates,
+      costs: banner.costs,
+      pity: banner.pityConfig || {
+        legendaryPity: FALLBACK_CONFIG.pity.legendary,
+        epicPity: FALLBACK_CONFIG.pity.epic
+      },
+      focusHeroes: banner.focusHeroes,
+      info: {
+        guarantees: {
+          epic: `1 Epic minimum every ${banner.pityConfig?.epicPity || FALLBACK_CONFIG.pity.epic} pulls`,
+          legendary: `1 Legendary guaranteed after ${banner.pityConfig?.legendaryPity || FALLBACK_CONFIG.pity.legendary} pulls without one`
+        },
+        multiPullBonus: banner.costs.multiPull.gems && banner.costs.singlePull.gems ? 
+          `10x pull discount available` : null,
+        focusRateUp: focusInfo,  // ✅ Utilise la nouvelle logique
+        specialMechanics: this.getBannerSpecialMechanics(banner)
+      }
+    };
+
+  } catch (error: any) {
+    console.error("❌ Erreur getBannerRates:", error);
+    throw error;
   }
+}
 
   public static getDropRates() {
     return {
