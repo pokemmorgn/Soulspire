@@ -10,6 +10,7 @@ import { WebSocketGacha } from './websocket/WebSocketGacha';
 import { WebSocketShop } from './websocket/WebSocketShop';
 import { WebSocketGuild } from './websocket/WebSocketGuild';
 import { WebSocketForge } from './websocket/WebSocketForge';
+import { WebSocketDailyRewards } from './websocket/WebSocketDailyRewards';
 /**
  * SERVICE WEBSOCKET GLOBAL
  * Point d'entrée principal qui délègue aux modules spécialisés
@@ -78,6 +79,7 @@ export class WebSocketService {
     WebSocketShop.initialize(this.io);
     WebSocketGuild.initialize(this.io);
     WebSocketForge.initialize(this.io);
+    WebSocketDailyRewards.initialize(this.io);
     console.log('✅ WebSocket Server initialized with specialized modules');
   }
 
@@ -243,6 +245,16 @@ export class WebSocketService {
     socket.on('forge:leave_room', () => {
       socket.leave(`forge:${socket.serverId}`);
       console.log(`🚪 ${socket.playerName} left Forge room`);
+    });
+    // Événements Daily Rewards
+    socket.on('daily_rewards:subscribe', () => {
+      socket.join(`daily_rewards:${socket.serverId}`);
+      console.log(`🎁 ${socket.playerName} subscribed to Daily Rewards`);
+    });
+    
+    socket.on('daily_rewards:unsubscribe', () => {
+      socket.leave(`daily_rewards:${socket.serverId}`);
+      console.log(`🚪 ${socket.playerName} unsubscribed from Daily Rewards`);
     });
     // Événements génériques
     socket.on('ping', () => {
@@ -588,6 +600,70 @@ public static notifyGachaResourceOptimization(playerId: string, optimizationData
   WebSocketGacha.notifyResourceOptimization(playerId, optimizationData);
 }
 
+  // ===== MÉTHODES DAILY REWARDS (DÉLÉGATION) =====
+
+  /**
+   * Notifier qu'une récompense quotidienne a été réclamée
+   */
+  public static notifyDailyRewardClaimed(playerId: string, claimData: any): void {
+    WebSocketDailyRewards.notifyRewardClaimed(playerId, claimData);
+  }
+
+  /**
+   * Notifier qu'une nouvelle récompense est disponible
+   */
+  public static notifyDailyRewardAvailable(playerId: string, availableData: any): void {
+    WebSocketDailyRewards.notifyRewardAvailable(playerId, availableData);
+  }
+
+  /**
+   * Notifier qu'un milestone de streak a été atteint
+   */
+  public static notifyDailyRewardMilestone(playerId: string, milestoneData: any): void {
+    WebSocketDailyRewards.notifyStreakMilestone(playerId, milestoneData);
+  }
+
+  /**
+   * Notifier qu'un streak a été reset
+   */
+  public static notifyDailyRewardStreakReset(playerId: string, resetData: any): void {
+    WebSocketDailyRewards.notifyStreakReset(playerId, resetData);
+  }
+
+  /**
+   * Notifier un rappel avant expiration
+   */
+  public static notifyDailyRewardReminder(playerId: string, reminderData: any): void {
+    WebSocketDailyRewards.notifyRewardReminder(playerId, reminderData);
+  }
+
+  /**
+   * Notifier un événement spécial (broadcast serveur)
+   */
+  public static notifyDailyRewardSpecialEvent(serverId: string, eventData: any): void {
+    WebSocketDailyRewards.notifySpecialEvent(serverId, eventData);
+  }
+
+  /**
+   * Notifier mise à jour de config (broadcast serveur)
+   */
+  public static notifyDailyRewardConfigUpdate(serverId: string, updateData: any): void {
+    WebSocketDailyRewards.notifyConfigUpdate(serverId, updateData);
+  }
+
+  /**
+   * Notifier le statut actuel
+   */
+  public static notifyDailyRewardStatus(playerId: string, statusData: any): void {
+    WebSocketDailyRewards.notifyCurrentStatus(playerId, statusData);
+  }
+
+  /**
+   * Notifier mise à jour du leaderboard (broadcast serveur)
+   */
+  public static notifyDailyRewardLeaderboardUpdate(serverId: string, leaderboardData: any): void {
+    WebSocketDailyRewards.notifyLeaderboardUpdate(serverId, leaderboardData);
+  }
   // ===== MÉTHODES SHOP (DÉLÉGATION) =====
 
 /**
@@ -880,8 +956,8 @@ public static leaveGuildRoom(playerId: string, guildId: string): void {
         gacha: WebSocketGacha.isAvailable(),
         shop: WebSocketShop.isAvailable(),
         guild: WebSocketGuild.isAvailable(),
-        forge: WebSocketForge.isAvailable()
-        // TODO: Ajouter d'autres modules
+        forge: WebSocketForge.isAvailable(),
+        dailyRewards: WebSocketDailyRewards.isAvailable()
       }
     };
   }
