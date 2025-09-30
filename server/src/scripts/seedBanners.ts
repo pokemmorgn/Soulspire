@@ -133,7 +133,7 @@ function createStandardBanner() {
       multiPull: { gems: 2700 },
       firstPullDiscount: { gems: 150 },
     },
-    pityConfig: { legendaryPity: 90, epicPity: 10, sharedPity: false, resetOnBannerEnd: false },
+    pityConfig: { legendaryPity: 90, sharedPity: false, resetOnBannerEnd: false },
     limits: { maxPullsPerPlayer: -1, maxPullsPerDay: -1, firstTimePullBonus: true },
 
     bonusRewards: {
