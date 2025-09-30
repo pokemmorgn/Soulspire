@@ -149,7 +149,7 @@ async function testPreview(playerId: string) {
           console.log(`   • Avec bonus Streak: ${day.streakBonusValue}`);
         }
         console.log(`   • Récompenses: ${day.rewards.length} items`);
-        if (index < preview.preview.length - 1) console.log("");
+        if (preview.preview && index < preview.preview.length - 1) console.log("");
       });
     } else {
       console.log("❌ Erreur preview:", preview.error);
