@@ -100,6 +100,7 @@ const createTestPlayer = async (config: TestPlayerConfig = DEFAULT_TEST_PLAYER):
     const player = new Player({
       accountId: account._id.toString(),
       username: config.username,
+      displayName: config.username,
       serverId: config.serverId,
       level: config.level,
       experience: 0,
