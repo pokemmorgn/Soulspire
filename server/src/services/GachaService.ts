@@ -743,51 +743,69 @@ export class GachaService {
   // === MÉTHODES EXISTANTES MISES À JOUR ===
 
   // Vérifier et déduire le coût selon la bannière
-  private static async checkAndDeductBannerCost(
-    player: any,
-    banner: any,
-    count: number
-  ): Promise<{ success: boolean; cost?: { gems?: number; tickets?: number; specialCurrency?: number }; error?: string }> {
-    
-    const costConfig = count === 1 ? banner.costs.singlePull : banner.costs.multiPull;
-    let totalCost: { gems?: number; tickets?: number; specialCurrency?: number } = {};
-    
-    // Déterminer le coût réel
-    if (costConfig.gems) totalCost.gems = costConfig.gems;
-    if (costConfig.tickets) totalCost.tickets = costConfig.tickets;
-    if (costConfig.specialCurrency) totalCost.specialCurrency = costConfig.specialCurrency;
-    
-    // Vérifier les ressources disponibles
-    if (totalCost.gems && player.gems < totalCost.gems) {
-      return {
-        success: false,
-        error: `Insufficient gems. Required: ${totalCost.gems}, Available: ${player.gems}`
-      };
-    }
-    
-    if (totalCost.tickets && player.tickets < totalCost.tickets) {
-      return {
-        success: false,
-        error: `Insufficient tickets. Required: ${totalCost.tickets}, Available: ${player.tickets}`
-      };
-    }
-    
-    // TODO: Gérer specialCurrency quand implémenté
-    if (totalCost.specialCurrency) {
-      console.warn("⚠️ Special currency not implemented yet");
-    }
-
-    // Déduire le coût
-    if (totalCost.gems) player.gems -= totalCost.gems;
-    if (totalCost.tickets) player.tickets -= totalCost.tickets;
-    
-    await player.save();
-
+// Vérifier et déduire le coût selon la bannière
+private static async checkAndDeductBannerCost(
+  player: any,
+  banner: any,
+  count: number
+): Promise<{ success: boolean; cost?: { gems?: number; tickets?: number; specialCurrency?: number }; error?: string }> {
+  
+  // ✅ ÉTAPE 1 : Vérifier si c'est le premier pull du joueur sur cette bannière
+  const isFirstPull = await Summon.hasPlayerPulledOnBanner(player._id.toString(), banner.bannerId);
+  
+  // ✅ ÉTAPE 2 : Déterminer le coût à appliquer
+  let costConfig;
+  
+  if (count === 1 && !isFirstPull && banner.costs.firstPullDiscount) {
+    // 🎁 Premier pull avec réduction
+    costConfig = banner.costs.firstPullDiscount;
+    console.log(`🎁 First pull discount applied for ${player._id} on ${banner.bannerId}: ${costConfig.gems || 0} gems`);
+  } else if (count === 1) {
+    // Pull simple normal
+    costConfig = banner.costs.singlePull;
+  } else {
+    // Multi-pull (10x)
+    costConfig = banner.costs.multiPull;
+  }
+  
+  let totalCost: { gems?: number; tickets?: number; specialCurrency?: number } = {};
+  
+  // Déterminer le coût réel
+  if (costConfig.gems) totalCost.gems = costConfig.gems;
+  if (costConfig.tickets) totalCost.tickets = costConfig.tickets;
+  if (costConfig.specialCurrency) totalCost.specialCurrency = costConfig.specialCurrency;
+  
+  // Vérifier les ressources disponibles
+  if (totalCost.gems && player.gems < totalCost.gems) {
     return {
-      success: true,
-      cost: totalCost
+      success: false,
+      error: `Insufficient gems. Required: ${totalCost.gems}, Available: ${player.gems}`
     };
   }
+  
+  if (totalCost.tickets && player.tickets < totalCost.tickets) {
+    return {
+      success: false,
+      error: `Insufficient tickets. Required: ${totalCost.tickets}, Available: ${player.tickets}`
+    };
+  }
+  
+  // TODO: Gérer specialCurrency quand implémenté
+  if (totalCost.specialCurrency) {
+    console.warn("⚠️ Special currency not implemented yet");
+  }
+
+  // Déduire le coût
+  if (totalCost.gems) player.gems -= totalCost.gems;
+  if (totalCost.tickets) player.tickets -= totalCost.tickets;
+  
+  await player.save();
+
+  return {
+    success: true,
+    cost: totalCost
+  };
+}
 
   // Exécuter les pulls avec la configuration de la bannière (version enrichie)
   private static async executeBannerPulls(
@@ -979,6 +997,7 @@ private static async recordSummon(
   
   const summon = new Summon({
     playerId,
+    bannerId: bannerId, // ✅ AJOUT : Stocker le bannerId
     heroesObtained: results.map(r => ({
       heroId: r.hero._id,
       rarity: r.rarity,
@@ -987,12 +1006,12 @@ private static async recordSummon(
       isFocus: r.isFocus,
       fragmentsGained: r.fragmentsGained
     })),
-    type: summonType  // ✅ Utiliser le type mappé
-    // Ajouter bannerId si le modèle Summon le supporte
-    // bannerId: bannerId
+    type: summonType
   });
   
   await summon.save();
+  
+  console.log(`✅ Summon enregistré: ${playerId} sur bannière ${bannerId} (${results.length} héros)`);
   
   // Enregistrer dans l'historique détaillé (optionnel)
   this.recordDetailedSummonHistory(playerId, results, bannerId).catch(err => {
