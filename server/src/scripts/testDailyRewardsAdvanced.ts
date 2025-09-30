@@ -44,7 +44,7 @@ async function createTestPlayer(suffix: string, vipLevel: number = 0) {
   const player = new Player({
     accountId,
     username: `test_advanced_${suffix}`,
-    displayName: `Test Advanced ${suffix}`,
+    displayName: `TestAdv ${suffix}`, // Max 20 caractères
     email: `test_advanced_${suffix}@test.com`,
     passwordHash: "test123",
     serverId: "S1",
