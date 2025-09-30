@@ -32,7 +32,7 @@ const DEFAULT_TEST_PLAYER: TestPlayerConfig = {
   gems: 10000,      // 10k gems = ~33 pulls
   tickets: 50,      // 50 tickets = 50 pulls gratuits
   gold: 100000,     // 100k gold pour upgrades
-  level: 10         // Level 10 pour débloquer features
+  level: 10         // Level 10 pour déblocker features
 };
 
 const createTestPlayer = async (config: TestPlayerConfig = DEFAULT_TEST_PLAYER): Promise<void> => {
@@ -43,41 +43,102 @@ const createTestPlayer = async (config: TestPlayerConfig = DEFAULT_TEST_PLAYER):
     await mongoose.connect(MONGO_URI);
     console.log("✅ Connected to MongoDB\n");
 
-    // Vérifier si le joueur existe déjà
+    // Vérifier si le compte existe déjà
     const existingAccount = await Account.findOne({ email: config.email });
     
     if (existingAccount) {
       console.log("⚠️  Test account already exists!");
-      console.log("   Would you like to:");
-      console.log("   1. Delete and recreate");
-      console.log("   2. Just add resources to existing player");
-      console.log("");
-      console.log("   Proceeding with option 2 (adding resources)...\n");
+      console.log("   Checking for player on server " + config.serverId + "...\n");
 
-      // Trouver le player associé
+      // Vérifier si le player existe
       const player = await Player.findOne({ 
         accountId: existingAccount._id.toString(), 
         serverId: config.serverId 
       });
 
       if (player) {
-        // Ajouter des ressources
+        // Ajouter des ressources au player existant
+        console.log("📦 Found existing player. Adding resources...\n");
+        
         player.gems += config.gems;
         player.tickets += config.tickets;
         player.gold += config.gold;
         await player.save();
 
-        console.log("✅ Resources added to existing player!");
-        console.log("");
+        console.log("✅ Resources added to existing player!\n");
         printPlayerInfo(existingAccount, player, config);
         return;
       } else {
-        console.log("❌ No player found for this account on server " + config.serverId);
-        console.log("   Creating new player...\n");
+        // Player n'existe pas, créer uniquement le player
+        console.log("⚠️  No player found for this account on server " + config.serverId);
+        console.log("   Creating new player for existing account...\n");
+
+        const newPlayer = new Player({
+          accountId: existingAccount._id.toString(),
+          displayName: config.username,
+          serverId: config.serverId,
+          level: config.level,
+          experience: 0,
+          
+          // Ressources généreuses pour tests
+          gold: config.gold,
+          gems: config.gems,
+          tickets: config.tickets,
+          
+          // Collections vides
+          heroes: [],
+          formations: [],
+          fragments: new Map(),
+          materials: new Map(),
+          
+          // Progression
+          campaignProgress: {
+            highestWorld: 1,
+            highestStage: 1,
+            starsEarned: 0
+          },
+          
+          towerProgress: {
+            highestFloor: 0,
+            lastResetDate: new Date()
+          },
+          
+          arenaProgress: {
+            currentRank: 999999,
+            highestRank: 999999,
+            seasonWins: 0,
+            seasonLosses: 0
+          },
+          
+          // Timestamps
+          lastSeenAt: new Date(),
+          lastAfkCollectAt: new Date(),
+          lastDailyResetAt: new Date(),
+          
+          // Stats
+          playtimeMinutes: 0,
+          dailyMissionsCompleted: 0,
+          weeklyMissionsCompleted: 0,
+          eventParticipations: [],
+          totalBattlesFought: 0,
+          totalBattlesWon: 0,
+          totalDamageDealt: 0,
+          totalHeroesCollected: 0,
+          
+          // Flags
+          isNewPlayer: true,
+          tutorialCompleted: false
+        });
+
+        await newPlayer.save();
+        console.log("✅ Player created on server " + newPlayer.serverId + "\n");
+        
+        printPlayerInfo(existingAccount, newPlayer, config);
+        return;
       }
     }
 
-    // === CRÉER LE COMPTE ===
+    // === CRÉER LE COMPTE (compte n'existe pas) ===
     console.log("📝 Creating account...");
     
     const hashedPassword = await bcrypt.hash(config.password, 10);
@@ -86,8 +147,8 @@ const createTestPlayer = async (config: TestPlayerConfig = DEFAULT_TEST_PLAYER):
       username: config.username,
       email: config.email,
       password: hashedPassword,
-      role: "player",
-      isVerified: true,  // Auto-vérifié pour test
+      accountStatus: "active",
+      isVerified: true,
       vipLevel: 0
     });
 
@@ -99,7 +160,6 @@ const createTestPlayer = async (config: TestPlayerConfig = DEFAULT_TEST_PLAYER):
 
     const player = new Player({
       accountId: account._id.toString(),
-      username: config.username,
       displayName: config.username,
       serverId: config.serverId,
       level: config.level,
@@ -118,30 +178,41 @@ const createTestPlayer = async (config: TestPlayerConfig = DEFAULT_TEST_PLAYER):
       
       // Progression
       campaignProgress: {
-        currentWorld: 1,
-        currentLevel: 1,
-        highestWorldCompleted: 0,
+        highestWorld: 1,
+        highestStage: 1,
         starsEarned: 0
       },
       
-      // Stats
-      stats: {
-        totalBattles: 0,
-        battlesWon: 0,
-        battlesLost: 0,
-        totalDamageDealt: 0,
-        totalDamageTaken: 0,
-        heroesUnlocked: 0,
-        achievementsUnlocked: 0
+      towerProgress: {
+        highestFloor: 0,
+        lastResetDate: new Date()
       },
       
-      // Settings
-      settings: {
-        language: "en",
-        soundEnabled: true,
-        musicEnabled: true,
-        notificationsEnabled: true
-      }
+      arenaProgress: {
+        currentRank: 999999,
+        highestRank: 999999,
+        seasonWins: 0,
+        seasonLosses: 0
+      },
+      
+      // Timestamps
+      lastSeenAt: new Date(),
+      lastAfkCollectAt: new Date(),
+      lastDailyResetAt: new Date(),
+      
+      // Stats
+      playtimeMinutes: 0,
+      dailyMissionsCompleted: 0,
+      weeklyMissionsCompleted: 0,
+      eventParticipations: [],
+      totalBattlesFought: 0,
+      totalBattlesWon: 0,
+      totalDamageDealt: 0,
+      totalHeroesCollected: 0,
+      
+      // Flags
+      isNewPlayer: true,
+      tutorialCompleted: false
     });
 
     await player.save();
@@ -194,8 +265,8 @@ const createTestPlayer = async (config: TestPlayerConfig = DEFAULT_TEST_PLAYER):
   } catch (error: any) {
     console.error("❌ Error creating test player:", error);
     if (error.code === 11000) {
-      console.error("   Duplicate key error. Player might already exist.");
-      console.error("   Try deleting the existing player first.");
+      console.error("   Duplicate key error. Use delete command first:");
+      console.error(`   npx ts-node src/scripts/createTestPlayer.ts delete ${config.email}`);
     }
   } finally {
     await mongoose.disconnect();
@@ -242,13 +313,13 @@ const deleteTestPlayer = async (email: string): Promise<void> => {
       return;
     }
 
-    // Supprimer le player
+    // Supprimer tous les players associés
     const deletedPlayers = await Player.deleteMany({ accountId: account._id.toString() });
     console.log(`✅ Deleted ${deletedPlayers.deletedCount} player(s)`);
 
     // Supprimer le compte
     await Account.deleteOne({ _id: account._id });
-    console.log("✅ Account deleted");
+    console.log("✅ Account deleted\n");
 
   } catch (error) {
     console.error("❌ Error deleting test player:", error);
@@ -320,7 +391,7 @@ if (require.main === module) {
       
     case "delete":
       if (!arg1) {
-        console.log("Usage: npm run test:player delete <email>");
+        console.log("Usage: npx ts-node src/scripts/createTestPlayer.ts delete <email>");
         process.exit(1);
       }
       deleteTestPlayer(arg1).then(() => process.exit(0));
@@ -328,7 +399,7 @@ if (require.main === module) {
       
     case "add-resources":
       if (!arg1) {
-        console.log("Usage: npm run test:player add-resources <email> [gems] [tickets]");
+        console.log("Usage: npx ts-node src/scripts/createTestPlayer.ts add-resources <email> [gems] [tickets]");
         process.exit(1);
       }
       const gems = arg2 ? parseInt(arg2) : 5000;
@@ -338,9 +409,9 @@ if (require.main === module) {
       
     default:
       console.log("Available commands:");
-      console.log("  npm run test:player create");
-      console.log("  npm run test:player delete <email>");
-      console.log("  npm run test:player add-resources <email> [gems] [tickets]");
+      console.log("  npx ts-node src/scripts/createTestPlayer.ts create");
+      console.log("  npx ts-node src/scripts/createTestPlayer.ts delete <email>");
+      console.log("  npx ts-node src/scripts/createTestPlayer.ts add-resources <email> [gems] [tickets]");
       process.exit(1);
   }
 }
