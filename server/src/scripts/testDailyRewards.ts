@@ -6,6 +6,7 @@ import { DailyRewardsService } from "../services/DailyRewardsService";
 import DailyRewards from "../models/DailyRewards";
 import Player from "../models/Player";
 import { validateDailyRewardsConfig, DAILY_REWARDS_CONFIG } from "../config/DailyRewardsConfig";
+import { IdGenerator } from "../utils/idGenerator";
 
 dotenv.config();
 
@@ -51,7 +52,10 @@ async function testPlayerCreationAndFirstClaim() {
     let testPlayer = await Player.findOne({ username: "test_daily_rewards" });
     
     if (!testPlayer) {
+      const accountId = IdGenerator.generateAccountId();
+      
       testPlayer = new Player({
+        accountId,
         username: "test_daily_rewards",
         displayName: "Test Daily Rewards",
         email: "test@dailyrewards.com",
