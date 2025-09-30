@@ -468,18 +468,61 @@ bannerSchema.methods.getAvailableHeroes = async function() {
   if (this.heroPool.includeAll) {
     // Tous les héros sauf les exclus
     const filter: any = {};
+    
     if (this.heroPool.excludedHeroes && this.heroPool.excludedHeroes.length > 0) {
-      filter._id = { $nin: this.heroPool.excludedHeroes };
+      // ✅ Supporter exclusion par name OU _id
+      const excludedByName = await Hero.find(
+        { name: { $in: this.heroPool.excludedHeroes } },
+        { _id: 1 }
+      );
+      const excludedIds = [
+        ...this.heroPool.excludedHeroes.filter((id: string) => id.match(/^[0-9a-fA-F]{24}$/)), // ObjectIds
+        ...excludedByName.map((h: any) => h._id)  // Noms convertis en _id
+      ];
+      
+      if (excludedIds.length > 0) {
+        filter._id = { $nin: excludedIds };
+      }
     }
+    
     if (this.heroPool.rarityFilters && this.heroPool.rarityFilters.length > 0) {
       filter.rarity = { $in: this.heroPool.rarityFilters };
     }
+    
     return await Hero.find(filter);
   } else {
-    // Liste spécifique
-    return await Hero.find({
-      _id: { $in: this.heroPool.specificHeroes || [] }
-    });
+    // ✅ Liste spécifique - Supporter name OU _id
+    
+    // Séparer les ObjectIds valides des noms
+    const objectIds = this.heroPool.specificHeroes?.filter((id: string) => 
+      id.match(/^[0-9a-fA-F]{24}$/)  // Pattern ObjectId MongoDB
+    ) || [];
+    
+    const names = this.heroPool.specificHeroes?.filter((id: string) => 
+      !id.match(/^[0-9a-fA-F]{24}$/)  // Tout ce qui n'est pas un ObjectId = nom
+    ) || [];
+    
+    // Construire la requête avec $or pour chercher par _id OU name
+    const query: any = {};
+    
+    if (objectIds.length > 0 && names.length > 0) {
+      // Les deux types existent
+      query.$or = [
+        { _id: { $in: objectIds } },
+        { name: { $in: names } }
+      ];
+    } else if (objectIds.length > 0) {
+      // Seulement des ObjectIds
+      query._id = { $in: objectIds };
+    } else if (names.length > 0) {
+      // Seulement des noms
+      query.name = { $in: names };
+    } else {
+      // Aucun héros spécifié - retourner vide
+      return [];
+    }
+    
+    return await Hero.find(query);
   }
 };
 
