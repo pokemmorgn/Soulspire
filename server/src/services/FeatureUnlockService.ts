@@ -44,6 +44,15 @@ const FEATURE_UNLOCKS: FeatureUnlock[] = [
     isCore: true
   },
   {
+    featureId: "daily_rewards",
+    name: "Récompenses Quotidiennes",
+    description: "Réclame des récompenses chaque jour et construis ton streak !",
+    category: "progression",
+    condition: { type: "level", value: 1, description: "Disponible dès le début" },
+    iconUrl: "/assets/features/daily_rewards.png",
+    isCore: true
+  },
+  {
     featureId: "shop_basic",
     name: "Boutique",
     description: "Acheter des objets de base",
