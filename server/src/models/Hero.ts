@@ -23,7 +23,7 @@ export interface IHeroDocument extends Document {
   name: string;
   role: "Tank" | "DPS Melee" | "DPS Ranged" | "Support";
   element: "Fire" | "Water" | "Wind" | "Electric" | "Light" | "Dark";
-  rarity: "Common" | "Rare" | "Epic" | "Legendary";
+  rarity: "Common" | "Rare" | "Epic" | "Legendary" | "Mythic";
 
   // Stats alignées sur IItemStats
   baseStats: {
@@ -59,7 +59,11 @@ const heroSchema = new Schema<IHeroDocument>({
   name: { type: String, required: true, trim: true, unique: true },
   role: { type: String, enum: ["Tank", "DPS Melee", "DPS Ranged", "Support"], required: true },
   element: { type: String, enum: ["Fire", "Water", "Wind", "Electric", "Light", "Dark"], required: true },
-  rarity: { type: String, enum: ["Common", "Rare", "Epic", "Legendary"], required: true },
+  rarity: { 
+    type: String, 
+    enum: ["Common", "Rare", "Epic", "Legendary", "Mythic"],
+    required: true 
+  },
 
   // === Stats ===
   baseStats: {
@@ -404,7 +408,13 @@ heroSchema.methods.calculatePower = function (stats: any): number {
 // === MÉTHODES EXISTANTES (inchangées) ===
 
 heroSchema.methods.getRarityMultiplier = function () {
-  return ({ Common: 1, Rare: 1.25, Epic: 1.5, Legendary: 2 } as Record<string, number>)[this.rarity] || 1;
+  return ({ 
+    Common: 1, 
+    Rare: 1.25, 
+    Epic: 1.5, 
+    Legendary: 2,
+    Mythic: 2.5 
+  } as Record<string, number>)[this.rarity] || 1;
 };
 
 heroSchema.methods.getElementAdvantage = function (target: string) {
@@ -483,3 +493,4 @@ heroSchema.pre("save", function (next) {
 });
 
 export default mongoose.model<IHeroDocument>("Hero", heroSchema);
+
