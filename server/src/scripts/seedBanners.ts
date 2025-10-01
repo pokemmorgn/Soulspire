@@ -232,10 +232,12 @@ async function createLimitedBanner(focusHeroName: string) {
   console.log(`   Actual ratio focus/other: ${actualRatio.toFixed(2)}×`);
   console.log(`\n   Distribution preview:`);
   console.log(`   - ${focusHeroName} (FOCUS): ${(focusChance * 100).toFixed(2)}% ⭐⭐`);
+  
+  // ✅ FIX : Cast explicite pour TypeScript
   allLegendaries
-    .filter(h => h._id.toString() !== focusHero._id.toString())
+    .filter((h: any) => h._id.toString() !== focusHero._id.toString())
     .slice(0, 3)
-    .forEach(h => {
+    .forEach((h: any) => {
       console.log(`   - ${h.name}: ${(otherLegendaryChance * 100).toFixed(2)}% ⭐`);
     });
   if (totalLegendaries > 4) {
