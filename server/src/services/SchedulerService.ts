@@ -9,6 +9,8 @@ import { WebSocketService } from './WebSocketService';
 import Guild from '../models/Guild';
 import { IdGenerator } from '../utils/idGenerator';
 import { ElementalBannerService } from './ElementalBannerService';
+import { FreePullService } from './FreePullService';
+import Player from '../models/Player';
 
 export class SchedulerService {
   private static scheduledTasks: Map<string, any> = new Map();
@@ -149,6 +151,48 @@ export class SchedulerService {
         console.log("✅ Rappel dimanche envoyé");
       } catch (error) {
         console.error("❌ Erreur rappel dimanche:", error);
+      }
+    });
+    // ===== PULLS GRATUITS =====
+    // Reset automatique des pulls gratuits - toutes les heures
+    this.scheduleTask('free-pulls-auto-reset', '0 * * * *', async () => {
+      console.log("🎁 Vérification reset automatique pulls gratuits...");
+      try {
+        const result = await this.processFreePullsReset();
+        
+        if (result.totalReset > 0) {
+          console.log(`✅ Reset pulls gratuits: ${result.totalReset} joueurs traités`);
+          console.log(`   - Daily: ${result.dailyReset} resets`);
+          console.log(`   - Weekly: ${result.weeklyReset} resets`);
+          console.log(`   - Monthly: ${result.monthlyReset} resets`);
+          
+          // Notifier via WebSocket les joueurs concernés
+          for (const resetInfo of result.resetDetails) {
+            WebSocketService.sendToPlayer(resetInfo.playerId, 'gacha:free_pulls_reset', {
+              bannerId: resetInfo.bannerId,
+              bannerName: resetInfo.bannerName,
+              pullsAvailable: resetInfo.pullsAvailable,
+              resetType: resetInfo.resetType,
+              nextResetAt: resetInfo.nextResetAt
+            });
+          }
+        }
+      } catch (error) {
+        console.error("❌ Erreur reset pulls gratuits:", error);
+      }
+    });
+
+    // Rappel pulls gratuits non utilisés - tous les jours à 20h
+    this.scheduleTask('free-pulls-reminder', '0 20 * * *', async () => {
+      console.log("⏰ Envoi rappels pulls gratuits non utilisés...");
+      try {
+        const result = await this.sendFreePullsReminders();
+        
+        if (result.remindersSent > 0) {
+          console.log(`📬 ${result.remindersSent} rappels envoyés`);
+        }
+      } catch (error) {
+        console.error("❌ Erreur rappels pulls gratuits:", error);
       }
     });
     // ===== ARÈNE =====
@@ -547,7 +591,186 @@ export class SchedulerService {
       console.error("❌ Error activating weekend guild events:", error);
     }
   }
+// ===== MÉTHODES PULLS GRATUITS =====
 
+  /**
+   * Traiter automatiquement les resets de pulls gratuits
+   */
+  private static async processFreePullsReset(): Promise<{
+    totalReset: number;
+    dailyReset: number;
+    weeklyReset: number;
+    monthlyReset: number;
+    resetDetails: Array<{
+      playerId: string;
+      bannerId: string;
+      bannerName: string;
+      pullsAvailable: number;
+      resetType: string;
+      nextResetAt: Date;
+    }>;
+  }> {
+    try {
+      const now = new Date();
+      const result = {
+        totalReset: 0,
+        dailyReset: 0,
+        weeklyReset: 0,
+        monthlyReset: 0,
+        resetDetails: [] as any[]
+      };
+
+      // Récupérer tous les joueurs ayant des trackers de pulls gratuits
+      const players = await Player.find({
+        'freePulls.0': { $exists: true } // Au moins un tracker
+      }).select('_id serverId freePulls displayName');
+
+      console.log(`🔍 Vérification de ${players.length} joueurs avec pulls gratuits...`);
+
+      for (const player of players) {
+        for (const tracker of player.freePulls) {
+          // Vérifier si le reset est nécessaire
+          if (tracker.nextResetAt <= now) {
+            try {
+              // Récupérer la bannière pour avoir la config
+              const Banner = (await import('../models/Banner')).default;
+              const banner = await Banner.findOne({ 
+                bannerId: tracker.bannerId,
+                'freePullConfig.enabled': true
+              });
+
+              if (!banner || !banner.freePullConfig) {
+                console.warn(`⚠️ Bannière ${tracker.bannerId} introuvable ou pulls gratuits désactivés`);
+                continue;
+              }
+
+              const config = banner.freePullConfig;
+
+              // Calculer la prochaine date de reset
+              const nextResetAt = FreePullService.calculateNextResetDate(config.resetType);
+
+              // Effectuer le reset
+              await player.resetFreePulls(
+                tracker.bannerId,
+                config.pullsPerReset,
+                nextResetAt
+              );
+
+              // Incrémenter les compteurs
+              result.totalReset++;
+              switch (config.resetType) {
+                case 'daily':
+                  result.dailyReset++;
+                  break;
+                case 'weekly':
+                  result.weeklyReset++;
+                  break;
+                case 'monthly':
+                  result.monthlyReset++;
+                  break;
+              }
+
+              // Ajouter aux détails
+              result.resetDetails.push({
+                playerId: player._id,
+                bannerId: tracker.bannerId,
+                bannerName: banner.name,
+                pullsAvailable: config.pullsPerReset,
+                resetType: config.resetType,
+                nextResetAt
+              });
+
+              console.log(`🔄 Reset effectué: ${player.displayName} - ${banner.name} (${config.resetType}): ${config.pullsPerReset} pulls`);
+
+            } catch (error) {
+              console.error(`❌ Erreur reset pour joueur ${player._id} sur bannière ${tracker.bannerId}:`, error);
+            }
+          }
+        }
+      }
+
+      return result;
+
+    } catch (error) {
+      console.error("❌ Error in processFreePullsReset:", error);
+      return {
+        totalReset: 0,
+        dailyReset: 0,
+        weeklyReset: 0,
+        monthlyReset: 0,
+        resetDetails: []
+      };
+    }
+  }
+
+  /**
+   * Envoyer des rappels aux joueurs qui ont des pulls gratuits non utilisés
+   */
+  private static async sendFreePullsReminders(): Promise<{
+    remindersSent: number;
+    playersNotified: string[];
+  }> {
+    try {
+      const now = new Date();
+      const result = {
+        remindersSent: 0,
+        playersNotified: [] as string[]
+      };
+
+      // Récupérer les joueurs avec pulls gratuits disponibles
+      const players = await Player.find({
+        'freePulls': {
+          $elemMatch: {
+            pullsAvailable: { $gt: 0 },
+            nextResetAt: { $lte: new Date(now.getTime() + 4 * 60 * 60 * 1000) } // Dans moins de 4h
+          }
+        }
+      }).select('_id serverId freePulls displayName');
+
+      console.log(`📬 ${players.length} joueurs avec pulls gratuits à rappeler...`);
+
+      for (const player of players) {
+        const availablePulls = player.freePulls.filter(
+          fp => fp.pullsAvailable > 0 && fp.nextResetAt <= new Date(now.getTime() + 4 * 60 * 60 * 1000)
+        );
+
+        if (availablePulls.length > 0) {
+          // Récupérer les noms des bannières
+          const Banner = (await import('../models/Banner')).default;
+          const bannerIds = availablePulls.map(fp => fp.bannerId);
+          const banners = await Banner.find({ bannerId: { $in: bannerIds } }).select('bannerId name');
+
+          const bannerMap = new Map(banners.map(b => [b.bannerId, b.name]));
+
+          // Envoyer notification via WebSocket
+          WebSocketService.sendToPlayer(player._id, 'gacha:free_pulls_reminder', {
+            message: `You have ${availablePulls.length} free pull(s) available!`,
+            banners: availablePulls.map(fp => ({
+              bannerId: fp.bannerId,
+              bannerName: bannerMap.get(fp.bannerId) || 'Unknown Banner',
+              pullsAvailable: fp.pullsAvailable,
+              expiresIn: Math.round((fp.nextResetAt.getTime() - now.getTime()) / (1000 * 60 * 60)) // heures
+            })),
+            priority: 'medium'
+          });
+
+          result.remindersSent++;
+          result.playersNotified.push(player._id);
+
+          console.log(`📧 Rappel envoyé à ${player.displayName}: ${availablePulls.length} pull(s) gratuit(s)`);
+        }
+      }
+
+      return result;
+
+    } catch (error) {
+      console.error("❌ Error in sendFreePullsReminders:", error);
+      return {
+        remindersSent: 0,
+        playersNotified: []
+      };
+    }
+  }
   // ===== MÉTHODES EXISTANTES =====
 
   // Programmer une tâche spécifique
@@ -703,6 +926,17 @@ export class SchedulerService {
           elements: ["Fire", "Water", "Wind", "Electric", "Light", "Shadow"],
           hoursUntil: 6
         });
+        break;
+        // ===== TÂCHES PULLS GRATUITS =====
+      case 'free-pulls-auto-reset':
+        console.log("🎁 Reset pulls gratuits manuel...");
+        const resetResult = await this.processFreePullsReset();
+        console.log(`✅ ${resetResult.totalReset} resets effectués (Daily: ${resetResult.dailyReset}, Weekly: ${resetResult.weeklyReset}, Monthly: ${resetResult.monthlyReset})`);
+        break;
+      case 'free-pulls-reminder':
+        console.log("⏰ Rappels pulls gratuits manuel...");
+        const reminderResult = await this.sendFreePullsReminders();
+        console.log(`✅ ${reminderResult.remindersSent} rappels envoyés`);
         break;
       default:
         throw new Error(`Tâche inconnue: ${taskName}`);
