@@ -2,7 +2,7 @@
 
 import { Router, Request, Response } from "express";
 import { MythicService } from "../services/MythicService";
-import { authenticatePlayer } from "../middleware/auth";
+import authMiddleware from "../middleware/authMiddleware";
 
 const router = Router();
 
@@ -11,9 +11,18 @@ const router = Router();
 // Obtenir l'état complet du système mythique pour un joueur
 // ============================================================
 
-router.get("/status", authenticatePlayer, async (req: Request, res: Response) => {
+router.get("/status", authMiddleware, async (req: Request, res: Response) => {
   try {
-    const { playerId, serverId } = (req as any).player;
+    const playerId = req.playerId;
+    const serverId = req.serverId;
+
+    if (!playerId || !serverId) {
+      return res.status(401).json({
+        success: false,
+        error: "Authentication required",
+        code: "AUTH_REQUIRED"
+      });
+    }
 
     console.log(`📊 Getting mythic status for player ${playerId} on server ${serverId}`);
 
@@ -39,10 +48,19 @@ router.get("/status", authenticatePlayer, async (req: Request, res: Response) =>
 // Body: { bannerId: string, count: number }
 // ============================================================
 
-router.post("/pull", authenticatePlayer, async (req: Request, res: Response) => {
+router.post("/pull", authMiddleware, async (req: Request, res: Response) => {
   try {
-    const { playerId, serverId } = (req as any).player;
+    const playerId = req.playerId;
+    const serverId = req.serverId;
     const { bannerId, count } = req.body;
+
+    if (!playerId || !serverId) {
+      return res.status(401).json({
+        success: false,
+        error: "Authentication required",
+        code: "AUTH_REQUIRED"
+      });
+    }
 
     // Validation
     if (!bannerId || typeof bannerId !== "string") {
@@ -105,9 +123,18 @@ router.post("/pull", authenticatePlayer, async (req: Request, res: Response) => 
 // Obtenir l'historique des héros mythiques obtenus
 // ============================================================
 
-router.get("/history", authenticatePlayer, async (req: Request, res: Response) => {
+router.get("/history", authMiddleware, async (req: Request, res: Response) => {
   try {
-    const { playerId, serverId } = (req as any).player;
+    const playerId = req.playerId;
+    const serverId = req.serverId;
+
+    if (!playerId || !serverId) {
+      return res.status(401).json({
+        success: false,
+        error: "Authentication required",
+        code: "AUTH_REQUIRED"
+      });
+    }
 
     console.log(`📜 Getting mythic history for player ${playerId}`);
 
@@ -135,9 +162,17 @@ router.get("/history", authenticatePlayer, async (req: Request, res: Response) =
 // Obtenir la bannière mythique active
 // ============================================================
 
-router.get("/banner", authenticatePlayer, async (req: Request, res: Response) => {
+router.get("/banner", authMiddleware, async (req: Request, res: Response) => {
   try {
-    const { serverId } = (req as any).player;
+    const serverId = req.serverId;
+
+    if (!serverId) {
+      return res.status(401).json({
+        success: false,
+        error: "Authentication required",
+        code: "AUTH_REQUIRED"
+      });
+    }
 
     console.log(`🔮 Getting active mythic banner for server ${serverId}`);
 
