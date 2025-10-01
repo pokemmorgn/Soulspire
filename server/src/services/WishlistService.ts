@@ -451,7 +451,7 @@ static async isWishlistPityTriggered(
     }
   }
 
-  /**
+/**
    * Obtenir les statistiques de la wishlist
    */
   static async getWishlistStats(
@@ -473,6 +473,368 @@ static async isWishlistPityTriggered(
       };
     } catch (error: any) {
       console.error("❌ Error getWishlistStats:", error);
+      return null;
+    }
+  }
+
+  // ===== NOUVELLES MÉTHODES POUR WISHLISTS ÉLÉMENTAIRES =====
+
+  /**
+   * Obtenir ou créer une wishlist élémentaire pour un élément spécifique
+   */
+  static async getOrCreateElementalWishlist(
+    playerId: string,
+    serverId: string,
+    element: string
+  ): Promise<IWishlistDocument> {
+    try {
+      // Valider l'élément
+      const validElements = ["Fire", "Water", "Wind", "Electric", "Light", "Shadow"];
+      if (!validElements.includes(element)) {
+        throw new Error(`Invalid element: ${element}. Valid: ${validElements.join(", ")}`);
+      }
+
+      let wishlist = await Wishlist.findOne({
+        playerId,
+        serverId,
+        type: "elemental",
+        element
+      });
+
+      if (!wishlist) {
+        console.log(`📋 Creating elemental wishlist (${element}) for player ${playerId}`);
+
+        wishlist = new Wishlist({
+          playerId,
+          serverId,
+          type: "elemental",
+          element,
+          heroes: [],
+          maxHeroes: 4,
+          pityCounter: 0,
+          pityThreshold: 100,
+          lastPityReset: new Date()
+        });
+
+        await wishlist.save();
+      }
+
+      return wishlist;
+    } catch (error: any) {
+      console.error("❌ Error getOrCreateElementalWishlist:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Obtenir une wishlist élémentaire (sans créer)
+   */
+  static async getElementalWishlist(
+    playerId: string,
+    serverId: string,
+    element: string
+  ): Promise<WishlistResponse> {
+    try {
+      const wishlist = await Wishlist.findOne({
+        playerId,
+        serverId,
+        type: "elemental",
+        element
+      });
+
+      if (!wishlist) {
+        return {
+          success: true,
+          wishlist: undefined,
+          message: `No ${element} elemental wishlist found. Create one by adding heroes.`
+        };
+      }
+
+      // Populer les infos des héros
+      const heroIds = wishlist.heroes.map(h => h.heroId);
+      const heroes = await Hero.find({ _id: { $in: heroIds } }).select('name rarity element role');
+
+      // Enrichir les données
+      const enrichedWishlist = {
+        ...wishlist.toObject(),
+        heroes: wishlist.heroes.map(wh => {
+          const heroData = heroes.find((h: any) => h._id.toString() === wh.heroId);
+          return {
+            ...wh,
+            heroData: heroData || null
+          };
+        })
+      };
+
+      return {
+        success: true,
+        wishlist: enrichedWishlist as any
+      };
+    } catch (error: any) {
+      console.error("❌ Error getElementalWishlist:", error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Mettre à jour une wishlist élémentaire complète
+   */
+  static async updateElementalWishlist(
+    playerId: string,
+    serverId: string,
+    element: string,
+    heroIds: string[]
+  ): Promise<WishlistResponse> {
+    try {
+      // Validation : max 4 héros
+      if (heroIds.length > 4) {
+        return {
+          success: false,
+          error: "Maximum 4 heroes allowed in elemental wishlist"
+        };
+      }
+
+      // Validation : tous les héros doivent être Legendary ET du bon élément
+      const heroes = await Hero.find({ _id: { $in: heroIds } });
+
+      if (heroes.length !== heroIds.length) {
+        return {
+          success: false,
+          error: "One or more heroes not found"
+        };
+      }
+
+      // Vérifier que tous sont Legendary
+      const allLegendary = heroes.every(h => h.rarity === "Legendary");
+      if (!allLegendary) {
+        return {
+          success: false,
+          error: "Only Legendary heroes can be added to elemental wishlist"
+        };
+      }
+
+      // Vérifier que tous sont du bon élément
+      const allCorrectElement = heroes.every((h: any) => h.element === element);
+      if (!allCorrectElement) {
+        return {
+          success: false,
+          error: `All heroes must be ${element} element`
+        };
+      }
+
+      // Récupérer ou créer la wishlist élémentaire
+      const wishlist = await this.getOrCreateElementalWishlist(playerId, serverId, element);
+
+      // Remplacer complètement la liste des héros
+      wishlist.heroes = heroIds.map(heroId => ({
+        heroId,
+        addedAt: new Date(),
+        itemCost: undefined
+      }));
+
+      await wishlist.save();
+
+      console.log(`✅ Elemental wishlist (${element}) updated for player ${playerId}: ${heroIds.length} heroes`);
+
+      return {
+        success: true,
+        wishlist,
+        message: `${element} elemental wishlist updated successfully`
+      };
+    } catch (error: any) {
+      console.error("❌ Error updateElementalWishlist:", error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Obtenir toutes les wishlists élémentaires d'un joueur
+   */
+  static async getAllElementalWishlists(
+    playerId: string,
+    serverId: string
+  ): Promise<{ success: boolean; wishlists?: any[]; error?: string }> {
+    try {
+      const wishlists = await Wishlist.find({
+        playerId,
+        serverId,
+        type: "elemental"
+      });
+
+      // Populer les héros pour chaque wishlist
+      const enrichedWishlists = await Promise.all(
+        wishlists.map(async (wishlist) => {
+          const heroIds = wishlist.heroes.map(h => h.heroId);
+          const heroes = await Hero.find({ _id: { $in: heroIds } }).select('name rarity element role');
+
+          return {
+            element: wishlist.element,
+            heroCount: wishlist.heroes.length,
+            maxHeroes: wishlist.maxHeroes,
+            pityCounter: wishlist.pityCounter,
+            pityThreshold: wishlist.pityThreshold,
+            heroes: wishlist.heroes.map(wh => {
+              const heroData = heroes.find((h: any) => h._id.toString() === wh.heroId);
+              return {
+                heroId: wh.heroId,
+                heroData: heroData || null,
+                addedAt: wh.addedAt
+              };
+            })
+          };
+        })
+      );
+
+      return {
+        success: true,
+        wishlists: enrichedWishlists
+      };
+    } catch (error: any) {
+      console.error("❌ Error getAllElementalWishlists:", error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Obtenir un héros aléatoire d'une wishlist élémentaire
+   */
+  static async getRandomElementalWishlistHero(
+    playerId: string,
+    serverId: string,
+    element: string
+  ): Promise<any | null> {
+    try {
+      const wishlist = await Wishlist.findOne({
+        playerId,
+        serverId,
+        type: "elemental",
+        element
+      });
+
+      if (!wishlist || wishlist.heroes.length === 0) {
+        return null;
+      }
+
+      // Sélectionner un héros aléatoire
+      const randomIndex = Math.floor(Math.random() * wishlist.heroes.length);
+      const wishlistHero = wishlist.heroes[randomIndex];
+
+      // Récupérer les données complètes du héros
+      const hero = await Hero.findById(wishlistHero.heroId);
+
+      return hero;
+    } catch (error: any) {
+      console.error("❌ Error getRandomElementalWishlistHero:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Incrémenter le pity d'une wishlist élémentaire
+   */
+  static async incrementElementalWishlistPity(
+    playerId: string,
+    serverId: string,
+    element: string
+  ): Promise<void> {
+    try {
+      const wishlist = await this.getOrCreateElementalWishlist(playerId, serverId, element);
+      wishlist.incrementPity();
+      await wishlist.save();
+    } catch (error: any) {
+      console.error("❌ Error incrementElementalWishlistPity:", error);
+    }
+  }
+
+  /**
+   * Reset le pity d'une wishlist élémentaire
+   */
+  static async resetElementalWishlistPity(
+    playerId: string,
+    serverId: string,
+    element: string
+  ): Promise<void> {
+    try {
+      const wishlist = await Wishlist.findOne({
+        playerId,
+        serverId,
+        type: "elemental",
+        element
+      });
+
+      if (wishlist) {
+        wishlist.resetPity();
+        await wishlist.save();
+      }
+    } catch (error: any) {
+      console.error("❌ Error resetElementalWishlistPity:", error);
+    }
+  }
+
+  /**
+   * Vérifier si le pity d'une wishlist élémentaire est déclenché
+   */
+  static async isElementalWishlistPityTriggered(
+    playerId: string,
+    serverId: string,
+    element: string
+  ): Promise<boolean> {
+    try {
+      const wishlist = await Wishlist.findOne({
+        playerId,
+        serverId,
+        type: "elemental",
+        element
+      });
+
+      if (!wishlist) {
+        return false;
+      }
+
+      const triggered = wishlist.isPityTriggered();
+
+      console.log(`🔍 Elemental wishlist (${element}) pity check: counter=${wishlist.pityCounter}, threshold=${wishlist.pityThreshold}, triggered=${triggered}`);
+
+      return triggered;
+    } catch (error: any) {
+      console.error("❌ Error isElementalWishlistPityTriggered:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Obtenir les statistiques d'une wishlist élémentaire
+   */
+  static async getElementalWishlistStats(
+    playerId: string,
+    serverId: string,
+    element: string
+  ): Promise<any> {
+    try {
+      const wishlist = await this.getOrCreateElementalWishlist(playerId, serverId, element);
+
+      return {
+        element,
+        heroCount: wishlist.heroes.length,
+        maxHeroes: wishlist.maxHeroes,
+        slotsAvailable: wishlist.maxHeroes - wishlist.heroes.length,
+        pityCounter: wishlist.pityCounter,
+        pityThreshold: wishlist.pityThreshold,
+        pullsUntilPity: Math.max(0, wishlist.pityThreshold - wishlist.pityCounter),
+        isPityTriggered: wishlist.isPityTriggered(),
+        lastPityReset: wishlist.lastPityReset
+      };
+    } catch (error: any) {
+      console.error("❌ Error getElementalWishlistStats:", error);
       return null;
     }
   }
