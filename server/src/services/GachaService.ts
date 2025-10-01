@@ -1517,7 +1517,8 @@ public static async getBannerRates(bannerId: string, serverId: string) {
       Common: 5,
       Rare: 10,
       Epic: 15,
-      Legendary: 25
+      Legendary: 25,
+      Mythic: 50 
     };
     
     return fragmentsByRarity[rarity] || 5;
