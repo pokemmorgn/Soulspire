@@ -114,7 +114,8 @@ elementalBannerRotationSchema.statics.getCurrentRotation = async function(
   const now = new Date();
   if (rotation && rotation.nextRotationAt <= now) {
     console.log(`🔄 Rotation expired for ${serverId}, updating...`);
-    rotation = await this.updateRotation(serverId);
+    const updatedRotation = await this.updateRotation(serverId);
+    return updatedRotation;
   }
   
   if (!rotation) {
