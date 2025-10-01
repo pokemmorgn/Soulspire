@@ -97,7 +97,10 @@ elementalBannerRotationSchema.index({ serverId: 1, currentDay: 1 });
 /**
  * Obtenir la rotation actuelle pour un serveur
  */
-elementalBannerRotationSchema.statics.getCurrentRotation = async function(serverId: string) {
+elementalBannerRotationSchema.statics.getCurrentRotation = async function(
+  this: IElementalBannerRotationModel,
+  serverId: string
+): Promise<IElementalBannerRotationDocument> {
   let rotation = await this.findOne({ serverId });
   
   // Si pas de rotation existante, en créer une
@@ -108,9 +111,13 @@ elementalBannerRotationSchema.statics.getCurrentRotation = async function(server
   
   // Vérifier si la rotation doit être mise à jour
   const now = new Date();
-  if (rotation.nextRotationAt <= now) {
+  if (rotation && rotation.nextRotationAt <= now) {
     console.log(`🔄 Rotation expired for ${serverId}, updating...`);
     rotation = await this.updateRotation(serverId);
+  }
+  
+  if (!rotation) {
+    throw new Error(`Failed to get rotation for ${serverId}`);
   }
   
   return rotation;
@@ -119,7 +126,10 @@ elementalBannerRotationSchema.statics.getCurrentRotation = async function(server
 /**
  * Créer une rotation pour aujourd'hui
  */
-elementalBannerRotationSchema.statics.createRotationForToday = async function(serverId: string) {
+elementalBannerRotationSchema.statics.createRotationForToday = async function(
+  this: IElementalBannerRotationModel,
+  serverId: string
+): Promise<IElementalBannerRotationDocument> {
   const now = new Date();
   const dayOfWeek = now.getDay(); // 0 = dimanche, 1 = lundi, etc.
   
@@ -128,7 +138,7 @@ elementalBannerRotationSchema.statics.createRotationForToday = async function(se
   const activeElements = this.getActiveElementsForDay(dayOfWeek);
   const activeBanners = activeElements.map((el: string) => `elemental_${el.toLowerCase()}`);
   
-  const rotation = new this({
+  const rotation = await this.create({
     serverId,
     currentWeek: weekNumber,
     currentDay: dayName,
@@ -138,8 +148,6 @@ elementalBannerRotationSchema.statics.createRotationForToday = async function(se
     nextRotationAt: this.getNextMidnight()
   });
   
-  await rotation.save();
-  
   console.log(`✅ Created rotation for ${serverId}: ${dayName} - Elements: [${activeElements.join(", ")}]`);
   
   return rotation;
@@ -148,7 +156,10 @@ elementalBannerRotationSchema.statics.createRotationForToday = async function(se
 /**
  * Mettre à jour la rotation (appelé par le cron job)
  */
-elementalBannerRotationSchema.statics.updateRotation = async function(serverId: string) {
+elementalBannerRotationSchema.statics.updateRotation = async function(
+  this: IElementalBannerRotationModel,
+  serverId: string
+): Promise<IElementalBannerRotationDocument> {
   const now = new Date();
   const dayOfWeek = now.getDay();
   
@@ -172,7 +183,11 @@ elementalBannerRotationSchema.statics.updateRotation = async function(serverId: 
   
   console.log(`🔄 Updated rotation for ${serverId}: ${dayName} - Elements: [${activeElements.join(", ")}]`);
   
-  return rotation!;
+  if (!rotation) {
+    throw new Error(`Failed to update rotation for ${serverId}`);
+  }
+  
+  return rotation;
 };
 
 /**
