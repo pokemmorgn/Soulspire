@@ -227,20 +227,6 @@ public static async performPullOnBanner(
     const rarities = pullResults.map((r: any) => r.rarity);
     await banner.updateStats(count, rarities);
 
-    // Utiliser le pityState retourné par executeBannerPulls
-    const newPityStatus = {
-      pullsSinceLegendary: pullResponse.pityState.pullsSinceLegendary,
-      pullsSinceEpic: 0,
-      legendaryPityIn: Math.max(0, (banner.pityConfig?.legendaryPity || 90) - pullResponse.pityState.pullsSinceLegendary),
-      epicPityIn: 0
-    };
-
-    // Calculer les statistiques finales
-    const finalStats = this.calculatePullStats(pullResults);
-    // Mettre à jour les statistiques de la bannière
-    const rarities = pullResults.map((r: any) => r.rarity);
-    await banner.updateStats(count, rarities);
-
     // ✅ NOUVEAU: Roll et octroyer les tickets élémentaires
     const elementalTicketDrops = await this.rollElementalTicketDrops(
       playerId,
@@ -254,6 +240,15 @@ public static async performPullOnBanner(
 
     // Utiliser le pityState retourné par executeBannerPulls
     const newPityStatus = {
+      pullsSinceLegendary: pullResponse.pityState.pullsSinceLegendary,
+      pullsSinceEpic: 0,
+      legendaryPityIn: Math.max(0, (banner.pityConfig?.legendaryPity || 90) - pullResponse.pityState.pullsSinceLegendary),
+      epicPityIn: 0
+    };
+
+    // Calculer les statistiques finales
+    const finalStats = this.calculatePullStats(pullResults);
+
     // Construire la réponse
     const response: GachaResponse = {
       success: true,
@@ -275,7 +270,13 @@ public static async performPullOnBanner(
         hasPityTrigger: specialEffects.hasPityBreak,
         hasNewHero: finalStats.newHeroes > 0,
         hasCollectionProgress: true
-      }
+      },
+      // ✅ NOUVEAU: Inclure les tickets élémentaires dans la réponse
+      ...(elementalTicketDrops.length > 0 && {
+        bonusRewards: {
+          elementalTickets: elementalTicketDrops
+        }
+      })
     };
 
     // === SYSTÈME DE NOTIFICATIONS WEBSOCKET ENRICHI ===
