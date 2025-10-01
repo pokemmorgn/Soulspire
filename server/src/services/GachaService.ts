@@ -9,6 +9,7 @@ import { WebSocketGacha } from "./websocket/WebSocketGacha";
 import { CollectionService } from "./CollectionService";
 import { WishlistService } from "./WishlistService";
 import { ElementalBannerService } from "./ElementalBannerService";
+import { MythicService } from "./MythicService"; 
 // Configuration de base (fallback seulement)
 const FALLBACK_CONFIG = {
   pity: {
@@ -119,9 +120,11 @@ export class GachaService {
         ]
       }).sort({ sortOrder: -1, startTime: -1 });
 
+      const filteredBanners = banners.filter(banner => banner.type !== "Mythic");
+      
       return {
         success: true,
-        banners: banners.map(banner => ({
+        banners: filteredBanners.map(banner => ({
           bannerId: banner.bannerId,
           name: banner.name,
           type: banner.type,
@@ -282,6 +285,37 @@ public static async performPullOnBanner(
     // === SYSTÈME DE NOTIFICATIONS WEBSOCKET ENRICHI ===
     await this.processGachaNotifications(playerId, serverId, response, banner);
 
+if (banner.type === "Standard" || banner.type === "Limited") {
+  try {
+    const mythicUpdate = await MythicService.incrementFusedCounter(
+      playerId,
+      serverId,
+      count
+    );
+    
+        // Notifier si des parchemins ont été gagnés
+        if (mythicUpdate.scrollsEarned > 0) {
+          console.log(`🎁 Player earned ${mythicUpdate.scrollsEarned} mythic scroll(s)!`);
+          
+          if (WebSocketGacha.isAvailable()) {
+            WebSocketGacha.notifyPityProgress(playerId, {
+              bannerId: "mythic_system",
+              bannerName: "Mythic Scroll System",
+              currentPulls: mythicUpdate.fusedCounter,
+              pityThreshold: 80,
+              pullsRemaining: 80 - (mythicUpdate.fusedCounter % 80),
+              pityType: "mythic_scroll",
+              progressPercentage: ((mythicUpdate.fusedCounter % 80) / 80) * 100,
+              isSharedPity: true
+            });
+          }
+        }
+      } catch (error) {
+        console.error("⚠️ Error updating mythic fused counter:", error);
+        // Ne pas bloquer le pull principal si erreur mythique
+      }
+    }
+    
     // Mettre à jour les missions et événements
     await this.updateProgressTracking(playerId, serverId, count);
 
