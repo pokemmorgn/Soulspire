@@ -1953,3 +1953,645 @@ curl -X POST https://your-api.com/api/admin/elemental/force-rotation \
   -H "Content-Type: application/json" \
   -d '{"serverId": "S1", "day": "sunday"}'
 ```
+
+### Scripts de test fournis
+
+Le repo contient des scripts de test :
+- `seedElementalBanners.ts` - Créer les 6 bannières élémentaires
+- `testElementalSystem.ts` - Tester le système complet
+- `testWishlistSystem.ts` - Tester les wishlists
+
+```bash
+# Seed des bannières élémentaires
+npm run seed:elemental
+
+# Test complet du système
+npm run test:elemental
+
+# Test des wishlists
+npm run test:wishlist
+```
+
+---
+
+## Informations techniques
+
+### Système de pity
+
+#### Pity normal élémentaire
+
+- **Legendary** : Garanti après **50 pulls** (vs 90 normal)
+- **Epic** : Désactivé (0)
+- **Compteur** : Séparé par élément
+- **Reset** : Uniquement sur Legendary obtenu
+
+#### Pity wishlist élémentaire
+
+- **Seuil** : **100 pulls** sans Legendary
+- **Garantie** : Héros choisi dans la wishlist
+- **Priorité** : Pity wishlist > Pity normal
+- **Reset** : Sur n'importe quel Legendary (wishlist ou normal)
+
+### Taux de drop des tickets
+
+| Jour | Taux | Multiplicateur |
+|------|------|----------------|
+| Lundi - Jeudi | 5% | ×1 |
+| **Vendredi** | **15%** | **×3** |
+| Samedi | 5% | ×1 |
+| Dimanche | 5% | ×1 |
+
+**Note :** Les tickets dropent lors des pulls sur les bannières **normales** (Standard, Limited, etc.), pas sur les bannières élémentaires elles-mêmes.
+
+### Fragments par rareté
+
+Quand un héros est dupliqué dans un pull élémentaire :
+
+| Rareté | Fragments |
+|--------|-----------|
+| Common | 5 |
+| Rare | 10 |
+| Epic | 25 |
+| Legendary | 50 |
+
+### Pool de héros
+
+Chaque bannière élémentaire contient :
+- **Tous les héros** de l'élément correspondant
+- **Focus heroes** : 1-2 héros Legendary avec taux augmentés
+- **Pas de cross-element** : 100% garanti de l'élément de la bannière
+
+### Système de rotation
+
+```
+Semaine = 7 jours
+Cycle complet = 1 semaine
+Reset = Lundi 00h00 UTC
+```
+
+**Formule de rotation :**
+```typescript
+function getActiveElementsForDay(dayOfWeek: number): string[] {
+  const rotationMap = {
+    1: ["Fire"],                  // Lundi
+    2: ["Electric"],              // Mardi
+    3: ["Wind"],                  // Mercredi
+    4: ["Water"],                 // Jeudi
+    5: [],                        // Vendredi (Shop)
+    6: ["Light", "Shadow"],       // Samedi
+    0: ["Fire", "Water", "Wind", "Electric", "Light", "Shadow"] // Dimanche
+  };
+  return rotationMap[dayOfWeek] || [];
+}
+```
+
+---
+
+## FAQ
+
+### Questions fréquentes
+
+**Q : Puis-je obtenir des tickets élémentaires sur les bannières élémentaires elles-mêmes ?**  
+R : Non, les tickets élémentaires dropent uniquement sur les bannières **normales** (Standard, Limited, Beginner).
+
+**Q : Le pity élémentaire est-il partagé entre les éléments ?**  
+R : Non, chaque élément a son propre compteur de pity indépendant.
+
+**Q : Que se passe-t-il le vendredi ?**  
+R : Aucune bannière élémentaire n'est disponible, mais le taux de drop des tickets passe de 5% à 15% sur les bannières normales.
+
+**Q : Puis-je pull sur plusieurs éléments le dimanche ?**  
+R : Oui, le dimanche tous les éléments sont disponibles simultanément.
+
+**Q : La wishlist élémentaire affecte-t-elle les pulls normaux ?**  
+R : Non, les wishlists élémentaires sont séparées de la wishlist normale et n'affectent que les bannières élémentaires.
+
+**Q : Combien de héros puis-je mettre dans une wishlist élémentaire ?**  
+R : Maximum 4 héros Legendary par élément. Vous pouvez avoir 6 wishlists (une par élément).
+
+**Q : Le pity wishlist est-il partagé entre les éléments ?**  
+R : Non, chaque wishlist élémentaire a son propre compteur de pity (100 pulls).
+
+**Q : Que se passe-t-il si ma wishlist est vide quand le pity se déclenche ?**  
+R : Un héros Legendary de l'élément est tiré aléatoirement parmi tous les héros disponibles.
+
+**Q : Les tickets élémentaires expirent-ils ?**  
+R : Non, les tickets élémentaires n'expirent jamais et peuvent être stockés indéfiniment.
+
+**Q : Puis-je échanger des tickets entre éléments ?**  
+R : Non, chaque ticket est spécifique à son élément et ne peut pas être échangé.
+
+---
+
+## Roadmap et améliorations futures
+
+### Version 1.1 (Planifié)
+
+- [ ] **Boutique vendredi** : Packs de tickets avec gems/argent réel
+- [ ] **Missions élémentaires** : Quêtes quotidiennes par élément
+- [ ] **Événements élémentaires** : Boss élémentaires, bonus temporaires
+- [ ] **Craft de tickets** : Convertir fragments en tickets
+
+### Version 1.2 (Futur)
+
+- [ ] **Élément dual** : Héros avec 2 éléments
+- [ ] **Bannières fusion** : 2 éléments simultanés en semaine
+- [ ] **Pity premium** : Pity garanti à 25 pulls (payant)
+- [ ] **Wishlist étendue** : Jusqu'à 6 héros par élément
+
+### Version 2.0 (Long terme)
+
+- [ ] **Saisons élémentaires** : Rotation mensuelle avec bonus
+- [ ] **Trading de tickets** : Échange entre joueurs
+- [ ] **Pity partagé optionnel** : Option pour lier les pity
+- [ ] **Achievements élémentaires** : Collection complète par élément
+
+---
+
+## Exemples de code avancés
+
+### Manager complet de bannières élémentaires
+
+```csharp
+using UnityEngine;
+using UnityEngine.Networking;
+using System.Collections;
+using System.Collections.Generic;
+
+public class ElementalBannerSystemManager : MonoBehaviour
+{
+    // Singleton
+    public static ElementalBannerSystemManager Instance { get; private set; }
+    
+    // Configuration
+    private string baseURL = "https://your-api.com/api/gacha/elemental";
+    private string jwtToken;
+    
+    // Cache
+    private ElementalRotation currentRotation;
+    private Dictionary<string, ElementalBanner> bannersCache;
+    private ElementalTickets playerTickets;
+    
+    // UI References
+    public GameObject bannerPrefab;
+    public Transform bannersContainer;
+    public ElementalTicketsUI ticketsUI;
+    public ElementalCalendarUI calendarUI;
+    
+    // Events
+    public System.Action<ElementalRotation> OnRotationChanged;
+    public System.Action<TicketDroppedData> OnTicketDropped;
+    public System.Action<ElementalPullResponse> OnPullCompleted;
+    
+    void Awake()
+    {
+        if (Instance == null)
+        {
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+        
+        bannersCache = new Dictionary<string, ElementalBanner>();
+    }
+    
+    void Start()
+    {
+        StartCoroutine(InitializeSystem());
+    }
+    
+    IEnumerator InitializeSystem()
+    {
+        // 1. Charger la rotation actuelle
+        yield return LoadCurrentRotation();
+        
+        // 2. Charger les tickets du joueur
+        yield return LoadPlayerTickets();
+        
+        // 3. Charger toutes les bannières (pour le cache)
+        yield return LoadAllBanners();
+        
+        // 4. Afficher les bannières actives
+        DisplayActiveBanners();
+        
+        // 5. Initialiser les WebSocket
+        InitializeWebSocket();
+        
+        // 6. Démarrer les timers
+        StartCoroutine(RotationTimer());
+    }
+    
+    // === CHARGEMENT DES DONNÉES ===
+    
+    IEnumerator LoadCurrentRotation()
+    {
+        UnityWebRequest request = UnityWebRequest.Get($"{baseURL}/rotation");
+        yield return request.SendWebRequest();
+        
+        if (request.result == UnityWebRequest.Result.Success)
+        {
+            RotationResponse response = 
+                JsonUtility.FromJson<RotationResponse>(request.downloadHandler.text);
+            
+            if (response.success)
+            {
+                currentRotation = response.rotation;
+                OnRotationChanged?.Invoke(currentRotation);
+                
+                Debug.Log($"Rotation loaded: {currentRotation.day} - {string.Join(", ", currentRotation.activeElements)}");
+            }
+        }
+    }
+    
+    IEnumerator LoadPlayerTickets()
+    {
+        UnityWebRequest request = UnityWebRequest.Get($"{baseURL}/tickets");
+        request.SetRequestHeader("Authorization", $"Bearer {jwtToken}");
+        
+        yield return request.SendWebRequest();
+        
+        if (request.result == UnityWebRequest.Result.Success)
+        {
+            ElementalTicketsResponse response = 
+                JsonUtility.FromJson<ElementalTicketsResponse>(request.downloadHandler.text);
+            
+            if (response.success)
+            {
+                playerTickets = response.tickets;
+                ticketsUI.UpdateDisplay(playerTickets);
+            }
+        }
+    }
+    
+    IEnumerator LoadAllBanners()
+    {
+        UnityWebRequest request = UnityWebRequest.Get($"{baseURL}/banners/all");
+        yield return request.SendWebRequest();
+        
+        if (request.result == UnityWebRequest.Result.Success)
+        {
+            AllBannersResponse response = 
+                JsonUtility.FromJson<AllBannersResponse>(request.downloadHandler.text);
+            
+            if (response.success)
+            {
+                foreach (ElementalBanner banner in response.banners)
+                {
+                    bannersCache[banner.element] = banner;
+                }
+                
+                Debug.Log($"Loaded {bannersCache.Count} elemental banners");
+            }
+        }
+    }
+    
+    // === AFFICHAGE ===
+    
+    void DisplayActiveBanners()
+    {
+        // Nettoyer l'existant
+        foreach (Transform child in bannersContainer)
+        {
+            Destroy(child.gameObject);
+        }
+        
+        // Si vendredi (shop), afficher le shop au lieu des bannières
+        if (currentRotation.shopOpen)
+        {
+            DisplayShop();
+            return;
+        }
+        
+        // Afficher les bannières actives
+        foreach (string element in currentRotation.activeElements)
+        {
+            if (bannersCache.ContainsKey(element))
+            {
+                DisplayBanner(bannersCache[element], true);
+            }
+        }
+        
+        // Afficher les bannières inactives (grisées)
+        foreach (var kvp in bannersCache)
+        {
+            if (!currentRotation.activeElements.Contains(kvp.Key))
+            {
+                DisplayBanner(kvp.Value, false);
+            }
+        }
+    }
+    
+    void DisplayBanner(ElementalBanner banner, bool isActive)
+    {
+        GameObject bannerObj = Instantiate(bannerPrefab, bannersContainer);
+        ElementalBannerUI bannerUI = bannerObj.GetComponent<ElementalBannerUI>();
+        
+        if (bannerUI != null)
+        {
+            bannerUI.Setup(banner, isActive);
+            bannerUI.OnPullClicked += () => HandlePullRequest(banner.element);
+        }
+    }
+    
+    void DisplayShop()
+    {
+        // Afficher l'UI de la boutique élémentaire
+        Debug.Log("Displaying elemental shop (Friday)");
+        // TODO: Implémenter la boutique
+    }
+    
+    // === SYSTÈME DE PULL ===
+    
+    void HandlePullRequest(string element)
+    {
+        // Vérifier que la bannière est active
+        if (!currentRotation.activeElements.Contains(element))
+        {
+            ShowError($"{element} banner is not active today");
+            return;
+        }
+        
+        // Afficher la popup de pull
+        ShowPullPopup(element);
+    }
+    
+    public void PerformPull(string element, int count)
+    {
+        StartCoroutine(PerformPullCoroutine(element, count));
+    }
+    
+    IEnumerator PerformPullCoroutine(string element, int count)
+    {
+        // Vérifier les tickets
+        int availableTickets = playerTickets.GetTickets(element);
+        
+        if (availableTickets < count)
+        {
+            ShowError($"Insufficient {element} tickets. Need: {count}, Have: {availableTickets}");
+            yield break;
+        }
+        
+        // Effectuer le pull
+        string jsonBody = $"{{\"element\":\"{element}\",\"count\":{count}}}";
+        
+        UnityWebRequest request = new UnityWebRequest($"{baseURL}/pull", "POST");
+        byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonBody);
+        request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+        request.downloadHandler = new DownloadHandlerBuffer();
+        
+        request.SetRequestHeader("Authorization", $"Bearer {jwtToken}");
+        request.SetRequestHeader("Content-Type", "application/json");
+        
+        yield return request.SendWebRequest();
+        
+        if (request.result == UnityWebRequest.Result.Success)
+        {
+            ElementalPullResponse response = 
+                JsonUtility.FromJson<ElementalPullResponse>(request.downloadHandler.text);
+            
+            if (response.success)
+            {
+                // Mettre à jour les tickets
+                yield return LoadPlayerTickets();
+                
+                // Afficher les résultats
+                yield return DisplayPullResults(response, element);
+                
+                // Déclencher l'event
+                OnPullCompleted?.Invoke(response);
+            }
+        }
+        else
+        {
+            HandlePullError(request.error);
+        }
+    }
+    
+    IEnumerator DisplayPullResults(ElementalPullResponse response, string element)
+    {
+        foreach (ElementalPullResult result in response.results)
+        {
+            // Animation de pull
+            yield return PlayPullAnimation(result, element);
+            
+            // Popup spéciale selon le contexte
+            if (result.isWishlistPity)
+            {
+                ShowWishlistPityPopup(result.hero, element);
+                yield return new WaitForSeconds(2f);
+            }
+            else if (result.isPityTriggered)
+            {
+                ShowPityPopup(result.hero, element);
+                yield return new WaitForSeconds(1.5f);
+            }
+            else if (result.rarity == "Legendary")
+            {
+                ShowLegendaryPopup(result.hero, element);
+                yield return new WaitForSeconds(1.5f);
+            }
+            
+            // Pause entre les héros
+            yield return new WaitForSeconds(0.5f);
+        }
+        
+        // Afficher le résumé final
+        ShowPullSummary(response);
+    }
+    
+    IEnumerator PlayPullAnimation(ElementalPullResult result, string element)
+    {
+        // Jouer l'animation selon la rareté et l'élément
+        Color elementColor = ElementalUIHelper.GetElementColor(element);
+        
+        // Animation de base
+        yield return new WaitForSeconds(1f);
+        
+        // Révélation du héros
+        if (result.rarity == "Legendary")
+        {
+            PlayLegendaryAnimation(element);
+            PlaySound("legendary_chime");
+        }
+        else if (result.rarity == "Epic")
+        {
+            PlayEpicAnimation(element);
+            PlaySound("epic_bell");
+        }
+        
+        yield return new WaitForSeconds(0.5f);
+    }
+    
+    // === SYSTÈME DE TIMER ===
+    
+    IEnumerator RotationTimer()
+    {
+        while (true)
+        {
+            if (currentRotation != null)
+            {
+                System.DateTime nextRotation = System.DateTime.Parse(currentRotation.nextRotation);
+                System.TimeSpan timeRemaining = nextRotation - System.DateTime.UtcNow;
+                
+                // Mettre à jour l'UI du timer
+                UpdateRotationTimer(timeRemaining);
+                
+                // Si la rotation est passée, recharger
+                if (timeRemaining.TotalSeconds <= 0)
+                {
+                    yield return LoadCurrentRotation();
+                    DisplayActiveBanners();
+                }
+            }
+            
+            yield return new WaitForSeconds(1f);
+        }
+    }
+    
+    void UpdateRotationTimer(System.TimeSpan timeRemaining)
+    {
+        if (timeRemaining.TotalSeconds > 0)
+        {
+            string timerText = $"{timeRemaining.Hours:D2}:{timeRemaining.Minutes:D2}:{timeRemaining.Seconds:D2}";
+            // Mettre à jour l'UI
+        }
+    }
+    
+    // === WEBSOCKET ===
+    
+    void InitializeWebSocket()
+    {
+        // Obtenir l'instance WebSocket
+        ElementalWebSocketManager wsManager = GetComponent<ElementalWebSocketManager>();
+        
+        if (wsManager != null)
+        {
+            wsManager.OnRotationChanged += HandleRotationChangedEvent;
+            wsManager.OnTicketDropped += HandleTicketDroppedEvent;
+        }
+    }
+    
+    void HandleRotationChangedEvent(RotationChangedData data)
+    {
+        // Mettre à jour la rotation locale
+        StartCoroutine(LoadCurrentRotation());
+        
+        // Afficher notification
+        string message = data.shopOpen 
+            ? "🛒 Elemental Shop is open!" 
+            : $"🔮 New rotation: {string.Join(" & ", data.activeElements)}";
+        
+        ShowNotification(message);
+    }
+    
+    void HandleTicketDroppedEvent(TicketDroppedData data)
+    {
+        // Mettre à jour les tickets
+        StartCoroutine(LoadPlayerTickets());
+        
+        // Afficher animation
+        string icon = ElementalUIHelper.GetElementIcon(data.element);
+        ShowNotification($"{icon} +{data.quantity} {data.element} ticket!");
+        
+        // Déclencher l'event
+        OnTicketDropped?.Invoke(data);
+    }
+    
+    // === MÉTHODES UTILITAIRES ===
+    
+    public bool IsBannerActive(string element)
+    {
+        return currentRotation != null && 
+               currentRotation.activeElements.Contains(element);
+    }
+    
+    public int GetPlayerTickets(string element)
+    {
+        return playerTickets != null ? playerTickets.GetTickets(element) : 0;
+    }
+    
+    public ElementalBanner GetBanner(string element)
+    {
+        return bannersCache.ContainsKey(element) ? bannersCache[element] : null;
+    }
+    
+    public void RefreshSystem()
+    {
+        StartCoroutine(InitializeSystem());
+    }
+    
+    // Méthodes d'UI à implémenter
+    void ShowError(string message) { Debug.LogError(message); }
+    void ShowNotification(string message) { Debug.Log($"Notification: {message}"); }
+    void ShowPullPopup(string element) { Debug.Log($"Show pull popup for {element}"); }
+    void ShowWishlistPityPopup(Hero hero, string element) { }
+    void ShowPityPopup(Hero hero, string element) { }
+    void ShowLegendaryPopup(Hero hero, string element) { }
+    void ShowPullSummary(ElementalPullResponse response) { }
+    void PlayLegendaryAnimation(string element) { }
+    void PlayEpicAnimation(string element) { }
+    void PlaySound(string soundName) { }
+}
+
+// Classe pour l'UI d'une bannière
+public class ElementalBannerUI : MonoBehaviour
+{
+    public Image bannerImage;
+    public Text nameText;
+    public Text elementText;
+    public GameObject activeBadge;
+    public Button pullButton;
+    
+    public System.Action OnPullClicked;
+    
+    private ElementalBanner banner;
+    private bool isActive;
+    
+    public void Setup(ElementalBanner banner, bool isActive)
+    {
+        this.banner = banner;
+        this.isActive = isActive;
+        
+        nameText.text = banner.name;
+        elementText.text = $"{ElementalUIHelper.GetElementIcon(banner.element)} {banner.element}";
+        
+        activeBadge.SetActive(isActive);
+        pullButton.interactable = isActive;
+        
+        if (!isActive)
+        {
+            bannerImage.color = new Color(0.5f, 0.5f, 0.5f, 0.7f);
+        }
+        else
+        {
+            bannerImage.color = Color.white;
+        }
+        
+        pullButton.onClick.AddListener(() => OnPullClicked?.Invoke());
+    }
+}
+```
+
+---
+
+## Conclusion
+
+Le système de **Bannières Élémentaires** offre une expérience gacha enrichie avec :
+
+- ✅ Rotation hebdomadaire dynamique
+- ✅ Système de tickets spécialisés
+- ✅ Pity réduit pour plus de satisfaction
+- ✅ Wishlists élémentaires personnalisables
+- ✅ Événements spéciaux (Vendredi boutique, Dimanche complet)
+- ✅ Notifications temps réel via WebSocket
+
+Cette documentation fournit tous les outils nécessaires pour intégrer le système dans Unity de manière complète et performante.
+
+---
+
+**Version:** 1.0.0  
+**Dernière mise à jour:** 1er octobre 2025  
+**Système:** Elemental Banners avec rotation hebdomadaire
