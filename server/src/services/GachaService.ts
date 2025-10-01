@@ -304,7 +304,7 @@ if (banner.type === "Standard" || banner.type === "Limited") {
               currentPulls: mythicUpdate.fusedCounter,
               pityThreshold: 80,
               pullsRemaining: 80 - (mythicUpdate.fusedCounter % 80),
-              pityType: "mythic_scroll",
+              pityType: "mythic",
               progressPercentage: ((mythicUpdate.fusedCounter % 80) / 80) * 100,
               isSharedPity: true
             });
