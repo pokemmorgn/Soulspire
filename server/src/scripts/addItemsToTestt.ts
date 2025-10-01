@@ -15,16 +15,28 @@ async function main() {
   await mongoose.connect(MONGO_URI);
   console.log("✅ Connected to MongoDB");
 
-  // Trouver le joueur Testt
-  const username = "Testt";
-  const player = await Player.findOne({ username });
+  // Trouver le joueur par displayName
+  const displayName = "testt";
   
-  if (!player) {
-    console.error(`❌ Player not found: ${username}`);
+  // Trouver TOUS les joueurs avec ce displayName
+  const players = await Player.find({ displayName });
+  
+  if (players.length === 0) {
+    console.error(`❌ No player found with displayName: ${displayName}`);
     process.exit(1);
   }
 
-  console.log(`✅ Player found: ${username} (ID: ${player._id})`);
+  if (players.length > 1) {
+    console.log(`⚠️ Found ${players.length} players with displayName "${displayName}"`);
+    console.log("Players found:");
+    players.forEach((p, i) => {
+      console.log(`  ${i + 1}. ID: ${p._id}, Username: ${p.username || 'N/A'}`);
+    });
+    console.log("\nUsing the FIRST player found...\n");
+  }
+
+  const player = players[0];
+  console.log(`✅ Player found: ${displayName} (ID: ${player._id})`);
 
   // Récupérer ou créer l'inventaire
   let inventory = await Inventory.findOne({ playerId: player._id });
@@ -100,7 +112,8 @@ async function main() {
   console.log("\n" + "=".repeat(50));
   console.log("📊 SUMMARY");
   console.log("=".repeat(50));
-  console.log(`Player: ${username}`);
+  console.log(`Player displayName: ${displayName}`);
+  console.log(`Player ID: ${player._id}`);
   console.log(`Items added successfully: ${successCount}`);
   console.log(`Errors: ${errorCount}`);
   console.log(`Total categories processed: ${categories.length}`);
