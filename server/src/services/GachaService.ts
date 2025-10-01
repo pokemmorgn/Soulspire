@@ -559,25 +559,6 @@ public static async performPullOnBanner(
     };
   }
 
-  /**
-   * Calculer les effets spéciaux d'un pull
-   */
-  private static calculateSpecialEffects(
-    results: GachaPullResult[],
-    pityStatus: any,
-    pullCount: number
-  ): any {
-    const legendaryCount = results.filter(r => r.rarity === 'Legendary').length;
-    const epicCount = results.filter(r => r.rarity === 'Epic').length;
-    
-    return {
-      hasPityBreak: pityStatus.pullsSinceLegendary + pullCount >= 90 && legendaryCount > 0,
-      hasMultipleLegendary: legendaryCount > 1,
-      perfectPull: pullCount === 10 && results.every(r => ['Epic', 'Legendary'].includes(r.rarity)),
-      luckyStreakCount: this.calculateCurrentStreak(results)
-    };
-  }
-
   // ===== SYSTÈME DE TICKETS ÉLÉMENTAIRES =====
 
   /**
