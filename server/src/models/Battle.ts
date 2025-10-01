@@ -6,7 +6,7 @@ export interface IBattleParticipant {
   position: number;  // ✅ NOUVEAU : Position dans la formation (1-5)
   role: "Tank" | "DPS Melee" | "DPS Ranged" | "Support";
   element: "Fire" | "Water" | "Wind" | "Electric" | "Light" | "Dark";
-  rarity: "Common" | "Rare" | "Epic" | "Legendary";
+  rarity: "Common" | "Rare" | "Epic" | "Legendary" | "Mythic";
   level: number;
   stars: number;
   
@@ -127,7 +127,7 @@ const participantSchema = new Schema<IBattleParticipant>({
   },
   rarity: { 
     type: String, 
-    enum: ["Common", "Rare", "Epic", "Legendary"],
+    enum: ["Common", "Rare", "Epic", "Legendary", "Mythic"],
     required: true 
   },
   level: { type: Number, required: true, min: 1, max: 100 },
