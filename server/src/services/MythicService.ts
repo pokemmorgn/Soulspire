@@ -459,9 +459,9 @@ export class MythicService {
       // Populer les infos des héros
       const heroIds = mythicHistory.map(h => h.heroId);
       const heroes = await Hero.find({ _id: { $in: heroIds } });
-
+      
       return mythicHistory.map(entry => {
-        const heroData = heroes.find(h => h._id.toString() === entry.heroId);
+        const heroData = heroes.find((h: any) => h._id.toString() === entry.heroId);
         return {
           ...entry,
           heroName: heroData?.name || "Unknown",
