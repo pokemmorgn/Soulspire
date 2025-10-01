@@ -6,6 +6,7 @@ export interface IBannerRates {
   Rare: number;
   Epic: number;
   Legendary: number;
+  Mythic: number; 
   // ❌ SUPPRIMÉ : focusRateUp (obsolète, remplacé par focusChance dans IFocusHero)
 }
 
@@ -23,11 +24,13 @@ export interface IBannerCost {
     gems?: number;
     tickets?: number;
     specialCurrency?: number;
+    mythicScrolls?: number;  // ✅ NOUVEAU
   };
   multiPull: {
     gems?: number;
     tickets?: number;
     specialCurrency?: number;
+    mythicScrolls?: number;  // ✅ NOUVEAU
   };
   firstPullDiscount?: {
     gems?: number;
@@ -40,7 +43,7 @@ export interface IBanner {
   _id?: string;
   bannerId: string;
   name: string;
-  type: "Standard" | "Limited" | "Event" | "Beginner" | "Weapon";
+  type: "Standard" | "Limited" | "Event" | "Beginner" | "Weapon" | "Mythic"; 
   description: string;
   
   // Timing
@@ -132,7 +135,7 @@ export interface IBanner {
 interface IBannerDocument extends Document {
   bannerId: string;
   name: string;
-  type: "Standard" | "Limited" | "Event" | "Beginner" | "Weapon";
+  type: "Standard" | "Limited" | "Event" | "Beginner" | "Weapon" | "Mythic";
   description: string;
   startTime: Date;
   endTime: Date;
@@ -216,7 +219,7 @@ const bannerSchema = new Schema<IBannerDocument>({
   },
   type: {
     type: String,
-    enum: ["Standard", "Limited", "Event", "Beginner", "Weapon"],
+    enum: ["Standard", "Limited", "Event", "Beginner", "Weapon", "Mythic"],
     required: true
   },
   description: {
@@ -335,6 +338,13 @@ const bannerSchema = new Schema<IBannerDocument>({
       required: true,
       min: 0,
       max: 100
+    },
+    Mythic: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: 100,
+      default: 0
     }
     // ❌ SUPPRIMÉ : focusRateUp (obsolète)
   },
@@ -343,12 +353,14 @@ const bannerSchema = new Schema<IBannerDocument>({
     singlePull: {
       gems: { type: Number, min: 0 },
       tickets: { type: Number, min: 0 },
-      specialCurrency: { type: Number, min: 0 }
+      specialCurrency: { type: Number, min: 0 },
+      mythicScrolls: { type: Number, min: 0 }
     },
     multiPull: {
       gems: { type: Number, min: 0 },
       tickets: { type: Number, min: 0 },
-      specialCurrency: { type: Number, min: 0 }
+      specialCurrency: { type: Number, min: 0 },
+      mythicScrolls: { type: Number, min: 0 }
     },
     firstPullDiscount: {
       gems: { type: Number, min: 0 },
