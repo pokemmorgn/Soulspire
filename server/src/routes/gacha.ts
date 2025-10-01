@@ -580,6 +580,315 @@ router.post("/test", authMiddleware, requireFeature("gacha"), async (req: Reques
   }
 });
 
+// ===== ROUTES BANNIÈRES ÉLÉMENTAIRES =====
+
+/**
+ * GET /api/gacha/elemental/rotation
+ * Obtenir la rotation actuelle des bannières élémentaires
+ * Auth: Optionnelle (public)
+ */
+router.get("/elemental/rotation", optionalAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const serverId = req.serverId || "S1";
+
+    console.log(`📅 Récupération rotation élémentaire pour ${serverId}`);
+
+    const rotation = await ElementalBannerService.getCurrentRotation(serverId);
+
+    res.json({
+      success: true,
+      rotation,
+      schedule: ElementalBannerService.getWeeklySchedule()
+    });
+
+  } catch (error: any) {
+    console.error("❌ Error getting elemental rotation:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to get elemental rotation",
+      code: "GET_ELEMENTAL_ROTATION_FAILED"
+    });
+  }
+});
+
+/**
+ * GET /api/gacha/elemental/banners
+ * Obtenir les bannières élémentaires actives aujourd'hui
+ * Auth: Optionnelle (public)
+ */
+router.get("/elemental/banners", optionalAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const serverId = req.serverId || "S1";
+
+    console.log(`🔮 Récupération bannières élémentaires actives pour ${serverId}`);
+
+    const banners = await ElementalBannerService.getActiveBannersToday(serverId);
+    const rotation = await ElementalBannerService.getCurrentRotation(serverId);
+
+    res.json({
+      success: true,
+      banners,
+      rotation: {
+        day: rotation.day,
+        activeElements: rotation.activeElements,
+        shopOpen: rotation.shopOpen,
+        nextRotation: rotation.nextRotation
+      },
+      message: rotation.shopOpen 
+        ? "Elemental shop is open today (Friday)" 
+        : `${banners.length} elemental banner(s) active today`
+    });
+
+  } catch (error: any) {
+    console.error("❌ Error getting elemental banners:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to get elemental banners",
+      code: "GET_ELEMENTAL_BANNERS_FAILED"
+    });
+  }
+});
+
+/**
+ * GET /api/gacha/elemental/banners/all
+ * Obtenir TOUTES les bannières élémentaires (peu importe la rotation)
+ * Auth: Optionnelle (public)
+ */
+router.get("/elemental/banners/all", optionalAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const serverId = req.serverId || "S1";
+
+    console.log(`📋 Récupération de toutes les bannières élémentaires pour ${serverId}`);
+
+    const banners = await ElementalBannerService.getAllElementalBanners(serverId);
+    const rotation = await ElementalBannerService.getCurrentRotation(serverId);
+
+    res.json({
+      success: true,
+      banners,
+      totalBanners: banners.length,
+      currentRotation: rotation
+    });
+
+  } catch (error: any) {
+    console.error("❌ Error getting all elemental banners:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to get all elemental banners",
+      code: "GET_ALL_ELEMENTAL_BANNERS_FAILED"
+    });
+  }
+});
+
+/**
+ * GET /api/gacha/elemental/banner/:element
+ * Obtenir une bannière élémentaire spécifique
+ * Auth: Optionnelle (public)
+ */
+router.get("/elemental/banner/:element", optionalAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const serverId = req.serverId || "S1";
+    const { element } = req.params;
+
+    // Valider l'élément
+    const validElements = ["Fire", "Water", "Wind", "Electric", "Light", "Shadow"];
+    if (!validElements.includes(element)) {
+      res.status(400).json({
+        success: false,
+        error: `Invalid element: ${element}. Valid: ${validElements.join(", ")}`,
+        code: "INVALID_ELEMENT"
+      });
+      return;
+    }
+
+    console.log(`🔍 Récupération bannière élémentaire ${element} pour ${serverId}`);
+
+    const banner = await ElementalBannerService.getBannerByElement(serverId, element);
+
+    if (!banner) {
+      res.status(404).json({
+        success: false,
+        error: `No ${element} elemental banner found`,
+        code: "ELEMENTAL_BANNER_NOT_FOUND"
+      });
+      return;
+    }
+
+    const isActive = await ElementalBannerService.isElementActive(serverId, element);
+
+    res.json({
+      success: true,
+      banner,
+      isActiveToday: isActive,
+      message: isActive 
+        ? `${element} banner is active today` 
+        : `${element} banner is not active today`
+    });
+
+  } catch (error: any) {
+    console.error("❌ Error getting elemental banner by element:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to get elemental banner",
+      code: "GET_ELEMENTAL_BANNER_FAILED"
+    });
+  }
+});
+
+/**
+ * GET /api/gacha/elemental/tickets
+ * Obtenir les tickets élémentaires du joueur
+ * Auth: Obligatoire
+ */
+router.get("/elemental/tickets", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const player = await Player.findOne({ _id: req.userId, serverId: req.serverId });
+
+    if (!player) {
+      res.status(404).json({
+        success: false,
+        error: "Player not found",
+        code: "PLAYER_NOT_FOUND"
+      });
+      return;
+    }
+
+    console.log(`💎 Récupération tickets élémentaires pour ${player.displayName}`);
+
+    res.json({
+      success: true,
+      tickets: player.elementalTickets,
+      total: Object.values(player.elementalTickets).reduce((sum: number, val: number) => sum + val, 0)
+    });
+
+  } catch (error: any) {
+    console.error("❌ Error getting elemental tickets:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to get elemental tickets",
+      code: "GET_ELEMENTAL_TICKETS_FAILED"
+    });
+  }
+});
+
+/**
+ * POST /api/gacha/elemental/pull
+ * Effectuer un pull élémentaire avec des tickets
+ * Auth: Obligatoire
+ */
+router.post("/elemental/pull", authMiddleware, requireFeature("gacha"), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { element, count = 1 } = req.body;
+
+    // Validation de l'élément
+    const validElements = ["Fire", "Water", "Wind", "Electric", "Light", "Shadow"];
+    if (!element || !validElements.includes(element)) {
+      res.status(400).json({
+        success: false,
+        error: `Invalid or missing element. Valid: ${validElements.join(", ")}`,
+        code: "INVALID_ELEMENT"
+      });
+      return;
+    }
+
+    // Validation du count
+    if (![1, 10].includes(count)) {
+      res.status(400).json({
+        success: false,
+        error: "Count must be 1 or 10",
+        code: "INVALID_COUNT"
+      });
+      return;
+    }
+
+    console.log(`🔮 ${req.userId} effectue ${count} pull(s) élémentaire(s) sur ${element}`);
+
+    // Effectuer le pull élémentaire
+    const result = await GachaService.performElementalPull(
+      req.userId!,
+      req.serverId!,
+      element,
+      count
+    );
+
+    res.json(result);
+
+  } catch (error: any) {
+    console.error("❌ Error performing elemental pull:", error);
+
+    if (error.message.includes("not active today")) {
+      res.status(400).json({
+        success: false,
+        error: error.message,
+        code: "BANNER_NOT_ACTIVE_TODAY"
+      });
+      return;
+    }
+
+    if (error.message.includes("Insufficient")) {
+      res.status(400).json({
+        success: false,
+        error: error.message,
+        code: "INSUFFICIENT_TICKETS"
+      });
+      return;
+    }
+
+    if (error.message.includes("not found")) {
+      res.status(404).json({
+        success: false,
+        error: error.message,
+        code: error.message.includes("Player") ? "PLAYER_NOT_FOUND" : "BANNER_NOT_FOUND"
+      });
+      return;
+    }
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to perform elemental pull",
+      code: "ELEMENTAL_PULL_FAILED"
+    });
+  }
+});
+
+/**
+ * GET /api/gacha/elemental/schedule
+ * Obtenir le planning de rotation pour les 7 prochains jours
+ * Auth: Optionnelle (public)
+ */
+router.get("/elemental/schedule", optionalAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const days = parseInt(req.query.days as string) || 7;
+
+    if (days < 1 || days > 30) {
+      res.status(400).json({
+        success: false,
+        error: "Days must be between 1 and 30",
+        code: "INVALID_DAYS_PARAMETER"
+      });
+      return;
+    }
+
+    console.log(`📅 Récupération planning sur ${days} jours`);
+
+    const schedule = ElementalBannerService.getUpcomingRotations(days);
+
+    res.json({
+      success: true,
+      schedule,
+      totalDays: schedule.length
+    });
+
+  } catch (error: any) {
+    console.error("❌ Error getting elemental schedule:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to get elemental schedule",
+      code: "GET_ELEMENTAL_SCHEDULE_FAILED"
+    });
+  }
+});
+
 // === ROUTE D'INFORMATION SYSTÈME GACHA (✅ MODIFIÉ - Public) ===
 router.get("/info", async (req: Request, res: Response): Promise<void> => {
   try {
@@ -600,7 +909,9 @@ router.get("/info", async (req: Request, res: Response): Promise<void> => {
         realTimeNotifications: "WebSocket integration for instant notifications",
         smartRecommendations: "AI-powered pull recommendations",
         collectionTracking: "Automatic collection progress tracking",
-        specialEvents: "Rate-up events, free pulls, special banners"
+        specialEvents: "Rate-up events, free pulls, special banners",
+        elementalSystem: "Elemental banners with ticket-based pulls and weekly rotation"
+
       },
       bannerTypes: {
         Standard: {
@@ -665,7 +976,14 @@ router.get("/info", async (req: Request, res: Response): Promise<void> => {
         pull: "POST /api/gacha/pull - Pull on specific banner (auth required)",
         history: "GET /api/gacha/history - Summon history (auth required)",
         stats: "GET /api/gacha/stats - Personal statistics (auth required)",
-        test: "POST /api/gacha/test - Test pulls (dev only, auth required)"
+        test: "POST /api/gacha/test - Test pulls (dev only, auth required)",
+        elementalRotation: "GET /api/gacha/elemental/rotation - Current rotation (public)",
+        elementalBanners: "GET /api/gacha/elemental/banners - Active elemental banners today (public)",
+        elementalBannersAll: "GET /api/gacha/elemental/banners/all - All elemental banners (public)",
+        elementalBanner: "GET /api/gacha/elemental/banner/:element - Specific elemental banner (public)",
+        elementalTickets: "GET /api/gacha/elemental/tickets - Player's tickets (auth required)",
+        elementalPull: "POST /api/gacha/elemental/pull - Pull with tickets (auth required)",
+        elementalSchedule: "GET /api/gacha/elemental/schedule - 7-day rotation schedule (public)"
       },
       websocketEvents: {
         client: [
@@ -697,5 +1015,6 @@ router.get("/info", async (req: Request, res: Response): Promise<void> => {
 });
 
 export default router;
+
 
 
