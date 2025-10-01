@@ -85,7 +85,7 @@ const heroSchema = new Schema<IHeroDocument>({
       type: Number, required: true, min: 30, max: 200,
       default: function (this: IHeroDocument) {
         const byRarity: Record<IHeroDocument["rarity"], number> =
-          { Common: 50, Rare: 65, Epic: 80, Legendary: 100 };
+          { Common: 50, Rare: 65, Epic: 80, Legendary: 100, Mythic: 120 };
         return byRarity[this.rarity] ?? 60;
       }
     },
@@ -93,7 +93,7 @@ const heroSchema = new Schema<IHeroDocument>({
       type: Number, required: true, min: 0, max: 50,
       default: function (this: IHeroDocument) {
         const byRarity: Record<IHeroDocument["rarity"], number> =
-          { Common: 0, Rare: 5, Epic: 10, Legendary: 15 };
+         { Common: 0, Rare: 5, Epic: 10, Legendary: 15, Mythic: 20 };
         return byRarity[this.rarity] ?? 0;
       }
     },
@@ -489,4 +489,5 @@ heroSchema.pre("save", function (next) {
 });
 
 export default mongoose.model<IHeroDocument>("Hero", heroSchema);
+
 
