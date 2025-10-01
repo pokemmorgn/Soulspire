@@ -37,7 +37,8 @@ export class SchedulerService {
       console.log("📆 Reset mensuel des boutiques...");
       await ShopService.processShopResets();
     });
-// ===== DAILY REWARDS =====
+
+    // ===== DAILY REWARDS =====
     // Reset quotidien des Daily Rewards - tous les jours à minuit
     this.scheduleTask('daily-rewards-reset', '0 0 * * *', async () => {
       console.log("🎁 Reset quotidien des Daily Rewards...");
@@ -74,6 +75,7 @@ export class SchedulerService {
         console.error("❌ Erreur rappels Daily Rewards:", error);
       }
     });
+
     // ===== BANNIÈRES ÉLÉMENTAIRES =====
     // Rotation quotidienne des bannières élémentaires - tous les jours à minuit
     this.scheduleTask('elemental-banner-rotation', '0 0 * * *', async () => {
@@ -153,6 +155,7 @@ export class SchedulerService {
         console.error("❌ Erreur rappel dimanche:", error);
       }
     });
+
     // ===== PULLS GRATUITS =====
     // Reset automatique des pulls gratuits - toutes les heures
     this.scheduleTask('free-pulls-auto-reset', '0 * * * *', async () => {
@@ -195,6 +198,7 @@ export class SchedulerService {
         console.error("❌ Erreur rappels pulls gratuits:", error);
       }
     });
+
     // ===== ARÈNE =====
     // Maintenance quotidienne de l'arène - tous les jours à 1h du matin
     this.scheduleTask('arena-daily-maintenance', '0 1 * * *', async () => {
@@ -591,7 +595,8 @@ export class SchedulerService {
       console.error("❌ Error activating weekend guild events:", error);
     }
   }
-// ===== MÉTHODES PULLS GRATUITS =====
+
+  // ===== MÉTHODES PULLS GRATUITS =====
 
   /**
    * Traiter automatiquement les resets de pulls gratuits
@@ -725,7 +730,7 @@ export class SchedulerService {
             nextResetAt: { $lte: new Date(now.getTime() + 4 * 60 * 60 * 1000) } // Dans moins de 4h
           }
         }
-      }).select('_id serverId freePulls displayName');
+        }).select('_id serverId freePulls displayName');
 
       console.log(`📬 ${players.length} joueurs avec pulls gratuits à rappeler...`);
 
@@ -771,6 +776,7 @@ export class SchedulerService {
       };
     }
   }
+
   // ===== MÉTHODES EXISTANTES =====
 
   // Programmer une tâche spécifique
@@ -865,8 +871,8 @@ export class SchedulerService {
         break;
       case 'guild-leadership-check':
         console.log("👑 Vérification leadership manuelle...");
-        const result = await GuildManagementService.checkAllInactiveLeadersOnServer('S1');
-        console.log(`✅ ${result.transfersPerformed} transferts effectués sur ${result.guildsChecked} guildes`);
+        const leadershipResult = await GuildManagementService.checkAllInactiveLeadersOnServer('S1');
+        console.log(`✅ ${leadershipResult.transfersPerformed} transferts effectués sur ${leadershipResult.guildsChecked} guildes`);
         break;
       case 'guild-daily-quests':
         console.log("📋 Démarrage quêtes quotidiennes manuel...");
@@ -884,17 +890,13 @@ export class SchedulerService {
         console.log("🎉 Événements weekend guildes manuel...");
         await this.activateWeekendGuildEvents();
         break;
-        // ===== TÂCHES DAILY REWARDS =====
+      // ===== TÂCHES DAILY REWARDS =====
       case 'daily-rewards-reset':
         console.log("🎁 Reset Daily Rewards manuel...");
-        const resetResult = await DailyRewardsService.performDailyReset();
-        console.log(`✅ ${resetResult.processed} joueurs traités, ${resetResult.errors} erreurs`);
+        const dailyRewardsResult = await DailyRewardsService.performDailyReset();
+        console.log(`✅ ${dailyRewardsResult.processed} joueurs traités, ${dailyRewardsResult.errors} erreurs`);
         break;
       case 'daily-rewards-reminder':
-        console.log("⏰ Rappels Daily Rewards manuel...");
-        console.log("📬 Rappels Daily Rewards à implémenter (feature future)");
-        break;
-        case 'daily-rewards-reminder':
         console.log("⏰ Rappels Daily Rewards manuel...");
         console.log("📬 Rappels Daily Rewards à implémenter (feature future)");
         break;
@@ -927,16 +929,16 @@ export class SchedulerService {
           hoursUntil: 6
         });
         break;
-        // ===== TÂCHES PULLS GRATUITS =====
+      // ===== TÂCHES PULLS GRATUITS =====
       case 'free-pulls-auto-reset':
         console.log("🎁 Reset pulls gratuits manuel...");
-        const resetResult = await this.processFreePullsReset();
-        console.log(`✅ ${resetResult.totalReset} resets effectués (Daily: ${resetResult.dailyReset}, Weekly: ${resetResult.weeklyReset}, Monthly: ${resetResult.monthlyReset})`);
+        const freePullsResult = await this.processFreePullsReset();
+        console.log(`✅ ${freePullsResult.totalReset} resets effectués (Daily: ${freePullsResult.dailyReset}, Weekly: ${freePullsResult.weeklyReset}, Monthly: ${freePullsResult.monthlyReset})`);
         break;
       case 'free-pulls-reminder':
         console.log("⏰ Rappels pulls gratuits manuel...");
-        const reminderResult = await this.sendFreePullsReminders();
-        console.log(`✅ ${reminderResult.remindersSent} rappels envoyés`);
+        const remindersResult = await this.sendFreePullsReminders();
+        console.log(`✅ ${remindersResult.remindersSent} rappels envoyés`);
         break;
       default:
         throw new Error(`Tâche inconnue: ${taskName}`);
