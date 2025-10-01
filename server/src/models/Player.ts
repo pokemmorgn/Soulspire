@@ -325,7 +325,7 @@ playerSchema.set('toJSON', { virtuals: false });
 playerSchema.set('toObject', { virtuals: false });
 playerSchema.index({ accountId: 1, serverId: 1 });
 playerSchema.index({ serverId: 1 });
-playerSchema.index({ "freePulls.bannerId": 1, "freePulls.nextResetAt": 1 }); // ✅ NOUVEAU
+playerSchema.index({ "freePulls.bannerId": 1, "freePulls.nextResetAt": 1 });
 
 // ----- Statics -----
 playerSchema.statics.findByAccount = function(accountId: string, serverId?: string) {
@@ -723,3 +723,4 @@ playerSchema.methods.performDailyReset = function() {
 };
 
 export default mongoose.model<IPlayerDocument>("Player", playerSchema);
+
