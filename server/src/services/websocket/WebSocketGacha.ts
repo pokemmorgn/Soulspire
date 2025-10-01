@@ -270,7 +270,7 @@ export class WebSocketGacha {
       currentPulls: number;
       pityThreshold: number;
       pullsRemaining: number;
-      pityType: 'legendary' | 'epic';
+      pityType: 'legendary' | 'epic' | 'mythic'; 
       progressPercentage: number;
       isSharedPity: boolean;
     }
