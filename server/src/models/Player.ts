@@ -67,6 +67,14 @@ export interface IPlayer {
   gems: number;
   paidGems: number;
   tickets: number;
+  elementalTickets: {
+  fire: number;
+  water: number;
+  wind: number;
+  electric: number;
+  light: number;
+  shadow: number;
+  };
   vipLevel: number;
   vipExperience: number;
   vipTransactions: IVipTransaction[];
@@ -122,6 +130,9 @@ export interface IPlayerDocument extends Document, IPlayer {
   canAfford(cost: { gold?: number, gems?: number, paidGems?: number, tickets?: number }): boolean;
   spendCurrency(cost: { gold?: number, gems?: number, paidGems?: number, tickets?: number }): Promise<IPlayerDocument>;
   addCurrency(currency: { gold?: number, gems?: number, paidGems?: number, tickets?: number }): Promise<IPlayerDocument>;
+  addElementalTicket(element: string, quantity?: number): Promise<IPlayerDocument>;
+  spendElementalTickets(element: string, quantity: number): Promise<IPlayerDocument>;
+  hasElementalTickets(element: string, quantity: number): boolean;
   addVipExp(amount: number, source?: string, cost?: number): Promise<{ newLevel: number; leveledUp: boolean }>;
   addServerPurchase(purchase: IServerPurchase): Promise<IPlayerDocument>;
   updateProgress(type: string, value: number): Promise<IPlayerDocument>;
@@ -211,6 +222,14 @@ const playerSchema = new Schema<IPlayerDocument>({
   gems: { type: Number, default: 100, min: 0 },
   paidGems: { type: Number, default: 0, min: 0 },
   tickets: { type: Number, default: 5, min: 0 },
+  elementalTickets: {
+  fire: { type: Number, default: 0, min: 0 },
+  water: { type: Number, default: 0, min: 0 },
+  wind: { type: Number, default: 0, min: 0 },
+  electric: { type: Number, default: 0, min: 0 },
+  light: { type: Number, default: 0, min: 0 },
+  shadow: { type: Number, default: 0, min: 0 }
+  },
   vipLevel: { type: Number, default: 0, min: 0, max: 15 },
   vipExperience: { type: Number, default: 0, min: 0 },
   vipTransactions: { type: [vipTransactionSchema], default: [] },
@@ -382,6 +401,48 @@ playerSchema.methods.addCurrency = function(currency: { gold?: number, gems?: nu
   return this.save();
 };
 
+playerSchema.methods.addElementalTicket = function(element: string, quantity: number = 1) {
+  const elementKey = element.toLowerCase() as keyof typeof this.elementalTickets;
+  
+  if (!this.elementalTickets[elementKey] && this.elementalTickets[elementKey] !== 0) {
+    throw new Error(`Invalid element: ${element}. Valid elements: fire, water, wind, electric, light, shadow`);
+  }
+  
+  this.elementalTickets[elementKey] += quantity;
+  
+  console.log(`✅ Player ${this.displayName} gained ${quantity}x ${element} ticket(s). Total: ${this.elementalTickets[elementKey]}`);
+  
+  return this.save();
+};
+
+playerSchema.methods.spendElementalTickets = function(element: string, quantity: number) {
+  const elementKey = element.toLowerCase() as keyof typeof this.elementalTickets;
+  
+  if (!this.elementalTickets[elementKey] && this.elementalTickets[elementKey] !== 0) {
+    throw new Error(`Invalid element: ${element}`);
+  }
+  
+  if (this.elementalTickets[elementKey] < quantity) {
+    throw new Error(`Insufficient ${element} tickets. Required: ${quantity}, Available: ${this.elementalTickets[elementKey]}`);
+  }
+  
+  this.elementalTickets[elementKey] -= quantity;
+  
+  console.log(`💎 Player ${this.displayName} spent ${quantity}x ${element} ticket(s). Remaining: ${this.elementalTickets[elementKey]}`);
+  
+  return this.save();
+};
+
+playerSchema.methods.hasElementalTickets = function(element: string, quantity: number): boolean {
+  const elementKey = element.toLowerCase() as keyof typeof this.elementalTickets;
+  
+  if (!this.elementalTickets[elementKey] && this.elementalTickets[elementKey] !== 0) {
+    return false;
+  }
+  
+  return this.elementalTickets[elementKey] >= quantity;
+};
+
 playerSchema.methods.addVipExp = function(amount: number, source: string = "purchase", cost: number = 0) {
   const oldLevel = this.vipLevel;
   this.vipExperience += amount;
@@ -514,4 +575,5 @@ playerSchema.methods.performDailyReset = function() {
 };
 
 export default mongoose.model<IPlayerDocument>("Player", playerSchema);
+
 
