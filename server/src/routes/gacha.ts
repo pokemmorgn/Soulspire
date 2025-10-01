@@ -5,8 +5,10 @@ import { requireFeature } from "../middleware/featureMiddleware";
 import { GachaService } from "../services/GachaService";
 import { WebSocketService } from "../services/WebSocketService";
 import { CollectionService } from "../services/CollectionService"; 
+import { ElementalBannerService } from "../services/ElementalBannerService";
 import Player from "../models/Player"; 
 import Hero from "../models/Hero";  
+
 const router = express.Router();
 
 // Schémas de validation
@@ -1015,6 +1017,7 @@ router.get("/info", async (req: Request, res: Response): Promise<void> => {
 });
 
 export default router;
+
 
 
 
