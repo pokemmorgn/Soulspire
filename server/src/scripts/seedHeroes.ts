@@ -36,6 +36,18 @@ function normalizeElement(csvElement: string): "Fire" | "Water" | "Wind" | "Elec
   return elementMap[csvElement?.trim()] || "Fire";
 }
 
+function normalizeRarity(csvRarity: string): "Common" | "Rare" | "Epic" | "Legendary" | "Mythic" {
+  const rarityMap: Record<string, "Common" | "Rare" | "Epic" | "Legendary" | "Mythic"> = {
+    "Common": "Common",
+    "Rare": "Rare",
+    "Epic": "Epic",
+    "Legendary": "Legendary",
+    "Mythical": "Mythic",  // ✅ CSV utilise "Mythical"
+    "Mythic": "Mythic"
+  };
+  return rarityMap[csvRarity?.trim()] || "Common";
+}
+
 // =====================
 // Stats de base
 // =====================
@@ -51,7 +63,8 @@ function calculateBaseStats(role: string, rarity: string) {
     Common: 1.0,
     Rare: 1.25,
     Epic: 1.5,
-    Legendary: 2.0
+    Legendary: 2.0,
+    Mythic: 2.5  // ✅ NOUVEAU
   };
 
   const baseStats =
@@ -63,10 +76,10 @@ function calculateBaseStats(role: string, rarity: string) {
     hp: Math.floor(baseStats.hp * multiplier),
     atk: Math.floor(baseStats.atk * multiplier),
     def: Math.floor(baseStats.def * multiplier),
-    crit: rarity === "Legendary" ? 15 : rarity === "Epic" ? 10 : 5,
-    critDamage: rarity === "Legendary" ? 75 : rarity === "Epic" ? 60 : 50,
-    critResist: 0,
-    dodge: rarity === "Legendary" ? 15 : rarity === "Epic" ? 10 : 5,
+    crit: rarity === "Mythic" ? 25 : rarity === "Legendary" ? 15 : rarity === "Epic" ? 10 : 5,
+    critDamage: rarity === "Mythic" ? 100 : rarity === "Legendary" ? 75 : rarity === "Epic" ? 60 : 50,
+    critResist: rarity === "Mythic" ? 10 : 0,
+    dodge: rarity === "Mythic" ? 20 : rarity === "Legendary" ? 15 : rarity === "Epic" ? 10 : 5,
     accuracy: 0,
     vitesse:
       role === "DPS Melee"
@@ -77,7 +90,9 @@ function calculateBaseStats(role: string, rarity: string) {
         ? 80
         : 70,
     moral:
-      rarity === "Legendary"
+      rarity === "Mythic"
+        ? 120
+        : rarity === "Legendary"
         ? 100
         : rarity === "Epic"
         ? 80
@@ -85,10 +100,10 @@ function calculateBaseStats(role: string, rarity: string) {
         ? 65
         : 50,
     reductionCooldown:
-      rarity === "Legendary" ? 15 : rarity === "Epic" ? 10 : rarity === "Rare" ? 5 : 0,
+      rarity === "Mythic" ? 20 : rarity === "Legendary" ? 15 : rarity === "Epic" ? 10 : rarity === "Rare" ? 5 : 0,
     healthleech: 0,
-    healingBonus: role === "Support" ? (rarity === "Legendary" ? 50 : 25) : 0,
-    shieldBonus: role === "Tank" ? (rarity === "Legendary" ? 40 : 20) : 0,
+    healingBonus: role === "Support" ? (rarity === "Mythic" ? 75 : rarity === "Legendary" ? 50 : 25) : 0,
+    shieldBonus: role === "Tank" ? (rarity === "Mythic" ? 60 : rarity === "Legendary" ? 40 : 20) : 0,
     energyRegen: 10
   };
 }
@@ -110,6 +125,7 @@ interface SpellSet {
 
 function getCustomSpells(heroName: string): SpellSet | null {
   const customSpells: Record<string, SpellSet> = {
+    // === HÉROS EXISTANTS ===
     Ignara: {
       spell1: { id: "fireball", level: 2 },
       spell2: { id: "flame_burst", level: 1 },
@@ -186,6 +202,22 @@ function getCustomSpells(heroName: string): SpellSet | null {
       spell3: { id: "phoenix_blessing", level: 3 },
       ultimate: { id: "phoenix_rebirth", level: 3 },
       passive: { id: "phoenix_mastery", level: 3 }
+    },
+    
+    // === HÉROS MYTHIQUES ===
+    "Kaorim (Lunar Form)": {
+      spell1: { id: "shadow_strike", level: 5 },
+      spell2: { id: "lunar_blade", level: 5 },
+      spell3: { id: "void_step", level: 4 },
+      ultimate: { id: "lunar_eclipse", level: 5 },
+      passive: { id: "lunar_mastery_mythic", level: 5 }
+    },
+    "Kaorim (Solar Form)": {
+      spell1: { id: "solar_heal", level: 5 },
+      spell2: { id: "radiant_blessing", level: 5 },
+      spell3: { id: "light_barrier", level: 4 },
+      ultimate: { id: "solar_eclipse", level: 5 },
+      passive: { id: "solar_mastery_mythic", level: 5 }
     }
   };
 
@@ -219,11 +251,12 @@ function generateSpells(heroName: string, role: string, element: string, rarity:
     Common: "basic_passive",
     Rare: "stat_boost",
     Epic: "elemental_mastery",
-    Legendary: "legendary_aura"
+    Legendary: "legendary_aura",
+    Mythic: "mythic_transcendence"  // ✅ NOUVEAU
   };
 
   const availableSpells = spellsByRole[role] || ["basic_attack"];
-  const spellLevel = rarity === "Legendary" ? 3 : rarity === "Epic" ? 2 : 1;
+  const spellLevel = rarity === "Mythic" ? 5 : rarity === "Legendary" ? 3 : rarity === "Epic" ? 2 : 1;
 
   return {
     spell1: availableSpells[0] ? { id: availableSpells[0], level: spellLevel } : undefined,
@@ -241,33 +274,37 @@ function generateSpells(heroName: string, role: string, element: string, rarity:
 }
 
 // =====================
-// Seeding
+// Seeding avec upsert
 // =====================
 const seedHeroes = async () => {
   try {
-    console.log("🌱 Starting hero seeding from CSV...");
+    console.log("🌱 Starting hero seeding from CSV (with upsert)...");
 
     await mongoose.connect(MONGO_URI);
     console.log("✅ Connected to MongoDB");
 
-    await Hero.deleteMany({});
-    console.log("🗑️ Cleared existing heroes");
-
     const heroes: any[] = [];
     const filePath = path.join(__dirname, "../data/Persosgacha.csv");
 
+    // Lire le CSV
     await new Promise<void>((resolve, reject) => {
       fs.createReadStream(filePath)
         .pipe(csvParser())
         .on("data", (row: any) => {
+          // Ignorer les lignes vides
+          if (!row.Name || !row.Rarity || !row.Role || !row.Element) {
+            return;
+          }
+
           const normalizedRole = normalizeRole(row.Role);
           const normalizedElement = normalizeElement(row.Element);
-          const stats = calculateBaseStats(normalizedRole, row.Rarity);
-          const spells = generateSpells(row.Name, normalizedRole, normalizedElement, row.Rarity);
+          const normalizedRarity = normalizeRarity(row.Rarity);
+          const stats = calculateBaseStats(normalizedRole, normalizedRarity);
+          const spells = generateSpells(row.Name, normalizedRole, normalizedElement, normalizedRarity);
 
           heroes.push({
             name: row.Name,
-            rarity: row.Rarity,
+            rarity: normalizedRarity,
             role: normalizedRole,
             element: normalizedElement,
             baseStats: stats,
@@ -282,8 +319,46 @@ const seedHeroes = async () => {
         .on("error", reject);
     });
 
-    await Hero.insertMany(heroes);
-    console.log(`✅ Inserted ${heroes.length} heroes from CSV`);
+    console.log(`📊 Found ${heroes.length} heroes in CSV`);
+
+    // ✅ UPSERT : Mise à jour ou insertion
+    let insertedCount = 0;
+    let updatedCount = 0;
+
+    for (const heroData of heroes) {
+      const existing = await Hero.findOne({ name: heroData.name });
+
+      if (existing) {
+        // Mettre à jour
+        await Hero.updateOne(
+          { name: heroData.name },
+          { $set: heroData }
+        );
+        updatedCount++;
+        console.log(`   🔄 Updated: ${heroData.name} (${heroData.rarity})`);
+      } else {
+        // Insérer
+        await Hero.create(heroData);
+        insertedCount++;
+        console.log(`   ✅ Inserted: ${heroData.name} (${heroData.rarity})`);
+      }
+    }
+
+    console.log(`\n📊 Seeding Summary:`);
+    console.log(`   ✅ Inserted: ${insertedCount} heroes`);
+    console.log(`   🔄 Updated: ${updatedCount} heroes`);
+    console.log(`   📦 Total processed: ${heroes.length} heroes`);
+
+    // Stats par rareté
+    const rarityCount: Record<string, number> = {};
+    heroes.forEach(h => {
+      rarityCount[h.rarity] = (rarityCount[h.rarity] || 0) + 1;
+    });
+
+    console.log(`\n🎯 Heroes by rarity:`);
+    Object.entries(rarityCount).forEach(([rarity, count]) => {
+      console.log(`   ${rarity}: ${count}`);
+    });
 
     const customCount = heroes.filter((h) => getCustomSpells(h.name) !== null).length;
     console.log(`\n🔮 Custom spells: ${customCount}/${heroes.length}`);
