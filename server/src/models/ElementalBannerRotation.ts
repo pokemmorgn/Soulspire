@@ -169,24 +169,31 @@ elementalBannerRotationSchema.statics.updateRotation = async function(
   const activeElements = this.getActiveElementsForDay(dayOfWeek);
   const activeBanners = activeElements.map((el: string) => `elemental_${el.toLowerCase()}`);
   
-  const rotation = await this.findOneAndUpdate(
-    { serverId },
-    {
+  let rotation = await this.findOne({ serverId });
+  
+  if (!rotation) {
+    // Si pas de rotation, en créer une
+    rotation = await this.create({
+      serverId,
       currentWeek: weekNumber,
       currentDay: dayName,
       activeElements,
       activeBanners,
       shopOpen: dayOfWeek === 5,
       nextRotationAt: this.getNextMidnight()
-    },
-    { new: true, upsert: true }
-  );
+    });
+  } else {
+    // Sinon mettre à jour
+    rotation.currentWeek = weekNumber;
+    rotation.currentDay = dayName;
+    rotation.activeElements = activeElements;
+    rotation.activeBanners = activeBanners;
+    rotation.shopOpen = dayOfWeek === 5;
+    rotation.nextRotationAt = this.getNextMidnight();
+    await rotation.save();
+  }
   
   console.log(`🔄 Updated rotation for ${serverId}: ${dayName} - Elements: [${activeElements.join(", ")}]`);
-  
-  if (!rotation) {
-    throw new Error(`Failed to update rotation for ${serverId}`);
-  }
   
   return rotation;
 };
