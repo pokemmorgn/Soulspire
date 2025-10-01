@@ -8,6 +8,7 @@ import { DailyRewardsService } from './DailyRewardsService';
 import { WebSocketService } from './WebSocketService';
 import Guild from '../models/Guild';
 import { IdGenerator } from '../utils/idGenerator';
+import { ElementalBannerService } from './ElementalBannerService';
 
 export class SchedulerService {
   private static scheduledTasks: Map<string, any> = new Map();
@@ -69,6 +70,85 @@ export class SchedulerService {
         console.log("📬 Rappels Daily Rewards à implémenter (feature future)");
       } catch (error) {
         console.error("❌ Erreur rappels Daily Rewards:", error);
+      }
+    });
+    // ===== BANNIÈRES ÉLÉMENTAIRES =====
+    // Rotation quotidienne des bannières élémentaires - tous les jours à minuit
+    this.scheduleTask('elemental-banner-rotation', '0 0 * * *', async () => {
+      console.log("🔄 Rotation quotidienne des bannières élémentaires...");
+      try {
+        const servers = ['S1', 'S2', 'S3']; // Liste de tes serveurs
+        
+        for (const serverId of servers) {
+          await ElementalBannerService.performDailyRotation(serverId);
+        }
+        
+        console.log("✅ Rotation élémentaire terminée pour tous les serveurs");
+      } catch (error) {
+        console.error("❌ Erreur rotation bannières élémentaires:", error);
+      }
+    });
+
+    // Activation boutique vendredi - tous les vendredis à minuit
+    this.scheduleTask('elemental-shop-friday', '0 0 * * 5', async () => {
+      console.log("🛒 Ouverture boutique élémentaire (vendredi)...");
+      try {
+        const servers = ['S1', 'S2', 'S3'];
+        
+        for (const serverId of servers) {
+          // Notifier via WebSocket
+          WebSocketService.broadcastToServer(serverId, 'elemental:shop_opened', {
+            duration: 24,
+            specialOffers: true,
+            message: "Elemental shop is now open! Special ticket packs available."
+          });
+        }
+        
+        console.log("✅ Notifications boutique élémentaire envoyées");
+      } catch (error) {
+        console.error("❌ Erreur notification boutique élémentaire:", error);
+      }
+    });
+
+    // Augmentation du taux de drop vendredi - tous les vendredis à minuit
+    this.scheduleTask('elemental-friday-boost', '0 0 * * 5', async () => {
+      console.log("🎉 Activation boost tickets élémentaires (vendredi 15%)...");
+      try {
+        const servers = ['S1', 'S2', 'S3'];
+        
+        for (const serverId of servers) {
+          WebSocketService.broadcastToServer(serverId, 'elemental:drop_boost_active', {
+            dropRate: 15,
+            normalRate: 5,
+            multiplier: 3,
+            duration: 24,
+            message: "Friday Bonus: 15% drop rate for elemental tickets!"
+          });
+        }
+        
+        console.log("✅ Boost vendredi activé");
+      } catch (error) {
+        console.error("❌ Erreur boost vendredi:", error);
+      }
+    });
+
+    // Rappel rotation dimanche (tous les éléments disponibles)
+    this.scheduleTask('elemental-sunday-reminder', '0 18 * * 6', async () => {
+      console.log("📢 Rappel: Dimanche tous les éléments disponibles...");
+      try {
+        const servers = ['S1', 'S2', 'S3'];
+        
+        for (const serverId of servers) {
+          WebSocketService.broadcastToServer(serverId, 'elemental:sunday_reminder', {
+            message: "Tomorrow: All elemental banners will be available!",
+            elements: ["Fire", "Water", "Wind", "Electric", "Light", "Shadow"],
+            hoursUntil: 6
+          });
+        }
+        
+        console.log("✅ Rappel dimanche envoyé");
+      } catch (error) {
+        console.error("❌ Erreur rappel dimanche:", error);
       }
     });
     // ===== ARÈNE =====
@@ -590,6 +670,39 @@ export class SchedulerService {
       case 'daily-rewards-reminder':
         console.log("⏰ Rappels Daily Rewards manuel...");
         console.log("📬 Rappels Daily Rewards à implémenter (feature future)");
+        break;
+        case 'daily-rewards-reminder':
+        console.log("⏰ Rappels Daily Rewards manuel...");
+        console.log("📬 Rappels Daily Rewards à implémenter (feature future)");
+        break;
+      // ===== TÂCHES BANNIÈRES ÉLÉMENTAIRES =====
+      case 'elemental-banner-rotation':
+        console.log("🔄 Rotation bannières élémentaires manuelle...");
+        await ElementalBannerService.performDailyRotation('S1');
+        break;
+      case 'elemental-shop-friday':
+        console.log("🛒 Ouverture boutique élémentaire manuelle...");
+        WebSocketService.broadcastToServer('S1', 'elemental:shop_opened', {
+          duration: 24,
+          specialOffers: true
+        });
+        break;
+      case 'elemental-friday-boost':
+        console.log("🎉 Activation boost vendredi manuel...");
+        WebSocketService.broadcastToServer('S1', 'elemental:drop_boost_active', {
+          dropRate: 15,
+          normalRate: 5,
+          multiplier: 3,
+          duration: 24
+        });
+        break;
+      case 'elemental-sunday-reminder':
+        console.log("📢 Rappel dimanche manuel...");
+        WebSocketService.broadcastToServer('S1', 'elemental:sunday_reminder', {
+          message: "Tomorrow: All elemental banners available!",
+          elements: ["Fire", "Water", "Wind", "Electric", "Light", "Shadow"],
+          hoursUntil: 6
+        });
         break;
       default:
         throw new Error(`Tâche inconnue: ${taskName}`);
