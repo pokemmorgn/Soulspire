@@ -9,6 +9,17 @@ export interface IBannerRates {
   Mythic: number; 
   // ❌ SUPPRIMÉ : focusRateUp (obsolète, remplacé par focusChance dans IFocusHero)
 }
+// Interface pour la configuration des pulls gratuits
+export interface IFreePullConfig {
+  enabled: boolean;                    // Activer les pulls gratuits sur cette bannière
+  resetType: "daily" | "weekly" | "monthly" | "never"; // Type de reset
+  pullsPerReset: number;               // Nombre de pulls gratuits par reset (ex: 1 pull/jour)
+  sharedAcrossBanners?: boolean;       // Si true, partage le compteur avec d'autres bannières
+  startsAt?: Date;                     // Date de début (optionnel)
+  endsAt?: Date;                       // Date de fin (optionnel)
+  requiresAuth: boolean;               // Nécessite d'être connecté
+  applyTicketDrops?: boolean;          // Les pulls gratuits peuvent drop des tickets élémentaires (défaut: true)
+}
 
 // Interface pour un héros focus/rate-up
 export interface IFocusHero {
@@ -75,6 +86,9 @@ export interface IBanner {
   
   // Taux de drop
   rates: IBannerRates;
+
+  // Configuration pulls gratuits
+  freePullConfig?: IFreePullConfig;
   
   // Coûts
   costs: IBannerCost;
@@ -156,6 +170,7 @@ interface IBannerDocument extends Document {
   focusHeroes: IFocusHero[];
   rates: IBannerRates;
   costs: IBannerCost;
+  freePullConfig?: IFreePullConfig;
   elementalConfig?: {
   element: "Fire" | "Water" | "Wind" | "Electric" | "Light" | "Shadow";
   ticketCost: number;
@@ -365,6 +380,41 @@ const bannerSchema = new Schema<IBannerDocument>({
     firstPullDiscount: {
       gems: { type: Number, min: 0 },
       tickets: { type: Number, min: 0 }
+    }
+  },
+  freePullConfig: {
+    enabled: {
+      type: Boolean,
+      default: false
+    },
+    resetType: {
+      type: String,
+      enum: ["daily", "weekly", "monthly", "never"],
+      default: "daily"
+    },
+    pullsPerReset: {
+      type: Number,
+      default: 1,
+      min: 0,
+      max: 100
+    },
+    sharedAcrossBanners: {
+      type: Boolean,
+      default: false
+    },
+    startsAt: {
+      type: Date
+    },
+    endsAt: {
+      type: Date
+    },
+    requiresAuth: {
+      type: Boolean,
+      default: true
+    },
+    applyTicketDrops: {
+      type: Boolean,
+      default: true
     }
   },
   elementalConfig: {
