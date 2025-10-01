@@ -117,8 +117,17 @@ const wishlistSchema = new Schema<IWishlistDocument>({
   collection: 'wishlists'
 });
 
-// Index composé pour unicité
-wishlistSchema.index({ playerId: 1, serverId: 1, type: 1, element: 1 }, { unique: true });
+//  Index composé pour unicité (permet plusieurs wishlists par joueur)
+  wishlistSchema.index({ playerId: 1, serverId: 1, type: 1 }, { 
+    unique: true,
+    partialFilterExpression: { type: 'normal' }
+  });
+  
+  // ✅ NOUVEAU: Index unique pour wishlists élémentaires (une par élément)
+  wishlistSchema.index({ playerId: 1, serverId: 1, type: 1, element: 1 }, { 
+    unique: true,
+    partialFilterExpression: { type: 'elemental', element: { $exists: true } }
+  });
 
 // Méthodes d'instance
 wishlistSchema.methods.canAddHero = function(): boolean {
