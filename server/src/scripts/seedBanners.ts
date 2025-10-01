@@ -210,11 +210,44 @@ async function createLimitedBanner(focusHeroName: string) {
     throw new Error(`❌ Focus hero "${focusHeroName}" is not Legendary (found: ${focusHero.rarity})`);
   }
 
+  // ✅ NOUVEAU : Compter les legendaries disponibles pour calcul dynamique
+  const allLegendaries = await Hero.find({ rarity: "Legendary" });
+  const totalLegendaries = allLegendaries.length;
+  
+  // ✅ NOUVEAU : Calcul du taux avec vraiment 2× les autres
+  const rateUpMultiplier = 2.0;
+  const focusChance = rateUpMultiplier / (rateUpMultiplier + (totalLegendaries - 1));
+  
+  // Calcul du taux des autres legendaries (pour info)
+  const otherLegendaryChance = (1 - focusChance) / (totalLegendaries - 1);
+  const actualRatio = focusChance / otherLegendaryChance;
+  
+  // ✅ NOUVEAU : Logs détaillés pour vérification
+  console.log(`\n📊 Limited Banner - Focus calculation:`);
+  console.log(`   Focus hero: ${focusHeroName} (${focusHero.rarity})`);
+  console.log(`   Total Legendaries in pool: ${totalLegendaries}`);
+  console.log(`   Rate-up multiplier: ${rateUpMultiplier}×`);
+  console.log(`   Focus chance: ${(focusChance * 100).toFixed(2)}%`);
+  console.log(`   Other Legendary chance: ${(otherLegendaryChance * 100).toFixed(2)}% each`);
+  console.log(`   Actual ratio focus/other: ${actualRatio.toFixed(2)}×`);
+  console.log(`\n   Distribution preview:`);
+  console.log(`   - ${focusHeroName} (FOCUS): ${(focusChance * 100).toFixed(2)}% ⭐⭐`);
+  allLegendaries
+    .filter(h => h._id.toString() !== focusHero._id.toString())
+    .slice(0, 3)
+    .forEach(h => {
+      console.log(`   - ${h.name}: ${(otherLegendaryChance * 100).toFixed(2)}% ⭐`);
+    });
+  if (totalLegendaries > 4) {
+    console.log(`   ... and ${totalLegendaries - 4} more`);
+  }
+  console.log(``);
+
   return {
     bannerId: `limited_${focusHeroName.toLowerCase()}_rateup`,
     name: `${focusHeroName} Rate-Up`,
     type: "Limited" as const,
-    description: `Limited-time banner featuring ${focusHeroName.toUpperCase()}! Guaranteed on your first Legendary pull, then 40% rate-up. Available for 14 days only!`,
+    description: `Limited-time banner featuring ${focusHeroName.toUpperCase()}! First Legendary guaranteed as ${focusHeroName}, then ${rateUpMultiplier}× rate-up (${(focusChance * 100).toFixed(0)}% chance). Available for 14 days only!`,
 
     startTime: now,
     endTime: twoWeeksLater,
@@ -227,22 +260,22 @@ async function createLimitedBanner(focusHeroName: string) {
 
     heroPool: { includeAll: true, specificHeroes: [], excludedHeroes: [], rarityFilters: [] },
     
-    // ✅ NOUVEAU : focusChance à 40%
+    // ✅ MODIFIÉ : focusChance calculé dynamiquement
     focusHeroes: [
       { 
         heroId: focusHero._id, 
-        rateUpMultiplier: 2.5,
-        guaranteed: true,              // Premier legendary = 100% focus
-        focusChance: 0.40              // ✅ 40% de chance pour les legendaries suivants
+        rateUpMultiplier: rateUpMultiplier,  // ✅ Utilisé pour le calcul
+        guaranteed: true,                     // ✅ Premier legendary = 100% focus
+        focusChance: focusChance              // ✅ Calcul dynamique : 2× les autres
       }
     ],
 
-    // ✅ NOUVEAU : Legendary à 4.5%
+    // Taux de drop (inchangés)
     rates: { 
       Common: 35.5, 
       Rare: 36, 
       Epic: 24, 
-      Legendary: 4.5  // ✅ Augmenté de 2% → 4.5%
+      Legendary: 4.5  // Taux global Legendary
     },
     
     costs: {
@@ -251,9 +284,9 @@ async function createLimitedBanner(focusHeroName: string) {
       firstPullDiscount: { gems: 200 },
     },
     
-    // ✅ NOUVEAU : Pity à 50 pulls
+    // Pity réduit pour bannières limitées
     pityConfig: { 
-      legendaryPity: 50,  // ✅ Réduit de 90 → 50
+      legendaryPity: 50,  // 50 pulls pour legendary garanti
       epicPity: 0, 
       sharedPity: false, 
       resetOnBannerEnd: true 
@@ -263,26 +296,26 @@ async function createLimitedBanner(focusHeroName: string) {
 
     bonusRewards: {
       milestones: [
-        { pullCount: 10, rewards: [{ type: "currency", quantity: 100, itemId: "gems" }] },
+        { pullCount: 10, rewards: [{ type: "currency" as const, quantity: 100, itemId: "gems" }] },
         {
           pullCount: 30,
           rewards: [
-            { type: "currency", quantity: 300, itemId: "gems" },
-            { type: "currency", quantity: 3, itemId: "tickets" },
+            { type: "currency" as const, quantity: 300, itemId: "gems" },
+            { type: "currency" as const, quantity: 3, itemId: "tickets" },
           ],
         },
         {
           pullCount: 50,
           rewards: [
-            { type: "currency", quantity: 500, itemId: "gems" },
-            { type: "material", quantity: 1, itemId: "epic_fragment" },
+            { type: "currency" as const, quantity: 500, itemId: "gems" },
+            { type: "material" as const, quantity: 1, itemId: "epic_fragment" },
           ],
         },
         {
           pullCount: 100,
           rewards: [
-            { type: "currency", quantity: 1000, itemId: "gems" },
-            { type: "currency", quantity: 10, itemId: "tickets" },
+            { type: "currency" as const, quantity: 1000, itemId: "gems" },
+            { type: "currency" as const, quantity: 10, itemId: "tickets" },
           ],
         },
       ],
@@ -293,7 +326,7 @@ async function createLimitedBanner(focusHeroName: string) {
     backgroundMusic: "https://cdn.placeholder.com/audio/limited_theme.mp3",
     animationType: "rainbow" as const,
     stats: { totalPulls: 0, totalPlayers: 0, averagePullsPerPlayer: 0, legendaryCount: 0, epicCount: 0 },
-    tags: ["limited", "rate-up", focusHeroName.toLowerCase()],
+    tags: ["limited", "rate-up", focusHeroName.toLowerCase(), `${rateUpMultiplier}x-focus`],
     category: "Character" as const,
   };
 }
