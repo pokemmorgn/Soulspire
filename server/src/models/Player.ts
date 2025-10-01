@@ -1,9 +1,9 @@
 import mongoose, { Document, Schema } from "mongoose";
-import { IdGenerator } from "../utils/idGenerator"; // 🔥 NOUVEAU IMPORT
+import { IdGenerator } from "../utils/idGenerator";
 
 // ----- Sous-interfaces -----
 export interface IPlayerHero {
-  _id?: mongoose.Types.ObjectId;  // ✅ AJOUTER CETTE LIGNE
+  _id?: mongoose.Types.ObjectId;
   heroId: string;
   level: number;
   stars: number;
@@ -50,6 +50,15 @@ interface IVipTransaction {
   levelAfter: number;
 }
 
+// ✅ NOUVEAU : Interface pour tracker les pulls gratuits par bannière
+export interface IFreePullTracker {
+  bannerId: string;
+  pullsUsed: number;
+  pullsAvailable: number;
+  lastResetAt: Date;
+  nextResetAt: Date;
+}
+
 // ----- Interface principale SANS _id -----
 export interface IPlayer {
   playerId: string;
@@ -68,13 +77,14 @@ export interface IPlayer {
   paidGems: number;
   tickets: number;
   elementalTickets: {
-  fire: number;
-  water: number;
-  wind: number;
-  electric: number;
-  light: number;
-  shadow: number;
+    fire: number;
+    water: number;
+    wind: number;
+    electric: number;
+    light: number;
+    shadow: number;
   };
+  freePulls: IFreePullTracker[]; // ✅ NOUVEAU
   vipLevel: number;
   vipExperience: number;
   vipTransactions: IVipTransaction[];
@@ -133,6 +143,12 @@ export interface IPlayerDocument extends Document, IPlayer {
   addElementalTicket(element: string, quantity?: number): Promise<IPlayerDocument>;
   spendElementalTickets(element: string, quantity: number): Promise<IPlayerDocument>;
   hasElementalTickets(element: string, quantity: number): boolean;
+  // ✅ NOUVEAU : Méthodes pour pulls gratuits
+  getFreePullTracker(bannerId: string): IFreePullTracker | undefined;
+  initializeFreePulls(bannerId: string, pullsAvailable: number, nextResetAt: Date): Promise<void>;
+  useFreePull(bannerId: string, count?: number): Promise<boolean>;
+  resetFreePulls(bannerId: string, pullsAvailable: number, nextResetAt: Date): Promise<void>;
+  checkAndResetFreePulls(bannerId: string): Promise<boolean>;
   addVipExp(amount: number, source?: string, cost?: number): Promise<{ newLevel: number; leveledUp: boolean }>;
   addServerPurchase(purchase: IServerPurchase): Promise<IPlayerDocument>;
   updateProgress(type: string, value: number): Promise<IPlayerDocument>;
@@ -170,7 +186,7 @@ const serverPurchaseSchema = new Schema<IServerPurchase>({
   transactionId: { 
     type: String, 
     required: true,
-    default: () => IdGenerator.generateTransactionId() // 🔥 NOUVEAU: UUID pour transactions
+    default: () => IdGenerator.generateTransactionId()
   },
   productId: { type: String, required: true },
   productName: { type: String, required: true },
@@ -186,7 +202,7 @@ const vipTransactionSchema = new Schema<IVipTransaction>({
   transactionId: { 
     type: String, 
     required: true,
-    default: () => IdGenerator.generateTransactionId() // 🔥 NOUVEAU: UUID pour VIP transactions
+    default: () => IdGenerator.generateTransactionId()
   },
   expGained: { type: Number, required: true, min: 0 },
   source: { type: String, enum: ["purchase", "event", "admin_grant"], required: true },
@@ -201,7 +217,7 @@ const playerSchema = new Schema<IPlayerDocument>({
   _id: {
     type: String,
     required: true,
-    default: () => IdGenerator.generatePlayerId() // 🔥 NOUVEAU: UUID au lieu de timestamp
+    default: () => IdGenerator.generatePlayerId()
   },
   playerId: {
     type: String,
@@ -223,13 +239,41 @@ const playerSchema = new Schema<IPlayerDocument>({
   paidGems: { type: Number, default: 0, min: 0 },
   tickets: { type: Number, default: 5, min: 0 },
   elementalTickets: {
-  fire: { type: Number, default: 0, min: 0 },
-  water: { type: Number, default: 0, min: 0 },
-  wind: { type: Number, default: 0, min: 0 },
-  electric: { type: Number, default: 0, min: 0 },
-  light: { type: Number, default: 0, min: 0 },
-  shadow: { type: Number, default: 0, min: 0 }
+    fire: { type: Number, default: 0, min: 0 },
+    water: { type: Number, default: 0, min: 0 },
+    wind: { type: Number, default: 0, min: 0 },
+    electric: { type: Number, default: 0, min: 0 },
+    light: { type: Number, default: 0, min: 0 },
+    shadow: { type: Number, default: 0, min: 0 }
   },
+  
+  // ✅ NOUVEAU : Tracker des pulls gratuits par bannière
+  freePulls: [{
+    bannerId: {
+      type: String,
+      required: true,
+      index: true
+    },
+    pullsUsed: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    pullsAvailable: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    lastResetAt: {
+      type: Date,
+      default: Date.now
+    },
+    nextResetAt: {
+      type: Date,
+      required: true
+    }
+  }],
+  
   vipLevel: { type: Number, default: 0, min: 0, max: 15 },
   vipExperience: { type: Number, default: 0, min: 0 },
   vipTransactions: { type: [vipTransactionSchema], default: [] },
@@ -281,6 +325,7 @@ playerSchema.set('toJSON', { virtuals: false });
 playerSchema.set('toObject', { virtuals: false });
 playerSchema.index({ accountId: 1, serverId: 1 });
 playerSchema.index({ serverId: 1 });
+playerSchema.index({ "freePulls.bannerId": 1, "freePulls.nextResetAt": 1 }); // ✅ NOUVEAU
 
 // ----- Statics -----
 playerSchema.statics.findByAccount = function(accountId: string, serverId?: string) {
@@ -443,6 +488,109 @@ playerSchema.methods.hasElementalTickets = function(element: string, quantity: n
   return this.elementalTickets[elementKey] >= quantity;
 };
 
+// ===== MÉTHODES POUR PULLS GRATUITS ✅ NOUVEAU =====
+
+/**
+ * Obtenir le tracker de pulls gratuits pour une bannière
+ */
+playerSchema.methods.getFreePullTracker = function(bannerId: string): IFreePullTracker | undefined {
+  return this.freePulls.find((fp: IFreePullTracker) => fp.bannerId === bannerId);
+};
+
+/**
+ * Initialiser ou mettre à jour le tracker de pulls gratuits pour une bannière
+ */
+playerSchema.methods.initializeFreePulls = async function(
+  bannerId: string, 
+  pullsAvailable: number,
+  nextResetAt: Date
+): Promise<void> {
+  const existing = this.getFreePullTracker(bannerId);
+  
+  if (existing) {
+    // Mettre à jour
+    existing.pullsAvailable = pullsAvailable;
+    existing.nextResetAt = nextResetAt;
+  } else {
+    // Créer nouveau tracker
+    this.freePulls.push({
+      bannerId,
+      pullsUsed: 0,
+      pullsAvailable,
+      lastResetAt: new Date(),
+      nextResetAt
+    });
+  }
+  
+  await this.save();
+};
+
+/**
+ * Utiliser un pull gratuit sur une bannière
+ */
+playerSchema.methods.useFreePull = async function(bannerId: string, count: number = 1): Promise<boolean> {
+  const tracker = this.getFreePullTracker(bannerId);
+  
+  if (!tracker) {
+    throw new Error(`No free pull tracker found for banner ${bannerId}`);
+  }
+  
+  if (tracker.pullsAvailable < count) {
+    return false; // Pas assez de pulls gratuits
+  }
+  
+  tracker.pullsUsed += count;
+  tracker.pullsAvailable -= count;
+  
+  await this.save();
+  return true;
+};
+
+/**
+ * Reset les pulls gratuits pour une bannière
+ */
+playerSchema.methods.resetFreePulls = async function(
+  bannerId: string,
+  pullsAvailable: number,
+  nextResetAt: Date
+): Promise<void> {
+  const tracker = this.getFreePullTracker(bannerId);
+  
+  if (!tracker) {
+    // Créer nouveau tracker si n'existe pas
+    await this.initializeFreePulls(bannerId, pullsAvailable, nextResetAt);
+    return;
+  }
+  
+  tracker.pullsUsed = 0;
+  tracker.pullsAvailable = pullsAvailable;
+  tracker.lastResetAt = new Date();
+  tracker.nextResetAt = nextResetAt;
+  
+  await this.save();
+  
+  console.log(`🔄 Free pulls reset for player ${this._id} on banner ${bannerId}: ${pullsAvailable} pulls available`);
+};
+
+/**
+ * Vérifier si les pulls gratuits doivent être reset
+ */
+playerSchema.methods.checkAndResetFreePulls = async function(bannerId: string): Promise<boolean> {
+  const tracker = this.getFreePullTracker(bannerId);
+  
+  if (!tracker) {
+    return false;
+  }
+  
+  const now = new Date();
+  
+  if (now >= tracker.nextResetAt) {
+    return true; // Doit être reset
+  }
+  
+  return false;
+};
+
 playerSchema.methods.addVipExp = function(amount: number, source: string = "purchase", cost: number = 0) {
   const oldLevel = this.vipLevel;
   this.vipExperience += amount;
@@ -452,7 +600,7 @@ playerSchema.methods.addVipExp = function(amount: number, source: string = "purc
   this.vipLevel = newLevel;
   
   this.vipTransactions.push({
-    transactionId: IdGenerator.generateTransactionId(), // 🔥 NOUVEAU: UUID
+    transactionId: IdGenerator.generateTransactionId(),
     expGained: amount,
     source: source as any,
     cost,
@@ -575,5 +723,3 @@ playerSchema.methods.performDailyReset = function() {
 };
 
 export default mongoose.model<IPlayerDocument>("Player", playerSchema);
-
-
