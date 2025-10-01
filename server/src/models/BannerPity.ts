@@ -5,6 +5,7 @@ import mongoose, { Document, Schema } from "mongoose";
 export interface IBannerPity {
   playerId: string;
   bannerId: string;
+  element?: string;
   pullsSinceLegendary: number;
   pullsSinceEpic: number;
   totalPulls: number;
@@ -15,6 +16,7 @@ export interface IBannerPity {
 interface IBannerPityDocument extends Document {
   playerId: string;
   bannerId: string;
+  element?: string;
   pullsSinceLegendary: number;
   pullsSinceEpic: number;
   totalPulls: number;
@@ -31,6 +33,12 @@ const bannerPitySchema = new Schema<IBannerPityDocument>({
   bannerId: {
     type: String,
     required: true,
+    index: true
+  },
+    element: { // ✅ NOUVEAU
+    type: String,
+    enum: ["Fire", "Water", "Wind", "Electric", "Light", "Shadow"],
+    sparse: true,
     index: true
   },
   pullsSinceLegendary: {
@@ -61,7 +69,19 @@ const bannerPitySchema = new Schema<IBannerPityDocument>({
   collection: 'banner_pity'
 });
 
-// Index composé pour unicité
-bannerPitySchema.index({ playerId: 1, bannerId: 1 }, { unique: true });
+// Permet d'avoir un pity différent par bannière ET par élément
+bannerPitySchema.index({ playerId: 1, bannerId: 1 }, { 
+  unique: true,
+  partialFilterExpression: { element: { $exists: false } }
+});
+
+// ✅ NOUVEAU: Index unique pour pity élémentaire
+bannerPitySchema.index({ playerId: 1, bannerId: 1, element: 1 }, { 
+  unique: true,
+  partialFilterExpression: { element: { $exists: true } }
+});
+
+// ✅ NOUVEAU: Index pour requêtes élémentaires
+bannerPitySchema.index({ playerId: 1, element: 1 });
 
 export default mongoose.model<IBannerPityDocument>("BannerPity", bannerPitySchema);
