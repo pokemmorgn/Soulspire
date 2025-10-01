@@ -1,6 +1,6 @@
 // server/src/models/ElementalBannerRotation.ts
 
-import mongoose, { Document, Schema } from "mongoose";
+import mongoose, { Document, Schema, Model } from "mongoose";
 
 // Interface pour la rotation des bannières élémentaires
 export interface IElementalBannerRotation {
@@ -30,8 +30,21 @@ interface IElementalBannerRotationDocument extends Document {
   getActiveElementsCount(): number;
 }
 
+// ✅ AJOUT : Interface pour les méthodes statiques
+interface IElementalBannerRotationModel extends Model<IElementalBannerRotationDocument> {
+  getCurrentRotation(serverId: string): Promise<IElementalBannerRotationDocument>;
+  createRotationForToday(serverId: string): Promise<IElementalBannerRotationDocument>;
+  updateRotation(serverId: string): Promise<IElementalBannerRotationDocument>;
+  getActiveElementsForDay(dayOfWeek: number): string[];
+  getDayNameFromNumber(dayOfWeek: number): string;
+  getWeekNumber(date: Date): number;
+  getNextMidnight(): Date;
+  isElementActiveToday(serverId: string, element: string): Promise<boolean>;
+  isShopDay(serverId: string): Promise<boolean>;
+}
+
 // Schéma de la rotation
-const elementalBannerRotationSchema = new Schema<IElementalBannerRotationDocument>({
+const elementalBannerRotationSchema = new Schema<IElementalBannerRotationDocument, IElementalBannerRotationModel>({
   serverId: {
     type: String,
     required: true,
@@ -113,7 +126,7 @@ elementalBannerRotationSchema.statics.createRotationForToday = async function(se
   const dayName = this.getDayNameFromNumber(dayOfWeek);
   const weekNumber = this.getWeekNumber(now);
   const activeElements = this.getActiveElementsForDay(dayOfWeek);
-  const activeBanners = activeElements.map(el => `elemental_${el.toLowerCase()}`);
+  const activeBanners = activeElements.map((el: string) => `elemental_${el.toLowerCase()}`);
   
   const rotation = new this({
     serverId,
@@ -142,7 +155,7 @@ elementalBannerRotationSchema.statics.updateRotation = async function(serverId: 
   const dayName = this.getDayNameFromNumber(dayOfWeek);
   const weekNumber = this.getWeekNumber(now);
   const activeElements = this.getActiveElementsForDay(dayOfWeek);
-  const activeBanners = activeElements.map(el => `elemental_${el.toLowerCase()}`);
+  const activeBanners = activeElements.map((el: string) => `elemental_${el.toLowerCase()}`);
   
   const rotation = await this.findOneAndUpdate(
     { serverId },
@@ -159,7 +172,7 @@ elementalBannerRotationSchema.statics.updateRotation = async function(serverId: 
   
   console.log(`🔄 Updated rotation for ${serverId}: ${dayName} - Elements: [${activeElements.join(", ")}]`);
   
-  return rotation;
+  return rotation!;
 };
 
 /**
@@ -241,7 +254,7 @@ elementalBannerRotationSchema.methods.getActiveElementsCount = function(): numbe
   return this.activeElements.length;
 };
 
-export default mongoose.model<IElementalBannerRotationDocument>(
+export default mongoose.model<IElementalBannerRotationDocument, IElementalBannerRotationModel>(
   "ElementalBannerRotation", 
   elementalBannerRotationSchema
 );
