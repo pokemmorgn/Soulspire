@@ -177,7 +177,7 @@ async function testElementalSystem() {
     }).limit(4);
 
     if (fireHeroes.length > 0) {
-      const heroIds = fireHeroes.map(h => h._id.toString());
+      const heroIds = fireHeroes.map((h: any) => h._id.toString());
       
       const result = await WishlistService.updateElementalWishlist(
         player!._id,
@@ -243,7 +243,8 @@ async function testElementalSystem() {
 
         // Vérifier les tickets restants
         player = await Player.findById(player!._id);
-        const remainingTickets = player!.elementalTickets[testElement.toLowerCase() as keyof typeof player.elementalTickets];
+        const elementKey = testElement.toLowerCase() as 'fire' | 'water' | 'wind' | 'electric' | 'light' | 'shadow';
+        const remainingTickets = player!.elementalTickets[elementKey];
         console.log(`\n   💎 Remaining ${testElement} tickets: ${remainingTickets}`);
 
       } catch (error: any) {
