@@ -8,7 +8,7 @@ import { MissionService } from "./MissionService";
 import { WebSocketGacha } from "./websocket/WebSocketGacha";
 import { CollectionService } from "./CollectionService";
 import { WishlistService } from "./WishlistService";
-
+import { ElementalBannerService } from "./ElementalBannerService";
 // Configuration de base (fallback seulement)
 const FALLBACK_CONFIG = {
   pity: {
@@ -92,6 +92,15 @@ export interface GachaResponse {
     perfectPull: boolean;
     luckyStreakCount: number;
   };
+  bonusRewards?: {
+    elementalTickets?: { element: string; quantity: number }[];
+  };
+}
+
+// ✅ NOUVEAU: Interface pour les drops de tickets élémentaires
+export interface ElementalTicketDrop {
+  element: string;
+  quantity: number;
 }
 
 export class GachaService {
@@ -228,7 +237,23 @@ public static async performPullOnBanner(
 
     // Calculer les statistiques finales
     const finalStats = this.calculatePullStats(pullResults);
+    // Mettre à jour les statistiques de la bannière
+    const rarities = pullResults.map((r: any) => r.rarity);
+    await banner.updateStats(count, rarities);
 
+    // ✅ NOUVEAU: Roll et octroyer les tickets élémentaires
+    const elementalTicketDrops = await this.rollElementalTicketDrops(
+      playerId,
+      serverId,
+      count
+    );
+    
+    if (elementalTicketDrops.length > 0) {
+      await this.grantElementalTickets(playerId, elementalTicketDrops);
+    }
+
+    // Utiliser le pityState retourné par executeBannerPulls
+    const newPityStatus = {
     // Construire la réponse
     const response: GachaResponse = {
       success: true,
@@ -533,6 +558,114 @@ public static async performPullOnBanner(
     };
   }
 
+  /**
+   * Calculer les effets spéciaux d'un pull
+   */
+  private static calculateSpecialEffects(
+    results: GachaPullResult[],
+    pityStatus: any,
+    pullCount: number
+  ): any {
+    const legendaryCount = results.filter(r => r.rarity === 'Legendary').length;
+    const epicCount = results.filter(r => r.rarity === 'Epic').length;
+    
+    return {
+      hasPityBreak: pityStatus.pullsSinceLegendary + pullCount >= 90 && legendaryCount > 0,
+      hasMultipleLegendary: legendaryCount > 1,
+      perfectPull: pullCount === 10 && results.every(r => ['Epic', 'Legendary'].includes(r.rarity)),
+      luckyStreakCount: this.calculateCurrentStreak(results)
+    };
+  }
+
+  // ===== SYSTÈME DE TICKETS ÉLÉMENTAIRES =====
+
+  /**
+   * Calculer les drops de tickets élémentaires après un pull
+   */
+  private static async rollElementalTicketDrops(
+    playerId: string,
+    serverId: string,
+    count: number
+  ): Promise<ElementalTicketDrop[]> {
+    try {
+      const drops: ElementalTicketDrop[] = [];
+      
+      // Déterminer le taux selon le jour
+      const now = new Date();
+      const isFriday = now.getDay() === 5;
+      const dropRate = isFriday ? 0.15 : 0.05; // 15% vendredi, 5% autres jours
+      
+      console.log(`🎲 Rolling ${count} elemental ticket drops (${dropRate * 100}% rate, ${isFriday ? 'Friday' : 'Regular day'})`);
+      
+      // Roll pour chaque pull
+      for (let i = 0; i < count; i++) {
+        const roll = Math.random();
+        
+        if (roll < dropRate) {
+          // Drop réussi ! Sélectionner un élément aléatoire
+          const elements = ["Fire", "Water", "Wind", "Electric", "Light", "Shadow"];
+          const randomElement = elements[Math.floor(Math.random() * elements.length)];
+          
+          drops.push({ 
+            element: randomElement, 
+            quantity: 1 
+          });
+          
+          console.log(`   ✅ Drop ${i + 1}: ${randomElement} ticket`);
+        }
+      }
+      
+      // Grouper les drops par élément
+      const groupedDrops = drops.reduce((acc: { [key: string]: number }, drop) => {
+        acc[drop.element] = (acc[drop.element] || 0) + drop.quantity;
+        return acc;
+      }, {});
+      
+      const finalDrops = Object.entries(groupedDrops).map(([element, quantity]) => ({
+        element,
+        quantity
+      }));
+      
+      if (finalDrops.length > 0) {
+        console.log(`🎁 Total drops: ${finalDrops.map(d => `${d.quantity}x ${d.element}`).join(", ")}`);
+      } else {
+        console.log(`   No elemental tickets dropped this time`);
+      }
+      
+      return finalDrops;
+      
+    } catch (error: any) {
+      console.error("❌ Error rolling elemental ticket drops:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Ajouter les tickets élémentaires au joueur
+   */
+  private static async grantElementalTickets(
+    playerId: string,
+    drops: ElementalTicketDrop[]
+  ): Promise<void> {
+    try {
+      if (drops.length === 0) return;
+      
+      const player = await Player.findById(playerId);
+      if (!player) {
+        console.error("❌ Player not found for ticket grant");
+        return;
+      }
+      
+      for (const drop of drops) {
+        await player.addElementalTicket(drop.element, drop.quantity);
+      }
+      
+      console.log(`✅ Granted ${drops.length} elemental ticket drop(s) to player ${playerId}`);
+      
+    } catch (error: any) {
+      console.error("❌ Error granting elemental tickets:", error);
+    }
+  }
   /**
    * Obtenir les mécaniques spéciales d'une bannière
    */
@@ -1734,6 +1867,347 @@ public static async getBannerRates(bannerId: string, serverId: string) {
 
     } catch (error) {
       console.error("❌ Erreur activateSpecialBanner:", error);
+      throw error;
+    }
+  }
+}
+// === PULLS ÉLÉMENTAIRES ===
+
+  /**
+   * Effectuer un pull sur une bannière élémentaire avec des tickets
+   */
+  public static async performElementalPull(
+    playerId: string,
+    serverId: string,
+    element: string,
+    count: number = 1
+  ): Promise<GachaResponse> {
+    try {
+      console.log(`🔮 ${playerId} performs ${count} elemental pull(s) on ${element} banner`);
+
+      // 1. Vérifier que l'élément est valide
+      const validElements = ["Fire", "Water", "Wind", "Electric", "Light", "Shadow"];
+      if (!validElements.includes(element)) {
+        throw new Error(`Invalid element: ${element}. Valid: ${validElements.join(", ")}`);
+      }
+
+      // 2. Vérifier la rotation (bannière active aujourd'hui ?)
+      const isActive = await ElementalBannerService.isElementActive(serverId, element);
+      if (!isActive) {
+        throw new Error(`${element} elemental banner is not active today`);
+      }
+
+      // 3. Vérifier que le joueur existe et a assez de tickets
+      const player = await Player.findOne({ _id: playerId, serverId });
+      if (!player) {
+        throw new Error("Player not found on this server");
+      }
+
+      if (!player.hasElementalTickets(element, count)) {
+        throw new Error(
+          `Insufficient ${element} tickets. Required: ${count}, Available: ${player.elementalTickets[element.toLowerCase() as keyof typeof player.elementalTickets]}`
+        );
+      }
+
+      // 4. Trouver la bannière élémentaire
+      const banner = await Banner.findOne({
+        isActive: true,
+        isVisible: true,
+        "elementalConfig.element": element,
+        $or: [
+          { "serverConfig.allowedServers": serverId },
+          { "serverConfig.allowedServers": "ALL" }
+        ]
+      });
+
+      if (!banner) {
+        throw new Error(`No active ${element} elemental banner found`);
+      }
+
+      console.log(`✅ Found elemental banner: ${banner.name} (${banner.bannerId})`);
+
+      // 5. Effectuer le pull (réutiliser la logique existante)
+      const pullResponse = await this.executeBannerPullsElemental(
+        playerId,
+        serverId,
+        banner.bannerId,
+        element,
+        count
+      );
+
+      // 6. Déduire les tickets
+      await player.spendElementalTickets(element, count);
+      console.log(`💎 Spent ${count}x ${element} ticket(s)`);
+
+      // 7. Calculer les stats finales
+      const finalStats = this.calculatePullStats(pullResponse.results);
+
+      // 8. Calculer les effets spéciaux
+      const pityConfig = {
+        legendaryPity: banner.pityConfig?.legendaryPity || 50,
+        epicPity: banner.pityConfig?.epicPity || 0
+      };
+      const specialEffects = this.calculateSpecialEffects(
+        pullResponse.results, 
+        pullResponse.pityState, 
+        count
+      );
+
+      // 9. Construire la réponse
+      const response: GachaResponse = {
+        success: true,
+        results: pullResponse.results,
+        stats: finalStats,
+        cost: { 
+          // Pas de gems/tickets normaux, seulement les tickets élémentaires
+        },
+        remaining: {
+          gems: player.gems,
+          tickets: player.tickets
+        },
+        pityStatus: {
+          pullsSinceLegendary: pullResponse.pityState.pullsSinceLegendary,
+          pullsSinceEpic: 0,
+          legendaryPityIn: Math.max(0, pityConfig.legendaryPity - pullResponse.pityState.pullsSinceLegendary),
+          epicPityIn: 0
+        },
+        bannerInfo: {
+          bannerId: banner.bannerId,
+          name: banner.name,
+          focusHeroes: banner.focusHeroes?.map((f: any) => f.heroId) || []
+        },
+        specialEffects,
+        notifications: {
+          hasLegendary: finalStats.legendary > 0,
+          hasUltraRare: pullResponse.results.some((r: any) => r.dropRate && r.dropRate < GACHA_CONFIG.rareDrop.legendaryThreshold),
+          hasLuckyStreak: specialEffects.luckyStreakCount >= GACHA_CONFIG.rareDrop.streakThreshold,
+          hasPityTrigger: specialEffects.hasPityBreak,
+          hasNewHero: finalStats.newHeroes > 0,
+          hasCollectionProgress: true
+        }
+      };
+
+      console.log(`✅ Elemental pull completed: ${pullResponse.results.length} heroes (${finalStats.legendary}L/${finalStats.epic}E)`);
+
+      return response;
+
+    } catch (error: any) {
+      console.error("❌ Error performElementalPull:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Effectuer les pulls élémentaires avec pity élémentaire et wishlist élémentaire
+   */
+  private static async executeBannerPullsElemental(
+    playerId: string,
+    serverId: string,
+    bannerId: string,
+    element: string,
+    count: number
+  ): Promise<{
+    success: boolean;
+    results: any[];
+    pityState: any;
+    currency: any;
+  }> {
+    try {
+      const player = await Player.findOne({ _id: playerId, serverId });
+      if (!player) {
+        throw new Error("Player not found");
+      }
+
+      const banner = await Banner.findOne({ bannerId });
+      if (!banner) {
+        throw new Error("Banner not found");
+      }
+
+      // Récupérer ou créer le pity élémentaire
+      let pityState = await BannerPity.findOne({ 
+        playerId, 
+        bannerId,
+        element 
+      });
+      
+      if (!pityState) {
+        pityState = new BannerPity({
+          playerId,
+          bannerId,
+          element,
+          pullsSinceLegendary: 0,
+          pullsSinceEpic: 0,
+          totalPulls: 0,
+          hasReceivedLegendary: false
+        });
+        await pityState.save();
+      }
+
+      const pityConfig = {
+        legendaryPity: banner.pityConfig?.legendaryPity || 50,
+        epicPity: 0
+      };
+
+      console.log(`\n🔮 Starting ${count} elemental pulls (${element}):`);
+      console.log(`   Pity: ${pityState.pullsSinceLegendary}/${pityConfig.legendaryPity}`);
+
+      // Récupérer le pool de héros (filtré par élément)
+      const availableHeroes = await banner.getAvailableHeroes();
+      const elementHeroes = availableHeroes.filter((h: any) => h.element === element);
+      
+      if (elementHeroes.length === 0) {
+        throw new Error(`No ${element} heroes available in banner pool`);
+      }
+
+      console.log(`   Available ${element} heroes: ${elementHeroes.length}`);
+
+      const results: any[] = [];
+      let currentPullsSinceLegendary = pityState.pullsSinceLegendary;
+
+      // Boucle de pulls
+      for (let i = 0; i < count; i++) {
+        let rarity: string;
+        let isPityTriggered = false;
+        let isWishlistPity = false;
+
+        // ✅ Vérifier pity wishlist élémentaire EN PREMIER
+        const wishlistPityTriggered = await WishlistService.isElementalWishlistPityTriggered(
+          playerId,
+          serverId,
+          element
+        );
+
+        if (wishlistPityTriggered) {
+          rarity = "Legendary";
+          isPityTriggered = true;
+          isWishlistPity = true;
+          console.log(`\n🎯 [PULL ${i + 1}] ELEMENTAL WISHLIST PITY TRIGGERED (${element}, 100 pulls)`);
+        }
+        // Pity legendary normal (50 pulls)
+        else if (currentPullsSinceLegendary >= pityConfig.legendaryPity) {
+          rarity = "Legendary";
+          isPityTriggered = true;
+          console.log(`\n🔔 [PULL ${i + 1}] ELEMENTAL PITY TRIGGERED (${element}, ${pityConfig.legendaryPity} pulls)`);
+        }
+        // Roll normal
+        else {
+          rarity = this.rollRarity(banner.rates as any);
+        }
+
+        console.log(`   ├─ Rarity: ${rarity}`);
+
+        // Sélection du héros
+        let selectedHero: any;
+
+        if (isWishlistPity) {
+          // Wishlist élémentaire déclenché
+          const wishlistHero = await WishlistService.getRandomElementalWishlistHero(
+            playerId, 
+            serverId,
+            element
+          );
+
+          if (wishlistHero) {
+            selectedHero = wishlistHero;
+            console.log(`   🎯 Elemental Wishlist Hero: ${selectedHero.name} ⭐`);
+          } else {
+            // Wishlist vide - sélection Legendary normale
+            console.log(`   ⚠️ Wishlist empty, random ${element} Legendary`);
+            const legendaries = elementHeroes.filter((h: any) => h.rarity === "Legendary");
+            selectedHero = legendaries[Math.floor(Math.random() * legendaries.length)];
+          }
+        } else {
+          // Sélection normale par rareté (dans le pool élémentaire)
+          const heroesOfRarity = elementHeroes.filter((h: any) => h.rarity === rarity);
+          if (heroesOfRarity.length === 0) {
+            throw new Error(`No ${element} heroes found for rarity: ${rarity}`);
+          }
+          selectedHero = heroesOfRarity[Math.floor(Math.random() * heroesOfRarity.length)];
+        }
+
+        console.log(`   └─ Hero: ${selectedHero.name} (${selectedHero.rarity})`);
+
+        // Vérifier si déjà possédé
+        const existingHero = player.heroes.find(
+          (h: any) => h.heroId === selectedHero._id.toString()
+        );
+
+        if (existingHero) {
+          console.log(`   🔄 Already owned, converting to fragments`);
+          
+          const fragmentsMap: { [key: string]: number } = {
+            Common: 5,
+            Rare: 10,
+            Epic: 25,
+            Legendary: 50
+          };
+
+          const fragmentsGained = fragmentsMap[selectedHero.rarity] || 5;
+          const fragmentKey = `${selectedHero._id}_fragment`;
+          const currentFragments = player.fragments.get(fragmentKey) || 0;
+          player.fragments.set(fragmentKey, currentFragments + fragmentsGained);
+
+          console.log(`   └─ +${fragmentsGained} fragments`);
+        } else {
+          await player.addHero(selectedHero._id.toString(), 1, 1);
+          console.log(`   ✅ New hero added`);
+        }
+
+        results.push({
+          hero: selectedHero,
+          rarity: selectedHero.rarity,
+          isNew: !existingHero,
+          isDuplicate: !!existingHero,
+          isPityTriggered,
+          isWishlistPity,
+          pullNumber: i + 1
+        });
+
+        // Gestion des compteurs de pity
+        if (rarity === "Legendary") {
+          currentPullsSinceLegendary = 0;
+          pityState.hasReceivedLegendary = true;
+
+          // Reset pity wishlist élémentaire
+          await WishlistService.resetElementalWishlistPity(playerId, serverId, element);
+
+          console.log(`   └─ Pity RESET → Elemental Legendary: 0, Elemental Wishlist: 0`);
+        } else {
+          currentPullsSinceLegendary++;
+
+          // Incrémenter pity wishlist élémentaire
+          await WishlistService.incrementElementalWishlistPity(playerId, serverId, element);
+        }
+      }
+
+      // Sauvegarder le pity
+      pityState.pullsSinceLegendary = currentPullsSinceLegendary;
+      pityState.totalPulls += count;
+      await pityState.save();
+
+      // Sauvegarder le joueur
+      await player.save();
+
+      console.log(`\n✅ ${count} elemental pulls completed`);
+      console.log(`📊 Final Pity: ${pityState.pullsSinceLegendary}/${pityConfig.legendaryPity}`);
+
+      return {
+        success: true,
+        results,
+        pityState: {
+          pullsSinceLegendary: pityState.pullsSinceLegendary,
+          totalPulls: pityState.totalPulls,
+          hasReceivedLegendary: pityState.hasReceivedLegendary
+        },
+        currency: {
+          gems: player.gems,
+          paidGems: player.paidGems,
+          tickets: player.tickets
+        }
+      };
+
+    } catch (error: any) {
+      console.error("❌ Error in executeBannerPullsElemental:", error);
       throw error;
     }
   }
