@@ -1870,7 +1870,6 @@ public static async getBannerRates(bannerId: string, serverId: string) {
       throw error;
     }
   }
-}
 // === PULLS ÉLÉMENTAIRES ===
 
   /**
