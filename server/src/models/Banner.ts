@@ -75,6 +75,12 @@ export interface IBanner {
   
   // Coûts
   costs: IBannerCost;
+
+  elementalConfig?: {
+  element: "Fire" | "Water" | "Wind" | "Electric" | "Light" | "Shadow";
+  ticketCost: number;
+  rotationDays: string[]; // ["monday", "sunday"], etc.
+  };
   
   // Système de pity spécifique à cette bannière
   pityConfig?: {
@@ -147,6 +153,11 @@ interface IBannerDocument extends Document {
   focusHeroes: IFocusHero[];
   rates: IBannerRates;
   costs: IBannerCost;
+  elementalConfig?: {
+  element: "Fire" | "Water" | "Wind" | "Electric" | "Light" | "Shadow";
+  ticketCost: number;
+  rotationDays: string[];
+  };
   pityConfig?: {
     legendaryPity?: number;
     epicPity?: number;
@@ -344,7 +355,23 @@ const bannerSchema = new Schema<IBannerDocument>({
       tickets: { type: Number, min: 0 }
     }
   },
-  
+  elementalConfig: {
+  element: {
+    type: String,
+    enum: ["Fire", "Water", "Wind", "Electric", "Light", "Shadow"],
+    sparse: true
+  },
+  ticketCost: {
+    type: Number,
+    min: 0,
+    default: 1
+  },
+  rotationDays: [{
+    type: String,
+    enum: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+    lowercase: true
+  }]
+  },
   pityConfig: {
     legendaryPity: { type: Number, min: 1, max: 200 },
     epicPity: { type: Number, min: 0, max: 50 },
@@ -422,7 +449,8 @@ bannerSchema.index({ type: 1, isActive: 1, isVisible: 1 });
 bannerSchema.index({ startTime: 1, endTime: 1 });
 bannerSchema.index({ "serverConfig.allowedServers": 1 });
 bannerSchema.index({ sortOrder: 1, startTime: -1 });
-
+bannerSchema.index({ "elementalConfig.element": 1 });
+bannerSchema.index({ "elementalConfig.element": 1, isActive: 1, isVisible: 1 });
 // Validation des taux (doivent additionner à 100%)
 bannerSchema.pre('save', function(next) {
   const total = this.rates.Common + this.rates.Rare + this.rates.Epic + this.rates.Legendary;
@@ -456,7 +484,39 @@ bannerSchema.statics.getBannerById = function(bannerId: string, serverId: string
     ]
   });
 };
+bannerSchema.statics.getElementalBanners = function(serverId: string, element?: string) {
+  const query: any = {
+    isActive: true,
+    isVisible: true,
+    startTime: { $lte: new Date() },
+    endTime: { $gte: new Date() },
+    "elementalConfig.element": { $exists: true },
+    $or: [
+      { "serverConfig.allowedServers": serverId },
+      { "serverConfig.allowedServers": "ALL" }
+    ]
+  };
+  
+  if (element) {
+    query["elementalConfig.element"] = element;
+  }
+  
+  return this.find(query).sort({ sortOrder: -1 });
+};
 
+bannerSchema.statics.getElementalBannerByElement = function(serverId: string, element: string) {
+  return this.findOne({
+    isActive: true,
+    isVisible: true,
+    startTime: { $lte: new Date() },
+    endTime: { $gte: new Date() },
+    "elementalConfig.element": element,
+    $or: [
+      { "serverConfig.allowedServers": serverId },
+      { "serverConfig.allowedServers": "ALL" }
+    ]
+  });
+};
 // Méthodes d'instance
 bannerSchema.methods.isCurrentlyActive = function(): boolean {
   const now = new Date();
@@ -464,6 +524,9 @@ bannerSchema.methods.isCurrentlyActive = function(): boolean {
          this.isVisible && 
          this.startTime <= now && 
          this.endTime >= now;
+};
+bannerSchema.methods.isElementalBanner = function(): boolean {
+  return !!this.elementalConfig && !!this.elementalConfig.element;
 };
 
 bannerSchema.methods.getAvailableHeroes = async function() {
