@@ -465,7 +465,7 @@ bannerSchema.index({ "elementalConfig.element": 1 });
 bannerSchema.index({ "elementalConfig.element": 1, isActive: 1, isVisible: 1 });
 // Validation des taux (doivent additionner à 100%)
 bannerSchema.pre('save', function(next) {
-  const total = this.rates.Common + this.rates.Rare + this.rates.Epic + this.rates.Legendary;
+  const total = this.rates.Common + this.rates.Rare + this.rates.Epic + this.rates.Legendary + this.rates.Mythic;  // ✅ AJOUTÉ Mythic
   if (Math.abs(total - 100) > 0.1) { // Tolérance de 0.1%
     return next(new Error(`Banner rates must add up to 100% (current: ${total}%)`));
   }
