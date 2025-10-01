@@ -285,7 +285,7 @@ const bannerSchema = new Schema<IBannerDocument>({
     }],
     rarityFilters: [{
       type: String,
-      enum: ["Common", "Rare", "Epic", "Legendary"]
+      enum: ["Common", "Rare", "Epic", "Legendary", "Mythic"]
     }]
   },
   
