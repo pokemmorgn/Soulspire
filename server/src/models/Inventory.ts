@@ -352,23 +352,6 @@ inventorySchema.index({ "storage.weapons.isEquipped": 1 });
 inventorySchema.index({ "storage.*.instanceId": 1 });
 inventorySchema.index({ lastSyncAt: 1 });
 
-// ✅ INDEX GLOBAL pour instanceId unique
-inventorySchema.index({ 
-  "storage.weapons.instanceId": 1,
-  "storage.helmets.instanceId": 1,
-  "storage.armors.instanceId": 1,
-  "storage.boots.instanceId": 1,
-  "storage.gloves.instanceId": 1,
-  "storage.accessories.instanceId": 1,
-  "storage.potions.instanceId": 1,
-  "storage.scrolls.instanceId": 1,
-  "storage.enhancementItems.instanceId": 1,
-  "storage.enhancementMaterials.instanceId": 1,
-  "storage.evolutionMaterials.instanceId": 1,
-  "storage.craftingMaterials.instanceId": 1,
-  "storage.awakeningMaterials.instanceId": 1,
-  "storage.artifacts.instanceId": 1
-}, { sparse: true });
 
 // === MIDDLEWARE DE VALIDATION ===
 inventorySchema.pre('save', function(next) {
@@ -1121,3 +1104,4 @@ inventorySchema.methods.upgradeEquipment = async function(
 };
 
 export default mongoose.model<IInventoryDocument>("Inventory", inventorySchema);
+
