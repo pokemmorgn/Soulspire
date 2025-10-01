@@ -30,7 +30,7 @@ async function main() {
     console.log(`⚠️ Found ${players.length} players with displayName "${displayName}"`);
     console.log("Players found:");
     players.forEach((p, i) => {
-      console.log(`  ${i + 1}. ID: ${p._id}, Username: ${p.username || 'N/A'}`);
+      console.log(`  ${i + 1}. ID: ${p._id}, DisplayName: ${p.displayName}`);
     });
     console.log("\nUsing the FIRST player found...\n");
   }
