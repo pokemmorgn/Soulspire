@@ -601,113 +601,227 @@ export class SchedulerService {
   /**
    * Traiter automatiquement les resets de pulls gratuits
    */
-  private static async processFreePullsReset(): Promise<{
-    totalReset: number;
-    dailyReset: number;
-    weeklyReset: number;
-    monthlyReset: number;
-    resetDetails: Array<{
-      playerId: string;
-      bannerId: string;
-      bannerName: string;
-      pullsAvailable: number;
-      resetType: string;
-      nextResetAt: Date;
-    }>;
-  }> {
-    try {
-      const now = new Date();
-      const result = {
-        totalReset: 0,
-        dailyReset: 0,
-        weeklyReset: 0,
-        monthlyReset: 0,
-        resetDetails: [] as any[]
-      };
+/**
+ * Traiter automatiquement les resets de pulls gratuits (OPTIMISÉ pour haute performance)
+ */
+private static async processFreePullsReset(): Promise<{
+  totalReset: number;
+  dailyReset: number;
+  weeklyReset: number;
+  monthlyReset: number;
+  resetDetails: Array<{
+    playerId: string;
+    bannerId: string;
+    bannerName: string;
+    pullsAvailable: number;
+    resetType: string;
+    nextResetAt: Date;
+  }>;
+}> {
+  try {
+    const now = new Date();
+    const result = {
+      totalReset: 0,
+      dailyReset: 0,
+      weeklyReset: 0,
+      monthlyReset: 0,
+      resetDetails: [] as any[]
+    };
 
-      // Récupérer tous les joueurs ayant des trackers de pulls gratuits
-      const players = await Player.find({
-        'freePulls.0': { $exists: true } // Au moins un tracker
-      }).select('_id serverId freePulls displayName');
+    // Configuration
+    const BATCH_SIZE = 1000; // Nombre de joueurs à traiter par batch
+    const PARALLEL_LIMIT = 20; // Nombre de resets en parallèle
+    const MAX_DETAILS = 100; // Limite de détails stockés pour éviter surcharge mémoire
 
-      console.log(`🔍 Vérification de ${players.length} joueurs avec pulls gratuits...`);
+    console.log(`🎁 Démarrage du reset automatique des pulls gratuits...`);
 
-      for (const player of players) {
-        for (const tracker of player.freePulls) {
-          // Vérifier si le reset est nécessaire
-          if (tracker.nextResetAt <= now) {
-            try {
-              // Récupérer la bannière pour avoir la config
-              const Banner = (await import('../models/Banner')).default;
-              const banner = await Banner.findOne({ 
-                bannerId: tracker.bannerId,
-                'freePullConfig.enabled': true
-              });
+    // ✅ Récupérer dynamiquement tous les serveurs actifs
+    const activeServers = await Player.distinct('serverId');
+    console.log(`🌍 ${activeServers.length} serveur(s) détecté(s): ${activeServers.join(', ')}`);
 
-              if (!banner || !banner.freePullConfig) {
-                console.warn(`⚠️ Bannière ${tracker.bannerId} introuvable ou pulls gratuits désactivés`);
-                continue;
-              }
+    // Traiter serveur par serveur pour mieux répartir la charge
+    for (const serverId of activeServers) {
+      console.log(`\n🔍 Traitement du serveur ${serverId}...`);
+      
+      let skip = 0;
+      let hasMore = true;
+      let serverResets = 0;
+      let batchNumber = 0;
 
-              const config = banner.freePullConfig;
+      while (hasMore) {
+        batchNumber++;
 
-              // Calculer la prochaine date de reset
-              const nextResetAt = FreePullService.calculateNextResetDate(config.resetType);
+        // Récupérer un batch de joueurs avec pulls gratuits expirés
+        const players = await Player.find({
+          serverId,
+          'freePulls.nextResetAt': { $lte: now }
+        })
+        .select('_id serverId freePulls displayName')
+        .skip(skip)
+        .limit(BATCH_SIZE)
+        .lean(); // Utiliser lean() pour meilleures performances
 
-              // Effectuer le reset
-              await player.resetFreePulls(
-                tracker.bannerId,
-                config.pullsPerReset,
-                nextResetAt
-              );
+        if (players.length === 0) {
+          hasMore = false;
+          break;
+        }
 
-              // Incrémenter les compteurs
-              result.totalReset++;
-              switch (config.resetType) {
-                case 'daily':
-                  result.dailyReset++;
-                  break;
-                case 'weekly':
-                  result.weeklyReset++;
-                  break;
-                case 'monthly':
-                  result.monthlyReset++;
-                  break;
-              }
+        console.log(`   📦 Batch ${batchNumber}: ${players.length} joueur(s) à vérifier`);
 
-              // Ajouter aux détails
-              result.resetDetails.push({
-                playerId: player._id,
-                bannerId: tracker.bannerId,
-                bannerName: banner.name,
-                pullsAvailable: config.pullsPerReset,
-                resetType: config.resetType,
-                nextResetAt
-              });
-
-              console.log(`🔄 Reset effectué: ${player.displayName} - ${banner.name} (${config.resetType}): ${config.pullsPerReset} pulls`);
-
-            } catch (error) {
-              console.error(`❌ Erreur reset pour joueur ${player._id} sur bannière ${tracker.bannerId}:`, error);
+        // Récupérer toutes les bannières nécessaires en une seule requête
+        const allBannerIds = new Set<string>();
+        players.forEach(player => {
+          player.freePulls?.forEach((fp: any) => {
+            if (fp.nextResetAt <= now) {
+              allBannerIds.add(fp.bannerId);
             }
+          });
+        });
+
+        if (allBannerIds.size === 0) {
+          console.log(`   ⏭️ Aucune bannière à traiter dans ce batch`);
+          skip += BATCH_SIZE;
+          continue;
+        }
+
+        const Banner = (await import('../models/Banner')).default;
+        const banners = await Banner.find({
+          bannerId: { $in: Array.from(allBannerIds) },
+          'freePullConfig.enabled': true
+        }).select('bannerId name freePullConfig').lean();
+
+        console.log(`   🎰 ${banners.length} bannière(s) active(s) dans ce batch`);
+
+        // Créer un map pour accès rapide
+        const bannerMap = new Map(
+          banners.map(b => [b.bannerId, b])
+        );
+
+        // Traiter les joueurs par chunks pour limiter la concurrence
+        const chunks: any[][] = [];
+        for (let i = 0; i < players.length; i += PARALLEL_LIMIT) {
+          chunks.push(players.slice(i, i + PARALLEL_LIMIT));
+        }
+
+        for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+          const chunk = chunks[chunkIndex];
+          
+          const settledResults = await Promise.allSettled(
+            chunk.map(async (playerData: any) => {
+              try {
+                // Récupérer le player document complet (nécessaire pour les méthodes)
+                const player = await Player.findById(playerData._id);
+                if (!player) return { success: false, reason: 'not_found' };
+
+                let playerResets = 0;
+
+                for (const tracker of player.freePulls) {
+                  if (tracker.nextResetAt <= now) {
+                    const banner = bannerMap.get(tracker.bannerId);
+
+                    if (!banner || !banner.freePullConfig) {
+                      continue;
+                    }
+
+                    const config = banner.freePullConfig;
+
+                    // Calculer la prochaine date de reset
+                    const nextResetAt = FreePullService.calculateNextResetDate(config.resetType);
+
+                    // Effectuer le reset
+                    await player.resetFreePulls(
+                      tracker.bannerId,
+                      config.pullsPerReset,
+                      nextResetAt
+                    );
+
+                    playerResets++;
+
+                    // Incrémenter les compteurs
+                    result.totalReset++;
+                    serverResets++;
+                    
+                    switch (config.resetType) {
+                      case 'daily':
+                        result.dailyReset++;
+                        break;
+                      case 'weekly':
+                        result.weeklyReset++;
+                        break;
+                      case 'monthly':
+                        result.monthlyReset++;
+                        break;
+                    }
+
+                    // Ajouter aux détails (limiter pour éviter surcharge mémoire)
+                    if (result.resetDetails.length < MAX_DETAILS) {
+                      result.resetDetails.push({
+                        playerId: player._id,
+                        bannerId: tracker.bannerId,
+                        bannerName: banner.name,
+                        pullsAvailable: config.pullsPerReset,
+                        resetType: config.resetType,
+                        nextResetAt
+                      });
+                    }
+                  }
+                }
+
+                if (playerResets > 0) {
+                  console.log(`      ✓ ${player.displayName}: ${playerResets} reset(s)`);
+                }
+
+                return { success: true, resets: playerResets };
+
+              } catch (error) {
+                console.error(`      ✗ Erreur joueur ${playerData._id}:`, error);
+                return { success: false, error };
+              }
+            })
+          );
+
+          // Compter les succès/échecs
+          const successful = settledResults.filter(r => r.status === 'fulfilled' && (r.value as any)?.success).length;
+          const failed = settledResults.length - successful;
+
+          if (failed > 0) {
+            console.log(`      ⚠️ Chunk ${chunkIndex + 1}/${chunks.length}: ${successful} OK, ${failed} échec(s)`);
           }
+        }
+
+        skip += BATCH_SIZE;
+
+        // Pause de 100ms entre les batchs pour éviter surcharge DB
+        if (hasMore && players.length === BATCH_SIZE) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } else {
+          hasMore = false; // Dernier batch (moins de BATCH_SIZE joueurs)
         }
       }
 
-      return result;
-
-    } catch (error) {
-      console.error("❌ Error in processFreePullsReset:", error);
-      return {
-        totalReset: 0,
-        dailyReset: 0,
-        weeklyReset: 0,
-        monthlyReset: 0,
-        resetDetails: []
-      };
+      console.log(`   ✅ Serveur ${serverId}: ${serverResets} reset(s) effectué(s)`);
     }
-  }
 
+    console.log(`\n🎉 Reset global terminé:`);
+    console.log(`   - Serveurs traités: ${activeServers.length}`);
+    console.log(`   - Total: ${result.totalReset} reset(s)`);
+    console.log(`   - Daily: ${result.dailyReset}`);
+    console.log(`   - Weekly: ${result.weeklyReset}`);
+    console.log(`   - Monthly: ${result.monthlyReset}`);
+
+    return result;
+
+  } catch (error) {
+    console.error("❌ Error in processFreePullsReset:", error);
+    return {
+      totalReset: 0,
+      dailyReset: 0,
+      weeklyReset: 0,
+      monthlyReset: 0,
+      resetDetails: []
+    };
+  }
+}
   /**
    * Envoyer des rappels aux joueurs qui ont des pulls gratuits non utilisés
    */
