@@ -1,13 +1,15 @@
 // server/src/routes/wishlist.ts
 
-import express from "express";
+import express, { Request, Response } from "express";
 import { WishlistController } from "../controllers/WishlistController";
-import authMiddleware from "../middleware/authMiddleware"; // ✅ CORRECTION
+import authMiddleware from "../middleware/authMiddleware";
+// ✅ NOUVEAU: Import pour routes directes
+import { WishlistService } from "../services/WishlistService";
 
 const router = express.Router();
 
 // Toutes les routes nécessitent l'authentification
-router.use(authMiddleware); // ✅ CORRECTION
+router.use(authMiddleware);
 
 /**
  * GET /api/wishlist
@@ -54,7 +56,7 @@ router.get("/stats", WishlistController.getStats);
  * GET /api/wishlist/elemental
  * Obtenir toutes les wishlists élémentaires du joueur
  */
-router.get("/elemental", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.get("/elemental", async (req: Request, res: Response): Promise<void> => {
   try {
     const playerId = (req as any).user?.playerId;
     const serverId = (req as any).user?.serverId;
@@ -86,7 +88,7 @@ router.get("/elemental", authMiddleware, async (req: Request, res: Response): Pr
  * GET /api/wishlist/elemental/:element
  * Obtenir la wishlist élémentaire pour un élément spécifique
  */
-router.get("/elemental/:element", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.get("/elemental/:element", async (req: Request, res: Response): Promise<void> => {
   try {
     const playerId = (req as any).user?.playerId;
     const serverId = (req as any).user?.serverId;
@@ -140,7 +142,7 @@ router.get("/elemental/:element", authMiddleware, async (req: Request, res: Resp
  * Créer/mettre à jour une wishlist élémentaire
  * Body: { element: string, heroIds: string[] }
  */
-router.post("/elemental", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/elemental", async (req: Request, res: Response): Promise<void> => {
   try {
     const playerId = (req as any).user?.playerId;
     const serverId = (req as any).user?.serverId;
@@ -211,7 +213,7 @@ router.post("/elemental", authMiddleware, async (req: Request, res: Response): P
  * Mettre à jour une wishlist élémentaire (alias de POST pour RESTful)
  * Body: { heroIds: string[] }
  */
-router.put("/elemental/:element", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.put("/elemental/:element", async (req: Request, res: Response): Promise<void> => {
   try {
     const playerId = (req as any).user?.playerId;
     const serverId = (req as any).user?.serverId;
@@ -274,7 +276,7 @@ router.put("/elemental/:element", authMiddleware, async (req: Request, res: Resp
  * GET /api/wishlist/elemental/:element/stats
  * Obtenir les statistiques d'une wishlist élémentaire
  */
-router.get("/elemental/:element/stats", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.get("/elemental/:element/stats", async (req: Request, res: Response): Promise<void> => {
   try {
     const playerId = (req as any).user?.playerId;
     const serverId = (req as any).user?.serverId;
@@ -320,7 +322,7 @@ router.get("/elemental/:element/stats", authMiddleware, async (req: Request, res
  * GET /api/wishlist/elemental/available/:element
  * Obtenir les héros Legendary disponibles pour un élément
  */
-router.get("/elemental/available/:element", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.get("/elemental/available/:element", async (req: Request, res: Response): Promise<void> => {
   try {
     const { element } = req.params;
 
