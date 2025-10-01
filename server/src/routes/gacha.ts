@@ -1,11 +1,12 @@
 import express, { Request, Response } from "express";
 import Joi from "joi";
-import authMiddleware, { optionalAuthMiddleware } from "../middleware/authMiddleware"; // ✅ Ajout import
+import authMiddleware, { optionalAuthMiddleware } from "../middleware/authMiddleware";
 import { requireFeature } from "../middleware/featureMiddleware";
 import { GachaService } from "../services/GachaService";
 import { WebSocketService } from "../services/WebSocketService";
 import { CollectionService } from "../services/CollectionService"; 
 import { ElementalBannerService } from "../services/ElementalBannerService";
+import { FreePullService } from "../services/FreePullService";
 import Player from "../models/Player"; 
 import Hero from "../models/Hero";  
 
@@ -337,7 +338,156 @@ router.post("/pull", authMiddleware, requireFeature("gacha"), async (req: Reques
     });
   }
 });
+// === GET FREE PULLS STATUS ===
+router.get("/free-pulls/status", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { bannerId } = req.query;
 
+    console.log(`🎁 ${req.userId} récupère le statut des pulls gratuits`);
+
+    let result;
+
+    if (bannerId) {
+      // Statut pour une bannière spécifique
+      const status = await FreePullService.getFreePullStatusForBanner(
+        req.userId!,
+        req.serverId!,
+        bannerId as string
+      );
+
+      result = {
+        success: true,
+        status: status || null,
+        labelKey: status ? "FREE_PULL_STATUS_SUCCESS" : "FREE_PULL_NOT_AVAILABLE"
+      };
+    } else {
+      // Statut pour toutes les bannières
+      const statuses = await FreePullService.getFreePullsStatus(
+        req.userId!,
+        req.serverId!
+      );
+
+      result = {
+        success: true,
+        statuses,
+        totalAvailable: statuses.reduce((sum, s) => sum + s.pullsAvailable, 0),
+        labelKey: "FREE_PULL_STATUS_SUCCESS"
+      };
+    }
+
+    res.json(result);
+
+  } catch (err: any) {
+    console.error("Get free pulls status error:", err);
+    res.status(500).json({ 
+      success: false,
+      labelKey: "FREE_PULL_ERROR",
+      params: { error: err.message }
+    });
+  }
+});
+
+// === POST FREE PULL ===
+router.post("/free-pull", authMiddleware, requireFeature("gacha"), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { bannerId, count = 1 } = req.body;
+
+    // Validation
+    if (!bannerId) {
+      res.status(400).json({ 
+        success: false,
+        labelKey: "VALIDATION_ERROR",
+        params: { field: "bannerId" }
+      });
+      return;
+    }
+
+    if (count !== 1 && count !== 10) {
+      res.status(400).json({ 
+        success: false,
+        labelKey: "VALIDATION_ERROR",
+        params: { field: "count", message: "Count must be 1 or 10" }
+      });
+      return;
+    }
+
+    console.log(`🎁 ${req.userId} effectue ${count} pull(s) GRATUIT(S) sur bannière ${bannerId}`);
+
+    // Effectuer le pull gratuit
+    const result = await GachaService.performFreePullOnBanner(
+      req.userId!,
+      req.serverId!,
+      bannerId,
+      count
+    );
+
+    // Formater la réponse
+    const response = {
+      success: true,
+      labelKey: "FREE_PULL_SUCCESS",
+      results: result.results.map(r => ({
+        hero: {
+          id: r.hero._id,
+          name: r.hero.name,
+          role: r.hero.role,
+          element: r.hero.element,
+          rarity: r.hero.rarity,
+          baseStats: r.hero.baseStats,
+          spells: r.hero.spells
+        },
+        rarity: r.rarity,
+        isNew: r.isNew,
+        fragmentsGained: r.fragmentsGained,
+        isFocus: r.isFocus || false
+      })),
+      stats: result.stats,
+      cost: result.cost, // Vide pour pulls gratuits
+      remaining: result.remaining,
+      pityStatus: result.pityStatus,
+      bannerInfo: result.bannerInfo,
+      specialEffects: result.specialEffects,
+      freePullUsed: result.freePullUsed,
+      freePullsRemaining: result.freePullsRemaining,
+      bonusRewards: result.bonusRewards,
+      animations: {
+        pullType: count === 1 ? 'single' : 'multi',
+        hasLegendary: result.stats.legendary > 0,
+        hasMultipleLegendary: result.stats.legendary > 1,
+        perfectPull: count === 10 && result.results.every(r => ['Epic', 'Legendary'].includes(r.rarity)),
+        luckyStreak: result.specialEffects?.luckyStreakCount || 0,
+        pityTriggered: result.specialEffects?.hasPityBreak || false,
+        isFreePull: true // ✅ NOUVEAU : Indiquer que c'est un pull gratuit
+      }
+    };
+
+    res.json(response);
+
+  } catch (err: any) {
+    console.error("Free pull error:", err);
+    
+    if (err.message.includes("not found")) {
+      res.status(404).json({ 
+        success: false,
+        labelKey: err.message.includes("Player") ? "PLAYER_NOT_FOUND" : "BANNER_NOT_FOUND"
+      });
+      return;
+    }
+    
+    if (err.message.includes("FREE_PULL")) {
+      res.status(400).json({ 
+        success: false,
+        labelKey: err.message
+      });
+      return;
+    }
+    
+    res.status(500).json({ 
+      success: false,
+      labelKey: "FREE_PULL_ERROR",
+      params: { error: err.message }
+    });
+  }
+});
 // === GET SUMMON HISTORY ===
 router.get("/history", authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -912,7 +1062,8 @@ router.get("/info", async (req: Request, res: Response): Promise<void> => {
         smartRecommendations: "AI-powered pull recommendations",
         collectionTracking: "Automatic collection progress tracking",
         specialEvents: "Rate-up events, free pulls, special banners",
-        elementalSystem: "Elemental banners with ticket-based pulls and weekly rotation"
+        elementalSystem: "Elemental banners with ticket-based pulls and weekly rotation",
+        freePulls: "Free daily/weekly/monthly pulls per banner with configurable reset"
 
       },
       bannerTypes: {
@@ -985,7 +1136,19 @@ router.get("/info", async (req: Request, res: Response): Promise<void> => {
         elementalBanner: "GET /api/gacha/elemental/banner/:element - Specific elemental banner (public)",
         elementalTickets: "GET /api/gacha/elemental/tickets - Player's tickets (auth required)",
         elementalPull: "POST /api/gacha/elemental/pull - Pull with tickets (auth required)",
-        elementalSchedule: "GET /api/gacha/elemental/schedule - 7-day rotation schedule (public)"
+        elementalSchedule: "GET /api/gacha/elemental/schedule - 7-day rotation schedule (public)",
+        freePullsStatus: "GET /api/gacha/free-pulls/status?bannerId=X - Get free pulls status (auth required)",
+        freePull: "POST /api/gacha/free-pull - Use free pull (auth required)"
+      },
+      freePullsLabels: {
+        status: "FREE_PULL_STATUS_SUCCESS",
+        success: "FREE_PULL_SUCCESS",
+        notAvailable: "FREE_PULL_NOT_AVAILABLE",
+        insufficient: "FREE_PULL_INSUFFICIENT",
+        error: "FREE_PULL_ERROR",
+        resetDaily: "FREE_PULL_RESET_DAILY",
+        resetWeekly: "FREE_PULL_RESET_WEEKLY",
+        resetMonthly: "FREE_PULL_RESET_MONTHLY"
       },
       websocketEvents: {
         client: [
@@ -1017,6 +1180,7 @@ router.get("/info", async (req: Request, res: Response): Promise<void> => {
 });
 
 export default router;
+
 
 
 
