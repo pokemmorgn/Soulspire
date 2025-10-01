@@ -58,7 +58,7 @@ wind-charged javelins.","Vulnerable
 to crowd 
 control",,
 Elyos,Rare,Tank,Light,,,,,,
-Elyndra,Rare,Support,Wind,Eryndra is a graceful bard touched by the essence of the wind,"Gentle, serene, and inspiring",Can reduce enemy accuracy,Very fragile,,
+Elyndra,Rare,Support,Wind,Elyndra is a graceful bard touched by the essence of the wind,"Gentle, serene, and inspiring",Can reduce enemy accuracy,Very fragile,,
 Liora,Rare,Ranged DPS,Light,"Liora is a graceful archer 
 with long flowing platinum 
 hair and sharp golden eyes","Calm, calculated, and composed","Strong long-range attacks, fast linear DPS",Fragile,,
@@ -252,3 +252,5 @@ Voltragar,Legendary,Tank,Electric,"A colossal mechanical golem forged from dark 
  for protection","Can taunt enemies and generate 
 electric shields for allies
 Titanic defense and HP",Extremely slow,,
+Kaorim (Lunar Form),Mythical,Melee DPS,Shadow,,,,,,
+Kaorim (Solar Form),Mythical,Support,Light,,,,,,
