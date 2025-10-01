@@ -106,7 +106,8 @@ elementalBannerRotationSchema.statics.getCurrentRotation = async function(
   // Si pas de rotation existante, en créer une
   if (!rotation) {
     console.log(`📅 Creating initial rotation for ${serverId}`);
-    rotation = await this.createRotationForToday(serverId);
+    const newRotation = await this.createRotationForToday(serverId);
+    return newRotation;  // ✅ Retourne directement
   }
   
   // Vérifier si la rotation doit être mise à jour
