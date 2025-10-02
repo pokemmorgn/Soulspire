@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import PlayerManagementService from '../services/PlayerManagementService';
+import Player from '../../models/Player';
 import AuditLog from '../models/AuditLog';
 import { 
   authenticateAdmin, 
@@ -450,7 +451,104 @@ router.post('/:accountId/currency',
     }
   }
 );
+/**
+ * POST /api/admin/players/:accountId/vip
+ * Modifier le niveau VIP d'un joueur
+ */
+router.post('/:accountId/vip',
+  authenticateAdmin,
+  requirePermission('economy.modify'),
+  currencyRateLimit,
+  async (req: Request, res: Response) => {
+    try {
+      const adminReq = req as IAuthenticatedAdminRequest;
+      const { accountId } = req.params;
+      const { serverId, playerId, newVipLevel, reason } = req.body;
 
+      // Validation des données
+      if (!serverId || !playerId || newVipLevel === undefined || !reason) {
+        return res.status(400).json({
+          error: 'All fields are required: serverId, playerId, newVipLevel, reason',
+          code: 'MISSING_VIP_FIELDS'
+        });
+      }
+
+      if (typeof newVipLevel !== 'number' || newVipLevel < 0 || newVipLevel > 15) {
+        return res.status(400).json({
+          error: 'VIP level must be a number between 0 and 15',
+          code: 'INVALID_VIP_LEVEL'
+        });
+      }
+
+      // Trouver le joueur
+      const player = await Player.findOne({ 
+        _id: playerId, 
+        accountId, 
+        serverId 
+      });
+
+      if (!player) {
+        return res.status(404).json({
+          error: 'Player not found',
+          code: 'PLAYER_NOT_FOUND'
+        });
+      }
+
+      const oldLevel = player.vipLevel;
+
+      // Calculer la nouvelle expérience VIP (1000 exp par niveau)
+      const newVipExperience = newVipLevel * 1000;
+      
+      player.vipLevel = newVipLevel;
+      player.vipExperience = newVipExperience;
+      
+      await player.save();
+
+      // Logger l'action
+      await AuditLog.createLog({
+        adminId: adminReq.admin.adminId,
+        adminUsername: adminReq.admin.username,
+        adminRole: adminReq.admin.role,
+        action: 'player.modify_vip',
+        resource: 'player_vip',
+        resourceId: playerId,
+        details: {
+          oldValue: oldLevel,
+          newValue: newVipLevel,
+          oldExperience: oldLevel * 1000,
+          newExperience: newVipExperience,
+          additionalInfo: {
+            serverId,
+            reason,
+            accountId
+          }
+        },
+        ipAddress: getClientIP(req),
+        userAgent: getUserAgent(req),
+        success: true,
+        severity: 'medium'
+      });
+
+      res.json({
+        success: true,
+        data: {
+          oldLevel,
+          newLevel: newVipLevel,
+          oldExperience: oldLevel * 1000,
+          newExperience: newVipExperience
+        },
+        message: `VIP level updated from ${oldLevel} to ${newVipLevel}`
+      });
+
+    } catch (error) {
+      console.error('Modify VIP error:', error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to modify VIP level',
+        code: 'VIP_MODIFICATION_ERROR'
+      });
+    }
+  }
+);
 /**
  * POST /api/admin/players/:accountId/heroes
  * Ajouter ou retirer des héros
