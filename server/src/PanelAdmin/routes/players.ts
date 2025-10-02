@@ -504,30 +504,30 @@ router.post('/:accountId/vip',
       
       await player.save();
 
-      // Logger l'action
-      await AuditLog.createLog({
-        adminId: adminReq.admin.adminId,
-        adminUsername: adminReq.admin.username,
-        adminRole: adminReq.admin.role,
-        action: 'player.modify_vip',
-        resource: 'player_vip',
-        resourceId: playerId,
-        details: {
-          oldValue: oldLevel,
-          newValue: newVipLevel,
-          oldExperience: oldLevel * 1000,
-          newExperience: newVipExperience,
-          additionalInfo: {
-            serverId,
-            reason,
-            accountId
-          }
-        },
-        ipAddress: getClientIP(req),
-        userAgent: getUserAgent(req),
-        success: true,
-        severity: 'medium'
-      });
+ // Logger l'action
+await AuditLog.createLog({
+  adminId: adminReq.admin.adminId,
+  adminUsername: adminReq.admin.username,
+  adminRole: adminReq.admin.role,
+  action: 'player.modify_vip',
+  resource: 'player_vip',
+  resourceId: playerId,
+  details: {
+    oldValue: oldLevel,
+    newValue: newVipLevel,
+    additionalInfo: {
+      serverId,
+      reason,
+      accountId,
+      oldExperience: oldLevel * 1000,
+      newExperience: newVipExperience
+    }
+  },
+  ipAddress: getClientIP(req),
+  userAgent: getUserAgent(req),
+  success: true,
+  severity: 'medium'
+});
 
       res.json({
         success: true,
