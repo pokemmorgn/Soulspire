@@ -464,13 +464,173 @@ closePlayerModal() {
         this.selectedPlayer = null;
     }
 
-    /**
-     * Voir les héros d'un personnage
-     */
-    async viewCharacterHeroes(playerId, serverId) {
-        AdminCore.showAlert('Heroes management coming soon...', 'info');
-        // TODO: Implémenter l'affichage des héros
+/**
+ * Voir les héros d'un personnage
+ */
+async viewCharacterHeroes(playerId, serverId) {
+    try {
+        AdminCore.showAlert('Loading heroes...', 'info', 1000);
+        
+        if (!this.selectedPlayer || !this.selectedPlayer.account) {
+            AdminCore.showAlert('Please select a player first', 'error');
+            return;
+        }
+
+        const character = this.selectedPlayer.characters?.find(c => 
+            c.playerId === playerId && c.serverId === serverId
+        );
+
+        if (!character) {
+            AdminCore.showAlert('Character not found', 'error');
+            return;
+        }
+
+        // Vérifier si le personnage a des héros
+        if (!character.heroes || !character.heroes.list || character.heroes.list.length === 0) {
+            AdminCore.showAlert('This character has no heroes yet', 'warning');
+            return;
+        }
+
+        // Créer un modal temporaire pour afficher les héros
+        const existingSection = document.getElementById('heroesManagementSection');
+        if (existingSection) {
+            existingSection.remove();
+        }
+
+        const modalBody = document.getElementById('playerModalBody');
+        if (!modalBody) return;
+
+        const heroesSection = document.createElement('div');
+        heroesSection.id = 'heroesManagementSection';
+        heroesSection.className = 'detail-section';
+        heroesSection.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3>⚔️ Heroes Management - ${this.ui.escapeHtml(character.displayName)}</h3>
+                <button class="btn btn-secondary btn-small" onclick="document.getElementById('heroesManagementSection').remove()">
+                    ✕ Close Heroes
+                </button>
+            </div>
+            <div class="heroes-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px;">
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: #667eea;">${character.heroes.total || 0}</div>
+                    <div style="font-size: 12px; color: #666;">Total Heroes</div>
+                </div>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: #28a745;">${character.heroes.equipped || 0}</div>
+                    <div style="font-size: 12px; color: #666;">Equipped</div>
+                </div>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: #ffc107;">${character.heroes.averageLevel || 0}</div>
+                    <div style="font-size: 12px; color: #666;">Avg Level</div>
+                </div>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: #17a2b8;">${AdminCore.formatNumber(character.heroes.powerScore || 0)}</div>
+                    <div style="font-size: 12px; color: #666;">Total Power</div>
+                </div>
+            </div>
+            <div class="heroes-grid" id="heroesGrid">
+                ${this.renderHeroesGrid(character.heroes.list, playerId, serverId)}
+            </div>
+        `;
+
+        modalBody.appendChild(heroesSection);
+        
+        // Scroll vers la section des héros
+        heroesSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    } catch (error) {
+        console.error('View character heroes error:', error);
+        AdminCore.showAlert('Failed to load heroes: ' + error.message, 'error');
     }
+}
+
+/**
+ * Rendre la grille de héros
+ */
+renderHeroesGrid(heroesList, playerId, serverId) {
+    if (!heroesList || heroesList.length === 0) {
+        return '<p style="text-align: center; color: #666; padding: 40px;">No heroes found for this character.</p>';
+    }
+
+    return heroesList.map(hero => `
+        <div class="hero-card">
+            <div class="hero-card-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <h4 style="margin: 0;">${this.ui.escapeHtml(hero.name || 'Unknown Hero')}</h4>
+                    <span class="hero-rarity ${(hero.rarity || 'common').toLowerCase()}">${hero.rarity || 'Common'}</span>
+                </div>
+                ${hero.equipped ? '<span style="color: #28a745; font-size: 12px;">✓ Equipped</span>' : ''}
+            </div>
+            <div class="hero-card-body">
+                <div class="hero-info">
+                    <span>${this.getHeroRoleIcon(hero.role)} ${hero.role || 'Unknown'}</span>
+                    <span>${this.getHeroElementIcon(hero.element)} ${hero.element || 'Unknown'}</span>
+                </div>
+                <div class="hero-stats-mini">
+                    <span style="background: #e3f2fd; padding: 4px 8px; border-radius: 4px;">Lvl ${hero.level || 1}</span>
+                    <span style="background: #fff3cd; padding: 4px 8px; border-radius: 4px;">${hero.stars || 1}⭐</span>
+                    <span style="background: #f8d7da; padding: 4px 8px; border-radius: 4px;">Power: ${AdminCore.formatNumber(hero.powerLevel || 0)}</span>
+                </div>
+            </div>
+            <div class="hero-card-actions">
+                <button class="btn btn-small btn-info" 
+                        onclick='PlayersModule.editHero(${JSON.stringify({
+                            playerHeroId: hero.playerHeroId || hero._id,
+                            serverId: serverId,
+                            heroData: hero,
+                            accountId: this.selectedPlayer.account.accountId
+                        }).replace(/'/g, "\\'")})'>
+                    ✏️ Edit
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+/**
+ * Éditer un héros (wrapper pour appeler PlayersHeroes)
+ */
+editHero(heroInfo) {
+    if (!this.heroes) {
+        AdminCore.showAlert('Heroes module not loaded', 'error');
+        return;
+    }
+    
+    this.heroes.showModal(
+        heroInfo.playerHeroId,
+        heroInfo.serverId,
+        heroInfo.heroData,
+        { accountId: heroInfo.accountId }
+    );
+}
+
+/**
+ * Obtenir l'icône du rôle
+ */
+getHeroRoleIcon(role) {
+    const icons = {
+        'Tank': '🛡️',
+        'DPS Melee': '⚔️',
+        'DPS Ranged': '🏹',
+        'Support': '💚'
+    };
+    return icons[role] || '❓';
+}
+
+/**
+ * Obtenir l'icône de l'élément
+ */
+getHeroElementIcon(element) {
+    const icons = {
+        'Fire': '🔥',
+        'Water': '💧',
+        'Wind': '💨',
+        'Electric': '⚡',
+        'Light': '✨',
+        'Dark': '🌑'
+    };
+    return icons[element] || '❓';
+}
 }
 
 // Créer l'instance globale
