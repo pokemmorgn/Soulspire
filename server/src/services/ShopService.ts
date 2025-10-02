@@ -389,21 +389,23 @@ export class ShopService {
         
         // Utiliser le script generateShops selon le type
         try {
-          switch (shop.shopType) {
-            case "Daily":
-              await this.resetShopWithGenerator(shop, "Daily");
-              break;
-            case "Weekly":
-              await this.resetShopWithGenerator(shop, "Weekly");
-              break;
-            case "Monthly":
-              await this.resetShopWithGenerator(shop, "Monthly");
-              break;
-            default:
-              // Pour les autres shops, utiliser la méthode standard
-              await shop.refreshShop();
-              break;
-          }
+              switch (shop.shopType) {
+                case "Daily":
+                  await this.resetShopWithGenerator(shop, "Daily");
+                  break;
+                case "Weekly":
+                  await this.resetShopWithGenerator(shop, "Weekly");
+                  break;
+                case "Monthly":
+                  await this.resetShopWithGenerator(shop, "Monthly");
+                  break;
+                case "ElementalFriday": // ✅ NOUVEAU
+                  await shop.refreshShop(); // Utilise generateElementalFridayItems() du modèle
+                  break;
+                default:
+                  await shop.refreshShop();
+                  break;
+              }
         } catch (error) {
           console.error(`❌ Erreur reset ${shop.shopType}:`, error);
           // Fallback vers méthode standard
@@ -450,7 +452,7 @@ export class ShopService {
   }
 
   // === RESET D'UN SHOP AVEC ITEMGENERATOR ===
-  private static async resetShopWithGenerator(shop: any, shopType: "Daily" | "Weekly" | "Monthly") {
+  private static async resetShopWithGenerator(shop: any, shopType: "Daily" | "Weekly" | "Monthly" | "ElementalFriday") {
     console.log(`🎲 Reset ${shopType} shop avec ItemGenerator...`);
     
     // Vider les anciens objets
@@ -481,10 +483,23 @@ export class ShopService {
         tierRange: [3, 6],
         enhancementRange: [2, 5],
         priceMultiplier: { gems: 0.7, paidGems: 0.6 }
+      },
+      ElementalFriday: {
+        maxItems: 5,
+        // Pas de génération aléatoire, utilise generateElementalFridayItems() du modèle
+        skipGeneration: true
       }
     };
     
     const config = SHOP_CONFIGS[shopType];
+    // ✅ NOUVEAU : Si c'est ElementalFriday, utiliser la méthode du modèle
+    if (shopType === "ElementalFriday") {
+      await shop.generateElementalFridayItems();
+      shop.resetTime = new Date();
+      shop.calculateNextResetTime();
+      await shop.save();
+      return;
+    }
     const equipmentTemplates = await Item.find({ category: "Equipment" });
     
     if (equipmentTemplates.length === 0) {
@@ -957,7 +972,24 @@ export class ShopService {
           }
         }
         break;
-
+      case "ElementalTicket":
+        // ✅ NOUVEAU : Gérer l'achat de tickets élémentaires
+        if (shopItem.content.elementalTicketType) {
+          const element = shopItem.content.elementalTicketType; // "fire", "water", etc.
+          const ticketQuantity = shopItem.content.quantity * quantity;
+          
+          // Ajouter les tickets au joueur
+          await player.addElementalTicket(element, ticketQuantity);
+          
+          rewards.push({
+            type: "ElementalTicket",
+            elementalTicketType: element,
+            quantity: ticketQuantity
+          });
+          
+          console.log(`🎟️ Added ${ticketQuantity}x ${element} tickets to player ${player._id}`);
+        }
+        break;
       case "Bundle":
         // Traiter chaque élément du bundle
         if (shopItem.content.bundleItems) {
