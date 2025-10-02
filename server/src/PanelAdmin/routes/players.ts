@@ -148,62 +148,6 @@ router.get('/search',
 );
 
 /**
- * POST /api/admin/players/:accountId/vip
- * Modifier le niveau VIP d'un joueur
- */
-router.post('/:accountId/vip',
-  authenticateAdmin,
-  requirePermission('economy.modify'),
-  currencyRateLimit,
-  async (req: Request, res: Response) => {
-    try {
-      const adminReq = req as IAuthenticatedAdminRequest;
-      const { accountId } = req.params;
-      const { serverId, playerId, newVipLevel, reason } = req.body;
-
-      if (!serverId || !playerId || newVipLevel === undefined || !reason) {
-        return res.status(400).json({
-          error: 'All fields are required: serverId, playerId, newVipLevel, reason',
-          code: 'MISSING_VIP_FIELDS'
-        });
-      }
-
-      if (newVipLevel < 0 || newVipLevel > 15) {
-        return res.status(400).json({
-          error: 'VIP level must be between 0 and 15',
-          code: 'INVALID_VIP_LEVEL'
-        });
-      }
-
-      const result = await PlayerManagementService.modifyVIPLevel(
-        playerId,
-        serverId,
-        newVipLevel,
-        adminReq.admin.adminId,
-        reason,
-        getClientIP(req),
-        getUserAgent(req)
-      );
-
-      res.json({
-        success: result.success,
-        data: {
-          oldLevel: result.oldLevel,
-          newLevel: newVipLevel
-        },
-        message: result.message
-      });
-
-    } catch (error) {
-      console.error('Modify VIP error:', error);
-      res.status(500).json({
-        error: error instanceof Error ? error.message : 'Failed to modify VIP level',
-        code: 'VIP_MODIFICATION_ERROR'
-      });
-    }
-  }
-);
-/**
  * GET /api/admin/players/stats
  * Statistiques globales des joueurs
  */
