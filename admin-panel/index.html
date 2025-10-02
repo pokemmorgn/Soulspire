@@ -622,52 +622,66 @@
                 }
             }
 
-            async loadOverviewData() {
-                try {
-                    const { data } = await this.makeRequest('/api/admin/dashboard/overview');
-                    
-                    const overviewContent = document.getElementById('overviewContent');
-                    overviewContent.innerHTML = `
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
-                            <div>
-                                <h3>Server Metrics</h3>
-                                <p><strong>Uptime:</strong> ${Math.floor(data.overview.uptime / 3600)} hours</p>
-                                <p><strong>Total Players:</strong> ${data.overview.totalPlayers}</p>
-                                <p><strong>Active (24h):</strong> ${data.overview.activePlayers24h}</p>
-                                <p><strong>New Players (24h):</strong> ${data.overview.newPlayers24h}</p>
-                                <p><strong>Error Rate:</strong> ${data.overview.errorRate.toFixed(2)}%</p>
-                            </div>
-                            <div>
-                                <h3>Economy</h3>
-                                <p><strong>Total Revenue:</strong> $${data.economy.revenue.total.toFixed(2)}</p>
-                                <p><strong>Daily Revenue:</strong> $${data.economy.revenue.daily.toFixed(2)}</p>
-                                <p><strong>Paying Users:</strong> ${data.economy.conversion.payingUsers}</p>
-                                <p><strong>Conversion Rate:</strong> ${data.economy.conversion.conversionRate.toFixed(2)}%</p>
-                                <p><strong>ARPU:</strong> $${data.economy.conversion.averageRevenuePerUser.toFixed(2)}</p>
-                            </div>
-                            <div>
-                                <h3>Player Retention</h3>
-                                <p><strong>Day 1:</strong> ${data.players.retention.day1.toFixed(1)}%</p>
-                                <p><strong>Day 7:</strong> ${data.players.retention.day7.toFixed(1)}%</p>
-                                <p><strong>Day 30:</strong> ${data.players.retention.day30.toFixed(1)}%</p>
-                                <p><strong>Avg Level:</strong> ${data.players.progression.averageLevel.toFixed(1)}</p>
-                                <p><strong>Avg Playtime:</strong> ${data.players.engagement.averagePlaytime.toFixed(0)} min</p>
-                            </div>
-                            <div>
-                                <h3>System Alerts</h3>
-                                ${data.alerts.length === 0 ? '<p>No active alerts</p>' : 
-                                  data.alerts.slice(0, 3).map(alert => 
-                                    `<p><span class="badge ${alert.severity === 'critical' ? 'danger' : alert.severity === 'high' ? 'warning' : 'success'}">${alert.type}</span> ${alert.message}</p>`
-                                  ).join('')}
-                            </div>
-                        </div>
-                    `;
-                } catch (error) {
-                    console.error('Overview data error:', error);
-                    document.getElementById('overviewContent').innerHTML = 
-                        '<div class="alert error">Failed to load overview data</div>';
-                }
-            }
+async loadOverviewData() {
+    try {
+        const { data } = await this.makeRequest('/api/admin/dashboard/overview');
+        
+        console.log('📊 Overview data received:', data); // Debug
+        
+        const overviewContent = document.getElementById('overviewContent');
+        
+        // Vérifier que les données existent
+        if (!data || !data.data) {
+            overviewContent.innerHTML = '<div class="alert error">No overview data available</div>';
+            return;
+        }
+        
+        const overview = data.data.overview || {};
+        const economy = data.data.economy || {};
+        const players = data.data.players || {};
+        const alerts = data.data.alerts || [];
+        
+        overviewContent.innerHTML = `
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                <div>
+                    <h3>Server Metrics</h3>
+                    <p><strong>Uptime:</strong> ${overview.uptime ? Math.floor(overview.uptime / 3600) + ' hours' : 'N/A'}</p>
+                    <p><strong>Total Players:</strong> ${overview.totalPlayers || 0}</p>
+                    <p><strong>Active (24h):</strong> ${overview.activePlayers24h || 0}</p>
+                    <p><strong>New Players (24h):</strong> ${overview.newPlayers24h || 0}</p>
+                    <p><strong>Error Rate:</strong> ${overview.errorRate ? overview.errorRate.toFixed(2) + '%' : 'N/A'}</p>
+                </div>
+                <div>
+                    <h3>Economy</h3>
+                    <p><strong>Total Revenue:</strong> $${economy.revenue?.total?.toFixed(2) || '0.00'}</p>
+                    <p><strong>Daily Revenue:</strong> $${economy.revenue?.daily?.toFixed(2) || '0.00'}</p>
+                    <p><strong>Paying Users:</strong> ${economy.conversion?.payingUsers || 0}</p>
+                    <p><strong>Conversion Rate:</strong> ${economy.conversion?.conversionRate?.toFixed(2) || '0.00'}%</p>
+                    <p><strong>ARPU:</strong> $${economy.conversion?.averageRevenuePerUser?.toFixed(2) || '0.00'}</p>
+                </div>
+                <div>
+                    <h3>Player Retention</h3>
+                    <p><strong>Day 1:</strong> ${players.retention?.day1?.toFixed(1) || '0.0'}%</p>
+                    <p><strong>Day 7:</strong> ${players.retention?.day7?.toFixed(1) || '0.0'}%</p>
+                    <p><strong>Day 30:</strong> ${players.retention?.day30?.toFixed(1) || '0.0'}%</p>
+                    <p><strong>Avg Level:</strong> ${players.progression?.averageLevel?.toFixed(1) || '0.0'}</p>
+                    <p><strong>Avg Playtime:</strong> ${players.engagement?.averagePlaytime?.toFixed(0) || '0'} min</p>
+                </div>
+                <div>
+                    <h3>System Alerts</h3>
+                    ${alerts.length === 0 ? '<p>No active alerts</p>' : 
+                      alerts.slice(0, 3).map(alert => 
+                        `<p><span class="badge ${alert.severity === 'critical' ? 'danger' : alert.severity === 'high' ? 'warning' : 'success'}">${alert.type}</span> ${alert.message}</p>`
+                      ).join('')}
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Overview data error:', error);
+        document.getElementById('overviewContent').innerHTML = 
+            '<div class="alert error">Failed to load overview data: ' + error.message + '</div>';
+    }
+}
 
             showSection(sectionName) {
                 // Hide all sections
