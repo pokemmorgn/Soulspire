@@ -15,13 +15,6 @@ class PlayersModule {
     }
 
     /**
-     * Initialiser le module joueurs
-     */
-    init() {
-        console.log('👥 Initializing Players Module...');
-    }
-
-    /**
      * Charger les données des joueurs
      */
     async loadData() {
@@ -45,10 +38,7 @@ class PlayersModule {
         return `
             <!-- Stats des joueurs -->
             <div class="players-stats-grid" id="playersStatsGrid">
-                <div class="loading">
-                    <div class="spinner"></div>
-                    <p>Loading player statistics...</p>
-                </div>
+                <div class="loading"><div class="spinner"></div><p>Loading player statistics...</p></div>
             </div>
 
             <!-- Contrôles de recherche -->
@@ -58,11 +48,11 @@ class PlayersModule {
                     <div class="search-grid">
                         <div class="search-group">
                             <label for="searchUsername">Username:</label>
-                            <input type="text" id="searchUsername" placeholder="Enter username..." onkeypress="if(event.key==='Enter') PlayersModule.search()">
+                            <input type="text" id="searchUsername" placeholder="Enter username...">
                         </div>
                         <div class="search-group">
                             <label for="searchEmail">Email:</label>
-                            <input type="email" id="searchEmail" placeholder="Enter email..." onkeypress="if(event.key==='Enter') PlayersModule.search()">
+                            <input type="email" id="searchEmail" placeholder="Enter email...">
                         </div>
                         <div class="search-group">
                             <label for="searchServerId">Server:</label>
@@ -80,16 +70,7 @@ class PlayersModule {
                                 <option value="active">Active</option>
                                 <option value="suspended">Suspended</option>
                                 <option value="banned">Banned</option>
-                                <option value="inactive">Inactive</option>
                             </select>
-                        </div>
-                        <div class="search-group">
-                            <label for="searchMinLevel">Min Level:</label>
-                            <input type="number" id="searchMinLevel" placeholder="1" min="1">
-                        </div>
-                        <div class="search-group">
-                            <label for="searchMaxLevel">Max Level:</label>
-                            <input type="number" id="searchMaxLevel" placeholder="100" min="1">
                         </div>
                     </div>
                     <div class="search-actions">
@@ -108,10 +89,7 @@ class PlayersModule {
                 </div>
                 <div class="players-table-container">
                     <div id="playersTableContent">
-                        <div class="loading">
-                            <div class="spinner"></div>
-                            <p>Loading players...</p>
-                        </div>
+                        <div class="loading"><div class="spinner"></div><p>Loading players...</p></div>
                     </div>
                 </div>
             </div>
@@ -123,9 +101,7 @@ class PlayersModule {
                         <h2 id="playerModalTitle">Player Details</h2>
                         <span class="modal-close" onclick="PlayersModule.closePlayerModal()">&times;</span>
                     </div>
-                    <div class="modal-body" id="playerModalBody">
-                        <!-- Content loaded dynamically -->
-                    </div>
+                    <div class="modal-body" id="playerModalBody"></div>
                 </div>
             </div>
         `;
@@ -138,25 +114,27 @@ class PlayersModule {
         try {
             const { data } = await AdminCore.makeRequest('/api/admin/players/stats');
             
+            const stats = data.data || data;
+            
             document.getElementById('playersStatsGrid').innerHTML = `
                 <div class="stat-card">
                     <div class="stat-icon">👥</div>
-                    <div class="stat-value">${AdminCore.formatNumber(data.totalPlayers)}</div>
+                    <div class="stat-value">${AdminCore.formatNumber(stats.totalPlayers || 0)}</div>
                     <div class="stat-label">Total Players</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-icon">✅</div>
-                    <div class="stat-value">${AdminCore.formatNumber(data.activePlayers)}</div>
+                    <div class="stat-value">${AdminCore.formatNumber(stats.activePlayers || 0)}</div>
                     <div class="stat-label">Active Players</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-icon">💰</div>
-                    <div class="stat-value">${AdminCore.formatNumber(data.spendingPlayers)}</div>
+                    <div class="stat-value">${AdminCore.formatNumber(stats.spendingPlayers || 0)}</div>
                     <div class="stat-label">Spending Players</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-icon">📊</div>
-                    <div class="stat-value">${data.averageLevel}</div>
+                    <div class="stat-value">${stats.averageLevel || 0}</div>
                     <div class="stat-label">Average Level</div>
                 </div>
             `;
@@ -176,9 +154,11 @@ class PlayersModule {
         try {
             const { data } = await AdminCore.makeRequest('/api/admin/players/search?' + new URLSearchParams(this.searchFilters));
             
-            this.currentPlayers = data.players;
-            container.innerHTML = this.renderPlayersTable(data);
-            this.updatePagination(data);
+            const result = data.data || data;
+            this.currentPlayers = result.players || [];
+            
+            container.innerHTML = this.renderPlayersTable(result);
+            this.updatePagination(result);
             
         } catch (error) {
             container.innerHTML = `<div class="alert error">Failed to load players: ${error.message}</div>`;
@@ -197,12 +177,12 @@ class PlayersModule {
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th onclick="PlayersModule.sortBy('username')">Username</th>
-                        <th onclick="PlayersModule.sortBy('email')">Email</th>
+                        <th>Username</th>
+                        <th>Email</th>
                         <th>Characters</th>
                         <th>Status</th>
-                        <th onclick="PlayersModule.sortBy('totalSpentUSD')">Total Spent</th>
-                        <th onclick="PlayersModule.sortBy('lastLogin')">Last Login</th>
+                        <th>Total Spent</th>
+                        <th>Last Login</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -231,14 +211,14 @@ class PlayersModule {
                 <td>${this.escapeHtml(player.email || 'N/A')}</td>
                 <td>
                     <div class="character-summary">
-                        <span class="char-count">${player.charactersCount} chars</span>
-                        ${player.summary.highestLevel > 0 ? `<small>Max Lvl: ${player.summary.highestLevel}</small>` : ''}
+                        <span class="char-count">${player.charactersCount || 0} chars</span>
+                        ${player.summary && player.summary.highestLevel > 0 ? `<small>Max Lvl: ${player.summary.highestLevel}</small>` : ''}
                     </div>
                 </td>
                 <td><span class="badge ${statusClass}">${this.capitalizeFirst(player.accountStatus)}</span></td>
                 <td>
                     <span class="money ${player.totalSpentUSD > 0 ? 'positive' : ''}">
-                        ${player.totalSpentUSD.toFixed(2)}
+                        $${(player.totalSpentUSD || 0).toFixed(2)}
                     </span>
                 </td>
                 <td>
@@ -248,9 +228,6 @@ class PlayersModule {
                     <div class="action-buttons">
                         <button class="btn btn-small btn-info" onclick="PlayersModule.viewPlayer('${player.accountId}')">
                             👁️ View
-                        </button>
-                        <button class="btn btn-small btn-warning" onclick="PlayersModule.showModerationModal('${player.accountId}')">
-                            ⚖️ Moderate
                         </button>
                     </div>
                 </td>
@@ -273,12 +250,10 @@ class PlayersModule {
             <div class="pagination-controls">
         `;
 
-        // Bouton précédent
         if (currentPage > 1) {
             paginationHTML += `<button class="btn btn-small" onclick="PlayersModule.goToPage(${currentPage - 1})">« Prev</button>`;
         }
 
-        // Pages
         const startPage = Math.max(1, currentPage - 2);
         const endPage = Math.min(totalPages, currentPage + 2);
 
@@ -287,7 +262,6 @@ class PlayersModule {
             paginationHTML += `<button class="btn btn-small ${activeClass}" onclick="PlayersModule.goToPage(${i})">${i}</button>`;
         }
 
-        // Bouton suivant
         if (currentPage < totalPages) {
             paginationHTML += `<button class="btn btn-small" onclick="PlayersModule.goToPage(${currentPage + 1})">Next »</button>`;
         }
@@ -305,24 +279,9 @@ class PlayersModule {
     }
 
     /**
-     * Trier par colonne
-     */
-    sortBy(field) {
-        if (this.searchFilters.sortBy === field) {
-            this.searchFilters.sortOrder = this.searchFilters.sortOrder === 'asc' ? 'desc' : 'asc';
-        } else {
-            this.searchFilters.sortBy = field;
-            this.searchFilters.sortOrder = 'desc';
-        }
-        this.searchFilters.page = 1;
-        this.loadPlayersList();
-    }
-
-    /**
      * Rechercher des joueurs
      */
     search() {
-        // Collecter les filtres de recherche
         const filters = {
             page: 1,
             limit: 20,
@@ -330,23 +289,15 @@ class PlayersModule {
             sortOrder: this.searchFilters.sortOrder
         };
 
-        const username = document.getElementById('searchUsername').value.trim();
-        const email = document.getElementById('searchEmail').value.trim();
-        const serverId = document.getElementById('searchServerId').value;
-        const status = document.getElementById('searchStatus').value;
-        const minLevel = document.getElementById('searchMinLevel').value;
-        const maxLevel = document.getElementById('searchMaxLevel').value;
+        const username = document.getElementById('searchUsername')?.value.trim();
+        const email = document.getElementById('searchEmail')?.value.trim();
+        const serverId = document.getElementById('searchServerId')?.value;
+        const status = document.getElementById('searchStatus')?.value;
 
         if (username) filters.username = username;
         if (email) filters.email = email;
         if (serverId) filters.serverId = serverId;
         if (status) filters.accountStatus = status;
-        if (minLevel) {
-            filters['level.min'] = parseInt(minLevel);
-        }
-        if (maxLevel) {
-            filters['level.max'] = parseInt(maxLevel);
-        }
 
         this.searchFilters = filters;
         this.loadPlayersList();
@@ -360,8 +311,6 @@ class PlayersModule {
         document.getElementById('searchEmail').value = '';
         document.getElementById('searchServerId').value = '';
         document.getElementById('searchStatus').value = '';
-        document.getElementById('searchMinLevel').value = '';
-        document.getElementById('searchMaxLevel').value = '';
 
         this.searchFilters = {
             page: 1,
@@ -382,9 +331,9 @@ class PlayersModule {
             
             const { data } = await AdminCore.makeRequest(`/api/admin/players/${accountId}`);
             
-            this.selectedPlayer = data;
-            document.getElementById('playerModalTitle').textContent = `Player: ${data.account.username}`;
-            document.getElementById('playerModalBody').innerHTML = this.renderPlayerDetails(data);
+            this.selectedPlayer = data.data || data;
+            document.getElementById('playerModalTitle').textContent = `Player: ${this.selectedPlayer.account.username}`;
+            document.getElementById('playerModalBody').innerHTML = this.renderPlayerDetails(this.selectedPlayer);
             document.getElementById('playerDetailsModal').style.display = 'block';
             
         } catch (error) {
@@ -393,15 +342,15 @@ class PlayersModule {
     }
 
     /**
-     * Rendre les détails du joueur
+     * Rendre les détails du joueur avec options d'édition
      */
     renderPlayerDetails(playerData) {
         const account = playerData.account;
-        const characters = playerData.characters;
+        const characters = playerData.characters || [];
 
         return `
             <div class="player-details">
-                <!-- Informations du compte -->
+                <!-- Account Info -->
                 <div class="detail-section">
                     <h3>👤 Account Information</h3>
                     <div class="detail-grid">
@@ -427,11 +376,7 @@ class PlayersModule {
                         </div>
                         <div class="detail-item">
                             <span class="detail-label">Total Spent:</span>
-                            <span class="detail-value money positive">${account.totalSpentUSD.toFixed(2)}</span>
-                        </div>
-                        <div class="detail-item">
-                            <span class="detail-label">Total Playtime:</span>
-                            <span class="detail-value">${Math.floor(account.totalPlaytime / 60)}h ${account.totalPlaytime % 60}m</span>
+                            <span class="detail-value money positive">$${(account.totalSpentUSD || 0).toFixed(2)}</span>
                         </div>
                         <div class="detail-item">
                             <span class="detail-label">Last Login:</span>
@@ -440,7 +385,7 @@ class PlayersModule {
                     </div>
                 </div>
 
-                <!-- Personnages -->
+                <!-- Characters -->
                 <div class="detail-section">
                     <h3>🎮 Characters (${characters.length})</h3>
                     ${characters.length === 0 ? 
@@ -448,23 +393,25 @@ class PlayersModule {
                         characters.map(char => this.renderCharacterCard(char)).join('')}
                 </div>
 
-                <!-- Actions de modération -->
+                <!-- Moderation Actions -->
                 <div class="detail-section">
-                    <h3>⚖️ Moderation Actions</h3>
+                    <h3>⚖️ Moderation & Edit Actions</h3>
                     <div class="moderation-actions">
-                        <button class="btn btn-warning" onclick="PlayersModule.moderateAction('${account.accountId}', 'warn')">
-                            ⚠️ Issue Warning
-                        </button>
-                        <button class="btn btn-danger" onclick="PlayersModule.moderateAction('${account.accountId}', 'suspend')">
-                            🚫 Suspend Account
-                        </button>
-                        <button class="btn btn-critical" onclick="PlayersModule.moderateAction('${account.accountId}', 'ban')">
-                            🔒 Ban Account
-                        </button>
-                        ${account.accountStatus !== 'active' ? 
-                            `<button class="btn btn-success" onclick="PlayersModule.moderateAction('${account.accountId}', 'unban')">
+                        ${account.accountStatus === 'active' ? `
+                            <button class="btn btn-warning" onclick="PlayersModule.moderateAction('${account.accountId}', 'warn')">
+                                ⚠️ Issue Warning
+                            </button>
+                            <button class="btn btn-danger" onclick="PlayersModule.moderateAction('${account.accountId}', 'suspend')">
+                                🚫 Suspend Account
+                            </button>
+                            <button class="btn btn-critical" onclick="PlayersModule.moderateAction('${account.accountId}', 'ban')">
+                                🔒 Ban Account
+                            </button>
+                        ` : `
+                            <button class="btn btn-success" onclick="PlayersModule.moderateAction('${account.accountId}', 'unban')">
                                 ✅ Restore Account
-                            </button>` : ''}
+                            </button>
+                        `}
                     </div>
                 </div>
             </div>
@@ -472,7 +419,7 @@ class PlayersModule {
     }
 
     /**
-     * Rendre une carte de personnage
+     * Rendre une carte de personnage avec édition
      */
     renderCharacterCard(character) {
         return `
@@ -496,28 +443,25 @@ class PlayersModule {
                     </div>
                     <div class="char-stat">
                         <span class="stat-label">Power:</span>
-                        <span class="stat-value">${AdminCore.formatNumber(character.heroes.powerScore)}</span>
+                        <span class="stat-value">${AdminCore.formatNumber(character.heroes?.powerScore || 0)}</span>
                     </div>
                 </div>
                 <div class="char-currency">
                     <div class="currency-item">
                         <span class="currency-icon">🪙</span>
-                        <span>${AdminCore.formatNumber(character.currencies.gold)}</span>
+                        <span>${AdminCore.formatNumber(character.currencies?.gold || 0)}</span>
                     </div>
                     <div class="currency-item">
                         <span class="currency-icon">💎</span>
-                        <span>${AdminCore.formatNumber(character.currencies.gems)}</span>
+                        <span>${AdminCore.formatNumber(character.currencies?.gems || 0)}</span>
                     </div>
                     <div class="currency-item">
                         <span class="currency-icon">💰</span>
-                        <span>${AdminCore.formatNumber(character.currencies.paidGems)}</span>
+                        <span>${AdminCore.formatNumber(character.currencies?.paidGems || 0)}</span>
                     </div>
                 </div>
                 <div class="char-actions">
-                    <button class="btn btn-small btn-info" onclick="PlayersModule.viewCharacterDetails('${character.playerId}', '${character.serverId}')">
-                        📊 Details
-                    </button>
-                    <button class="btn btn-small btn-warning" onclick="PlayersModule.editCurrency('${character.playerId}', '${character.serverId}')">
+                    <button class="btn btn-small btn-warning" onclick="PlayersModule.editCurrency('${this.selectedPlayer.account.accountId}', '${character.playerId}', '${character.serverId}')">
                         💰 Edit Currency
                     </button>
                 </div>
@@ -526,11 +470,53 @@ class PlayersModule {
     }
 
     /**
-     * Fermer le modal des détails
+     * Éditer les monnaies d'un personnage
      */
-    closePlayerModal() {
-        document.getElementById('playerDetailsModal').style.display = 'none';
-        this.selectedPlayer = null;
+    async editCurrency(accountId, playerId, serverId) {
+        const currency = prompt('Which currency to edit? (gold, gems, paidGems)');
+        if (!currency || !['gold', 'gems', 'paidGems'].includes(currency)) {
+            AdminCore.showAlert('Invalid currency selected', 'error');
+            return;
+        }
+
+        const operation = prompt('Operation? (add, subtract, set)');
+        if (!operation || !['add', 'subtract', 'set'].includes(operation)) {
+            AdminCore.showAlert('Invalid operation', 'error');
+            return;
+        }
+
+        const amount = parseInt(prompt('Amount:'));
+        if (isNaN(amount) || amount < 0) {
+            AdminCore.showAlert('Invalid amount', 'error');
+            return;
+        }
+
+        const reason = prompt('Reason for this modification:');
+        if (!reason) {
+            AdminCore.showAlert('Reason is required', 'error');
+            return;
+        }
+
+        try {
+            await AdminCore.makeRequest(`/api/admin/players/${accountId}/currency`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    serverId,
+                    playerId,
+                    currency,
+                    amount,
+                    operation,
+                    reason
+                })
+            });
+
+            AdminCore.showAlert(`Currency ${operation} successful!`, 'success');
+            this.closePlayerModal();
+            this.loadPlayersList();
+
+        } catch (error) {
+            AdminCore.showAlert('Currency modification failed: ' + error.message, 'error');
+        }
     }
 
     /**
@@ -553,7 +539,7 @@ class PlayersModule {
         }
 
         if (!reason && action !== 'unban') {
-            AdminCore.showAlert('Reason is required for moderation actions', 'error');
+            AdminCore.showAlert('Reason is required', 'error');
             return;
         }
 
@@ -571,11 +557,19 @@ class PlayersModule {
             this.loadPlayersList();
 
         } catch (error) {
-            AdminCore.showAlert('Moderation action failed: ' + error.message, 'error');
+            AdminCore.showAlert('Moderation failed: ' + error.message, 'error');
         }
     }
 
-    // === MÉTHODES UTILITAIRES ===
+    /**
+     * Fermer le modal
+     */
+    closePlayerModal() {
+        document.getElementById('playerDetailsModal').style.display = 'none';
+        this.selectedPlayer = null;
+    }
+
+    // === UTILITAIRES ===
 
     getStatusClass(status) {
         const classes = {
