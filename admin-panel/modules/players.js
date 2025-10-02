@@ -1,6 +1,6 @@
 /**
  * PlayersModule - Gestion complète des joueurs
- * Recherche, détails, modération, modifications
+ * Version améliorée avec interface d'édition professionnelle
  */
 class PlayersModule {
     constructor() {
@@ -12,11 +12,9 @@ class PlayersModule {
             sortOrder: 'desc'
         };
         this.selectedPlayer = null;
+        this.selectedCharacter = null;
     }
 
-    /**
-     * Charger les données des joueurs
-     */
     async loadData() {
         console.log('👥 Loading players data...');
         const content = document.getElementById('playersContent');
@@ -31,17 +29,12 @@ class PlayersModule {
         }
     }
 
-    /**
-     * Rendre l'interface des joueurs
-     */
     renderPlayersInterface() {
         return `
-            <!-- Stats des joueurs -->
             <div class="players-stats-grid" id="playersStatsGrid">
                 <div class="loading"><div class="spinner"></div><p>Loading player statistics...</p></div>
             </div>
 
-            <!-- Contrôles de recherche -->
             <div class="players-controls">
                 <div class="search-section">
                     <h3>🔍 Search Players</h3>
@@ -81,7 +74,6 @@ class PlayersModule {
                 </div>
             </div>
 
-            <!-- Liste des joueurs -->
             <div class="players-list-section">
                 <div class="players-header">
                     <h3>📋 Players List</h3>
@@ -104,16 +96,34 @@ class PlayersModule {
                     <div class="modal-body" id="playerModalBody"></div>
                 </div>
             </div>
+
+            <!-- Modal d'édition de currency -->
+            <div id="editCurrencyModal" class="modal">
+                <div class="modal-content" style="max-width: 600px;">
+                    <div class="modal-header">
+                        <h2>💰 Edit Currency</h2>
+                        <span class="modal-close" onclick="PlayersModule.closeEditModal()">&times;</span>
+                    </div>
+                    <div class="modal-body" id="editCurrencyBody"></div>
+                </div>
+            </div>
+
+            <!-- Modal de modération -->
+            <div id="moderationModal" class="modal">
+                <div class="modal-content" style="max-width: 600px;">
+                    <div class="modal-header">
+                        <h2>⚖️ Moderation Action</h2>
+                        <span class="modal-close" onclick="PlayersModule.closeModerationModal()">&times;</span>
+                    </div>
+                    <div class="modal-body" id="moderationBody"></div>
+                </div>
+            </div>
         `;
     }
 
-    /**
-     * Charger les statistiques des joueurs
-     */
     async loadPlayersStats() {
         try {
             const { data } = await AdminCore.makeRequest('/api/admin/players/stats');
-            
             const stats = data.data || data;
             
             document.getElementById('playersStatsGrid').innerHTML = `
@@ -144,9 +154,6 @@ class PlayersModule {
         }
     }
 
-    /**
-     * Charger la liste des joueurs
-     */
     async loadPlayersList() {
         const container = document.getElementById('playersTableContent');
         container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading players...</p></div>';
@@ -165,9 +172,6 @@ class PlayersModule {
         }
     }
 
-    /**
-     * Rendre le tableau des joueurs
-     */
     renderPlayersTable(data) {
         if (!data.players || data.players.length === 0) {
             return '<div class="no-data">No players found matching your criteria.</div>';
@@ -193,9 +197,6 @@ class PlayersModule {
         `;
     }
 
-    /**
-     * Rendre une ligne de joueur
-     */
     renderPlayerRow(player) {
         const statusClass = this.getStatusClass(player.accountStatus);
         const lastLogin = player.lastLogin ? new Date(player.lastLogin).toLocaleDateString() : 'Never';
@@ -235,9 +236,6 @@ class PlayersModule {
         `;
     }
 
-    /**
-     * Mettre à jour la pagination
-     */
     updatePagination(data) {
         const totalPages = Math.ceil(data.total / this.searchFilters.limit);
         const currentPage = this.searchFilters.page;
@@ -270,17 +268,11 @@ class PlayersModule {
         document.getElementById('playersPagination').innerHTML = paginationHTML;
     }
 
-    /**
-     * Aller à une page spécifique
-     */
     goToPage(page) {
         this.searchFilters.page = page;
         this.loadPlayersList();
     }
 
-    /**
-     * Rechercher des joueurs
-     */
     search() {
         const filters = {
             page: 1,
@@ -303,9 +295,6 @@ class PlayersModule {
         this.loadPlayersList();
     }
 
-    /**
-     * Effacer la recherche
-     */
     clearSearch() {
         document.getElementById('searchUsername').value = '';
         document.getElementById('searchEmail').value = '';
@@ -322,9 +311,6 @@ class PlayersModule {
         this.loadPlayersList();
     }
 
-    /**
-     * Voir les détails d'un joueur
-     */
     async viewPlayer(accountId) {
         try {
             AdminCore.showAlert('Loading player details...', 'info', 1000);
@@ -341,16 +327,12 @@ class PlayersModule {
         }
     }
 
-    /**
-     * Rendre les détails du joueur avec options d'édition
-     */
     renderPlayerDetails(playerData) {
         const account = playerData.account;
         const characters = playerData.characters || [];
 
         return `
             <div class="player-details">
-                <!-- Account Info -->
                 <div class="detail-section">
                     <h3>👤 Account Information</h3>
                     <div class="detail-grid">
@@ -385,7 +367,6 @@ class PlayersModule {
                     </div>
                 </div>
 
-                <!-- Characters -->
                 <div class="detail-section">
                     <h3>🎮 Characters (${characters.length})</h3>
                     ${characters.length === 0 ? 
@@ -393,22 +374,21 @@ class PlayersModule {
                         characters.map(char => this.renderCharacterCard(char)).join('')}
                 </div>
 
-                <!-- Moderation Actions -->
                 <div class="detail-section">
                     <h3>⚖️ Moderation & Edit Actions</h3>
                     <div class="moderation-actions">
                         ${account.accountStatus === 'active' ? `
-                            <button class="btn btn-warning" onclick="PlayersModule.moderateAction('${account.accountId}', 'warn')">
+                            <button class="btn btn-warning" onclick="PlayersModule.showModerationModal('${account.accountId}', 'warn')">
                                 ⚠️ Issue Warning
                             </button>
-                            <button class="btn btn-danger" onclick="PlayersModule.moderateAction('${account.accountId}', 'suspend')">
+                            <button class="btn btn-danger" onclick="PlayersModule.showModerationModal('${account.accountId}', 'suspend')">
                                 🚫 Suspend Account
                             </button>
-                            <button class="btn btn-critical" onclick="PlayersModule.moderateAction('${account.accountId}', 'ban')">
+                            <button class="btn btn-critical" onclick="PlayersModule.showModerationModal('${account.accountId}', 'ban')">
                                 🔒 Ban Account
                             </button>
                         ` : `
-                            <button class="btn btn-success" onclick="PlayersModule.moderateAction('${account.accountId}', 'unban')">
+                            <button class="btn btn-success" onclick="PlayersModule.showModerationModal('${account.accountId}', 'unban')">
                                 ✅ Restore Account
                             </button>
                         `}
@@ -418,9 +398,6 @@ class PlayersModule {
         `;
     }
 
-    /**
-     * Rendre une carte de personnage avec édition
-     */
     renderCharacterCard(character) {
         return `
             <div class="character-card">
@@ -461,7 +438,7 @@ class PlayersModule {
                     </div>
                 </div>
                 <div class="char-actions">
-                    <button class="btn btn-small btn-warning" onclick="PlayersModule.editCurrency('${this.selectedPlayer.account.accountId}', '${character.playerId}', '${character.serverId}')">
+                    <button class="btn btn-small btn-warning" onclick="PlayersModule.showEditCurrencyModal('${character.playerId}', '${character.serverId}', ${JSON.stringify(character.currencies).replace(/"/g, '&quot;')})">
                         💰 Edit Currency
                     </button>
                 </div>
@@ -470,39 +447,106 @@ class PlayersModule {
     }
 
     /**
-     * Éditer les monnaies d'un personnage
+     * 🆕 Afficher le modal d'édition de currency avec interface complète
      */
-    async editCurrency(accountId, playerId, serverId) {
-        const currency = prompt('Which currency to edit? (gold, gems, paidGems)');
-        if (!currency || !['gold', 'gems', 'paidGems'].includes(currency)) {
-            AdminCore.showAlert('Invalid currency selected', 'error');
-            return;
-        }
+    showEditCurrencyModal(playerId, serverId, currentCurrencies) {
+        this.selectedCharacter = { playerId, serverId, currencies: currentCurrencies };
+        
+        const modalBody = document.getElementById('editCurrencyBody');
+        modalBody.innerHTML = `
+            <div class="edit-currency-form">
+                <div class="current-balances">
+                    <h4>Current Balances:</h4>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px;">
+                        <div class="balance-item">
+                            <span class="currency-icon">🪙</span>
+                            <strong>${AdminCore.formatNumber(currentCurrencies.gold || 0)}</strong>
+                            <small>Gold</small>
+                        </div>
+                        <div class="balance-item">
+                            <span class="currency-icon">💎</span>
+                            <strong>${AdminCore.formatNumber(currentCurrencies.gems || 0)}</strong>
+                            <small>Gems</small>
+                        </div>
+                        <div class="balance-item">
+                            <span class="currency-icon">💰</span>
+                            <strong>${AdminCore.formatNumber(currentCurrencies.paidGems || 0)}</strong>
+                            <small>Paid Gems</small>
+                        </div>
+                    </div>
+                </div>
 
-        const operation = prompt('Operation? (add, subtract, set)');
-        if (!operation || !['add', 'subtract', 'set'].includes(operation)) {
-            AdminCore.showAlert('Invalid operation', 'error');
-            return;
-        }
+                <div class="form-group">
+                    <label for="currencyType">Currency Type:</label>
+                    <select id="currencyType" class="form-control">
+                        <option value="gold">🪙 Gold</option>
+                        <option value="gems">💎 Gems</option>
+                        <option value="paidGems">💰 Paid Gems (Super Admin Only)</option>
+                    </select>
+                </div>
 
-        const amount = parseInt(prompt('Amount:'));
-        if (isNaN(amount) || amount < 0) {
-            AdminCore.showAlert('Invalid amount', 'error');
-            return;
-        }
+                <div class="form-group">
+                    <label for="currencyOperation">Operation:</label>
+                    <select id="currencyOperation" class="form-control">
+                        <option value="add">➕ Add</option>
+                        <option value="subtract">➖ Subtract</option>
+                        <option value="set">🔢 Set to exact value</option>
+                    </select>
+                </div>
 
-        const reason = prompt('Reason for this modification:');
+                <div class="form-group">
+                    <label for="currencyAmount">Amount:</label>
+                    <input type="number" id="currencyAmount" class="form-control" min="0" value="100" required>
+                    <div class="quick-amounts">
+                        <button class="btn btn-small btn-secondary" onclick="document.getElementById('currencyAmount').value=100">100</button>
+                        <button class="btn btn-small btn-secondary" onclick="document.getElementById('currencyAmount').value=500">500</button>
+                        <button class="btn btn-small btn-secondary" onclick="document.getElementById('currencyAmount').value=1000">1K</button>
+                        <button class="btn btn-small btn-secondary" onclick="document.getElementById('currencyAmount').value=5000">5K</button>
+                        <button class="btn btn-small btn-secondary" onclick="document.getElementById('currencyAmount').value=10000">10K</button>
+                        <button class="btn btn-small btn-secondary" onclick="document.getElementById('currencyAmount').value=50000">50K</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="currencyReason">Reason (required):</label>
+                    <textarea id="currencyReason" class="form-control" rows="3" placeholder="Enter reason for this modification..." required></textarea>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="PlayersModule.closeEditModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="PlayersModule.submitCurrencyEdit()">💾 Apply Changes</button>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('editCurrencyModal').style.display = 'block';
+    }
+
+    /**
+     * 🆕 Soumettre l'édition de currency
+     */
+    async submitCurrencyEdit() {
+        const currency = document.getElementById('currencyType').value;
+        const operation = document.getElementById('currencyOperation').value;
+        const amount = parseInt(document.getElementById('currencyAmount').value);
+        const reason = document.getElementById('currencyReason').value.trim();
+
         if (!reason) {
             AdminCore.showAlert('Reason is required', 'error');
             return;
         }
 
+        if (isNaN(amount) || amount < 0) {
+            AdminCore.showAlert('Invalid amount', 'error');
+            return;
+        }
+
         try {
-            await AdminCore.makeRequest(`/api/admin/players/${accountId}/currency`, {
+            await AdminCore.makeRequest(`/api/admin/players/${this.selectedPlayer.account.accountId}/currency`, {
                 method: 'POST',
                 body: JSON.stringify({
-                    serverId,
-                    playerId,
+                    serverId: this.selectedCharacter.serverId,
+                    playerId: this.selectedCharacter.playerId,
                     currency,
                     amount,
                     operation,
@@ -511,6 +555,7 @@ class PlayersModule {
             });
 
             AdminCore.showAlert(`Currency ${operation} successful!`, 'success');
+            this.closeEditModal();
             this.closePlayerModal();
             this.loadPlayersList();
 
@@ -520,31 +565,101 @@ class PlayersModule {
     }
 
     /**
-     * Action de modération
+     * 🆕 Afficher le modal de modération
      */
-    async moderateAction(accountId, action) {
-        let reason = '';
-        let duration = 0;
-
-        if (action === 'warn') {
-            reason = prompt('Enter warning reason:');
-        } else if (action === 'suspend') {
-            reason = prompt('Enter suspension reason:');
-            const durationStr = prompt('Enter suspension duration in hours:');
-            duration = parseInt(durationStr) || 24;
-        } else if (action === 'ban') {
-            reason = prompt('Enter ban reason:');
-        } else if (action === 'unban') {
-            reason = 'Account restored by admin';
+    showModerationModal(accountId, action) {
+        const modalBody = document.getElementById('moderationBody');
+        
+        let actionTitle = '';
+        let actionDescription = '';
+        let showDuration = false;
+        
+        switch(action) {
+            case 'warn':
+                actionTitle = '⚠️ Issue Warning';
+                actionDescription = 'This will send a warning to the player. The account will remain active.';
+                break;
+            case 'suspend':
+                actionTitle = '🚫 Suspend Account';
+                actionDescription = 'This will temporarily suspend the account. The player will not be able to login.';
+                showDuration = true;
+                break;
+            case 'ban':
+                actionTitle = '🔒 Ban Account';
+                actionDescription = 'This will permanently ban the account. This action is severe.';
+                break;
+            case 'unban':
+                actionTitle = '✅ Restore Account';
+                actionDescription = 'This will restore the account and allow the player to login again.';
+                break;
         }
+        
+        modalBody.innerHTML = `
+            <div class="moderation-form">
+                <div class="alert ${action === 'ban' ? 'danger' : 'warning'}" style="margin-bottom: 20px;">
+                    <strong>${actionTitle}</strong>
+                    <p>${actionDescription}</p>
+                </div>
 
+                ${showDuration ? `
+                    <div class="form-group">
+                        <label for="moderationDuration">Suspension Duration (hours):</label>
+                        <select id="moderationDuration" class="form-control">
+                            <option value="1">1 hour</option>
+                            <option value="6">6 hours</option>
+                            <option value="12">12 hours</option>
+                            <option value="24" selected>24 hours (1 day)</option>
+                            <option value="72">72 hours (3 days)</option>
+                            <option value="168">168 hours (7 days)</option>
+                            <option value="720">720 hours (30 days)</option>
+                        </select>
+                    </div>
+                ` : ''}
+
+                <div class="form-group">
+                    <label for="moderationReason">Reason (required):</label>
+                    <textarea id="moderationReason" class="form-control" rows="4" placeholder="Enter detailed reason for this moderation action..." required></textarea>
+                    ${action !== 'unban' ? `
+                        <small style="color: #666; margin-top: 5px; display: block;">
+                            This reason will be visible to the player and recorded in audit logs.
+                        </small>
+                    ` : ''}
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="PlayersModule.closeModerationModal()">Cancel</button>
+                    <button class="btn ${action === 'ban' ? 'btn-critical' : action === 'unban' ? 'btn-success' : 'btn-warning'}" 
+                            onclick="PlayersModule.submitModeration('${accountId}', '${action}')">
+                        ${actionTitle}
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('moderationModal').style.display = 'block';
+    }
+
+    /**
+     * 🆕 Soumettre l'action de modération
+     */
+    async submitModeration(accountId, action) {
+        const reason = document.getElementById('moderationReason').value.trim();
+        
         if (!reason && action !== 'unban') {
             AdminCore.showAlert('Reason is required', 'error');
             return;
         }
 
+        let duration = 0;
+        if (action === 'suspend') {
+            duration = parseInt(document.getElementById('moderationDuration').value);
+        }
+
         try {
-            const body = { action, reason };
+            const body = { 
+                action, 
+                reason: reason || 'Account restored by admin' 
+            };
             if (duration > 0) body.duration = duration;
 
             await AdminCore.makeRequest(`/api/admin/players/${accountId}/moderate`, {
@@ -553,6 +668,7 @@ class PlayersModule {
             });
 
             AdminCore.showAlert(`${this.capitalizeFirst(action)} applied successfully`, 'success');
+            this.closeModerationModal();
             this.closePlayerModal();
             this.loadPlayersList();
 
@@ -561,12 +677,18 @@ class PlayersModule {
         }
     }
 
-    /**
-     * Fermer le modal
-     */
     closePlayerModal() {
         document.getElementById('playerDetailsModal').style.display = 'none';
         this.selectedPlayer = null;
+    }
+
+    closeEditModal() {
+        document.getElementById('editCurrencyModal').style.display = 'none';
+        this.selectedCharacter = null;
+    }
+
+    closeModerationModal() {
+        document.getElementById('moderationModal').style.display = 'none';
     }
 
     // === UTILITAIRES ===
