@@ -25,7 +25,7 @@
                 <input type="password" id="password" value="ChangeMe123!" required>
             </div>
             
-            <button id="loginBtn" class="btn" onclick="AdminCore.login()">
+            <button id="loginBtn" class="btn">
                 Login to Admin Panel
             </button>
         </div>
@@ -41,7 +41,7 @@
                         <div id="userName">Super Admin</div>
                         <div style="font-size: 12px; color: #666;" id="userRole">super_admin</div>
                     </div>
-                    <button class="btn logout-btn" onclick="AdminCore.logout()">Logout</button>
+                    <button class="btn logout-btn" id="logoutBtn">Logout</button>
                 </div>
             </div>
 
@@ -71,11 +71,11 @@
 
             <!-- Navigation -->
             <div class="nav-tabs">
-                <div class="nav-tab active" onclick="AdminCore.showSection('overview')">📊 Overview</div>
-                <div class="nav-tab" onclick="AdminCore.showSection('players')">👥 Players</div>
-                <div class="nav-tab" onclick="AdminCore.showSection('economy')">💰 Economy</div>
-                <div class="nav-tab" onclick="AdminCore.showSection('logs')">📜 Audit Logs</div>
-                <div class="nav-tab" onclick="AdminCore.showSection('system')">⚙️ System</div>
+                <div class="nav-tab active" data-section="overview">📊 Overview</div>
+                <div class="nav-tab" data-section="players">👥 Players</div>
+                <div class="nav-tab" data-section="economy">💰 Economy</div>
+                <div class="nav-tab" data-section="logs">📜 Audit Logs</div>
+                <div class="nav-tab" data-section="system">⚙️ System</div>
             </div>
 
             <!-- Overview Section -->
@@ -134,7 +134,35 @@
     <script>
         window.addEventListener('load', () => {
             console.log('🚀 Starting Admin Panel...');
-            AdminCore.init();
+            
+            // Initialize AdminCore
+            window.AdminCore.init();
+            
+            // Setup event listeners
+            document.getElementById('loginBtn').addEventListener('click', () => {
+                window.AdminCore.login();
+            });
+            
+            document.getElementById('logoutBtn').addEventListener('click', () => {
+                window.AdminCore.logout();
+            });
+            
+            // Handle Enter key on password field
+            document.getElementById('password').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    window.AdminCore.login();
+                }
+            });
+            
+            // Setup navigation tabs
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const section = tab.getAttribute('data-section');
+                    window.AdminCore.showSection(section);
+                });
+            });
+            
+            console.log('✅ Admin Panel Ready!');
         });
     </script>
 </body>
