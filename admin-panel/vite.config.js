@@ -1,8 +1,5 @@
-import { defineConfig } from 'vite'
-
-export default defineConfig({
+export default {
   root: './',
-  publicDir: false, // Désactiver le dossier public
   
   server: {
     port: 3001,
@@ -11,21 +8,14 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true
       }
+    },
+    fs: {
+      // Permettre de servir les fichiers en dehors de root
+      strict: false
     }
   },
   
   build: {
-    outDir: '../server/dist/admin',
-    emptyOutDir: true,
-    rollupOptions: {
-      input: {
-        main: './index.html'
-      }
-    }
-  },
-  
-  // Désactiver l'optimisation des dépendances
-  optimizeDeps: {
-    disabled: true
+    outDir: '../server/dist/admin'
   }
-})
+}
