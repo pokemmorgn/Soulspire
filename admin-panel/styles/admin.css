@@ -1310,3 +1310,118 @@ textarea.form-control {
         min-width: auto;
     }
 }
+/* ===== VIP ÉDITION ===== */
+.edit-vip-form {
+    max-width: 600px;
+}
+
+.current-vip,
+.vip-preview {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+}
+
+.current-vip h4,
+.vip-preview h4 {
+    margin-bottom: 10px;
+    color: #495057;
+}
+
+.vip-display {
+    text-align: center;
+}
+
+.vip-level-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 15px 30px;
+    background: linear-gradient(135deg, #ffd700, #ffed4e);
+    border-radius: 15px;
+    box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3);
+    margin-bottom: 10px;
+}
+
+.vip-icon {
+    font-size: 32px;
+}
+
+.vip-number {
+    font-size: 24px;
+    font-weight: bold;
+    color: #333;
+}
+
+.vip-benefits {
+    color: #666;
+    font-size: 14px;
+    margin: 10px 0 0 0;
+}
+
+.vip-quick-levels {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.vip-quick-levels button {
+    padding: 6px 12px;
+    font-size: 13px;
+}
+
+.vip-preview {
+    border: 2px solid #667eea;
+    background: linear-gradient(135deg, #f8f9fa, #e8eaf6);
+}
+
+/* Slider personnalisé */
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 8px;
+    background: #e9ecef;
+    border-radius: 5px;
+    outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+input[type="range"]::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    border: none;
+}
+
+/* Responsive VIP */
+@media (max-width: 768px) {
+    .vip-quick-levels {
+        justify-content: center;
+    }
+    
+    .vip-level-badge {
+        padding: 10px 20px;
+    }
+    
+    .vip-icon {
+        font-size: 24px;
+    }
+    
+    .vip-number {
+        font-size: 18px;
+    }
+}
