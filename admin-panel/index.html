@@ -4,368 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Idle Gacha - Admin Panel</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .admin-container {
-            width: 100%;
-            max-width: 1200px;
-            margin: 20px;
-        }
-
-        /* Login Form */
-        .login-form {
-            background: white;
-            padding: 40px;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-            text-align: center;
-            max-width: 400px;
-            margin: 0 auto;
-        }
-
-        .login-form h1 {
-            color: #333;
-            margin-bottom: 30px;
-            font-size: 2.5rem;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-            text-align: left;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #555;
-        }
-
-        .form-group input {
-            width: 100%;
-            padding: 15px;
-            border: 2px solid #e1e5e9;
-            border-radius: 10px;
-            font-size: 16px;
-            transition: border-color 0.3s ease;
-        }
-
-        .form-group input:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        .btn {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            border: none;
-            padding: 15px 30px;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            width: 100%;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
-        }
-
-        .btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-        }
-
-        /* Dashboard */
-        .dashboard {
-            display: none;
-        }
-
-        .dashboard.active {
-            display: block;
-        }
-
-        .header {
-            background: white;
-            padding: 20px 30px;
-            border-radius: 15px;
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
-            margin-bottom: 30px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .header h1 {
-            color: #333;
-            font-size: 2rem;
-        }
-
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .user-avatar {
-            width: 50px;
-            height: 50px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            font-size: 20px;
-        }
-
-        .logout-btn {
-            background: #e74c3c;
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-size: 14px;
-        }
-
-        .logout-btn:hover {
-            background: #c0392b;
-        }
-
-        /* Stats Cards */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
-        .stat-card {
-            background: white;
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
-            text-align: center;
-            transition: transform 0.3s ease;
-        }
-
-        .stat-card:hover {
-            transform: translateY(-5px);
-        }
-
-        .stat-icon {
-            width: 60px;
-            height: 60px;
-            margin: 0 auto 15px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            border-radius: 15px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            color: white;
-        }
-
-        .stat-value {
-            font-size: 2rem;
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 5px;
-        }
-
-        .stat-label {
-            color: #666;
-            font-size: 14px;
-        }
-
-        /* Navigation */
-        .nav-tabs {
-            display: flex;
-            background: white;
-            border-radius: 15px;
-            padding: 5px;
-            margin-bottom: 30px;
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
-        }
-
-        .nav-tab {
-            flex: 1;
-            padding: 15px;
-            text-align: center;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-weight: 600;
-            color: #666;
-        }
-
-        .nav-tab.active {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-        }
-
-        /* Content Sections */
-        .content-section {
-            display: none;
-            background: white;
-            border-radius: 15px;
-            padding: 30px;
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
-        }
-
-        .content-section.active {
-            display: block;
-        }
-
-        .section-title {
-            font-size: 1.5rem;
-            color: #333;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #f0f0f0;
-        }
-
-        /* Tables */
-        .data-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-
-        .data-table th,
-        .data-table td {
-            padding: 15px;
-            text-align: left;
-            border-bottom: 1px solid #f0f0f0;
-        }
-
-        .data-table th {
-            background: #f8f9fa;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .data-table tbody tr:hover {
-            background: #f8f9fa;
-        }
-
-        /* Badges */
-        .badge {
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        .badge.success {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .badge.warning {
-            background: #fff3cd;
-            color: #856404;
-        }
-
-        .badge.danger {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        /* Loading Animation */
-        .loading {
-            text-align: center;
-            padding: 40px;
-        }
-
-        .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        /* Messages */
-        .alert {
-            padding: 15px;
-            margin: 15px 0;
-            border-radius: 10px;
-            border: 1px solid transparent;
-        }
-
-        .alert.success {
-            background: #d4edda;
-            color: #155724;
-            border-color: #c3e6cb;
-        }
-
-        .alert.error {
-            background: #f8d7da;
-            color: #721c24;
-            border-color: #f5c6cb;
-        }
-
-        .alert.info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border-color: #bee5eb;
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            .admin-container {
-                margin: 10px;
-            }
-
-            .header {
-                flex-direction: column;
-                gap: 15px;
-                text-align: center;
-            }
-
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .nav-tabs {
-                flex-wrap: wrap;
-            }
-
-            .nav-tab {
-                min-width: 120px;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="/styles/admin.css">
 </head>
 <body>
     <div class="admin-container">
-        <!-- Login Form -->
+        <!-- Login Section -->
         <div id="loginSection" class="login-form">
             <h1>🎮 Admin Panel</h1>
             <div id="loginAlert"></div>
@@ -380,12 +23,10 @@
                 <input type="password" id="password" value="ChangeMe123!" required>
             </div>
             
-            <button id="loginBtn" class="btn" onclick="login()">
-                Login to Admin Panel
-            </button>
+            <button id="loginBtn" class="btn">Login to Admin Panel</button>
         </div>
 
-        <!-- Dashboard -->
+        <!-- Dashboard Section -->
         <div id="dashboardSection" class="dashboard">
             <!-- Header -->
             <div class="header">
@@ -396,13 +37,13 @@
                         <div id="userName">Super Admin</div>
                         <div style="font-size: 12px; color: #666;" id="userRole">super_admin</div>
                     </div>
-                    <button class="btn logout-btn" onclick="logout()">Logout</button>
+                    <button class="btn logout-btn" id="logoutBtn">Logout</button>
                 </div>
             </div>
 
             <!-- Stats Cards -->
-            <div class="stats-grid" id="statsGrid">
-                <div class="stat-card">
+            <div class="stats-grid">
+                <div class="stat-card" id="healthCard">
                     <div class="stat-icon">👥</div>
                     <div class="stat-value" id="totalPlayers">-</div>
                     <div class="stat-label">Active Players</div>
@@ -424,635 +65,88 @@
                 </div>
             </div>
 
-            <!-- Navigation -->
+            <!-- Navigation Tabs -->
             <div class="nav-tabs">
-                <div class="nav-tab active" onclick="showSection('overview')">📊 Overview</div>
-                <div class="nav-tab" onclick="showSection('players')">👥 Players</div>
-                <div class="nav-tab" onclick="showSection('economy')">💰 Economy</div>
-                <div class="nav-tab" onclick="showSection('logs')">📜 Audit Logs</div>
-                <div class="nav-tab" onclick="showSection('system')">⚙️ System</div>
+                <div class="nav-tab active" data-section="overview">📊 Overview</div>
+                <div class="nav-tab" data-section="players">👥 Players</div>
+                <div class="nav-tab" data-section="economy">💰 Economy</div>
+                <div class="nav-tab" data-section="logs">📜 Audit Logs</div>
+                <div class="nav-tab" data-section="system">⚙️ System</div>
             </div>
 
-            <!-- Overview Section -->
-            <div id="overviewSection" class="content-section active">
-                <h2 class="section-title">System Overview</h2>
-                <div id="overviewContent">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <p>Loading dashboard data...</p>
+            <!-- Content Sections -->
+            <div class="content-container">
+                <div id="overviewSection" class="content-section active">
+                    <h2 class="section-title">System Overview</h2>
+                    <div id="overviewContent">
+                        <div class="loading"><div class="spinner"></div><p>Loading...</p></div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Players Section -->
-            <div id="playersSection" class="content-section">
-                <h2 class="section-title">Player Management</h2>
-                <div id="playersContent">
-                    <p>Player management features will be loaded here...</p>
+                <div id="playersSection" class="content-section">
+                    <h2 class="section-title">Player Management</h2>
+                    <div id="playersContent">
+                        <div class="loading"><div class="spinner"></div><p>Loading...</p></div>
+                    </div>
                 </div>
-            </div>
 
-            <!-- Economy Section -->
-            <div id="economySection" class="content-section">
-                <h2 class="section-title">Economy Analytics</h2>
-                <div id="economyContent">
-                    <p>Economy analytics will be loaded here...</p>
+                <div id="economySection" class="content-section">
+                    <h2 class="section-title">Economy Analytics</h2>
+                    <div id="economyContent">
+                        <p>Economy module coming soon...</p>
+                    </div>
                 </div>
-            </div>
 
-            <!-- Logs Section -->
-            <div id="logsSection" class="content-section">
-                <h2 class="section-title">Audit Logs</h2>
-                <div id="logsContent">
-                    <p>Audit logs will be loaded here...</p>
+                <div id="logsSection" class="content-section">
+                    <h2 class="section-title">Audit Logs</h2>
+                    <div id="logsContent">
+                        <p>Audit logs module coming soon...</p>
+                    </div>
                 </div>
-            </div>
 
-            <!-- System Section -->
-            <div id="systemSection" class="content-section">
-                <h2 class="section-title">System Information</h2>
-                <div id="systemContent">
-                    <p>System information will be loaded here...</p>
+                <div id="systemSection" class="content-section">
+                    <h2 class="section-title">System Information</h2>
+                    <div id="systemContent">
+                        <p>System information will be loaded here...</p>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Load Scripts in Order -->
+    <script src="/core/admin.js"></script>
+    <script src="/modules/players.js"></script>
+    
     <script>
-        class AdminPanel {
-            constructor() {
-                this.token = localStorage.getItem('adminToken');
-                this.adminUser = null;
-                this.refreshInterval = null;
-                
-                if (this.token) {
-                    this.showDashboard();
-                    this.loadDashboardData();
-                }
-            }
-
-            async makeRequest(url, options = {}) {
-                const config = {
-                    ...options,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(this.token && { 'Authorization': `Bearer ${this.token}` }),
-                        ...options.headers
-                    }
-                };
-
-                const response = await fetch(url, config);
-                const data = await response.json();
-                
-                if (!response.ok) {
-                    throw new Error(data.error || `Request failed: ${response.status}`);
-                }
-                
-                return { response, data };
-            }
-
-            showAlert(containerId, message, type = 'info') {
-                const container = document.getElementById(containerId);
-                container.innerHTML = `<div class="alert ${type}">${message}</div>`;
-                setTimeout(() => container.innerHTML = '', 5000);
-            }
-
-            async login() {
-                const username = document.getElementById('username').value;
-                const password = document.getElementById('password').value;
-                const loginBtn = document.getElementById('loginBtn');
-
-                if (!username || !password) {
-                    this.showAlert('loginAlert', 'Please enter both username and password', 'error');
-                    return;
-                }
-
-                loginBtn.disabled = true;
-                loginBtn.textContent = 'Logging in...';
-
-                try {
-                    const { data } = await this.makeRequest('/api/admin/auth/login', {
-                        method: 'POST',
-                        body: JSON.stringify({ username, password })
-                    });
-
-                    if (data.success && data.data.token) {
-                        this.token = data.data.token;
-                        this.adminUser = data.data.admin;
-                        localStorage.setItem('adminToken', this.token);
-                        
-                        this.showAlert('loginAlert', 'Login successful! Redirecting...', 'success');
-                        setTimeout(() => {
-                            this.showDashboard();
-                            this.loadDashboardData();
-                        }, 1000);
-                    } else {
-                        throw new Error(data.message || 'Login failed');
-                    }
-                } catch (error) {
-                    this.showAlert('loginAlert', error.message, 'error');
-                } finally {
-                    loginBtn.disabled = false;
-                    loginBtn.textContent = 'Login to Admin Panel';
-                }
-            }
-
-            logout() {
-                localStorage.removeItem('adminToken');
-                this.token = null;
-                this.adminUser = null;
-                
-                if (this.refreshInterval) {
-                    clearInterval(this.refreshInterval);
-                }
-                
-                document.getElementById('loginSection').style.display = 'block';
-                document.getElementById('dashboardSection').style.display = 'none';
-                
-                // Reset form
-                document.getElementById('username').value = 'superadmin';
-                document.getElementById('password').value = 'ChangeMe123!';
-            }
-
-            showDashboard() {
-                document.getElementById('loginSection').style.display = 'none';
-                document.getElementById('dashboardSection').style.display = 'block';
-                
-                if (this.adminUser) {
-                    document.getElementById('userName').textContent = this.adminUser.username;
-                    document.getElementById('userRole').textContent = this.adminUser.role;
-                    document.getElementById('userAvatar').textContent = this.adminUser.username.substring(0, 2).toUpperCase();
-                }
-            }
-
-            async loadDashboardData() {
-                try {
-                    // Load quick stats
-                    await this.loadQuickStats();
-                    
-                    // Load overview data
-                    await this.loadOverviewData();
-                    
-                    // Start refresh interval
-                    this.refreshInterval = setInterval(() => {
-                        this.loadQuickStats();
-                    }, 30000); // Refresh every 30 seconds
-                    
-                } catch (error) {
-                    console.error('Dashboard loading error:', error);
-                    this.showAlert('loginAlert', 'Failed to load dashboard data', 'error');
-                }
-            }
-
-            async loadQuickStats() {
-                try {
-                    const { data } = await this.makeRequest('/api/admin/dashboard/quick-stats');
-                    
-                    document.getElementById('totalPlayers').textContent = data.activePlayers || 0;
-                    document.getElementById('todayRevenue').textContent = `$${data.todayRevenue?.toFixed(2) || '0.00'}`;
-                    document.getElementById('onlineAdmins').textContent = data.onlineAdmins || 0;
-                    
-                    const healthElement = document.getElementById('systemHealth');
-                    const health = data.systemHealth;
-                    healthElement.textContent = health || 'Unknown';
-                    healthElement.className = `stat-value ${health === 'good' ? 'success' : health === 'warning' ? 'warning' : 'danger'}`;
-                    
-                } catch (error) {
-                    console.error('Quick stats error:', error);
-                }
-            }
-
-async loadOverviewData() {
-    try {
-        const { data } = await this.makeRequest('/api/admin/dashboard/overview');
-        
-        console.log('📊 Overview data received:', data); // Debug
-        
-        const overviewContent = document.getElementById('overviewContent');
-        
-        // Vérifier que les données existent
-        if (!data || !data.data) {
-            overviewContent.innerHTML = '<div class="alert error">No overview data available</div>';
-            return;
-        }
-        
-        const overview = data.data.overview || {};
-        const economy = data.data.economy || {};
-        const players = data.data.players || {};
-        const alerts = data.data.alerts || [];
-        
-        overviewContent.innerHTML = `
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
-                <div>
-                    <h3>Server Metrics</h3>
-                    <p><strong>Uptime:</strong> ${overview.uptime ? Math.floor(overview.uptime / 3600) + ' hours' : 'N/A'}</p>
-                    <p><strong>Total Players:</strong> ${overview.totalPlayers || 0}</p>
-                    <p><strong>Active (24h):</strong> ${overview.activePlayers24h || 0}</p>
-                    <p><strong>New Players (24h):</strong> ${overview.newPlayers24h || 0}</p>
-                    <p><strong>Error Rate:</strong> ${overview.errorRate ? overview.errorRate.toFixed(2) + '%' : 'N/A'}</p>
-                </div>
-                <div>
-                    <h3>Economy</h3>
-                    <p><strong>Total Revenue:</strong> $${economy.revenue?.total?.toFixed(2) || '0.00'}</p>
-                    <p><strong>Daily Revenue:</strong> $${economy.revenue?.daily?.toFixed(2) || '0.00'}</p>
-                    <p><strong>Paying Users:</strong> ${economy.conversion?.payingUsers || 0}</p>
-                    <p><strong>Conversion Rate:</strong> ${economy.conversion?.conversionRate?.toFixed(2) || '0.00'}%</p>
-                    <p><strong>ARPU:</strong> $${economy.conversion?.averageRevenuePerUser?.toFixed(2) || '0.00'}</p>
-                </div>
-                <div>
-                    <h3>Player Retention</h3>
-                    <p><strong>Day 1:</strong> ${players.retention?.day1?.toFixed(1) || '0.0'}%</p>
-                    <p><strong>Day 7:</strong> ${players.retention?.day7?.toFixed(1) || '0.0'}%</p>
-                    <p><strong>Day 30:</strong> ${players.retention?.day30?.toFixed(1) || '0.0'}%</p>
-                    <p><strong>Avg Level:</strong> ${players.progression?.averageLevel?.toFixed(1) || '0.0'}</p>
-                    <p><strong>Avg Playtime:</strong> ${players.engagement?.averagePlaytime?.toFixed(0) || '0'} min</p>
-                </div>
-                <div>
-                    <h3>System Alerts</h3>
-                    ${alerts.length === 0 ? '<p>No active alerts</p>' : 
-                      alerts.slice(0, 3).map(alert => 
-                        `<p><span class="badge ${alert.severity === 'critical' ? 'danger' : alert.severity === 'high' ? 'warning' : 'success'}">${alert.type}</span> ${alert.message}</p>`
-                      ).join('')}
-                </div>
-            </div>
-        `;
-    } catch (error) {
-        console.error('Overview data error:', error);
-        document.getElementById('overviewContent').innerHTML = 
-            '<div class="alert error">Failed to load overview data: ' + error.message + '</div>';
-    }
-}
-
-            showSection(sectionName) {
-                // Hide all sections
-                document.querySelectorAll('.content-section').forEach(section => {
-                    section.classList.remove('active');
-                });
-                
-                // Remove active from all tabs
-                document.querySelectorAll('.nav-tab').forEach(tab => {
-                    tab.classList.remove('active');
-                });
-                
-                // Show selected section
-                document.getElementById(sectionName + 'Section').classList.add('active');
-                event.target.classList.add('active');
-                
-                // Load section-specific data
-                switch(sectionName) {
-                    case 'players':
-                        this.loadPlayersData();
-                        break;
-                    case 'economy':
-                        this.loadEconomyData();
-                        break;
-                    case 'logs':
-                        this.loadAuditLogs();
-                        break;
-                    case 'system':
-                        this.loadSystemInfo();
-                        break;
-                }
-            }
-
-async loadPlayersData() {
-    const content = document.getElementById('playersContent');
-    content.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading player data...</p></div>';
-    
-    try {
-        const { data } = await this.makeRequest('/api/admin/players/stats');
-        
-        console.log('📊 Player stats received:', data);
-        
-        // Vérifier la structure des données
-        if (!data || !data.data) {
-            content.innerHTML = '<div class="alert error">No player data available</div>';
-            return;
-        }
-        
-        const stats = data.data;
-        
-        content.innerHTML = `
-            <!-- Stats Cards -->
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px;">
-                <div class="stat-card">
-                    <div class="stat-value">${stats.totalPlayers || 0}</div>
-                    <div class="stat-label">Total Players</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">${stats.activePlayers || 0}</div>
-                    <div class="stat-label">Active Players</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">${stats.spendingPlayers || 0}</div>
-                    <div class="stat-label">Spending Players</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">${stats.averageLevel || 0}</div>
-                    <div class="stat-label">Average Level</div>
-                </div>
-            </div>
-            
-            <!-- Search Section -->
-            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-                <h3>🔍 Search Players</h3>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
-                    <div>
-                        <label>Username:</label>
-                        <input type="text" id="searchUsername" placeholder="Enter username..." style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 6px;">
-                    </div>
-                    <div>
-                        <label>Email:</label>
-                        <input type="email" id="searchEmail" placeholder="Enter email..." style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 6px;">
-                    </div>
-                    <div>
-                        <label>Server:</label>
-                        <select id="searchServerId" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 6px;">
-                            <option value="">All Servers</option>
-                            <option value="S1">Server 1</option>
-                            <option value="S2">Server 2</option>
-                            <option value="S3">Server 3</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label>Status:</label>
-                        <select id="searchStatus" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 6px;">
-                            <option value="">All Status</option>
-                            <option value="active">Active</option>
-                            <option value="suspended">Suspended</option>
-                            <option value="banned">Banned</option>
-                        </select>
-                    </div>
-                </div>
-                <div style="margin-top: 15px; display: flex; gap: 10px;">
-                    <button class="btn btn-primary" onclick="adminPanel.searchPlayers()">🔍 Search</button>
-                    <button class="btn btn-secondary" onclick="adminPanel.clearPlayerSearch()">Clear</button>
-                    <button class="btn btn-info" onclick="adminPanel.loadPlayersList()">↻ Refresh</button>
-                </div>
-            </div>
-            
-            <!-- Players List -->
-            <div>
-                <h3>📋 Players List</h3>
-                <div id="playersListContainer">
-                    <div class="loading"><div class="spinner"></div><p>Loading players list...</p></div>
-                </div>
-            </div>
-        `;
-        
-        // Charger la liste des joueurs
-        await this.loadPlayersList();
-        
-    } catch (error) {
-        console.error('Players data error:', error);
-        content.innerHTML = '<div class="alert error">Failed to load player data: ' + error.message + '</div>';
-    }
-}
-
-async loadPlayersList(filters = {}) {
-    const container = document.getElementById('playersListContainer');
-    if (!container) return;
-    
-    container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading players...</p></div>';
-    
-    try {
-        // Construire les paramètres de requête
-        const params = new URLSearchParams({
-            page: filters.page || '1',
-            limit: filters.limit || '20',
-            sortBy: filters.sortBy || 'lastSeenAt',
-            sortOrder: filters.sortOrder || 'desc',
-            ...filters
-        });
-        
-        const { data } = await this.makeRequest('/api/admin/players/search?' + params.toString());
-        
-        console.log('📋 Players list received:', data);
-        
-        if (!data || !data.data || !data.data.players) {
-            container.innerHTML = '<div class="alert info">No players found</div>';
-            return;
-        }
-        
-        const players = data.data.players;
-        const total = data.data.total;
-        
-        if (players.length === 0) {
-            container.innerHTML = '<div class="alert info">No players found matching your criteria</div>';
-            return;
-        }
-        
-        // Générer le tableau HTML
-        let tableHTML = `
-            <p style="margin-bottom: 10px;">Showing ${players.length} of ${total} players</p>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Username</th>
-                        <th>Email</th>
-                        <th>Server</th>
-                        <th>Level</th>
-                        <th>Status</th>
-                        <th>Spent</th>
-                        <th>Last Login</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-        
-        players.forEach(player => {
-            const statusClass = player.accountStatus === 'active' ? 'success' : 
-                               player.accountStatus === 'suspended' ? 'warning' : 'danger';
-            const lastLogin = player.lastLogin ? new Date(player.lastLogin).toLocaleDateString() : 'Never';
-            
-            tableHTML += `
-                <tr>
-                    <td>
-                        <strong>${player.username || 'Unknown'}</strong><br>
-                        <small style="color: #6c757d;">ID: ${player.accountId}</small>
-                    </td>
-                    <td>${player.email || 'N/A'}</td>
-                    <td><span class="badge" style="background: #17a2b8; color: white;">${player.serverId || 'N/A'}</span></td>
-                    <td>${player.summary?.highestLevel || 0}</td>
-                    <td><span class="badge ${statusClass}">${player.accountStatus || 'unknown'}</span></td>
-                    <td style="color: #28a745; font-weight: 600;">$${(player.totalSpentUSD || 0).toFixed(2)}</td>
-                    <td>${lastLogin}</td>
-                    <td>
-                        <button class="btn btn-small btn-info" onclick="adminPanel.viewPlayerDetails('${player.accountId}')">
-                            👁️ View
-                        </button>
-                    </td>
-                </tr>
-            `;
-        });
-        
-        tableHTML += `
-                </tbody>
-            </table>
-        `;
-        
-        container.innerHTML = tableHTML;
-        
-    } catch (error) {
-        console.error('Load players list error:', error);
-        container.innerHTML = '<div class="alert error">Failed to load players list: ' + error.message + '</div>';
-    }
-}
-
-async searchPlayers() {
-    const filters = {
-        username: document.getElementById('searchUsername')?.value || '',
-        email: document.getElementById('searchEmail')?.value || '',
-        serverId: document.getElementById('searchServerId')?.value || '',
-        accountStatus: document.getElementById('searchStatus')?.value || ''
-    };
-    
-    // Retirer les filtres vides
-    Object.keys(filters).forEach(key => {
-        if (!filters[key]) delete filters[key];
-    });
-    
-    await this.loadPlayersList(filters);
-}
-
-clearPlayerSearch() {
-    document.getElementById('searchUsername').value = '';
-    document.getElementById('searchEmail').value = '';
-    document.getElementById('searchServerId').value = '';
-    document.getElementById('searchStatus').value = '';
-    this.loadPlayersList();
-}
-
-async viewPlayerDetails(accountId) {
-    try {
-        const { data } = await this.makeRequest('/api/admin/players/' + accountId);
-        
-        console.log('👤 Player details:', data);
-        
-        if (!data || !data.data) {
-            this.showAlert('loginAlert', 'Player not found', 'error');
-            return;
-        }
-        
-        const player = data.data;
-        const account = player.account;
-        const characters = player.characters || [];
-        
-        // Créer une modal pour afficher les détails
-        const modalHTML = `
-            <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center;" id="playerModal" onclick="if(event.target.id==='playerModal') this.remove()">
-                <div style="background: white; border-radius: 15px; max-width: 900px; max-height: 90vh; overflow-y: auto; padding: 30px;" onclick="event.stopPropagation()">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #e9ecef; padding-bottom: 15px;">
-                        <h2>Player: ${account.username}</h2>
-                        <button class="btn btn-danger" onclick="document.getElementById('playerModal').remove()">✕ Close</button>
-                    </div>
-                    
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px;">
-                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
-                            <strong>Account ID:</strong><br>${account.accountId}
-                        </div>
-                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
-                            <strong>Email:</strong><br>${account.email || 'N/A'}
-                        </div>
-                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
-                            <strong>Status:</strong><br><span class="badge ${account.accountStatus === 'active' ? 'success' : 'danger'}">${account.accountStatus}</span>
-                        </div>
-                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
-                            <strong>Total Spent:</strong><br><span style="color: #28a745; font-weight: 600;">$${account.totalSpentUSD.toFixed(2)}</span>
-                        </div>
-                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
-                            <strong>Account Age:</strong><br>${account.accountAge} days
-                        </div>
-                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
-                            <strong>Last Login:</strong><br>${account.lastLogin ? new Date(account.lastLogin).toLocaleString() : 'Never'}
-                        </div>
-                    </div>
-                    
-                    <h3 style="margin-top: 30px; margin-bottom: 15px;">🎮 Characters (${characters.length})</h3>
-                    ${characters.length === 0 ? '<p>No characters found</p>' : characters.map(char => `
-                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 10px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <h4>${char.displayName}</h4>
-                                <span class="badge" style="background: #17a2b8; color: white;">Server ${char.serverId}</span>
-                            </div>
-                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px;">
-                                <div><strong>Level:</strong> ${char.level}</div>
-                                <div><strong>World:</strong> ${char.world}-${char.stage}</div>
-                                <div><strong>VIP:</strong> ${char.vipLevel}</div>
-                                <div><strong>Gold:</strong> ${char.currencies?.gold || 0}</div>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-        `;
-        
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-        
-    } catch (error) {
-        console.error('View player details error:', error);
-        this.showAlert('loginAlert', 'Failed to load player details: ' + error.message, 'error');
-    }
-}
-
-            async loadEconomyData() {
-                const content = document.getElementById('economyContent');
-                content.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading economy data...</p></div>';
-                
-                setTimeout(() => {
-                    content.innerHTML = '<p>Economy analytics and management tools will be implemented here...</p>';
-                }, 1000);
-            }
-
-            async loadAuditLogs() {
-                const content = document.getElementById('logsContent');
-                content.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading audit logs...</p></div>';
-                
-                setTimeout(() => {
-                    content.innerHTML = '<p>Audit logs and security monitoring will be implemented here...</p>';
-                }, 1000);
-            }
-
-            async loadSystemInfo() {
-                const content = document.getElementById('systemContent');
-                content.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading system information...</p></div>';
-                
-                try {
-                    const { data } = await this.makeRequest('/api/admin/dashboard/server-metrics');
-                    content.innerHTML = `
-                        <h3>Server Information</h3>
-                        <table class="data-table">
-                            <tr><td><strong>Uptime</strong></td><td>${Math.floor(data.uptime / 3600)} hours</td></tr>
-                            <tr><td><strong>Memory Usage</strong></td><td>${(data.system.memory.heapUsed / 1024 / 1024).toFixed(2)} MB</td></tr>
-                            <tr><td><strong>Node.js Version</strong></td><td>${data.system.nodeVersion}</td></tr>
-                            <tr><td><strong>Platform</strong></td><td>${data.system.platform}</td></tr>
-                        </table>
-                    `;
-                } catch (error) {
-                    content.innerHTML = '<div class="alert error">Failed to load system information</div>';
-                }
-            }
-        }
-
-        // Global functions for onclick handlers
-        let adminPanel;
-        
+        // Initialize on load
         window.addEventListener('load', () => {
-            adminPanel = new AdminPanel();
+            console.log('🚀 Starting Admin Panel...');
+            window.AdminCore.init();
+            
+            // Setup event listeners
+            document.getElementById('loginBtn').addEventListener('click', () => {
+                window.AdminCore.login();
+            });
+            
+            document.getElementById('logoutBtn').addEventListener('click', () => {
+                window.AdminCore.logout();
+            });
+            
+            document.getElementById('password').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') window.AdminCore.login();
+            });
+            
+            // Setup navigation
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const section = tab.getAttribute('data-section');
+                    window.AdminCore.showSection(section);
+                });
+            });
+            
+            console.log('✅ Admin Panel Ready!');
         });
-
-        function login() {
-            adminPanel.login();
-        }
-
-        function logout() {
-            adminPanel.logout();
-        }
-
-        function showSection(sectionName) {
-            adminPanel.showSection(sectionName);
-        }
     </script>
 </body>
 </html>
