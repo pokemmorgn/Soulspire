@@ -138,7 +138,11 @@ export class ShopService {
       if (!canAccess) {
         throw new Error("Access denied to this shop");
       }
-
+      
+      if (!shop.isAvailableToday()) {
+        throw new Error("This shop is not available today");
+      }
+      
       const enrichedItems = await Promise.all(shop.items.map(async (shopItem: any) => {
         let itemData = null;
         let generatedStats = null;
@@ -243,6 +247,14 @@ export class ShopService {
         return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
       }
 
+      if (!shop.isAvailableToday()) {
+      const nextFriday = this.getNextFridayDate();
+      return { 
+        success: false, 
+        error: `${shop.name} is only available on Fridays. Next opening: ${nextFriday.toLocaleDateString()}`, 
+        code: "SHOP_NOT_AVAILABLE_TODAY" 
+          };
+        }
       const shopItem = shop.items.find((item: any) => item.instanceId === instanceId);
       if (!shopItem) {
         return { success: false, error: "Item not found in shop", code: "SHOP_ITEM_NOT_FOUND" };
@@ -1151,4 +1163,20 @@ public static async processShopResets(): Promise<ShopResetResult> {
       throw error;
     }
   }
+  // === MÉTHODE UTILITAIRE : Calculer le prochain vendredi ===
+  private static getNextFridayDate(): Date {
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    
+    // Si on est vendredi (5), le prochain vendredi est dans 7 jours
+    // Sinon, calculer les jours jusqu'au prochain vendredi
+    const daysUntilFriday = dayOfWeek === 5 ? 7 : (5 - dayOfWeek + 7) % 7;
+    
+    const nextFriday = new Date(now);
+    nextFriday.setDate(now.getDate() + daysUntilFriday);
+    nextFriday.setHours(0, 0, 0, 0);
+    
+    return nextFriday;
+  }
+}
 }
