@@ -556,7 +556,7 @@ async viewCharacterHeroes(playerId, serverId) {
 }
 
 /**
- * Rendre la grille de héros - VERSION CORRIGÉE
+ * Rendre la grille de héros - VERSION AVEC DATA ATTRIBUTES
  */
 renderHeroesGrid(heroesList, playerId, serverId) {
     if (!heroesList || heroesList.length === 0) {
@@ -564,10 +564,13 @@ renderHeroesGrid(heroesList, playerId, serverId) {
     }
 
     return heroesList.map(heroData => {
-        const hero = heroData.hero; // Les données du héros de base
+        const hero = heroData.hero;
+        
+        // Créer un ID unique pour chaque carte de héros
+        const cardId = `hero-card-${heroData.playerHeroId}`;
         
         return `
-            <div class="hero-card">
+            <div class="hero-card" id="${cardId}">
                 <div class="hero-card-header">
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <h4 style="margin: 0;">${this.ui.escapeHtml(hero.name || 'Unknown Hero')}</h4>
@@ -588,24 +591,18 @@ renderHeroesGrid(heroesList, playerId, serverId) {
                 </div>
                 <div class="hero-card-actions">
                     <button class="btn btn-small btn-info" 
-                            onclick='PlayersModule.editHero(${JSON.stringify({
-                                playerHeroId: heroData.playerHeroId,
-                                serverId: serverId,
-                                heroData: {
-                                    name: hero.name,
-                                    role: hero.role,
-                                    element: hero.element,
-                                    rarity: hero.rarity,
-                                    level: heroData.level,
-                                    stars: heroData.stars,
-                                    equipped: heroData.equipped,
-                                    powerLevel: heroData.powerLevel,
-                                    currentStats: heroData.currentStats,
-                                    equipment: hero.equipment,
-                                    spells: hero.spells
-                                },
-                                accountId: this.selectedPlayer.account.accountId
-                            }).replace(/'/g, "\\'")}'>
+                            data-player-hero-id="${heroData.playerHeroId}"
+                            data-server-id="${serverId}"
+                            data-hero-name="${this.ui.escapeHtml(hero.name)}"
+                            data-hero-role="${hero.role}"
+                            data-hero-element="${hero.element}"
+                            data-hero-rarity="${hero.rarity}"
+                            data-hero-level="${heroData.level}"
+                            data-hero-stars="${heroData.stars}"
+                            data-hero-equipped="${heroData.equipped}"
+                            data-hero-power="${heroData.powerLevel}"
+                            data-account-id="${this.selectedPlayer.account.accountId}"
+                            onclick="PlayersModule.editHeroFromCard(this)">
                         ✏️ Edit
                     </button>
                 </div>
@@ -613,15 +610,36 @@ renderHeroesGrid(heroesList, playerId, serverId) {
         `;
     }).join('');
 }
+
 /**
- * Éditer un héros (wrapper pour appeler PlayersHeroes)
+ * 🆕 Éditer un héros à partir du bouton (lecture des data attributes)
  */
-editHero(heroInfo) {
+editHeroFromCard(buttonElement) {
     if (!this.heroes) {
         AdminCore.showAlert('Heroes module not loaded', 'error');
         return;
     }
     
+    // Lire les données depuis les attributs data-*
+    const heroInfo = {
+        playerHeroId: buttonElement.getAttribute('data-player-hero-id'),
+        serverId: buttonElement.getAttribute('data-server-id'),
+        heroData: {
+            name: buttonElement.getAttribute('data-hero-name'),
+            role: buttonElement.getAttribute('data-hero-role'),
+            element: buttonElement.getAttribute('data-hero-element'),
+            rarity: buttonElement.getAttribute('data-hero-rarity'),
+            level: parseInt(buttonElement.getAttribute('data-hero-level')),
+            stars: parseInt(buttonElement.getAttribute('data-hero-stars')),
+            equipped: buttonElement.getAttribute('data-hero-equipped') === 'true',
+            powerLevel: parseInt(buttonElement.getAttribute('data-hero-power'))
+        },
+        accountId: buttonElement.getAttribute('data-account-id')
+    };
+    
+    console.log('📝 Editing hero:', heroInfo);
+    
+    // Appeler le module Heroes
     this.heroes.showModal(
         heroInfo.playerHeroId,
         heroInfo.serverId,
