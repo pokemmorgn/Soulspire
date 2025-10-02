@@ -11,7 +11,7 @@ const router = express.Router();
 
 const shopFilterSchema = Joi.object({
   shopType: Joi.string().valid(
-    "Daily", "Weekly", "Monthly", "Arena", "Clan", "VIP", "Premium"
+    "Daily", "Weekly", "Monthly", "Arena", "Clan", "VIP", "Premium", "ElementalFriday"
   ).optional(),
   page: Joi.number().min(1).default(1),
   limit: Joi.number().min(1).max(50).default(10)
@@ -84,7 +84,7 @@ router.get("/:shopType", authMiddleware, async (req: Request, res: Response): Pr
     }
 
     const { shopType } = req.params;
-    const validShopTypes = ["Daily", "Weekly", "Monthly", "Arena", "Clan", "VIP", "Premium"];
+    const validShopTypes = ["Daily", "Weekly", "Monthly", "Arena", "Clan", "VIP", "Premium", "ElementalFriday"];
 
     if (!validShopTypes.includes(shopType)) {
       res.status(400).json({
