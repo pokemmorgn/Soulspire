@@ -129,6 +129,11 @@ export type AdminAction =
   | 'player.remove_currency'
   | 'player.add_hero'
   | 'player.remove_hero'
+  | 'player.modify_hero_stats'      // ✅ AJOUTE CETTE LIGNE
+  | 'player.reset_hero'              // ✅ AJOUTE CETTE LIGNE
+  | 'player.delete_hero'             // ✅ AJOUTE CETTE LIGNE
+  | 'player.equip_hero_item'         // ✅ AJOUTE CETTE LIGNE
+  | 'player.unequip_hero_item'       // ✅ AJOUTE CETTE LIGNE
   | 'player.modify_progress'
   | 'player.reset_account'
   | 'player.delete_account'
@@ -324,6 +329,8 @@ export const SENSITIVE_ACTIONS: AdminAction[] = [
   'player.delete_account',
   'player.reset_account',
   'player.remove_currency',
+  'player.delete_hero',           // ✅ AJOUTE CETTE LIGNE
+  'player.reset_hero',            // ✅ AJOUTE CETTE LIGNE
   'admin.delete_user',
   'admin.modify_permissions',
   'system.server_restart',
