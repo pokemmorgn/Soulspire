@@ -747,4 +747,459 @@ router.use((error: any, req: Request, res: Response, next: NextFunction) => {
   }
 });
 
+// ===== ROUTES DE GESTION DES HÉROS =====
+
+/**
+ * POST /api/admin/players/:accountId/hero
+ * Modifier un héros (stats, reset)
+ */
+router.post('/:accountId/hero',
+  authenticateAdmin,
+  requirePermission('player.modify'),
+  currencyRateLimit,
+  async (req: Request, res: Response) => {
+    try {
+      const adminReq = req as IAuthenticatedAdminRequest;
+      const { accountId } = req.params;
+      const { serverId, playerHeroId, operation, newLevel, newStars, reason } = req.body;
+
+      // Validation des données
+      if (!serverId || !playerHeroId || !operation || !reason) {
+        return res.status(400).json({
+          error: 'All fields are required: serverId, playerHeroId, operation, reason',
+          code: 'MISSING_HERO_FIELDS'
+        });
+      }
+
+      if (!['update_stats', 'reset'].includes(operation)) {
+        return res.status(400).json({
+          error: 'Invalid operation. Must be one of: update_stats, reset',
+          code: 'INVALID_HERO_OPERATION'
+        });
+      }
+
+      // Validation des stats pour update_stats
+      if (operation === 'update_stats') {
+        if (newLevel === undefined || newStars === undefined) {
+          return res.status(400).json({
+            error: 'newLevel and newStars are required for update_stats operation',
+            code: 'MISSING_STAT_VALUES'
+          });
+        }
+
+        if (typeof newLevel !== 'number' || newLevel < 1 || newLevel > 100) {
+          return res.status(400).json({
+            error: 'newLevel must be a number between 1 and 100',
+            code: 'INVALID_LEVEL'
+          });
+        }
+
+        if (typeof newStars !== 'number' || newStars < 1 || newStars > 6) {
+          return res.status(400).json({
+            error: 'newStars must be a number between 1 and 6',
+            code: 'INVALID_STARS'
+          });
+        }
+      }
+
+      // Trouver le joueur
+      const player = await Player.findOne({ 
+        _id: playerHeroId, 
+        accountId, 
+        serverId 
+      });
+
+      if (!player) {
+        return res.status(404).json({
+          error: 'Player not found',
+          code: 'PLAYER_NOT_FOUND'
+        });
+      }
+
+      // Trouver le héros dans player.heroes
+      const heroIndex = player.heroes.findIndex((h: any) => 
+        h._id?.toString() === playerHeroId
+      );
+
+      if (heroIndex === -1) {
+        return res.status(404).json({
+          error: 'Hero not found in player roster',
+          code: 'HERO_NOT_FOUND'
+        });
+      }
+
+      const hero = player.heroes[heroIndex] as any;
+      const oldLevel = hero.level;
+      const oldStars = hero.stars;
+
+      // Effectuer l'opération
+      if (operation === 'update_stats') {
+        hero.level = newLevel;
+        hero.stars = newStars;
+
+        await player.save();
+
+        // Logger l'action
+        await AuditLog.createLog({
+          adminId: adminReq.admin.adminId,
+          adminUsername: adminReq.admin.username,
+          adminRole: adminReq.admin.role,
+          action: 'player.modify_hero_stats',
+          resource: 'player_hero',
+          resourceId: playerHeroId,
+          details: {
+            oldValue: { level: oldLevel, stars: oldStars },
+            newValue: { level: newLevel, stars: newStars },
+            additionalInfo: {
+              serverId,
+              heroId: hero.heroId.toString(),
+              reason,
+              accountId
+            }
+          },
+          ipAddress: getClientIP(req),
+          userAgent: getUserAgent(req),
+          success: true,
+          severity: 'medium'
+        });
+
+        res.json({
+          success: true,
+          data: {
+            oldStats: { level: oldLevel, stars: oldStars },
+            newStats: { level: newLevel, stars: newStars }
+          },
+          message: `Hero stats updated from Level ${oldLevel}, ${oldStars}⭐ to Level ${newLevel}, ${newStars}⭐`
+        });
+
+      } else if (operation === 'reset') {
+        hero.level = 1;
+        hero.stars = 1;
+        hero.equipped = false;
+
+        await player.save();
+
+        // Logger l'action
+        await AuditLog.createLog({
+          adminId: adminReq.admin.adminId,
+          adminUsername: adminReq.admin.username,
+          adminRole: adminReq.admin.role,
+          action: 'player.reset_hero',
+          resource: 'player_hero',
+          resourceId: playerHeroId,
+          details: {
+            oldValue: { level: oldLevel, stars: oldStars },
+            newValue: { level: 1, stars: 1 },
+            additionalInfo: {
+              serverId,
+              heroId: hero.heroId.toString(),
+              reason,
+              accountId
+            }
+          },
+          ipAddress: getClientIP(req),
+          userAgent: getUserAgent(req),
+          success: true,
+          severity: 'high'
+        });
+
+        res.json({
+          success: true,
+          message: 'Hero reset to Level 1, 1⭐ successfully'
+        });
+      }
+
+    } catch (error) {
+      console.error('Modify hero error:', error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to modify hero',
+        code: 'HERO_MODIFICATION_ERROR'
+      });
+    }
+  }
+);
+
+/**
+ * DELETE /api/admin/players/:accountId/hero
+ * Supprimer un héros du roster du joueur
+ */
+router.delete('/:accountId/hero',
+  authenticateAdmin,
+  requirePermission('player.delete'),
+  requireSensitiveAction(),
+  moderationRateLimit,
+  async (req: Request, res: Response) => {
+    try {
+      const adminReq = req as IAuthenticatedAdminRequest;
+      const { accountId } = req.params;
+      const { serverId, playerHeroId, reason } = req.body;
+
+      // Validation des données
+      if (!serverId || !playerHeroId || !reason) {
+        return res.status(400).json({
+          error: 'All fields are required: serverId, playerHeroId, reason',
+          code: 'MISSING_DELETE_FIELDS'
+        });
+      }
+
+      // Trouver le joueur
+      const player = await Player.findOne({ 
+        _id: playerHeroId, 
+        accountId, 
+        serverId 
+      });
+
+      if (!player) {
+        return res.status(404).json({
+          error: 'Player not found',
+          code: 'PLAYER_NOT_FOUND'
+        });
+      }
+
+      // Trouver le héros
+      const heroIndex = player.heroes.findIndex((h: any) => 
+        h._id?.toString() === playerHeroId
+      );
+
+      if (heroIndex === -1) {
+        return res.status(404).json({
+          error: 'Hero not found in player roster',
+          code: 'HERO_NOT_FOUND'
+        });
+      }
+
+      const hero = player.heroes[heroIndex] as any;
+      const heroData = {
+        heroId: hero.heroId.toString(),
+        level: hero.level,
+        stars: hero.stars,
+        equipped: hero.equipped
+      };
+
+      // Supprimer le héros
+      player.heroes.splice(heroIndex, 1);
+      await player.save();
+
+      // Logger l'action
+      await AuditLog.createLog({
+        adminId: adminReq.admin.adminId,
+        adminUsername: adminReq.admin.username,
+        adminRole: adminReq.admin.role,
+        action: 'player.delete_hero',
+        resource: 'player_hero',
+        resourceId: playerHeroId,
+        details: {
+          oldValue: heroData,
+          newValue: null,
+          additionalInfo: {
+            serverId,
+            reason,
+            accountId,
+            remainingHeroes: player.heroes.length
+          }
+        },
+        ipAddress: getClientIP(req),
+        userAgent: getUserAgent(req),
+        success: true,
+        severity: 'high'
+      });
+
+      res.json({
+        success: true,
+        data: {
+          deletedHero: heroData,
+          remainingHeroes: player.heroes.length
+        },
+        message: 'Hero deleted successfully from player roster'
+      });
+
+    } catch (error) {
+      console.error('Delete hero error:', error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to delete hero',
+        code: 'HERO_DELETION_ERROR'
+      });
+    }
+  }
+);
+
+/**
+ * POST /api/admin/players/:accountId/hero/equipment
+ * Gérer l'équipement d'un héros (équiper/déséquiper)
+ */
+router.post('/:accountId/hero/equipment',
+  authenticateAdmin,
+  requirePermission('economy.modify'),
+  currencyRateLimit,
+  async (req: Request, res: Response) => {
+    try {
+      const adminReq = req as IAuthenticatedAdminRequest;
+      const { accountId } = req.params;
+      const { serverId, playerHeroId, operation, slot, instanceId, reason } = req.body;
+
+      // Validation des données
+      if (!serverId || !playerHeroId || !operation || !reason) {
+        return res.status(400).json({
+          error: 'All fields are required: serverId, playerHeroId, operation, reason',
+          code: 'MISSING_EQUIPMENT_FIELDS'
+        });
+      }
+
+      if (!['equip', 'unequip'].includes(operation)) {
+        return res.status(400).json({
+          error: 'Invalid operation. Must be one of: equip, unequip',
+          code: 'INVALID_EQUIPMENT_OPERATION'
+        });
+      }
+
+      const validSlots = ['weapon', 'helmet', 'armor', 'boots', 'gloves', 'accessory'];
+      if (!slot || !validSlots.includes(slot)) {
+        return res.status(400).json({
+          error: `Invalid slot. Must be one of: ${validSlots.join(', ')}`,
+          code: 'INVALID_EQUIPMENT_SLOT'
+        });
+      }
+
+      if (operation === 'equip' && !instanceId) {
+        return res.status(400).json({
+          error: 'instanceId is required for equip operation',
+          code: 'MISSING_INSTANCE_ID'
+        });
+      }
+
+      // Trouver le joueur et populer les héros
+      const player = await Player.findOne({ 
+        _id: playerHeroId, 
+        accountId, 
+        serverId 
+      }).populate('heroes.heroId');
+
+      if (!player) {
+        return res.status(404).json({
+          error: 'Player not found',
+          code: 'PLAYER_NOT_FOUND'
+        });
+      }
+
+      // Trouver le héros
+      const hero = player.heroes.find((h: any) => 
+        h._id?.toString() === playerHeroId
+      ) as any;
+
+      if (!hero) {
+        return res.status(404).json({
+          error: 'Hero not found',
+          code: 'HERO_NOT_FOUND'
+        });
+      }
+
+      const heroDoc = hero.heroId as any;
+      if (!heroDoc || typeof heroDoc === 'string') {
+        return res.status(500).json({
+          error: 'Hero data not populated',
+          code: 'HERO_DATA_ERROR'
+        });
+      }
+
+      // Effectuer l'opération
+      if (operation === 'equip') {
+        const oldInstanceId = heroDoc.equipment?.[slot];
+        heroDoc.equipment = heroDoc.equipment || {};
+        heroDoc.equipment[slot] = instanceId;
+
+        await heroDoc.save();
+
+        // Logger l'action
+        await AuditLog.createLog({
+          adminId: adminReq.admin.adminId,
+          adminUsername: adminReq.admin.username,
+          adminRole: adminReq.admin.role,
+          action: 'player.equip_hero_item',
+          resource: 'player_hero_equipment',
+          resourceId: playerHeroId,
+          details: {
+            oldValue: oldInstanceId || null,
+            newValue: instanceId,
+            additionalInfo: {
+              serverId,
+              slot,
+              reason,
+              accountId,
+              heroId: heroDoc._id.toString()
+            }
+          },
+          ipAddress: getClientIP(req),
+          userAgent: getUserAgent(req),
+          success: true,
+          severity: 'low'
+        });
+
+        res.json({
+          success: true,
+          data: {
+            slot,
+            oldInstanceId,
+            newInstanceId: instanceId
+          },
+          message: `Item equipped to ${slot} successfully`
+        });
+
+      } else if (operation === 'unequip') {
+        const oldInstanceId = heroDoc.equipment?.[slot];
+        
+        if (!oldInstanceId) {
+          return res.status(400).json({
+            error: `No item equipped in ${slot}`,
+            code: 'SLOT_EMPTY'
+          });
+        }
+
+        heroDoc.equipment[slot] = undefined;
+        await heroDoc.save();
+
+        // Logger l'action
+        await AuditLog.createLog({
+          adminId: adminReq.admin.adminId,
+          adminUsername: adminReq.admin.username,
+          adminRole: adminReq.admin.role,
+          action: 'player.unequip_hero_item',
+          resource: 'player_hero_equipment',
+          resourceId: playerHeroId,
+          details: {
+            oldValue: oldInstanceId,
+            newValue: null,
+            additionalInfo: {
+              serverId,
+              slot,
+              reason,
+              accountId,
+              heroId: heroDoc._id.toString()
+            }
+          },
+          ipAddress: getClientIP(req),
+          userAgent: getUserAgent(req),
+          success: true,
+          severity: 'low'
+        });
+
+        res.json({
+          success: true,
+          data: {
+            slot,
+            unequippedInstanceId: oldInstanceId
+          },
+          message: `Item unequipped from ${slot} successfully`
+        });
+      }
+
+    } catch (error) {
+      console.error('Hero equipment error:', error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to manage hero equipment',
+        code: 'HERO_EQUIPMENT_ERROR'
+      });
+    }
+  }
+);
+
 export default router;
