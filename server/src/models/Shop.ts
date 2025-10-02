@@ -4,21 +4,22 @@ import mongoose, { Document, Schema } from "mongoose";
 
 // Objet à vendre dans le shop
 interface IShopItem {
-  itemId: string;           // ID de l'objet de base
-  instanceId: string;       // ID unique de cette offre
-  type: "Item" | "Currency" | "Fragment" | "Hero" | "Chest" | "Bundle";
-  name: string;            // Nom affiché (peut utiliser des labels)
+  itemId: string;           
+  instanceId: string;       
+  type: "Item" | "Currency" | "Fragment" | "Hero" | "Chest" | "Bundle" | "ElementalTicket"; // ✅ AJOUT
+  name: string;            
   description?: string;
   
   // Contenu de l'offre
   content: {
-    itemId?: string;        // Pour les objets normaux
-    heroId?: string;        // Pour les héros/fragments
+    itemId?: string;        
+    heroId?: string;        
     currencyType?: "gold" | "gems" | "paidGems" | "tickets";
+    elementalTicketType?: "fire" | "water" | "wind" | "electric" | "light" | "shadow"; // ✅ NOUVEAU
     quantity: number;
-    level?: number;         // Pour équipement/héros
-    enhancement?: number;   // Pour équipement
-    bundleItems?: Array<{   // Pour les bundles
+    level?: number;         
+    enhancement?: number;   
+    bundleItems?: Array<{   
       type: string;
       itemId?: string;
       quantity: number;
@@ -35,13 +36,13 @@ interface IShopItem {
   
   // Propriétés de vente
   rarity: "Common" | "Rare" | "Epic" | "Legendary" | "Mythic" | "Ascended";
-  originalPrice?: number;  // Prix original (pour les promos)
-  discountPercent?: number; // % de réduction
+  originalPrice?: number;  
+  discountPercent?: number; 
   
   // Limitations
-  maxStock: number;        // -1 = illimité
+  maxStock: number;        
   currentStock: number;
-  maxPurchasePerPlayer: number; // -1 = illimité
+  maxPurchasePerPlayer: number; 
   purchaseHistory: Array<{
     playerId: string;
     quantity: number;
@@ -56,20 +57,21 @@ interface IShopItem {
   // Métadonnées
   isPromotional: boolean;
   promotionalText?: string;
-  isFeatured: boolean;     // Mis en avant
-  weight: number;          // Probabilité d'apparition
-  tags: string[];          // "new", "hot", "limited", etc.
+  isFeatured: boolean;     
+  weight: number;          
+  tags: string[];          
 }
 
-// Types de shops simplifiés
+// Types de shops
 type ShopType = 
-  | "Daily"         // Shop quotidien (reset 24h)
-  | "Weekly"        // Shop hebdomadaire (reset 7j)  
-  | "Monthly"       // Shop mensuel (reset 30j)
-  | "Arena"         // Shop arène
-  | "Clan"          // Shop clan/guilde
-  | "VIP"           // Shop VIP
-  | "Premium";      // Shop premium (€)
+  | "Daily"         
+  | "Weekly"        
+  | "Monthly"       
+  | "Arena"         
+  | "Clan"          
+  | "VIP"           
+  | "Premium"
+  | "ElementalFriday"; // ✅ NOUVEAU
 
 // Document principal du shop
 interface IShopDocument extends Document {
@@ -79,23 +81,23 @@ interface IShopDocument extends Document {
   isActive: boolean;
   
   // Timing
-  startTime?: Date;        // Pour événements/promos
+  startTime?: Date;        
   endTime?: Date;
-  resetTime: Date;         // Dernier reset
-  nextResetTime: Date;     // Prochain reset
+  resetTime: Date;         
+  nextResetTime: Date;     
   resetFrequency: "never" | "daily" | "weekly" | "monthly" | "event";
   
   // Configuration
-  maxItemsShown: number;   // Nombre d'objets affichés
-  refreshCost?: {          // Coût pour actualiser manuellement
+  maxItemsShown: number;   
+  refreshCost?: {          
     gold?: number;
     gems?: number;
   };
-  freeRefreshCount: number; // Nombre d'actualisations gratuites
+  freeRefreshCount: number; 
   
   // Objets
   items: IShopItem[];
-  featuredItems: string[]; // IDs des objets mis en avant
+  featuredItems: string[]; 
   
   // Conditions d'accès
   levelRequirement: number;
@@ -103,7 +105,7 @@ interface IShopDocument extends Document {
   chapterRequirement?: number;
   
   // Métadonnées
-  priority: number;        // Ordre d'affichage
+  priority: number;        
   iconUrl?: string;
   bannerUrl?: string;
   
@@ -117,8 +119,9 @@ interface IShopDocument extends Document {
   getPlayerPurchaseHistory(playerId: string): IShopItem["purchaseHistory"];
   generateDailyItems(): Promise<void>;
   generateWeeklyItems(): Promise<void>;
-  generateMonthlyItems(): Promise<void>; // NOUVEAU
-  generatePremiumItems(): Promise<void>; // NOUVEAU
+  generateMonthlyItems(): Promise<void>;
+  generatePremiumItems(): Promise<void>;
+  generateElementalFridayItems(): Promise<void>; // ✅ NOUVEAU
   applyDiscount(instanceId: string, discountPercent: number): boolean;
   calculateNextResetTime(): void;
   generateItemsForShopType(): Promise<void>;
@@ -135,7 +138,7 @@ const shopItemSchema = new Schema<IShopItem>({
   },
   type: { 
     type: String, 
-    enum: ["Item", "Currency", "Fragment", "Hero", "Chest", "Bundle"],
+    enum: ["Item", "Currency", "Fragment", "Hero", "Chest", "Bundle", "ElementalTicket"], // ✅ MODIFIÉ
     required: true 
   },
   name: { 
@@ -155,6 +158,10 @@ const shopItemSchema = new Schema<IShopItem>({
     currencyType: { 
       type: String,
       enum: ["gold", "gems", "paidGems", "tickets"]
+    },
+    elementalTicketType: { // ✅ NOUVEAU
+      type: String,
+      enum: ["fire", "water", "wind", "electric", "light", "shadow"]
     },
     quantity: { type: Number, required: true, min: 1 },
     level: { type: Number, min: 1 },
@@ -214,7 +221,7 @@ const shopItemSchema = new Schema<IShopItem>({
 const shopSchema = new Schema<IShopDocument>({
   shopType: { 
     type: String, 
-    enum: ["Daily", "Weekly", "Monthly", "Premium"], // CORRIGÉ
+    enum: ["Daily", "Weekly", "Monthly", "Premium", "ElementalFriday"], // ✅ MODIFIÉ
     required: true 
   },
   name: { 
@@ -281,7 +288,6 @@ shopSchema.index({ priority: -1 });
 
 // === MÉTHODES STATIQUES ===
 
-// Obtenir shops actifs pour un joueur
 shopSchema.statics.getActiveShopsForPlayer = async function(playerId: string) {
   const Player = mongoose.model('Player');
   const player = await Player.findById(playerId).select('level vipLevel');
@@ -290,16 +296,13 @@ shopSchema.statics.getActiveShopsForPlayer = async function(playerId: string) {
   
   const now = new Date();
   
-  // Construction du filtre principal
   const filter: any = {
     isActive: true,
     levelRequirement: { $lte: player.level }
   };
   
-  // Conditions temporelles et VIP
   const andConditions: any[] = [];
   
-  // Conditions de temps de début
   andConditions.push({
     $or: [
       { startTime: { $exists: false } },
@@ -307,7 +310,6 @@ shopSchema.statics.getActiveShopsForPlayer = async function(playerId: string) {
     ]
   });
   
-  // Conditions de temps de fin
   andConditions.push({
     $or: [
       { endTime: { $exists: false } },
@@ -315,7 +317,6 @@ shopSchema.statics.getActiveShopsForPlayer = async function(playerId: string) {
     ]
   });
   
-  // Conditions VIP si applicable
   if (player.vipLevel) {
     andConditions.push({
       $or: [
@@ -325,7 +326,6 @@ shopSchema.statics.getActiveShopsForPlayer = async function(playerId: string) {
     });
   }
   
-  // Appliquer toutes les conditions
   if (andConditions.length > 0) {
     filter.$and = andConditions;
   }
@@ -333,7 +333,6 @@ shopSchema.statics.getActiveShopsForPlayer = async function(playerId: string) {
   return this.find(filter).sort({ priority: -1, shopType: 1 });
 };
 
-// Obtenir shops à renouveler
 shopSchema.statics.getShopsToReset = function() {
   return this.find({
     isActive: true,
@@ -342,84 +341,105 @@ shopSchema.statics.getShopsToReset = function() {
   });
 };
 
-// Créer shop prédéfini - CONFIGURATION CORRIGÉE
+// ✅ NOUVEAU : Configuration shop ElementalFriday
 shopSchema.statics.createPredefinedShop = function(shopType: ShopType) {
-const shopConfigs: Record<ShopType, any> = {
-  Daily: {
-    name: "DAILY_SHOP_NAME",
-    resetFrequency: "daily",
-    maxItemsShown: 8,
-    freeRefreshCount: 2,
-    refreshCost: { gems: 50 },
-    priority: 90
-  },
-  Weekly: {
-    name: "WEEKLY_SHOP_NAME",
-    resetFrequency: "weekly", 
-    maxItemsShown: 12,
-    freeRefreshCount: 1,
-    refreshCost: { gems: 100 },
-    priority: 80
-  },
-  Monthly: {
-    name: "MONTHLY_SHOP_NAME",
-    resetFrequency: "monthly",
-    maxItemsShown: 16,
-    freeRefreshCount: 0,
-    refreshCost: { gems: 200 },
-    priority: 85
-  },
-  Arena: {
-    name: "ARENA_SHOP_NAME",
-    resetFrequency: "daily",
-    maxItemsShown: 8,
-    levelRequirement: 10,
-    priority: 70
-  },
-  Clan: {
-    name: "CLAN_SHOP_NAME",
-    resetFrequency: "weekly",
-    maxItemsShown: 6,
-    levelRequirement: 15,
-    priority: 75
-  },
-  VIP: {
-    name: "VIP_SHOP_NAME",
-    resetFrequency: "weekly",
-    maxItemsShown: 10,
-    vipLevelRequirement: 1,
-    priority: 95
-  },
-  Premium: {
-    name: "PREMIUM_SHOP_NAME",
-    resetFrequency: "never",
-    maxItemsShown: 10,
-    freeRefreshCount: 0,
-    priority: 95
-  }
-};
+  const shopConfigs: Record<ShopType, any> = {
+    Daily: {
+      name: "DAILY_SHOP_NAME",
+      resetFrequency: "daily",
+      maxItemsShown: 8,
+      freeRefreshCount: 2,
+      refreshCost: { gems: 50 },
+      priority: 90
+    },
+    Weekly: {
+      name: "WEEKLY_SHOP_NAME",
+      resetFrequency: "weekly", 
+      maxItemsShown: 12,
+      freeRefreshCount: 1,
+      refreshCost: { gems: 100 },
+      priority: 80
+    },
+    Monthly: {
+      name: "MONTHLY_SHOP_NAME",
+      resetFrequency: "monthly",
+      maxItemsShown: 16,
+      freeRefreshCount: 0,
+      refreshCost: { gems: 200 },
+      priority: 85
+    },
+    Arena: {
+      name: "ARENA_SHOP_NAME",
+      resetFrequency: "daily",
+      maxItemsShown: 8,
+      levelRequirement: 10,
+      priority: 70
+    },
+    Clan: {
+      name: "CLAN_SHOP_NAME",
+      resetFrequency: "weekly",
+      maxItemsShown: 6,
+      levelRequirement: 15,
+      priority: 75
+    },
+    VIP: {
+      name: "VIP_SHOP_NAME",
+      resetFrequency: "weekly",
+      maxItemsShown: 10,
+      vipLevelRequirement: 1,
+      priority: 95
+    },
+    Premium: {
+      name: "PREMIUM_SHOP_NAME",
+      resetFrequency: "never",
+      maxItemsShown: 10,
+      freeRefreshCount: 0,
+      priority: 95
+    },
+    // ✅ NOUVEAU : Boutique élémentaire du vendredi
+    ElementalFriday: {
+      name: "ELEMENTAL_FRIDAY_SHOP_NAME",
+      resetFrequency: "weekly", // Reset tous les vendredis
+      maxItemsShown: 5, // 5 offres fixes
+      freeRefreshCount: 0, // Pas de refresh
+      refreshCost: undefined, // Pas de refresh payant
+      priority: 100, // Priorité maximale
+      levelRequirement: 1, // Accessible à tous
+      description: "ELEMENTAL_FRIDAY_SHOP_DESCRIPTION"
+    }
+  };
   
   const config = shopConfigs[shopType];
   const now = new Date();
   let nextReset = new Date(now);
   
-  switch (config.resetFrequency) {
-    case "daily":
-      nextReset.setDate(now.getDate() + 1);
-      nextReset.setHours(0, 0, 0, 0);
-      break;
-    case "weekly":
-      nextReset.setDate(now.getDate() + (7 - now.getDay()));
-      nextReset.setHours(0, 0, 0, 0);
-      break;
-    case "monthly":
-      nextReset.setMonth(now.getMonth() + 1, 1);
-      nextReset.setHours(0, 0, 0, 0);
-      break;
-    case "never":
-    default:
-      nextReset.setFullYear(now.getFullYear() + 1);
-      break;
+  // ✅ LOGIQUE SPÉCIALE pour ElementalFriday
+  if (shopType === "ElementalFriday") {
+    // Calculer le prochain vendredi
+    const dayOfWeek = now.getDay();
+    const daysUntilFriday = (5 - dayOfWeek + 7) % 7 || 7;
+    nextReset.setDate(now.getDate() + daysUntilFriday);
+    nextReset.setHours(0, 0, 0, 0);
+  } else {
+    // Logique normale pour les autres shops
+    switch (config.resetFrequency) {
+      case "daily":
+        nextReset.setDate(now.getDate() + 1);
+        nextReset.setHours(0, 0, 0, 0);
+        break;
+      case "weekly":
+        nextReset.setDate(now.getDate() + (7 - now.getDay()));
+        nextReset.setHours(0, 0, 0, 0);
+        break;
+      case "monthly":
+        nextReset.setMonth(now.getMonth() + 1, 1);
+        nextReset.setHours(0, 0, 0, 0);
+        break;
+      case "never":
+      default:
+        nextReset.setFullYear(now.getFullYear() + 1);
+        break;
+    }
   }
   
   return new this({
@@ -431,26 +451,30 @@ const shopConfigs: Record<ShopType, any> = {
 
 // === MÉTHODES D'INSTANCE ===
 
-// Rafraîchir le shop
 shopSchema.methods.refreshShop = async function(): Promise<IShopDocument> {
-  // Vider les objets actuels
   this.items = [];
-  
-  // Générer nouveaux objets selon le type
   await this.generateItemsForShopType();
-  
-  // Mettre à jour les timestamps
   this.resetTime = new Date();
   this.calculateNextResetTime();
-  
   return await this.save();
 };
 
-// Calculer le prochain reset
+// ✅ MODIFICATION : Calculer le prochain reset (logique spéciale vendredi)
 shopSchema.methods.calculateNextResetTime = function() {
   const now = new Date();
   let nextReset = new Date(now);
   
+  // ✅ LOGIQUE SPÉCIALE pour ElementalFriday
+  if (this.shopType === "ElementalFriday") {
+    const dayOfWeek = now.getDay();
+    const daysUntilFriday = (5 - dayOfWeek + 7) % 7 || 7;
+    nextReset.setDate(now.getDate() + daysUntilFriday);
+    nextReset.setHours(0, 0, 0, 0);
+    this.nextResetTime = nextReset;
+    return;
+  }
+  
+  // Logique normale pour les autres shops
   switch (this.resetFrequency) {
     case "daily":
       nextReset.setDate(now.getDate() + 1);
@@ -474,9 +498,7 @@ shopSchema.methods.calculateNextResetTime = function() {
   this.nextResetTime = nextReset;
 };
 
-// Générer objets selon le type de shop
 shopSchema.methods.generateItemsForShopType = async function() {
-  // Logique de génération selon le type de shop
   switch (this.shopType) {
     case "Daily":
       await this.generateDailyItems();
@@ -490,12 +512,107 @@ shopSchema.methods.generateItemsForShopType = async function() {
     case "Premium":
       await this.generatePremiumItems();
       break;
+    case "ElementalFriday": // ✅ NOUVEAU
+      await this.generateElementalFridayItems();
+      break;
     default:
       await this.generateDefaultItems();
   }
 };
 
-// Générer objets quotidiens
+// ✅ NOUVELLE MÉTHODE : Générer les 5 offres du vendredi
+shopSchema.methods.generateElementalFridayItems = async function() {
+  console.log("🛒 Génération des offres ElementalFriday...");
+  
+  // Les 5 offres fixes avec prix et quantités croissantes
+  const fridayOffers = [
+    {
+      name: "ELEMENTAL_FRIDAY_OFFER_1_NAME", // "Pack Découverte"
+      description: "ELEMENTAL_FRIDAY_OFFER_1_DESC",
+      ticketQuantity: 5,
+      gems: 500,
+      discount: 10,
+      rarity: "Common" as const,
+      tags: ["starter", "value"]
+    },
+    {
+      name: "ELEMENTAL_FRIDAY_OFFER_2_NAME", // "Pack Explorateur"
+      description: "ELEMENTAL_FRIDAY_OFFER_2_DESC",
+      ticketQuantity: 12,
+      gems: 1000,
+      discount: 15,
+      rarity: "Rare" as const,
+      tags: ["popular", "value"]
+    },
+    {
+      name: "ELEMENTAL_FRIDAY_OFFER_3_NAME", // "Pack Aventurier"
+      description: "ELEMENTAL_FRIDAY_OFFER_3_DESC",
+      ticketQuantity: 25,
+      gems: 1800,
+      discount: 20,
+      rarity: "Epic" as const,
+      tags: ["bestseller", "value"],
+      isFeatured: true
+    },
+    {
+      name: "ELEMENTAL_FRIDAY_OFFER_4_NAME", // "Pack Héros"
+      description: "ELEMENTAL_FRIDAY_OFFER_4_DESC",
+      ticketQuantity: 50,
+      gems: 3200,
+      discount: 25,
+      rarity: "Legendary" as const,
+      tags: ["premium", "whale"]
+    },
+    {
+      name: "ELEMENTAL_FRIDAY_OFFER_5_NAME", // "Pack Légende"
+      description: "ELEMENTAL_FRIDAY_OFFER_5_DESC",
+      ticketQuantity: 100,
+      gems: 5500,
+      discount: 30,
+      rarity: "Mythic" as const,
+      tags: ["ultimate", "whale", "limited"],
+      isFeatured: true,
+      isPromotional: true,
+      promotionalText: "ELEMENTAL_FRIDAY_BEST_VALUE"
+    }
+  ];
+
+  // Créer les 5 offres
+  for (const offer of fridayOffers) {
+    // Calculer prix original (pour afficher la remise)
+    const basePrice = offer.ticketQuantity * 150; // 150 gems par ticket de base
+    const originalPrice = Math.round(basePrice);
+    const finalPrice = Math.round(originalPrice * (100 - offer.discount) / 100);
+
+    this.addItem({
+      itemId: `elemental_ticket_pack_${offer.ticketQuantity}`,
+      type: "ElementalTicket",
+      name: offer.name,
+      description: offer.description,
+      content: {
+        elementalTicketType: "fire", // Élément aléatoire, peut être changé
+        quantity: offer.ticketQuantity
+      },
+      cost: {
+        gems: finalPrice
+      },
+      rarity: offer.rarity,
+      originalPrice: originalPrice,
+      discountPercent: offer.discount,
+      maxStock: -1, // Stock illimité
+      maxPurchasePerPlayer: 3, // 3 achats max par pack
+      levelRequirement: 1,
+      isPromotional: offer.isPromotional || false,
+      promotionalText: offer.promotionalText,
+      isFeatured: offer.isFeatured || false,
+      weight: 100,
+      tags: offer.tags
+    });
+  }
+
+  console.log(`✅ ${fridayOffers.length} offres ElementalFriday générées`);
+};
+
 shopSchema.methods.generateDailyItems = async function() {
   const Item = mongoose.model('Item');
   const items = await Item.find({ category: "Consumable" }).limit(15);
@@ -514,7 +631,6 @@ shopSchema.methods.generateDailyItems = async function() {
   }
 };
 
-// Générer objets hebdomadaires
 shopSchema.methods.generateWeeklyItems = async function() {
   const Item = mongoose.model('Item');
   const items = await Item.find({ rarity: { $in: ["Rare", "Epic"] } }).limit(20);
@@ -534,7 +650,6 @@ shopSchema.methods.generateWeeklyItems = async function() {
   }
 };
 
-// Générer objets mensuels - NOUVEAU
 shopSchema.methods.generateMonthlyItems = async function() {
   const Item = mongoose.model('Item');
   const items = await Item.find({ rarity: { $in: ["Epic", "Legendary"] } }).limit(25);
@@ -556,7 +671,6 @@ shopSchema.methods.generateMonthlyItems = async function() {
   }
 };
 
-// Générer objets premium - NOUVEAU
 shopSchema.methods.generatePremiumItems = async function() {
   const Item = mongoose.model('Item');
   const items = await Item.find({ rarity: "Legendary" }).limit(15);
@@ -573,10 +687,10 @@ shopSchema.methods.generatePremiumItems = async function() {
           { type: "Currency", itemId: "gold", quantity: 10000 }
         ]
       },
-      cost: { paidGems: 999 }, // Prix en euros via paidGems
+      cost: { paidGems: 999 },
       rarity: "Legendary",
-      maxStock: -1, // Illimité
-      maxPurchasePerPlayer: 5, // Limité par joueur
+      maxStock: -1,
+      maxPurchasePerPlayer: 5,
       weight: 100,
       isFeatured: true,
       tags: ["premium", "value", "limited"]
@@ -584,7 +698,6 @@ shopSchema.methods.generatePremiumItems = async function() {
   }
 };
 
-// Générer objets par défaut
 shopSchema.methods.generateDefaultItems = async function() {
   const Item = mongoose.model('Item');
   const items = await Item.find().limit(10);
@@ -603,7 +716,6 @@ shopSchema.methods.generateDefaultItems = async function() {
   }
 };
 
-// Ajouter un objet - CORRECTION TYPAGE
 shopSchema.methods.addItem = function(itemData: Partial<IShopItem>): typeof this {
   const newItem: IShopItem = {
     itemId: itemData.itemId || "",
@@ -631,32 +743,27 @@ shopSchema.methods.addItem = function(itemData: Partial<IShopItem>): typeof this
   };
   
   this.items.push(newItem);
-  return this; // Retourner le document Shop
+  return this;
 };
 
-// Supprimer un objet
 shopSchema.methods.removeItem = function(instanceId: string): boolean {
   const initialLength = this.items.length;
   this.items = this.items.filter((item: IShopItem) => item.instanceId !== instanceId);
   return this.items.length < initialLength;
 };
 
-// Vérifier l'accès du joueur
 shopSchema.methods.canPlayerAccess = async function(playerId: string): Promise<boolean> {
   const Player = mongoose.model('Player');
   const player = await Player.findById(playerId).select('level vipLevel');
   
   if (!player) return false;
   
-  // Vérifier le niveau requis
   if (player.level < this.levelRequirement) return false;
   
-  // Vérifier le niveau VIP si requis
   if (this.vipLevelRequirement && (!player.vipLevel || player.vipLevel < this.vipLevelRequirement)) {
     return false;
   }
   
-  // Vérifier les dates si applicables
   const now = new Date();
   if (this.startTime && now < this.startTime) return false;
   if (this.endTime && now > this.endTime) return false;
@@ -664,19 +771,16 @@ shopSchema.methods.canPlayerAccess = async function(playerId: string): Promise<b
   return true;
 };
 
-// Vérifier si joueur peut acheter
 shopSchema.methods.canPlayerPurchase = async function(instanceId: string, playerId: string) {
   const item = this.items.find((item: IShopItem) => item.instanceId === instanceId);
   if (!item) {
     return { canPurchase: false, reason: "ITEM_NOT_FOUND" };
   }
   
-  // Vérifier le stock
   if (item.maxStock !== -1 && item.currentStock <= 0) {
     return { canPurchase: false, reason: "OUT_OF_STOCK" };
   }
   
-  // Vérifier les achats par joueur - CORRECTION TYPAGE
   if (item.maxPurchasePerPlayer !== -1) {
     const playerPurchases = item.purchaseHistory
       .filter((p: { playerId: string; quantity: number; purchaseDate: Date }) => p.playerId === playerId)
@@ -690,7 +794,6 @@ shopSchema.methods.canPlayerPurchase = async function(instanceId: string, player
   return { canPurchase: true };
 };
 
-// Obtenir l'historique d'achat d'un joueur
 shopSchema.methods.getPlayerPurchaseHistory = function(playerId: string) {
   const history: any[] = [];
   
@@ -709,7 +812,6 @@ shopSchema.methods.getPlayerPurchaseHistory = function(playerId: string) {
   return history.sort((a, b) => b.purchaseDate.getTime() - a.purchaseDate.getTime());
 };
 
-// Appliquer une remise
 shopSchema.methods.applyDiscount = function(instanceId: string, discountPercent: number): boolean {
   const item = this.items.find((item: IShopItem) => item.instanceId === instanceId);
   if (!item) return false;
