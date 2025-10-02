@@ -485,6 +485,12 @@ async viewCharacterHeroes(playerId, serverId) {
             return;
         }
 
+        console.log('📊 Character data:', character);
+        console.log('📊 Heroes data:', character.heroes);
+        console.log('📊 Full selectedPlayer:', this.selectedPlayer);
+
+        // 🔍 DEBUG : Afficher dans une alerte
+        AdminCore.showAlert(`Heroes structure: ${JSON.stringify(character.heroes)}`, 'info', 10000);
         // Vérifier si le personnage a des héros
         if (!character.heroes || !character.heroes.list || character.heroes.list.length === 0) {
             AdminCore.showAlert('This character has no heroes yet', 'warning');
