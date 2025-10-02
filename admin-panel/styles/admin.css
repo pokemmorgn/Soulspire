@@ -1530,3 +1530,478 @@ input[type="range"]::-moz-range-thumb {
     padding: 6px 12px;
     font-size: 13px;
 }
+/* ===== HEROES MODULE STYLES ===== */
+
+/* Hero Edit Tabs */
+.hero-edit-tabs {
+    display: flex;
+    gap: 5px;
+    margin: 20px 0;
+    border-bottom: 2px solid #e9ecef;
+}
+
+.hero-tab {
+    padding: 12px 20px;
+    background: #f8f9fa;
+    border: none;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.hero-tab.active {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+}
+
+.hero-tab:hover:not(.active) {
+    background: #e9ecef;
+}
+
+/* Hero Tab Content */
+.hero-tab-content {
+    display: none;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 0 0 10px 10px;
+}
+
+.hero-tab-content.active {
+    display: block;
+}
+
+/* Hero Header Info */
+.hero-header-info {
+    display: flex;
+    gap: 20px;
+    padding: 20px;
+    background: white;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    border: 2px solid #e9ecef;
+}
+
+.hero-avatar-large {
+    width: 120px;
+    height: 120px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border-radius: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.hero-element-badge {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    background: white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.hero-element-badge.fire { background: linear-gradient(135deg, #ff6b6b, #ff3838); }
+.hero-element-badge.water { background: linear-gradient(135deg, #4dabf7, #1971c2); }
+.hero-element-badge.wind { background: linear-gradient(135deg, #51cf66, #2f9e44); }
+.hero-element-badge.electric { background: linear-gradient(135deg, #ffd43b, #fab005); }
+.hero-element-badge.light { background: linear-gradient(135deg, #ffe066, #ffd43b); }
+.hero-element-badge.dark { background: linear-gradient(135deg, #9775fa, #6741d9); }
+
+.hero-rarity-badge {
+    position: absolute;
+    bottom: 5px;
+    left: 5px;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+    background: white;
+    color: #333;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.hero-rarity-badge.common { background: #adb5bd; color: white; }
+.hero-rarity-badge.rare { background: #339af0; color: white; }
+.hero-rarity-badge.epic { background: #9775fa; color: white; }
+.hero-rarity-badge.legendary { background: #ffd43b; color: #333; }
+.hero-rarity-badge.mythic { background: linear-gradient(135deg, #ff6b6b, #f03e3e); color: white; }
+
+.hero-details {
+    flex: 1;
+}
+
+.hero-details h3 {
+    margin: 0 0 10px 0;
+    color: #333;
+    font-size: 24px;
+}
+
+.hero-role,
+.hero-element {
+    font-size: 14px;
+    color: #666;
+    margin: 5px 0;
+}
+
+.hero-current-stats {
+    display: flex;
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.hero-current-stats span {
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    font-size: 13px;
+}
+
+/* Stars Visual */
+.stars-visual {
+    margin: 10px 0;
+}
+
+.stars-display {
+    font-size: 24px;
+    letter-spacing: 5px;
+}
+
+/* Stats Preview */
+.stats-preview {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    margin: 20px 0;
+    border: 2px solid #667eea;
+}
+
+.stats-preview h4 {
+    margin-bottom: 15px;
+    color: #495057;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+}
+
+.stat-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.stat-icon {
+    font-size: 20px;
+}
+
+.stat-name {
+    font-size: 12px;
+    color: #6c757d;
+    flex: 1;
+}
+
+.stat-value {
+    font-weight: 600;
+    color: #333;
+}
+
+/* Equipment Slots Grid */
+.equipment-slots-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.equipment-slot {
+    background: white;
+    border-radius: 10px;
+    padding: 15px;
+    border: 2px solid #e9ecef;
+    transition: all 0.3s ease;
+}
+
+.equipment-slot.equipped {
+    border-color: #28a745;
+    background: #f0fff4;
+}
+
+.equipment-slot.empty {
+    border-color: #e9ecef;
+}
+
+.equipment-slot:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.slot-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.slot-icon {
+    font-size: 24px;
+}
+
+.slot-name {
+    font-weight: 600;
+    color: #333;
+}
+
+.slot-content {
+    min-height: 60px;
+}
+
+.empty-slot-text {
+    color: #999;
+    font-style: italic;
+    text-align: center;
+    margin: 10px 0;
+}
+
+.equipped-item {
+    background: #f8f9fa;
+    padding: 10px;
+    border-radius: 6px;
+}
+
+.equipped-item p {
+    margin: 5px 0;
+    font-size: 12px;
+    color: #666;
+}
+
+/* Spells List */
+.spells-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.spell-item {
+    background: white;
+    border: 2px solid #e9ecef;
+    border-radius: 10px;
+    padding: 15px;
+    transition: all 0.3s ease;
+}
+
+.spell-item:hover {
+    border-color: #667eea;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
+}
+
+.spell-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.spell-slot {
+    background: #667eea;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.spell-id {
+    font-weight: 600;
+    color: #333;
+}
+
+.spell-details {
+    display: flex;
+    gap: 15px;
+    font-size: 14px;
+    color: #666;
+}
+
+.spell-level,
+.spell-max-level {
+    background: #f8f9fa;
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+/* Danger Zone */
+.danger-zone-section {
+    padding: 20px;
+}
+
+.danger-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.danger-action-card {
+    background: #fff3cd;
+    border: 2px solid #ffc107;
+    border-radius: 10px;
+    padding: 20px;
+}
+
+.danger-action-card.critical {
+    background: #f8d7da;
+    border-color: #dc3545;
+}
+
+.danger-action-card h5 {
+    margin: 0 0 10px 0;
+    color: #333;
+}
+
+.danger-action-card p {
+    margin: 0 0 15px 0;
+    color: #666;
+}
+
+/* Heroes Grid */
+.heroes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.hero-card {
+    background: white;
+    border: 2px solid #e9ecef;
+    border-radius: 10px;
+    padding: 15px;
+    transition: all 0.3s ease;
+}
+
+.hero-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    border-color: #667eea;
+}
+
+.hero-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.hero-card-header h4 {
+    margin: 0;
+    color: #333;
+    font-size: 16px;
+}
+
+.hero-card-body {
+    margin-bottom: 10px;
+}
+
+.hero-info {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+    font-size: 14px;
+    color: #666;
+}
+
+.hero-stats-mini {
+    display: flex;
+    gap: 10px;
+    font-size: 13px;
+    color: #666;
+}
+
+.hero-stats-mini span {
+    background: #f8f9fa;
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+.hero-card-actions {
+    display: flex;
+    gap: 5px;
+    justify-content: flex-end;
+}
+
+/* Delete Hero Modal */
+.delete-hero-form .alert.danger {
+    background: #f8d7da;
+    border: 2px solid #dc3545;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.hero-delete-preview {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.hero-info-compact {
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.hero-info-compact p {
+    margin: 5px 0;
+    font-size: 14px;
+}
+
+/* Responsive Heroes */
+@media (max-width: 768px) {
+    .hero-header-info {
+        flex-direction: column;
+    }
+
+    .hero-avatar-large {
+        width: 100%;
+        height: 100px;
+    }
+
+    .equipment-slots-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .heroes-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .hero-edit-tabs {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+    }
+
+    .hero-tab {
+        white-space: nowrap;
+        padding: 10px 15px;
+        font-size: 14px;
+    }
+}
