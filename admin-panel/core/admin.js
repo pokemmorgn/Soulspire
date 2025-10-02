@@ -49,7 +49,6 @@ class AdminCore {
             const data = await response.json();
             
             if (!response.ok) {
-                // Si token expiré, déconnecter automatiquement
                 if (response.status === 401 || response.status === 403) {
                     this.logout();
                     throw new Error('Session expired. Please login again.');
@@ -70,7 +69,6 @@ class AdminCore {
     showAlert(message, type = 'info', duration = 5000) {
         let alertContainer = document.getElementById('globalAlert');
         
-        // Créer le container s'il n'existe pas
         if (!alertContainer) {
             alertContainer = document.createElement('div');
             alertContainer.id = 'globalAlert';
@@ -152,7 +150,6 @@ class AdminCore {
      */
     async logout() {
         try {
-            // Tenter de faire un logout propre sur le serveur
             if (this.token) {
                 await this.makeRequest('/api/admin/auth/logout', { method: 'POST' });
             }
@@ -160,7 +157,6 @@ class AdminCore {
             console.warn('Logout request failed:', error);
         }
         
-        // Nettoyer le côté client
         localStorage.removeItem('adminToken');
         this.token = null;
         this.adminUser = null;
@@ -169,11 +165,9 @@ class AdminCore {
             clearInterval(this.refreshInterval);
         }
         
-        // Réinitialiser l'interface
         document.getElementById('loginSection').style.display = 'block';
         document.getElementById('dashboardSection').style.display = 'none';
         
-        // Reset form
         document.getElementById('username').value = 'superadmin';
         document.getElementById('password').value = 'ChangeMe123!';
         
@@ -201,13 +195,8 @@ class AdminCore {
         try {
             console.log('📊 Loading dashboard data...');
             
-            // Charger les stats rapides
             await this.loadQuickStats();
-            
-            // Charger les données d'aperçu
             await this.loadOverviewData();
-            
-            // Démarrer l'actualisation automatique
             this.startAutoRefresh();
             
             console.log('✅ Dashboard data loaded');
@@ -232,13 +221,11 @@ class AdminCore {
             const health = data.systemHealth;
             healthElement.textContent = this.capitalizeFirst(health || 'Unknown');
             
-            // Mettre à jour la classe CSS selon la santé
             const healthCard = document.getElementById('healthCard');
             healthCard.className = `stat-card health-card health-${health || 'unknown'}`;
             
         } catch (error) {
             console.error('Quick stats error:', error);
-            // Ne pas afficher d'erreur pour les stats, juste logger
         }
     }
 
@@ -263,6 +250,11 @@ class AdminCore {
      * Rendu du contenu d'aperçu
      */
     renderOverviewContent(data) {
+        const overview = data.data?.overview || {};
+        const economy = data.data?.economy || {};
+        const players = data.data?.players || {};
+        const alerts = data.data?.alerts || [];
+
         return `
             <div class="overview-grid">
                 <div class="overview-card">
@@ -270,23 +262,23 @@ class AdminCore {
                     <div class="metrics-list">
                         <div class="metric">
                             <span class="metric-label">Uptime:</span>
-                            <span class="metric-value">${this.formatUptime(data.overview.uptime)}</span>
+                            <span class="metric-value">${this.formatUptime(overview.uptime || 0)}</span>
                         </div>
                         <div class="metric">
                             <span class="metric-label">Total Players:</span>
-                            <span class="metric-value">${this.formatNumber(data.overview.totalPlayers)}</span>
+                            <span class="metric-value">${this.formatNumber(overview.totalPlayers || 0)}</span>
                         </div>
                         <div class="metric">
                             <span class="metric-label">Active (24h):</span>
-                            <span class="metric-value">${this.formatNumber(data.overview.activePlayers24h)}</span>
+                            <span class="metric-value">${this.formatNumber(overview.activePlayers24h || 0)}</span>
                         </div>
                         <div class="metric">
                             <span class="metric-label">New Players (24h):</span>
-                            <span class="metric-value">${this.formatNumber(data.overview.newPlayers24h)}</span>
+                            <span class="metric-value">${this.formatNumber(overview.newPlayers24h || 0)}</span>
                         </div>
                         <div class="metric">
                             <span class="metric-label">Error Rate:</span>
-                            <span class="metric-value ${data.overview.errorRate > 5 ? 'error' : 'success'}">${data.overview.errorRate.toFixed(2)}%</span>
+                            <span class="metric-value ${(overview.errorRate || 0) > 5 ? 'error' : 'success'}">${(overview.errorRate || 0).toFixed(2)}%</span>
                         </div>
                     </div>
                 </div>
@@ -296,23 +288,23 @@ class AdminCore {
                     <div class="metrics-list">
                         <div class="metric">
                             <span class="metric-label">Total Revenue:</span>
-                            <span class="metric-value">$${this.formatMoney(data.economy.revenue.total)}</span>
+                            <span class="metric-value">$${this.formatMoney(economy.revenue?.total || 0)}</span>
                         </div>
                         <div class="metric">
                             <span class="metric-label">Daily Revenue:</span>
-                            <span class="metric-value">$${this.formatMoney(data.economy.revenue.daily)}</span>
+                            <span class="metric-value">$${this.formatMoney(economy.revenue?.daily || 0)}</span>
                         </div>
                         <div class="metric">
                             <span class="metric-label">Paying Users:</span>
-                            <span class="metric-value">${this.formatNumber(data.economy.conversion.payingUsers)}</span>
+                            <span class="metric-value">${this.formatNumber(economy.conversion?.payingUsers || 0)}</span>
                         </div>
                         <div class="metric">
                             <span class="metric-label">Conversion Rate:</span>
-                            <span class="metric-value">${data.economy.conversion.conversionRate.toFixed(2)}%</span>
+                            <span class="metric-value">${(economy.conversion?.conversionRate || 0).toFixed(2)}%</span>
                         </div>
                         <div class="metric">
                             <span class="metric-label">ARPU:</span>
-                            <span class="metric-value">$${data.economy.conversion.averageRevenuePerUser.toFixed(2)}</span>
+                            <span class="metric-value">$${(economy.conversion?.averageRevenuePerUser || 0).toFixed(2)}</span>
                         </div>
                     </div>
                 </div>
@@ -322,23 +314,23 @@ class AdminCore {
                     <div class="metrics-list">
                         <div class="metric">
                             <span class="metric-label">Day 1:</span>
-                            <span class="metric-value retention-${this.getRetentionClass(data.players.retention.day1)}">${data.players.retention.day1.toFixed(1)}%</span>
+                            <span class="metric-value retention-${this.getRetentionClass(players.retention?.day1 || 0)}">${(players.retention?.day1 || 0).toFixed(1)}%</span>
                         </div>
                         <div class="metric">
                             <span class="metric-label">Day 7:</span>
-                            <span class="metric-value retention-${this.getRetentionClass(data.players.retention.day7)}">${data.players.retention.day7.toFixed(1)}%</span>
+                            <span class="metric-value retention-${this.getRetentionClass(players.retention?.day7 || 0)}">${(players.retention?.day7 || 0).toFixed(1)}%</span>
                         </div>
                         <div class="metric">
                             <span class="metric-label">Day 30:</span>
-                            <span class="metric-value retention-${this.getRetentionClass(data.players.retention.day30)}">${data.players.retention.day30.toFixed(1)}%</span>
+                            <span class="metric-value retention-${this.getRetentionClass(players.retention?.day30 || 0)}">${(players.retention?.day30 || 0).toFixed(1)}%</span>
                         </div>
                         <div class="metric">
                             <span class="metric-label">Avg Level:</span>
-                            <span class="metric-value">${data.players.progression.averageLevel.toFixed(1)}</span>
+                            <span class="metric-value">${(players.progression?.averageLevel || 0).toFixed(1)}</span>
                         </div>
                         <div class="metric">
                             <span class="metric-label">Avg Playtime:</span>
-                            <span class="metric-value">${this.formatNumber(data.players.engagement.averagePlaytime)} min</span>
+                            <span class="metric-value">${this.formatNumber(players.engagement?.averagePlaytime || 0)} min</span>
                         </div>
                     </div>
                 </div>
@@ -346,9 +338,9 @@ class AdminCore {
                 <div class="overview-card">
                     <h3>🚨 System Alerts</h3>
                     <div class="alerts-list">
-                        ${data.alerts.length === 0 
+                        ${alerts.length === 0 
                             ? '<div class="no-alerts">✅ No active alerts</div>' 
-                            : data.alerts.slice(0, 5).map(alert => `
+                            : alerts.slice(0, 5).map(alert => `
                                 <div class="alert-item alert-${alert.severity}">
                                     <span class="alert-type">${alert.type}</span>
                                     <span class="alert-message">${alert.message}</span>
@@ -365,7 +357,6 @@ class AdminCore {
      * Afficher une section spécifique
      */
     showSection(sectionName) {
-        // Sauvegarder la section actuelle
         this.currentSection = sectionName;
         
         // Masquer toutes les sections
@@ -380,7 +371,7 @@ class AdminCore {
         
         // Afficher la section sélectionnée et activer l'onglet
         const sectionElement = document.getElementById(sectionName + 'Section');
-        const tabElement = document.querySelector(`.nav-tab[onclick*="${sectionName}"]`);
+        const tabElement = document.querySelector(`.nav-tab[data-section="${sectionName}"]`);
         
         if (sectionElement) sectionElement.classList.add('active');
         if (tabElement) tabElement.classList.add('active');
@@ -395,12 +386,11 @@ class AdminCore {
     loadSectionData(sectionName) {
         switch(sectionName) {
             case 'players':
-                // Utiliser le module PlayersModule si disponible
                 if (window.PlayersModule && typeof PlayersModule.loadData === 'function') {
                     console.log('📋 Loading players data via PlayersModule...');
                     PlayersModule.loadData();
                 } else {
-                    console.warn('PlayersModule not available, showing placeholder');
+                    console.warn('PlayersModule not available');
                     this.showPlaceholder('playersContent', 'Players', '👥');
                 }
                 break;
@@ -414,7 +404,6 @@ class AdminCore {
                 this.loadSystemInfo();
                 break;
             case 'overview':
-                // Recharger les données d'aperçu si nécessaire
                 this.loadOverviewData();
                 break;
         }
@@ -434,11 +423,11 @@ class AdminCore {
                     <div class="info-card">
                         <h3>🖥️ Server Status</h3>
                         <table class="info-table">
-                            <tr><td>Uptime</td><td>${this.formatUptime(data.uptime)}</td></tr>
-                            <tr><td>Memory Usage</td><td>${(data.system.memory.heapUsed / 1024 / 1024).toFixed(2)} MB</td></tr>
-                            <tr><td>Memory Total</td><td>${(data.system.memory.heapTotal / 1024 / 1024).toFixed(2)} MB</td></tr>
-                            <tr><td>Node.js Version</td><td>${data.system.nodeVersion}</td></tr>
-                            <tr><td>Platform</td><td>${this.capitalizeFirst(data.system.platform)}</td></tr>
+                            <tr><td>Uptime</td><td>${this.formatUptime(data.uptime || 0)}</td></tr>
+                            <tr><td>Memory Usage</td><td>${((data.system?.memory?.heapUsed || 0) / 1024 / 1024).toFixed(2)} MB</td></tr>
+                            <tr><td>Memory Total</td><td>${((data.system?.memory?.heapTotal || 0) / 1024 / 1024).toFixed(2)} MB</td></tr>
+                            <tr><td>Node.js Version</td><td>${data.system?.nodeVersion || 'N/A'}</td></tr>
+                            <tr><td>Platform</td><td>${this.capitalizeFirst(data.system?.platform || 'unknown')}</td></tr>
                         </table>
                     </div>
                 </div>
@@ -459,7 +448,6 @@ class AdminCore {
                     <div class="placeholder-icon">${icon}</div>
                     <h3>🚧 ${moduleName} Module</h3>
                     <p>This module is coming soon...</p>
-                    <p class="placeholder-hint">This will include comprehensive ${moduleName.toLowerCase()} management tools.</p>
                 </div>
             `;
         }
@@ -476,11 +464,10 @@ class AdminCore {
         this.refreshInterval = setInterval(() => {
             this.loadQuickStats();
             
-            // Actualiser aussi les données de la section active
             if (this.currentSection === 'overview') {
                 this.loadOverviewData();
             }
-        }, 30000); // 30 secondes
+        }, 30000);
     }
 
     // === UTILITAIRES DE FORMATAGE ===
