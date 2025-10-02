@@ -115,6 +115,7 @@ const auditLogSchema = new Schema<IAuditLogDocument>({
       'player.add_currency', 'player.remove_currency', 'player.add_hero',
       'player.remove_hero', 'player.modify_progress', 'player.reset_account',
       'player.delete_account',
+      'player.modify_vip', 
       // Économie
       'economy.view_transactions', 'economy.modify_shop', 'economy.create_promo_code',
       'economy.disable_promo_code',
