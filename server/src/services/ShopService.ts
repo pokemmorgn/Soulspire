@@ -359,78 +359,116 @@ export class ShopService {
     }
   }
 
-  // === PROCESSUS AUTOMATIQUE DE RESET DES BOUTIQUES ===
-  public static async processShopResets(): Promise<ShopResetResult> {
-    try {
-      console.log("⏰ Vérification des boutiques à renouveler...");
+// === PROCESSUS AUTOMATIQUE DE RESET DES BOUTIQUES ===
+public static async processShopResets(): Promise<ShopResetResult> {
+  try {
+    console.log("⏰ Vérification des boutiques à renouveler...");
 
-      const shopsToReset = await (Shop as any).getShopsToReset();
-      const resetResults = [];
+    const shopsToReset = await (Shop as any).getShopsToReset();
+    const resetResults = [];
 
-      for (const shop of shopsToReset) {
-        const oldItemCount = shop.items.length;
-        
-        try {
-          switch (shop.shopType) {
-            case "Daily":
-              await this.resetShopWithGenerator(shop, "Daily");
-              break;
-            case "Weekly":
-              await this.resetShopWithGenerator(shop, "Weekly");
-              break;
-            case "Monthly":
-              await this.resetShopWithGenerator(shop, "Monthly");
-              break;
-            case "ElementalFriday": // ✅ NOUVEAU
-              await shop.refreshShop(); // Utilise generateElementalFridayItems() du modèle
-              break;
-            default:
-              await shop.refreshShop();
-              break;
-          }
-        } catch (error) {
-          console.error(`❌ Erreur reset ${shop.shopType}:`, error);
-          await shop.refreshShop();
+    for (const shop of shopsToReset) {
+      const oldItemCount = shop.items.length;
+      
+      try {
+        switch (shop.shopType) {
+          case "Daily":
+            await this.resetShopWithGenerator(shop, "Daily");
+            break;
+          case "Weekly":
+            await this.resetShopWithGenerator(shop, "Weekly");
+            break;
+          case "Monthly":
+            await this.resetShopWithGenerator(shop, "Monthly");
+            break;
+          case "ElementalFriday": // ✅ NOUVEAU
+            await shop.refreshShop(); // Utilise generateElementalFridayItems() du modèle
+            break;
+          default:
+            await shop.refreshShop();
+            break;
         }
-        
-        resetResults.push({
+      } catch (error) {
+        console.error(`❌ Erreur reset ${shop.shopType}:`, error);
+        await shop.refreshShop();
+      }
+      
+      resetResults.push({
+        shopType: shop.shopType,
+        name: shop.name,
+        oldItemsCount: oldItemCount,
+        newItemsCount: shop.items.length,
+        resetTime: new Date()
+      });
+
+      console.log(`🔄 Boutique ${shop.shopType} renouvelée: ${shop.items.length} nouveaux objets`);
+      
+      // ✅ NOTIFICATION WEBSOCKET GLOBALE
+      try {
+        WebSocketService.notifyGlobalShopReset({
           shopType: shop.shopType,
-          name: shop.name,
-          oldItemsCount: oldItemCount,
+          shopName: shop.name,
           newItemsCount: shop.items.length,
           resetTime: new Date()
         });
+      } catch (error) {
+        console.warn("⚠️ Failed to notify shop reset:", error);
+      }
 
-        console.log(`🔄 Boutique ${shop.shopType} renouvelée: ${shop.items.length} nouveaux objets`);
-        
+      // ✅ NOTIFICATION SPÉCIALE POUR ELEMENTAL FRIDAY (TOUS LES SERVEURS ACTIFS)
+      if (shop.shopType === "ElementalFriday") {
         try {
-          WebSocketService.notifyGlobalShopReset({
-            shopType: shop.shopType,
-            shopName: shop.name,
-            newItemsCount: shop.items.length,
-            resetTime: new Date()
-          });
-        } catch (error) {
-          console.warn("⚠️ Failed to notify shop reset:", error);
+          // ✅ Récupérer dynamiquement tous les serveurs actifs
+          const { GameServer } = await import('../models/Server');
+          const activeServers = await GameServer.find({ 
+            status: { $in: ["online", "maintenance"] } 
+          }).select('serverId');
+          
+          const serverIds = activeServers.map(s => s.serverId);
+          
+          console.log(`🌍 Envoi notification ElementalFriday à ${serverIds.length} serveur(s): ${serverIds.join(', ')}`);
+          
+          for (const serverId of serverIds) {
+            WebSocketService.broadcastToServer(serverId, 'shop:friday_opened', {
+              message: "ELEMENTAL_FRIDAY_SHOP_OPENED",
+              shopType: "ElementalFriday",
+              offers: shop.items.map((item: any) => ({
+                name: item.name,
+                tickets: item.content.quantity,
+                gems: item.cost.gems,
+                originalPrice: item.originalPrice,
+                discount: item.discountPercent,
+                rarity: item.rarity,
+                isFeatured: item.isFeatured
+              })),
+              expiresIn: 24 * 60 * 60 * 1000, // 24h en ms
+              nextReset: shop.nextResetTime,
+              priority: 'high'
+            });
+          }
+          
+          console.log(`✅ Notification boutique ElementalFriday envoyée à tous les serveurs actifs`);
+        } catch (wsError) {
+          console.warn("⚠️ Failed to notify Friday shop opening:", wsError);
         }
       }
-
-      if (resetResults.length > 0) {
-        console.log(`✅ ${resetResults.length} boutiques renouvelées automatiquement`);
-      }
-
-      return {
-        success: true,
-        resetShops: resetResults,
-        totalReset: resetResults.length
-      };
-
-    } catch (error: any) {
-      console.error("❌ Erreur processShopResets:", error);
-      throw error;
     }
-  }
 
+    if (resetResults.length > 0) {
+      console.log(`✅ ${resetResults.length} boutiques renouvelées automatiquement`);
+    }
+
+    return {
+      success: true,
+      resetShops: resetResults,
+      totalReset: resetResults.length
+    };
+
+  } catch (error: any) {
+    console.error("❌ Erreur processShopResets:", error);
+    throw error;
+  }
+}
   // === RESET D'UN SHOP AVEC ITEMGENERATOR ===
   private static async resetShopWithGenerator(shop: any, shopType: "Daily" | "Weekly" | "Monthly" | "ElementalFriday") {
     console.log(`🎲 Reset ${shopType} shop avec ItemGenerator...`);
