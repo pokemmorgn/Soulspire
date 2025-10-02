@@ -115,6 +115,11 @@ router.get("/:shopType", authMiddleware, async (req: Request, res: Response): Pr
         error: "Access denied to this shop",
         code: "SHOP_ACCESS_DENIED"
       });
+    } else if (error.message === "This shop is not available today") { // ✅ NOUVEAU
+      res.status(403).json({
+        error: "This shop is not available today",
+        code: "SHOP_NOT_AVAILABLE_TODAY"
+      });
     } else {
       res.status(500).json({
         error: "Failed to retrieve shop details",
