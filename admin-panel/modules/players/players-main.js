@@ -467,6 +467,8 @@ closePlayerModal() {
 /**
  * Voir les héros d'un personnage
  */
+// 🔧 CORRECTION dans la méthode viewCharacterHeroes
+
 async viewCharacterHeroes(playerId, serverId) {
     try {
         AdminCore.showAlert('Loading heroes...', 'info', 1000);
@@ -485,18 +487,17 @@ async viewCharacterHeroes(playerId, serverId) {
             return;
         }
 
+        // 🆕 Faire un appel API pour récupérer les héros complets
         const { data } = await AdminCore.makeRequest(
-    `/api/admin/players/${this.selectedPlayer.account.accountId}/heroes?serverId=${serverId}&playerId=${playerId}`
+            `/api/admin/players/${this.selectedPlayer.account.accountId}/heroes?serverId=${serverId}&playerId=${playerId}`
         );
-        
-        console.log('📊 Character data:', character);
-        console.log('📊 Heroes data:', character.heroes);
-        console.log('📊 Full selectedPlayer:', this.selectedPlayer);
 
-        // 🔍 DEBUG : Afficher dans une alerte
-        AdminCore.showAlert(`Heroes structure: ${JSON.stringify(character.heroes)}`, 'info', 10000);
-        // Vérifier si le personnage a des héros
-        if (!character.heroes || !character.heroes.list || character.heroes.list.length === 0) {
+        console.log('📊 Heroes API Response:', data);
+
+        // ✅ Utiliser directement les données de l'API
+        const heroesList = data.heroes || [];
+
+        if (heroesList.length === 0) {
             AdminCore.showAlert('This character has no heroes yet', 'warning');
             return;
         }
@@ -522,24 +523,24 @@ async viewCharacterHeroes(playerId, serverId) {
             </div>
             <div class="heroes-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px;">
                 <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; font-weight: bold; color: #667eea;">${character.heroes.total || 0}</div>
+                    <div style="font-size: 24px; font-weight: bold; color: #667eea;">${heroesList.length}</div>
                     <div style="font-size: 12px; color: #666;">Total Heroes</div>
                 </div>
                 <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; font-weight: bold; color: #28a745;">${character.heroes.equipped || 0}</div>
+                    <div style="font-size: 24px; font-weight: bold; color: #28a745;">${heroesList.filter(h => h.equipped).length}</div>
                     <div style="font-size: 12px; color: #666;">Equipped</div>
                 </div>
                 <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; font-weight: bold; color: #ffc107;">${character.heroes.averageLevel || 0}</div>
-                    <div style="font-size: 12px; color: #666;">Avg Level</div>
+                    <div style="font-size: 24px; font-weight: bold; color: #ffc107;">${data.summary?.maxLevel || 0}</div>
+                    <div style="font-size: 12px; color: #666;">Max Level</div>
                 </div>
                 <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; font-weight: bold; color: #17a2b8;">${AdminCore.formatNumber(character.heroes.powerScore || 0)}</div>
+                    <div style="font-size: 24px; font-weight: bold; color: #17a2b8;">${AdminCore.formatNumber(data.summary?.totalPower || 0)}</div>
                     <div style="font-size: 12px; color: #666;">Total Power</div>
                 </div>
             </div>
             <div class="heroes-grid" id="heroesGrid">
-                ${this.renderHeroesGrid(character.heroes.list, playerId, serverId)}
+                ${this.renderHeroesGrid(heroesList, playerId, serverId)}
             </div>
         `;
 
@@ -555,48 +556,63 @@ async viewCharacterHeroes(playerId, serverId) {
 }
 
 /**
- * Rendre la grille de héros
+ * Rendre la grille de héros - VERSION CORRIGÉE
  */
 renderHeroesGrid(heroesList, playerId, serverId) {
     if (!heroesList || heroesList.length === 0) {
         return '<p style="text-align: center; color: #666; padding: 40px;">No heroes found for this character.</p>';
     }
 
-    return heroesList.map(hero => `
-        <div class="hero-card">
-            <div class="hero-card-header">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <h4 style="margin: 0;">${this.ui.escapeHtml(hero.name || 'Unknown Hero')}</h4>
-                    <span class="hero-rarity ${(hero.rarity || 'common').toLowerCase()}">${hero.rarity || 'Common'}</span>
+    return heroesList.map(heroData => {
+        const hero = heroData.hero; // Les données du héros de base
+        
+        return `
+            <div class="hero-card">
+                <div class="hero-card-header">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <h4 style="margin: 0;">${this.ui.escapeHtml(hero.name || 'Unknown Hero')}</h4>
+                        <span class="hero-rarity ${(hero.rarity || 'common').toLowerCase()}">${hero.rarity || 'Common'}</span>
+                    </div>
+                    ${heroData.equipped ? '<span style="color: #28a745; font-size: 12px;">✓ Equipped</span>' : ''}
                 </div>
-                ${hero.equipped ? '<span style="color: #28a745; font-size: 12px;">✓ Equipped</span>' : ''}
-            </div>
-            <div class="hero-card-body">
-                <div class="hero-info">
-                    <span>${this.getHeroRoleIcon(hero.role)} ${hero.role || 'Unknown'}</span>
-                    <span>${this.getHeroElementIcon(hero.element)} ${hero.element || 'Unknown'}</span>
+                <div class="hero-card-body">
+                    <div class="hero-info">
+                        <span>${this.getHeroRoleIcon(hero.role)} ${hero.role || 'Unknown'}</span>
+                        <span>${this.getHeroElementIcon(hero.element)} ${hero.element || 'Unknown'}</span>
+                    </div>
+                    <div class="hero-stats-mini">
+                        <span style="background: #e3f2fd; padding: 4px 8px; border-radius: 4px;">Lvl ${heroData.level || 1}</span>
+                        <span style="background: #fff3cd; padding: 4px 8px; border-radius: 4px;">${heroData.stars || 1}⭐</span>
+                        <span style="background: #f8d7da; padding: 4px 8px; border-radius: 4px;">Power: ${AdminCore.formatNumber(heroData.powerLevel || 0)}</span>
+                    </div>
                 </div>
-                <div class="hero-stats-mini">
-                    <span style="background: #e3f2fd; padding: 4px 8px; border-radius: 4px;">Lvl ${hero.level || 1}</span>
-                    <span style="background: #fff3cd; padding: 4px 8px; border-radius: 4px;">${hero.stars || 1}⭐</span>
-                    <span style="background: #f8d7da; padding: 4px 8px; border-radius: 4px;">Power: ${AdminCore.formatNumber(hero.powerLevel || 0)}</span>
+                <div class="hero-card-actions">
+                    <button class="btn btn-small btn-info" 
+                            onclick='PlayersModule.editHero(${JSON.stringify({
+                                playerHeroId: heroData.playerHeroId,
+                                serverId: serverId,
+                                heroData: {
+                                    name: hero.name,
+                                    role: hero.role,
+                                    element: hero.element,
+                                    rarity: hero.rarity,
+                                    level: heroData.level,
+                                    stars: heroData.stars,
+                                    equipped: heroData.equipped,
+                                    powerLevel: heroData.powerLevel,
+                                    currentStats: heroData.currentStats,
+                                    equipment: hero.equipment,
+                                    spells: hero.spells
+                                },
+                                accountId: this.selectedPlayer.account.accountId
+                            }).replace(/'/g, "\\'")}'>
+                        ✏️ Edit
+                    </button>
                 </div>
             </div>
-            <div class="hero-card-actions">
-                <button class="btn btn-small btn-info" 
-                        onclick='PlayersModule.editHero(${JSON.stringify({
-                            playerHeroId: hero.playerHeroId || hero._id,
-                            serverId: serverId,
-                            heroData: hero,
-                            accountId: this.selectedPlayer.account.accountId
-                        }).replace(/'/g, "\\'")})'>
-                    ✏️ Edit
-                </button>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
-
 /**
  * Éditer un héros (wrapper pour appeler PlayersHeroes)
  */
