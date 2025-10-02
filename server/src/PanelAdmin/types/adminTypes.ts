@@ -132,7 +132,7 @@ export type AdminAction =
   | 'player.modify_progress'
   | 'player.reset_account'
   | 'player.delete_account'
-  
+  | 'player.modify_vip' 
   // Économie
   | 'economy.view_transactions'
   | 'economy.modify_shop'
