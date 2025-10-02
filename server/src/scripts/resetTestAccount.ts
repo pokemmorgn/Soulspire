@@ -66,6 +66,7 @@ async function resetTestAccount() {
     const newPlayer = new Player({
       accountId: newAccount.accountId,
       username: username,
+      displayName: username, // ✅ AJOUTÉ : displayName obligatoire
       serverId: 'S1',
       level: 1,
       experience: 0,
@@ -81,7 +82,8 @@ async function resetTestAccount() {
     await newPlayer.save();
     console.log(`✅ Joueur créé: ${newPlayer.playerId}`);
     console.log(`   - PlayerID: ${newPlayer.playerId}`);
-    console.log(`   - ServerId: ${newPlayer.serverId}\n`);
+    console.log(`   - ServerId: ${newPlayer.serverId}`);
+    console.log(`   - DisplayName: ${newPlayer.displayName}\n`);
 
     // 4. Afficher les commandes cURL de test
     console.log('📋 Commandes de test:\n');
