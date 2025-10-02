@@ -1496,3 +1496,37 @@ input[type="range"]::-moz-range-thumb {
         transform: rotate(90deg);
     }
 }
+/* ===== MODÉRATION PREVIEW ===== */
+.moderation-preview {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    border-left: 4px solid #667eea;
+}
+
+.moderation-preview h4 {
+    margin-bottom: 10px;
+    color: #495057;
+}
+
+.moderation-preview ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.moderation-preview li {
+    margin-bottom: 8px;
+    color: #666;
+}
+
+.reason-templates {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.reason-templates button {
+    padding: 6px 12px;
+    font-size: 13px;
+}
