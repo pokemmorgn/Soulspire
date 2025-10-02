@@ -1179,4 +1179,3 @@ public static async processShopResets(): Promise<ShopResetResult> {
     return nextFriday;
   }
 }
-}
