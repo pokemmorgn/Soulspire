@@ -1,8 +1,7 @@
 {
   "name": "idle-gacha-admin-panel",
-  "type": "module",
   "scripts": {
-    "dev": "vite --debug --force",
+    "dev": "vite --debug",
     "build": "vite build",
     "preview": "vite preview"
   },
