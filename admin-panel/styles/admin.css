@@ -1425,3 +1425,74 @@ input[type="range"]::-moz-range-thumb {
         font-size: 18px;
     }
 }
+/* ===== CURRENCY PREVIEW ===== */
+.currency-preview {
+    background: linear-gradient(135deg, #f8f9fa, #e8eaf6);
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    border: 2px solid #667eea;
+}
+
+.currency-preview h4 {
+    margin-bottom: 15px;
+    color: #495057;
+}
+
+.preview-calculation {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.preview-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 10px 15px;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+    min-width: 100px;
+}
+
+.preview-result {
+    border: 2px solid #667eea;
+    background: linear-gradient(135deg, #fff, #f0f4ff);
+}
+
+.preview-label {
+    font-size: 11px;
+    color: #6c757d;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.preview-value {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333;
+}
+
+.preview-operator,
+.preview-equals {
+    font-size: 24px;
+    font-weight: bold;
+    color: #667eea;
+}
+
+/* Responsive Preview */
+@media (max-width: 768px) {
+    .preview-calculation {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .preview-operator,
+    .preview-equals {
+        transform: rotate(90deg);
+    }
+}
