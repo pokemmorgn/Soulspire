@@ -123,6 +123,7 @@ class PlayersModule {
             <!-- Modals des sous-modules -->
             ${this.currency ? this.currency.renderModal() : ''}
             ${this.vip ? this.vip.renderModal() : ''}
+            ${this.heroes ? this.heroes.renderModal() : ''}
             ${this.moderation ? this.moderation.renderModal() : ''}
         `;
     }
@@ -450,6 +451,9 @@ class PlayersModule {
                     <button class="btn btn-small btn-info" onclick="PlayersVIP.showModal('${character.playerId}', '${character.serverId}', ${character.vipLevel})">
                         ⭐ Edit VIP
                     </button>
+                    <button class="btn btn-small btn-success" onclick="PlayersModule.viewCharacterHeroes('${character.playerId}', '${character.serverId}')">
+                        ⚔️ Manage Heroes
+                    </button>
                 </div>
             </div>
         `;
@@ -458,6 +462,15 @@ class PlayersModule {
     closePlayerModal() {
         document.getElementById('playerDetailsModal').style.display = 'none';
         this.selectedPlayer = null;
+    }
+}
+
+/**
+     * Voir les héros d'un personnage
+     */
+    async viewCharacterHeroes(playerId, serverId) {
+        AdminCore.showAlert('Heroes management coming soon...', 'info');
+        // TODO: Implémenter l'affichage des héros
     }
 }
 
