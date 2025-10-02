@@ -114,6 +114,7 @@ interface IShopDocument extends Document {
   addItem(item: Partial<IShopItem>): this;
   removeItem(instanceId: string): boolean;
   canPlayerAccess(playerId: string): Promise<boolean>;
+  isAvailableToday(): boolean; 
   canPlayerPurchase(instanceId: string, playerId: string): Promise<{ canPurchase: boolean; reason?: string }>;
   purchaseItem(instanceId: string, playerId: string, quantity?: number): Promise<any>;
   getPlayerPurchaseHistory(playerId: string): IShopItem["purchaseHistory"];
@@ -768,6 +769,24 @@ shopSchema.methods.canPlayerAccess = async function(playerId: string): Promise<b
   if (this.startTime && now < this.startTime) return false;
   if (this.endTime && now > this.endTime) return false;
   
+  return true;
+};
+
+// ✅ NOUVEAU : Vérifier si la boutique est disponible aujourd'hui
+shopSchema.methods.isAvailableToday = function(): boolean {
+  // Si la boutique n'est pas active, elle n'est jamais disponible
+  if (!this.isActive) {
+    return false;
+  }
+
+  // ✅ ElementalFriday : uniquement le vendredi
+  if (this.shopType === "ElementalFriday") {
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0 = Dimanche, 1 = Lundi, ..., 5 = Vendredi, 6 = Samedi
+    return dayOfWeek === 5; // Vendredi seulement
+  }
+  
+  // Toutes les autres boutiques sont disponibles tous les jours
   return true;
 };
 
