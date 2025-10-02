@@ -21,6 +21,7 @@ export interface ShopPurchaseResult {
       itemId?: string;
       heroId?: string;
       currencyType?: string;
+      elementalTicketType?: string; // ✅ NOUVEAU
       quantity: number;
       instanceId?: string;
     }>;
@@ -73,19 +74,15 @@ export class ShopService {
         throw new Error("Player not found");
       }
 
-      // Construire le filtre avec la méthode du modèle
       const shops = await (Shop as any).getActiveShopsForPlayer(playerId);
 
-      // Filtrer par type si spécifié
       const filteredShops = shopType ? 
         shops.filter((shop: any) => shop.shopType === shopType) : 
         shops;
 
-      // Paginer
       const skip = (page - 1) * limit;
       const paginatedShops = filteredShops.slice(skip, skip + limit);
 
-      // Enrichir avec des statistiques
       const enrichedShops = await Promise.all(paginatedShops.map(async (shop: any) => {
         const now = new Date();
         return {
@@ -137,23 +134,19 @@ export class ShopService {
         throw new Error("Shop not found or inactive");
       }
 
-      // Vérifier l'accès du joueur
       const canAccess = await shop.canPlayerAccess(playerId);
       if (!canAccess) {
         throw new Error("Access denied to this shop");
       }
 
-      // Enrichir les objets avec les données complètes + données générées
       const enrichedItems = await Promise.all(shop.items.map(async (shopItem: any) => {
         let itemData = null;
         let generatedStats = null;
         
-        // Récupérer les données de l'objet template
         if (shopItem.type === "Item" && shopItem.itemId) {
           itemData = await Item.findOne({ itemId: shopItem.itemId })
             .select("name description iconUrl rarity category sellPrice baseStats equipmentSlot");
           
-          // Si l'objet a des niveaux/améliorations, calculer les stats générées
           if (itemData && shopItem.content.level && shopItem.content.enhancement !== undefined) {
             try {
               const preview = await ItemGenerator.previewGeneration(shopItem.itemId, {
@@ -173,10 +166,7 @@ export class ShopService {
             .select("name element rarity iconUrl");
         }
 
-        // Vérifier si le joueur peut acheter
         const purchaseCheck = await shop.canPlayerPurchase(shopItem.instanceId, playerId);
-
-        // Calculer le prix final avec remise
         const finalPrice = this.calculateFinalPrice(shopItem.cost, shopItem.discountPercent || 0);
 
         return {
@@ -200,7 +190,7 @@ export class ShopService {
           tags: shopItem.tags,
           factionAlignment: shopItem.factionAlignment,
           itemData,
-          generatedStats, // Stats calculées par ItemGenerator
+          generatedStats,
           canPurchase: purchaseCheck.canPurchase,
           purchaseBlockReason: purchaseCheck.reason
         };
@@ -258,7 +248,6 @@ export class ShopService {
         return { success: false, error: "Item not found in shop", code: "SHOP_ITEM_NOT_FOUND" };
       }
 
-      // Vérifications d'achat
       const purchaseCheck = await shop.canPlayerPurchase(instanceId, playerId);
       if (!purchaseCheck.canPurchase) {
         try {
@@ -278,10 +267,8 @@ export class ShopService {
         };
       }
 
-      // Calculer le coût total
       const finalCost = this.calculateTotalCost(shopItem.cost, shopItem.discountPercent || 0, quantity);
 
-      // Vérifier les ressources
       const resourceCheck = this.checkPlayerResources(player, finalCost);
       if (!resourceCheck.sufficient) {
         return { 
@@ -291,7 +278,6 @@ export class ShopService {
         };
       }
 
-      // Effectuer la transaction
       return await this.executePurchaseTransaction(player, shop, shopItem, quantity, finalCost);
 
     } catch (error: any) {
@@ -321,7 +307,6 @@ export class ShopService {
         return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
       }
 
-      // Vérifier que le shop peut être actualisé
       if (!shop.refreshCost || (!shop.refreshCost.gold && !shop.refreshCost.gems)) {
         return { 
           success: false, 
@@ -330,7 +315,6 @@ export class ShopService {
         };
       }
 
-      // Vérifier les ressources
       const resourceCheck = this.checkPlayerResources(player, shop.refreshCost);
       if (!resourceCheck.sufficient) {
         return { 
@@ -340,7 +324,6 @@ export class ShopService {
         };
       }
 
-      // Déduire le coût et actualiser avec ItemGenerator
       this.deductResources(player, shop.refreshCost);
       await this.regenerateShopItems(shop);
       await player.save();
@@ -387,28 +370,26 @@ export class ShopService {
       for (const shop of shopsToReset) {
         const oldItemCount = shop.items.length;
         
-        // Utiliser le script generateShops selon le type
         try {
-              switch (shop.shopType) {
-                case "Daily":
-                  await this.resetShopWithGenerator(shop, "Daily");
-                  break;
-                case "Weekly":
-                  await this.resetShopWithGenerator(shop, "Weekly");
-                  break;
-                case "Monthly":
-                  await this.resetShopWithGenerator(shop, "Monthly");
-                  break;
-                case "ElementalFriday": // ✅ NOUVEAU
-                  await shop.refreshShop(); // Utilise generateElementalFridayItems() du modèle
-                  break;
-                default:
-                  await shop.refreshShop();
-                  break;
-              }
+          switch (shop.shopType) {
+            case "Daily":
+              await this.resetShopWithGenerator(shop, "Daily");
+              break;
+            case "Weekly":
+              await this.resetShopWithGenerator(shop, "Weekly");
+              break;
+            case "Monthly":
+              await this.resetShopWithGenerator(shop, "Monthly");
+              break;
+            case "ElementalFriday": // ✅ NOUVEAU
+              await shop.refreshShop(); // Utilise generateElementalFridayItems() du modèle
+              break;
+            default:
+              await shop.refreshShop();
+              break;
+          }
         } catch (error) {
           console.error(`❌ Erreur reset ${shop.shopType}:`, error);
-          // Fallback vers méthode standard
           await shop.refreshShop();
         }
         
@@ -422,7 +403,6 @@ export class ShopService {
 
         console.log(`🔄 Boutique ${shop.shopType} renouvelée: ${shop.items.length} nouveaux objets`);
         
-        // Notifier tous les joueurs connectés du reset
         try {
           WebSocketService.notifyGlobalShopReset({
             shopType: shop.shopType,
@@ -455,10 +435,17 @@ export class ShopService {
   private static async resetShopWithGenerator(shop: any, shopType: "Daily" | "Weekly" | "Monthly" | "ElementalFriday") {
     console.log(`🎲 Reset ${shopType} shop avec ItemGenerator...`);
     
-    // Vider les anciens objets
     shop.items = [];
     
-    // Utiliser la logique du script generateShops
+    // ✅ NOUVEAU : Si c'est ElementalFriday, utiliser la méthode du modèle
+    if (shopType === "ElementalFriday") {
+      await shop.generateElementalFridayItems();
+      shop.resetTime = new Date();
+      shop.calculateNextResetTime();
+      await shop.save();
+      return;
+    }
+    
     const SHOP_CONFIGS = {
       Daily: {
         maxItems: 8,
@@ -486,20 +473,12 @@ export class ShopService {
       },
       ElementalFriday: {
         maxItems: 5,
-        // Pas de génération aléatoire, utilise generateElementalFridayItems() du modèle
-        skipGeneration: true
+        skipGeneration: true // ✅ NOUVEAU
       }
     };
     
     const config = SHOP_CONFIGS[shopType];
-    // ✅ NOUVEAU : Si c'est ElementalFriday, utiliser la méthode du modèle
-    if (shopType === "ElementalFriday") {
-      await shop.generateElementalFridayItems();
-      shop.resetTime = new Date();
-      shop.calculateNextResetTime();
-      await shop.save();
-      return;
-    }
+    
     const equipmentTemplates = await Item.find({ category: "Equipment" });
     
     if (equipmentTemplates.length === 0) {
@@ -507,10 +486,8 @@ export class ShopService {
       return;
     }
     
-    // Générer les nouveaux objets
     for (let i = 0; i < config.maxItems; i++) {
       try {
-        // Choisir la rareté selon les poids
         const targetRarity = this.weightedRandomRarity(config.rarityWeights);
         const templatesOfRarity = equipmentTemplates.filter(t => t.rarity === targetRarity);
         
@@ -521,7 +498,6 @@ export class ShopService {
         const tier = this.randomInt(config.tierRange[0], config.tierRange[1]);
         const enhancementLevel = this.randomInt(config.enhancementRange[0], config.enhancementRange[1]);
         
-        // Générer l'objet avec ItemGenerator
         const generatedItem = await ItemGenerator.generateItemInstance(template.itemId, {
           level,
           tier,
@@ -531,10 +507,8 @@ export class ShopService {
           seed: `${shopType}_reset_${Date.now()}_${i}`
         });
         
-        // Calculer le prix
         const itemPrice = this.calculateItemPrice(template, generatedItem, config.priceMultiplier);
         
-        // Créer l'objet shop
         const shopItem = {
           itemId: template.itemId,
           instanceId: IdGenerator.generateCompactUUID(),
@@ -569,7 +543,6 @@ export class ShopService {
       }
     }
     
-    // Mettre à jour les timestamps
     shop.resetTime = new Date();
     shop.calculateNextResetTime();
     await shop.save();
@@ -579,10 +552,9 @@ export class ShopService {
   private static async regenerateShopItems(shop: any) {
     console.log(`🔄 Régénération objets pour ${shop.shopType}...`);
     
-    if (["Daily", "Weekly", "Monthly"].includes(shop.shopType)) {
-      await this.resetShopWithGenerator(shop, shop.shopType as "Daily" | "Weekly" | "Monthly");
+    if (["Daily", "Weekly", "Monthly", "ElementalFriday"].includes(shop.shopType)) {
+      await this.resetShopWithGenerator(shop, shop.shopType as "Daily" | "Weekly" | "Monthly" | "ElementalFriday");
     } else {
-      // Pour les autres types, utiliser la méthode standard
       await shop.refreshShop();
     }
   }
@@ -627,7 +599,7 @@ export class ShopService {
     try {
       console.log("🏗️ Création des boutiques prédéfinies...");
 
-      const shopTypes = ["Daily", "Weekly", "Monthly"] as const;
+      const shopTypes = ["Daily", "Weekly", "Monthly", "ElementalFriday"] as const; // ✅ MODIFIÉ
       const createdShops = [];
 
       for (const shopType of shopTypes) {
@@ -655,7 +627,6 @@ export class ShopService {
 
   // === MÉTHODES PRIVÉES UTILITAIRES ===
 
-  // Calculer le prix d'un objet généré
   private static calculateItemPrice(
     templateItem: any, 
     generatedItem: any, 
@@ -670,7 +641,6 @@ export class ShopService {
     const finalCost = Math.round(baseCost * powerMultiplier * rarityMultiplier);
     const prices: Record<string, number> = {};
     
-    // Distribution des prix selon la rareté
     if (templateItem.rarity === "Common") {
       prices.gold = Math.round(finalCost * (multipliers.gold || 1));
     } else if (templateItem.rarity === "Rare") {
@@ -685,7 +655,7 @@ export class ShopService {
       } else {
         prices.gems = Math.round(finalCost * 0.5 * (multipliers.gems || 1));
       }
-    } else { // Legendary
+    } else {
       if (Math.random() < 0.8) {
         prices.gems = Math.round(finalCost * 0.8 * (multipliers.gems || 1));
       } else {
@@ -696,7 +666,6 @@ export class ShopService {
     return prices;
   }
 
-  // Utilitaires pour la génération aléatoire
   private static randomInt(min: number, max: number): number {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
@@ -713,7 +682,6 @@ export class ShopService {
     return Object.keys(weights)[0];
   }
 
-  // Calculer le prix final avec remise
   private static calculateFinalPrice(cost: Record<string, number>, discountPercent: number): Record<string, number> {
     if (discountPercent <= 0) return cost;
 
@@ -726,7 +694,6 @@ export class ShopService {
     return finalPrice;
   }
 
-  // Calculer le coût total d'un achat
   private static calculateTotalCost(
     cost: Record<string, number>, 
     discountPercent: number, 
@@ -745,7 +712,6 @@ export class ShopService {
     return finalCost;
   }
 
-  // Vérifier les ressources du joueur
   private static checkPlayerResources(
     player: any, 
     cost: Record<string, number>
@@ -763,7 +729,6 @@ export class ShopService {
     };
   }
 
-  // Déduire les ressources
   private static deductResources(player: any, cost: Record<string, number>) {
     if (cost.gold) player.gold -= cost.gold;
     if (cost.gems) player.gems -= cost.gems;
@@ -771,7 +736,6 @@ export class ShopService {
     if (cost.tickets) player.tickets -= cost.tickets;
   }
 
-  // Exécuter la transaction d'achat
   private static async executePurchaseTransaction(
     player: any,
     shop: any,
@@ -781,13 +745,10 @@ export class ShopService {
   ): Promise<ShopPurchaseResult> {
     
     try {
-      // Déduire les ressources
       this.deductResources(player, finalCost);
 
-      // Traiter les récompenses (générer l'objet réel pour l'inventaire)
       const rewards = await this.processItemRewards(player, shopItem, quantity);
 
-      // Mettre à jour le stock et l'historique
       if (shopItem.maxStock !== -1) {
         shopItem.currentStock -= quantity;
       }
@@ -798,7 +759,6 @@ export class ShopService {
         purchaseDate: new Date()
       });
 
-      // Sauvegarder
       const inventory = await Inventory.findOne({ playerId: player._id }) || 
                       new Inventory({ playerId: player._id });
       
@@ -827,7 +787,6 @@ export class ShopService {
         console.warn("⚠️ Failed to send purchase success notification:", error);
       }
       
-      // Mettre à jour les missions et événements
       await this.updateProgressTracking(player._id.toString(), shopItem, quantity);
 
       return {
@@ -852,7 +811,7 @@ export class ShopService {
     }
   }
 
-  // Traiter les récompenses d'un objet avec ItemGenerator
+  // === TRAITER LES RÉCOMPENSES D'UN OBJET AVEC ITEMGENERATOR ===
   private static async processItemRewards(player: any, shopItem: any, quantity: number): Promise<any[]> {
     const rewards: any[] = [];
     let inventory = await Inventory.findOne({ playerId: player._id });
@@ -864,7 +823,6 @@ export class ShopService {
     switch (shopItem.type) {
       case "Item":
         if (shopItem.content.itemId) {
-          // Générer l'objet réel avec les stats du shop
           try {
             const generatedItem = await ItemGenerator.generateItemInstance(shopItem.itemId, {
               level: shopItem.content.level || 1,
@@ -874,12 +832,11 @@ export class ShopService {
               seed: `purchase_${shopItem.instanceId}_${Date.now()}`
             });
             
-            // Ajouter l'objet généré à l'inventaire
-          const ownedItem = await inventory.addItem(
-            generatedItem.itemId, // Utiliser l'ID de l'instance générée
-            shopItem.content.quantity * quantity,
-            generatedItem.level
-          );
+            const ownedItem = await inventory.addItem(
+              generatedItem.itemId,
+              shopItem.content.quantity * quantity,
+              generatedItem.level
+            );
             
             rewards.push({
               type: "Item",
@@ -897,7 +854,6 @@ export class ShopService {
             
           } catch (error) {
             console.error("❌ Erreur génération objet achat:", error);
-            // Fallback vers objet de base
             const ownedItem = await inventory.addItem(
               shopItem.itemId,
               shopItem.content.quantity * quantity,
@@ -927,6 +883,25 @@ export class ShopService {
           currencyType: shopItem.content.currencyType,
           quantity: currencyAmount
         });
+        break;
+
+      case "ElementalTicket":
+        // ✅ NOUVEAU : Gérer l'achat de tickets élémentaires
+        if (shopItem.content.elementalTicketType) {
+          const element = shopItem.content.elementalTicketType; // "fire", "water", etc.
+          const ticketQuantity = shopItem.content.quantity * quantity;
+          
+          // Ajouter les tickets au joueur
+          await player.addElementalTicket(element, ticketQuantity);
+          
+          rewards.push({
+            type: "ElementalTicket",
+            elementalTicketType: element,
+            quantity: ticketQuantity
+          });
+          
+          console.log(`🎟️ Added ${ticketQuantity}x ${element} tickets to player ${player._id}`);
+        }
         break;
 
       case "Fragment":
@@ -960,7 +935,6 @@ export class ShopService {
               quantity: 1
             });
           } else {
-            // Convertir en fragments si déjà possédé
             const fragments = 50;
             const currentFragments = player.fragments.get(shopItem.content.heroId) || 0;
             player.fragments.set(shopItem.content.heroId, currentFragments + fragments);
@@ -972,29 +946,10 @@ export class ShopService {
           }
         }
         break;
-      case "ElementalTicket":
-        // ✅ NOUVEAU : Gérer l'achat de tickets élémentaires
-        if (shopItem.content.elementalTicketType) {
-          const element = shopItem.content.elementalTicketType; // "fire", "water", etc.
-          const ticketQuantity = shopItem.content.quantity * quantity;
-          
-          // Ajouter les tickets au joueur
-          await player.addElementalTicket(element, ticketQuantity);
-          
-          rewards.push({
-            type: "ElementalTicket",
-            elementalTicketType: element,
-            quantity: ticketQuantity
-          });
-          
-          console.log(`🎟️ Added ${ticketQuantity}x ${element} tickets to player ${player._id}`);
-        }
-        break;
+
       case "Bundle":
-        // Traiter chaque élément du bundle
         if (shopItem.content.bundleItems) {
           for (const bundleItem of shopItem.content.bundleItems) {
-            // Récursion pour chaque élément du bundle
             const bundleReward = await this.processItemRewards(player, {
               type: bundleItem.type,
               content: bundleItem,
@@ -1009,7 +964,7 @@ export class ShopService {
     return rewards;
   }
 
-  // Mettre à jour les missions et événements
+  // === METTRE À JOUR LES MISSIONS ET ÉVÉNEMENTS ===
   private static async updateProgressTracking(
     playerId: string, 
     shopItem: any, 
@@ -1022,13 +977,13 @@ export class ShopService {
       await Promise.all([
         MissionService.updateProgress(
           playerId,
-          "", // serverId sera ajouté plus tard
+          "",
           "gold_spent",
           totalValue
         ),
         EventService.updatePlayerProgress(
           playerId,
-          "", // serverId sera ajouté plus tard
+          "",
           "gold_spent",
           totalValue,
           {
@@ -1046,7 +1001,6 @@ export class ShopService {
 
   // === MÉTHODES D'ADMINISTRATION ===
 
-  // Obtenir les statistiques des boutiques
   public static async getShopStats(serverId?: string) {
     try {
       const stats = await Shop.aggregate([
@@ -1079,7 +1033,6 @@ export class ShopService {
     }
   }
 
-  // Forcer le reset d'un shop spécifique (admin)
   public static async forceShopReset(shopType: string): Promise<ShopResetResult> {
     try {
       console.log(`🔧 Reset forcé du shop ${shopType}...`);
@@ -1091,9 +1044,8 @@ export class ShopService {
 
       const oldItemCount = shop.items.length;
       
-      // Reset avec ItemGenerator selon le type
-      if (["Daily", "Weekly", "Monthly"].includes(shopType)) {
-        await this.resetShopWithGenerator(shop, shopType as "Daily" | "Weekly" | "Monthly");
+      if (["Daily", "Weekly", "Monthly", "ElementalFriday"].includes(shopType)) {
+        await this.resetShopWithGenerator(shop, shopType as "Daily" | "Weekly" | "Monthly" | "ElementalFriday");
       } else {
         await shop.refreshShop();
       }
@@ -1119,7 +1071,6 @@ export class ShopService {
     }
   }
 
-  // Prévisualiser un objet avant achat (pour l'UI)
   public static async previewShopItem(shopType: string, instanceId: string) {
     try {
       const shop = await Shop.findOne({ shopType, isActive: true });
@@ -1136,7 +1087,6 @@ export class ShopService {
         return { success: true, preview: null, message: "No preview available for this item type" };
       }
 
-      // Générer preview avec ItemGenerator
       const preview = await ItemGenerator.previewGeneration(shopItem.itemId, {
         level: shopItem.content.level,
         tier: (shopItem as any).extendedContent?.tier || 1,
