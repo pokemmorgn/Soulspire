@@ -485,6 +485,10 @@ async viewCharacterHeroes(playerId, serverId) {
             return;
         }
 
+        const { data } = await AdminCore.makeRequest(
+    `/api/admin/players/${this.selectedPlayer.account.accountId}/heroes?serverId=${serverId}&playerId=${playerId}`
+        );
+        
         console.log('📊 Character data:', character);
         console.log('📊 Heroes data:', character.heroes);
         console.log('📊 Full selectedPlayer:', this.selectedPlayer);
