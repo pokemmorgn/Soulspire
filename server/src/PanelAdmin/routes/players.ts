@@ -755,7 +755,7 @@ router.use((error: any, req: Request, res: Response, next: NextFunction) => {
  */
 router.post('/:accountId/hero',
   authenticateAdmin,
-  requirePermission('player.modify'),
+  requirePermission('heroes.manage'),
   currencyRateLimit,
   async (req: Request, res: Response) => {
     try {
