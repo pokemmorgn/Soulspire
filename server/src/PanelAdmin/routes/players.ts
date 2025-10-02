@@ -1202,4 +1202,106 @@ router.post('/:accountId/hero/equipment',
   }
 );
 
+/**
+ * GET /api/admin/players/:accountId/heroes
+ * Récupérer les héros d'un joueur (route admin)
+ */
+router.get('/:accountId/heroes',
+  authenticateAdmin,
+  requirePermission('heroes.view'),
+  async (req: Request, res: Response) => {
+    try {
+      const { accountId } = req.params;
+      const { serverId, playerId } = req.query;
+
+      if (!serverId || !playerId) {
+        return res.status(400).json({
+          error: 'serverId and playerId are required',
+          code: 'MISSING_PARAMETERS'
+        });
+      }
+
+      // Trouver le joueur avec ses héros populés
+      const player = await Player.findOne({ 
+        _id: playerId as string, 
+        accountId, 
+        serverId: serverId as string 
+      }).populate({
+        path: 'heroes.heroId',
+        model: 'Hero',
+        select: '_id name role element rarity baseStats spells equipment'
+      });
+
+      if (!player) {
+        return res.status(404).json({
+          error: 'Player not found',
+          code: 'PLAYER_NOT_FOUND'
+        });
+      }
+
+      // Formater les héros avec toutes les infos
+      const heroesList = await Promise.all(player.heroes.map(async (ph: any) => {
+        const heroDoc = ph.heroId;
+        
+        if (!heroDoc || typeof heroDoc === 'string') {
+          return null;
+        }
+
+        // Calculer les stats actuelles
+        const currentStats = heroDoc.getStatsAtLevel(ph.level, ph.stars);
+        
+        // Calculer le power level basique
+        const powerLevel = Math.floor(
+          currentStats.atk * 1.0 + 
+          currentStats.def * 1.5 + 
+          currentStats.hp / 10
+        );
+
+        return {
+          playerHeroId: ph._id.toString(),
+          hero: {
+            _id: heroDoc._id.toString(),
+            name: heroDoc.name,
+            role: heroDoc.role,
+            element: heroDoc.element,
+            rarity: heroDoc.rarity,
+            baseStats: heroDoc.baseStats,
+            spells: heroDoc.spells,
+            equipment: heroDoc.equipment || {}
+          },
+          level: ph.level,
+          stars: ph.stars,
+          equipped: ph.equipped,
+          currentStats,
+          powerLevel,
+          acquisitionDate: ph.acquisitionDate
+        };
+      }));
+
+      // Filtrer les héros null (au cas où)
+      const validHeroes = heroesList.filter(h => h !== null);
+
+      res.json({
+        success: true,
+        serverId,
+        heroes: validHeroes,
+        summary: {
+          total: validHeroes.length,
+          equipped: validHeroes.filter(h => h.equipped).length,
+          maxLevel: validHeroes.length > 0 ? Math.max(...validHeroes.map(h => h.level)) : 0,
+          maxStars: validHeroes.length > 0 ? Math.max(...validHeroes.map(h => h.stars)) : 0,
+          totalPower: validHeroes.reduce((sum, h) => sum + h.powerLevel, 0)
+        }
+      });
+
+    } catch (error) {
+      console.error('Get player heroes error:', error);
+      res.status(500).json({
+        error: 'Failed to get player heroes',
+        code: 'GET_HEROES_ERROR'
+      });
+    }
+  }
+);
+
 export default router;
