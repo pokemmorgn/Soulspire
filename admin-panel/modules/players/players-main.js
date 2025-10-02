@@ -459,13 +459,12 @@ class PlayersModule {
         `;
     }
 
-    closePlayerModal() {
+closePlayerModal() {
         document.getElementById('playerDetailsModal').style.display = 'none';
         this.selectedPlayer = null;
     }
-}
 
-/**
+    /**
      * Voir les héros d'un personnage
      */
     async viewCharacterHeroes(playerId, serverId) {
