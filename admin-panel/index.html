@@ -715,37 +715,286 @@ async loadOverviewData() {
                 }
             }
 
-            async loadPlayersData() {
-                const content = document.getElementById('playersContent');
-                content.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading player data...</p></div>';
-                
-                try {
-                    const { data } = await this.makeRequest('/api/admin/players/stats');
-                    content.innerHTML = `
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px;">
-                            <div class="stat-card">
-                                <div class="stat-value">${data.totalPlayers}</div>
-                                <div class="stat-label">Total Players</div>
+async loadPlayersData() {
+    const content = document.getElementById('playersContent');
+    content.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading player data...</p></div>';
+    
+    try {
+        const { data } = await this.makeRequest('/api/admin/players/stats');
+        
+        console.log('📊 Player stats received:', data);
+        
+        // Vérifier la structure des données
+        if (!data || !data.data) {
+            content.innerHTML = '<div class="alert error">No player data available</div>';
+            return;
+        }
+        
+        const stats = data.data;
+        
+        content.innerHTML = `
+            <!-- Stats Cards -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px;">
+                <div class="stat-card">
+                    <div class="stat-value">${stats.totalPlayers || 0}</div>
+                    <div class="stat-label">Total Players</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${stats.activePlayers || 0}</div>
+                    <div class="stat-label">Active Players</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${stats.spendingPlayers || 0}</div>
+                    <div class="stat-label">Spending Players</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${stats.averageLevel || 0}</div>
+                    <div class="stat-label">Average Level</div>
+                </div>
+            </div>
+            
+            <!-- Search Section -->
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                <h3>🔍 Search Players</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+                    <div>
+                        <label>Username:</label>
+                        <input type="text" id="searchUsername" placeholder="Enter username..." style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 6px;">
+                    </div>
+                    <div>
+                        <label>Email:</label>
+                        <input type="email" id="searchEmail" placeholder="Enter email..." style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 6px;">
+                    </div>
+                    <div>
+                        <label>Server:</label>
+                        <select id="searchServerId" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 6px;">
+                            <option value="">All Servers</option>
+                            <option value="S1">Server 1</option>
+                            <option value="S2">Server 2</option>
+                            <option value="S3">Server 3</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Status:</label>
+                        <select id="searchStatus" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 6px;">
+                            <option value="">All Status</option>
+                            <option value="active">Active</option>
+                            <option value="suspended">Suspended</option>
+                            <option value="banned">Banned</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="margin-top: 15px; display: flex; gap: 10px;">
+                    <button class="btn btn-primary" onclick="adminPanel.searchPlayers()">🔍 Search</button>
+                    <button class="btn btn-secondary" onclick="adminPanel.clearPlayerSearch()">Clear</button>
+                    <button class="btn btn-info" onclick="adminPanel.loadPlayersList()">↻ Refresh</button>
+                </div>
+            </div>
+            
+            <!-- Players List -->
+            <div>
+                <h3>📋 Players List</h3>
+                <div id="playersListContainer">
+                    <div class="loading"><div class="spinner"></div><p>Loading players list...</p></div>
+                </div>
+            </div>
+        `;
+        
+        // Charger la liste des joueurs
+        await this.loadPlayersList();
+        
+    } catch (error) {
+        console.error('Players data error:', error);
+        content.innerHTML = '<div class="alert error">Failed to load player data: ' + error.message + '</div>';
+    }
+}
+
+async loadPlayersList(filters = {}) {
+    const container = document.getElementById('playersListContainer');
+    if (!container) return;
+    
+    container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading players...</p></div>';
+    
+    try {
+        // Construire les paramètres de requête
+        const params = new URLSearchParams({
+            page: filters.page || '1',
+            limit: filters.limit || '20',
+            sortBy: filters.sortBy || 'lastSeenAt',
+            sortOrder: filters.sortOrder || 'desc',
+            ...filters
+        });
+        
+        const { data } = await this.makeRequest('/api/admin/players/search?' + params.toString());
+        
+        console.log('📋 Players list received:', data);
+        
+        if (!data || !data.data || !data.data.players) {
+            container.innerHTML = '<div class="alert info">No players found</div>';
+            return;
+        }
+        
+        const players = data.data.players;
+        const total = data.data.total;
+        
+        if (players.length === 0) {
+            container.innerHTML = '<div class="alert info">No players found matching your criteria</div>';
+            return;
+        }
+        
+        // Générer le tableau HTML
+        let tableHTML = `
+            <p style="margin-bottom: 10px;">Showing ${players.length} of ${total} players</p>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Server</th>
+                        <th>Level</th>
+                        <th>Status</th>
+                        <th>Spent</th>
+                        <th>Last Login</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        players.forEach(player => {
+            const statusClass = player.accountStatus === 'active' ? 'success' : 
+                               player.accountStatus === 'suspended' ? 'warning' : 'danger';
+            const lastLogin = player.lastLogin ? new Date(player.lastLogin).toLocaleDateString() : 'Never';
+            
+            tableHTML += `
+                <tr>
+                    <td>
+                        <strong>${player.username || 'Unknown'}</strong><br>
+                        <small style="color: #6c757d;">ID: ${player.accountId}</small>
+                    </td>
+                    <td>${player.email || 'N/A'}</td>
+                    <td><span class="badge" style="background: #17a2b8; color: white;">${player.serverId || 'N/A'}</span></td>
+                    <td>${player.summary?.highestLevel || 0}</td>
+                    <td><span class="badge ${statusClass}">${player.accountStatus || 'unknown'}</span></td>
+                    <td style="color: #28a745; font-weight: 600;">$${(player.totalSpentUSD || 0).toFixed(2)}</td>
+                    <td>${lastLogin}</td>
+                    <td>
+                        <button class="btn btn-small btn-info" onclick="adminPanel.viewPlayerDetails('${player.accountId}')">
+                            👁️ View
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        tableHTML += `
+                </tbody>
+            </table>
+        `;
+        
+        container.innerHTML = tableHTML;
+        
+    } catch (error) {
+        console.error('Load players list error:', error);
+        container.innerHTML = '<div class="alert error">Failed to load players list: ' + error.message + '</div>';
+    }
+}
+
+async searchPlayers() {
+    const filters = {
+        username: document.getElementById('searchUsername')?.value || '',
+        email: document.getElementById('searchEmail')?.value || '',
+        serverId: document.getElementById('searchServerId')?.value || '',
+        accountStatus: document.getElementById('searchStatus')?.value || ''
+    };
+    
+    // Retirer les filtres vides
+    Object.keys(filters).forEach(key => {
+        if (!filters[key]) delete filters[key];
+    });
+    
+    await this.loadPlayersList(filters);
+}
+
+clearPlayerSearch() {
+    document.getElementById('searchUsername').value = '';
+    document.getElementById('searchEmail').value = '';
+    document.getElementById('searchServerId').value = '';
+    document.getElementById('searchStatus').value = '';
+    this.loadPlayersList();
+}
+
+async viewPlayerDetails(accountId) {
+    try {
+        const { data } = await this.makeRequest('/api/admin/players/' + accountId);
+        
+        console.log('👤 Player details:', data);
+        
+        if (!data || !data.data) {
+            this.showAlert('loginAlert', 'Player not found', 'error');
+            return;
+        }
+        
+        const player = data.data;
+        const account = player.account;
+        const characters = player.characters || [];
+        
+        // Créer une modal pour afficher les détails
+        const modalHTML = `
+            <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center;" id="playerModal" onclick="if(event.target.id==='playerModal') this.remove()">
+                <div style="background: white; border-radius: 15px; max-width: 900px; max-height: 90vh; overflow-y: auto; padding: 30px;" onclick="event.stopPropagation()">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #e9ecef; padding-bottom: 15px;">
+                        <h2>Player: ${account.username}</h2>
+                        <button class="btn btn-danger" onclick="document.getElementById('playerModal').remove()">✕ Close</button>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <strong>Account ID:</strong><br>${account.accountId}
+                        </div>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <strong>Email:</strong><br>${account.email || 'N/A'}
+                        </div>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <strong>Status:</strong><br><span class="badge ${account.accountStatus === 'active' ? 'success' : 'danger'}">${account.accountStatus}</span>
+                        </div>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <strong>Total Spent:</strong><br><span style="color: #28a745; font-weight: 600;">$${account.totalSpentUSD.toFixed(2)}</span>
+                        </div>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <strong>Account Age:</strong><br>${account.accountAge} days
+                        </div>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <strong>Last Login:</strong><br>${account.lastLogin ? new Date(account.lastLogin).toLocaleString() : 'Never'}
+                        </div>
+                    </div>
+                    
+                    <h3 style="margin-top: 30px; margin-bottom: 15px;">🎮 Characters (${characters.length})</h3>
+                    ${characters.length === 0 ? '<p>No characters found</p>' : characters.map(char => `
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <h4>${char.displayName}</h4>
+                                <span class="badge" style="background: #17a2b8; color: white;">Server ${char.serverId}</span>
                             </div>
-                            <div class="stat-card">
-                                <div class="stat-value">${data.activePlayers}</div>
-                                <div class="stat-label">Active Players</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-value">${data.spendingPlayers}</div>
-                                <div class="stat-label">Spending Players</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-value">${data.averageLevel}</div>
-                                <div class="stat-label">Average Level</div>
+                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px;">
+                                <div><strong>Level:</strong> ${char.level}</div>
+                                <div><strong>World:</strong> ${char.world}-${char.stage}</div>
+                                <div><strong>VIP:</strong> ${char.vipLevel}</div>
+                                <div><strong>Gold:</strong> ${char.currencies?.gold || 0}</div>
                             </div>
                         </div>
-                        <p>Player management tools will be implemented here...</p>
-                    `;
-                } catch (error) {
-                    content.innerHTML = '<div class="alert error">Failed to load player data</div>';
-                }
-            }
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        
+    } catch (error) {
+        console.error('View player details error:', error);
+        this.showAlert('loginAlert', 'Failed to load player details: ' + error.message, 'error');
+    }
+}
 
             async loadEconomyData() {
                 const content = document.getElementById('economyContent');
