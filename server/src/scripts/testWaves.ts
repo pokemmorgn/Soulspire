@@ -272,7 +272,7 @@ async function testAutoWaves(player: any) {
     const battleResult = await BattleService.startCampaignBattle(
       (player._id as any).toString(),
       "S1",
-      999,
+      20,
       1,
       "Normal",
       { mode: "auto", speed: 3 }
@@ -292,7 +292,7 @@ async function testConfiguredWaves(player: any) {
     const battleResult = await BattleService.startCampaignBattle(
       (player._id as any).toString(),
       "S1",
-      999,
+      20,
       2,
       "Normal",
       { mode: "auto", speed: 3 }
@@ -312,7 +312,7 @@ async function testNoWaves(player: any) {
     const battleResult = await BattleService.startCampaignBattle(
       (player._id as any).toString(),
       "S1",
-      999,
+      20,
       3,
       "Normal",
       { mode: "auto", speed: 3 }
