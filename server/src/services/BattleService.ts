@@ -3,7 +3,7 @@ import Player from "../models/Player";
 import Hero from "../models/Hero";
 import LevelProgress from "../models/LevelProgress";
 import Formation from "../models/Formation";
-
+import { BestiaryService } from "./BestiaryService";
 import { BattleEngine, IBattleOptions } from "./BattleEngine";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
@@ -107,15 +107,17 @@ export class BattleService {
         result.battleDuration
       );
 
-      // 📖 ENREGISTRER DANS LE BESTIAIRE
+  // 📖 ENREGISTRER DANS LE BESTIAIRE
       try {
         // Enregistrer chaque monstre combattu
         for (const enemy of enemyTeam) {
           const monsterId = enemy.heroId; // Les monstres utilisent heroId comme identifiant
           
-          // Calculer les dégâts (estimation depuis les stats finales)
+          // Calculer les dégâts infligés au monstre
           const damageDealt = enemy.stats.hp - (enemy.currentHp || 0);
-          const damageTaken = result.stats?.totalDamageTaken || 0;
+          
+          // Estimation des dégâts reçus (basé sur l'ATK du monstre et la durée)
+          const damageTaken = Math.floor(enemy.stats.atk * 0.5);
           
           await BestiaryService.recordMonsterEncounter(
             playerId,
@@ -264,7 +266,28 @@ export class BattleService {
         result.victory, 
         result.battleDuration
       );
-
+// 📖 ENREGISTRER DANS LE BESTIAIRE (PvP)
+      try {
+        for (const enemy of enemyTeam) {
+          const monsterId = enemy.heroId;
+          const damageDealt = enemy.stats.hp - (enemy.currentHp || 0);
+          const damageTaken = Math.floor(enemy.stats.atk * 0.5);
+          
+          await BestiaryService.recordMonsterEncounter(
+            playerId,
+            serverId,
+            monsterId,
+            result.victory,
+            damageDealt,
+            damageTaken,
+            result.victory ? result.battleDuration : undefined
+          );
+        }
+        
+        console.log(`📖 Bestiaire PvP mis à jour: ${enemyTeam.length} monstre(s)`);
+      } catch (bestiaryError: any) {
+        console.error("⚠️ Erreur bestiaire PvP:", bestiaryError);
+      }
       await Promise.all([
         MissionService.updateProgress(
           playerId, 
