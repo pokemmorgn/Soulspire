@@ -155,7 +155,7 @@ async function createTestWorldWithWaves() {
 
   // Créer le monde de test
   const testWorld = new CampaignWorld({
-    worldId: 999,
+    worldId: 3,
     name: "Test World - Waves System",
     description: "Monde de test pour le système de vagues",
     mapTheme: "testing_grounds",
