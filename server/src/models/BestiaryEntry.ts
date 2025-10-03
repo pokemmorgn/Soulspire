@@ -512,7 +512,8 @@ bestiaryEntrySchema.statics.getCompletionRewards = async function(
   serverId: string
 ): Promise<any> {
   const entries = await this.find({ playerId, serverId });
-  const stats = await this.getPlayerStats(playerId, serverId);
+  const BestiaryEntryModel = this as IBestiaryEntryModel;
+  const stats = await BestiaryEntryModel.getPlayerStats(playerId, serverId);
   
   const rewards: any = {
     available: [],
@@ -521,15 +522,15 @@ bestiaryEntrySchema.statics.getCompletionRewards = async function(
   };
   
   // Récompenses par type
-  const normalMastered = entries.filter(e => e.monsterSnapshot.type === "normal" && e.progressionLevel === "Master").length;
-  const eliteMastered = entries.filter(e => e.monsterSnapshot.type === "elite" && e.progressionLevel === "Master").length;
-  const bossMastered = entries.filter(e => e.monsterSnapshot.type === "boss" && e.progressionLevel === "Master").length;
+  const normalMastered = (entries as IBestiaryEntryDocument[]).filter((e: IBestiaryEntryDocument) => e.monsterSnapshot.type === "normal" && e.progressionLevel === "Master").length;
+  const eliteMastered = (entries as IBestiaryEntryDocument[]).filter((e: IBestiaryEntryDocument) => e.monsterSnapshot.type === "elite" && e.progressionLevel === "Master").length;
+  const bossMastered = (entries as IBestiaryEntryDocument[]).filter((e: IBestiaryEntryDocument) => e.monsterSnapshot.type === "boss" && e.progressionLevel === "Master").length;
   
   // Récompenses par élément (tous découverts)
   const elements = ["Fire", "Water", "Wind", "Electric", "Light", "Dark"];
   elements.forEach(element => {
-    const elementMonsters = entries.filter(e => e.monsterSnapshot.element === element);
-    const discovered = elementMonsters.filter(e => e.isDiscovered).length;
+    const elementMonsters = (entries as IBestiaryEntryDocument[]).filter((e: IBestiaryEntryDocument) => e.monsterSnapshot.element === element);
+    const discovered = elementMonsters.filter((e: IBestiaryEntryDocument) => e.isDiscovered).length;
     
     if (elementMonsters.length > 0) {
       rewards.progress[`${element}_discovery`] = {
