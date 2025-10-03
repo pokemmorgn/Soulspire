@@ -40,11 +40,16 @@ export class BattleService {
       }
 
       // Mapper la difficulté et les paramètres du niveau
-      const { enemyTeam, enemySpells } = await MonsterService.generateCampaignEnemies(
+      const { enemyTeam, enemySpells, waveConfigs } = await MonsterService.generateCampaignEnemies(
         worldId,
         levelId,
         difficulty
       );
+
+      // Log si combat multi-vagues
+      if (waveConfigs && waveConfigs.length > 1) {
+        console.log(`🌊 Combat multi-vagues: ${waveConfigs.length} vagues détectées`);
+      }
 
       const battle = new Battle({
         playerId,
@@ -83,13 +88,17 @@ export class BattleService {
 
       await battle.save();
 
-      const battleEngine = new BattleEngine(playerTeam, enemyTeam, playerSpells, enemySpells, battleOptions);
+      const battleEngine = new BattleEngine(playerTeam, enemyTeam, playerSpells, enemySpells, battleOptions, waveConfigs);
       const result = battleEngine.simulateBattle();
 
       battle.actions = battleEngine.getActions();
       battle.result = result;
       battle.status = "completed";
       battle.battleEnded = new Date();
+      if (battleEngine.isMultiWaveBattle()) {
+        battle.waveData = battleEngine.getWaveData();
+        console.log(`📊 Données de vague sauvegardées: ${battle.waveData?.completedWaves}/${battle.waveData?.totalWaves} vagues`);
+      }
       await battle.save();
 
       if (result.victory) {
@@ -165,7 +174,7 @@ export class BattleService {
       
       console.log(`✅ Combat terminé: ${result.victory ? "Victoire" : "Défaite"}`);
 
-      return {
+    return {
         battleId: battle._id,
         result,
         replay: {
@@ -175,7 +184,8 @@ export class BattleService {
           actions: battle.actions,
           result: battle.result,
           battleOptions: battle.battleOptions,
-          duration: Date.now() - battle.battleStarted.getTime()
+          duration: Date.now() - battle.battleStarted.getTime(),
+          waveData: battle.waveData  // ✨ NOUVEAU : Inclure les données de vague
         }
       };
 
@@ -243,13 +253,16 @@ export class BattleService {
 
       await battle.save();
 
-      const battleEngine = new BattleEngine(playerTeam, enemyTeam, playerSpells, enemySpells, battleOptions);
+      const battleEngine = new BattleEngine(playerTeam, enemyTeam, playerSpells, enemySpells, battleOptions, undefined);
       const result = battleEngine.simulateBattle();
 
       battle.actions = battleEngine.getActions();
       battle.result = result;
       battle.status = "completed";
       battle.battleEnded = new Date();
+      if (battleEngine.isMultiWaveBattle()) {
+        battle.waveData = battleEngine.getWaveData();
+      }
       await battle.save();
 
       if (result.victory) {
@@ -321,7 +334,8 @@ export class BattleService {
           actions: battle.actions,
           result: battle.result,
           battleOptions: battle.battleOptions,
-          duration: Date.now() - battle.battleStarted.getTime()
+          duration: Date.now() - battle.battleStarted.getTime(),
+          waveData: battle.waveData  // ✨ NOUVEAU
         }
       };
 
@@ -779,7 +793,8 @@ private static applyFormationBonuses(
       battleOptions: battle.battleOptions,
       duration: adjustedDuration,
       originalDuration: originalDuration,
-      replaySpeed: replaySpeed || 1
+      replaySpeed: replaySpeed || 1,
+      waveData: battle.waveData  // ✨ NOUVEAU : Inclure les données de vague
     };
   }
 
