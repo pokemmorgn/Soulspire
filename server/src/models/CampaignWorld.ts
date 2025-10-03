@@ -26,7 +26,22 @@ export interface ILevelRewards {
   items?: string[];
   fragments?: { heroId: string; quantity: number }[];
 }
+//  Configuration d'une vague de monstres
+export interface IWaveConfig {
+  waveNumber: number;                   // Numéro de la vague (1, 2, 3...)
+  monsters: ILevelMonsterConfig[];      // Monstres de cette vague
+  autoGenerate?: ILevelAutoGenerate;    // Génération auto alternative
+  delay: number;                        // Délai avant spawn (ms) - défaut: 3000
+  isBossWave?: boolean;                 // true si vague de boss
+  waveRewards?: ILevelRewards;          // Récompenses spécifiques à cette vague (optionnel)
+}
 
+//  Configuration des récompenses de vagues
+export interface IWaveRewardsConfig {
+  perWave: ILevelRewards;               // Récompenses distribuées après chaque vague
+  finalWave: ILevelRewards;             // Bonus final si toutes les vagues sont terminées
+  totalIfAllCompleted?: ILevelRewards;  // Récompenses totales alternatives (override)
+}
 export interface ILevelModifiers {
   elementalAura?: Elem;
   atkBuffPct?: number; // 0.10 = +10% ATK
@@ -45,6 +60,10 @@ export interface ILevelConfig {
   rewards?: ILevelRewards;
   enemyPoolTags?: string[];      // filtre de pool d’ennemis (ex: ["forest","beast"])
   modifiers?: ILevelModifiers;   // auras, buffs globaux, etc.
+  waves?: IWaveConfig[];                // Configuration des vagues (si undefined = combat classique)
+  waveRewards?: IWaveRewardsConfig;     // Récompenses par vague (si waves est défini)
+  enableWaves?: boolean;                // Active le système de vagues auto (false par défaut)
+  autoWaveCount?: number;               // Nombre de vagues auto (défaut selon enemyType)
 }
 
 export interface ICampaignWorld extends Document {
@@ -91,6 +110,53 @@ const levelSchema = new Schema<ILevelConfig>({
     atkBuffPct: { type: Number, min: 0, max: 1 },
     defBuffPct: { type: Number, min: 0, max: 1 }
   }
+  waves: [{
+    waveNumber: { type: Number, required: true, min: 1 },
+    monsters: [{
+      monsterId: { type: String, required: true },
+      count: { type: Number, min: 1, default: 1 },
+      position: { type: Number, min: 1, max: 5 },
+      levelOverride: { type: Number, min: 1 },
+      starsOverride: { type: Number, min: 1, max: 6 }
+    }],
+    autoGenerate: {
+      useWorldPool: { type: Boolean, default: true },
+      count: { type: Number, min: 1, default: 3 },
+      enemyType: { type: String, enum: ["normal","elite","boss"], default: "normal" }
+    },
+    delay: { type: Number, min: 0, default: 3000 },
+    isBossWave: { type: Boolean, default: false },
+    waveRewards: {
+      experience: { type: Number, default: 0 },
+      gold: { type: Number, default: 0 },
+      items: [{ type: String }],
+      fragments: [{ heroId: String, quantity: { type: Number, min: 1 } }]
+    }
+  }],
+  
+  waveRewards: {
+    perWave: {
+      experience: { type: Number, default: 0 },
+      gold: { type: Number, default: 0 },
+      items: [{ type: String }],
+      fragments: [{ heroId: String, quantity: { type: Number, min: 1 } }]
+    },
+    finalWave: {
+      experience: { type: Number, default: 0 },
+      gold: { type: Number, default: 0 },
+      items: [{ type: String }],
+      fragments: [{ heroId: String, quantity: { type: Number, min: 1 } }]
+    },
+    totalIfAllCompleted: {
+      experience: { type: Number, default: 0 },
+      gold: { type: Number, default: 0 },
+      items: [{ type: String }],
+      fragments: [{ heroId: String, quantity: { type: Number, min: 1 } }]
+    }
+  },
+  
+  enableWaves: { type: Boolean, default: false },
+  autoWaveCount: { type: Number, min: 1, max: 10, default: 3 }
 });
 
 const campaignWorldSchema = new Schema<ICampaignWorld>({
