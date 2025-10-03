@@ -2332,3 +2332,235 @@ input[type="range"]::-moz-range-thumb {
     flex-direction: column;
   }
 }
+/* ===== JSON IMPORT SECTION STYLES ===== */
+.json-import-section {
+  max-width: 100%;
+}
+
+.json-import-section .form-control {
+  font-family: 'Courier New', Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Example Guide */
+.example-guide {
+  background: #fff3cd;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border: 1px solid #ffc107;
+}
+
+.example-guide h4 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  color: #856404;
+}
+
+.example-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.example-item {
+  background: white;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.example-item code {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  color: #667eea;
+  font-weight: 600;
+}
+
+/* ChatGPT Prompt Textarea */
+#chatgptPrompt {
+  background: #e8f5e9;
+  border: 2px solid #4caf50;
+  color: #1b5e20;
+  font-size: 12px;
+  resize: vertical;
+}
+
+#chatgptPrompt:focus {
+  outline: none;
+  border-color: #2e7d32;
+  box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+}
+
+/* JSON Input Textarea */
+#jsonInput {
+  background: #f8f9fa;
+  border: 2px dashed #667eea;
+  transition: all 0.3s ease;
+  resize: vertical;
+}
+
+#jsonInput:focus {
+  background: white;
+  border-color: #667eea;
+  border-style: solid;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+#jsonInput::placeholder {
+  color: #adb5bd;
+  font-style: italic;
+}
+
+/* JSON Preview */
+.json-preview {
+  background: linear-gradient(135deg, #d4edda, #c3e6cb);
+  border: 2px solid #28a745;
+  border-radius: 10px;
+  padding: 20px;
+  margin-top: 20px;
+  animation: slideInUp 0.4s ease;
+}
+
+.json-preview h4 {
+  color: #155724;
+  margin: 0 0 15px 0;
+  font-size: 18px;
+}
+
+.json-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.json-preview .preview-item {
+  background: white;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #28a745;
+  font-size: 13px;
+}
+
+.json-preview .preview-item strong {
+  color: #155724;
+  display: block;
+  margin-bottom: 5px;
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.json-preview .preview-item code {
+  background: #f8f9fa;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+/* Buttons dans JSON Import */
+.json-import-section .btn-small {
+  padding: 6px 12px;
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+/* Alert Info amélioration */
+.json-import-section .alert.info {
+  background: #d1ecf1;
+  border: 1px solid #bee5eb;
+  color: #0c5460;
+}
+
+.json-import-section .alert.info strong {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 15px;
+}
+
+.json-import-section .alert.info ol {
+  line-height: 1.8;
+  margin: 10px 0 0 20px;
+}
+
+.json-import-section .alert.info li {
+  margin-bottom: 5px;
+}
+
+.json-import-section .alert.info code {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+/* Badge styles pour preview */
+.badge-normal {
+  background: #6c757d;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badge-elite {
+  background: #ffc107;
+  color: #333;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badge-boss {
+  background: #dc3545;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Animation pour preview */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive pour JSON Import */
+@media (max-width: 768px) {
+  .example-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .json-preview-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  #chatgptPrompt {
+    font-size: 11px;
+  }
+
+  #jsonInput {
+    font-size: 12px;
+  }
+
+  .json-import-section .btn-small {
+    width: 100%;
+    margin: 5px 0;
+  }
+}
