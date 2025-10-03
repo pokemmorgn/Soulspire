@@ -3,10 +3,12 @@ import Player from "../models/Player";
 import Hero from "../models/Hero";
 import LevelProgress from "../models/LevelProgress";
 import Formation from "../models/Formation";
+
 import { BattleEngine, IBattleOptions } from "./BattleEngine";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
 import { HeroSpells } from "../gameplay/SpellManager";
+import { MonsterService } from "./MonsterService";
 import { calculateFormationSynergies } from "../config/FormationBonusConfig";
 export class BattleService {
 
@@ -38,10 +40,11 @@ export class BattleService {
       }
 
       // Mapper la difficulté et les paramètres du niveau
-      const enemyCount = 3 + Math.floor(worldId / 5);
-      const levelMultiplier = 1 + (worldId * 0.15) + (levelId * 0.05);
-      const enemyType: "normal" | "elite" | "boss" = this.getEnemyType(levelId);
-      const { enemyTeam, enemySpells } = await this.generateEnemyTeamWithSpells(enemyCount, levelMultiplier, enemyType);
+      const { enemyTeam, enemySpells } = await MonsterService.generateCampaignEnemies(
+        worldId,
+        levelId,
+        difficulty
+      );
 
       const battle = new Battle({
         playerId,
@@ -460,104 +463,6 @@ for (const slot of sortedSlots) {
   return { playerTeam: team, playerSpells: spells };
 }
 
-private static async generateEnemyTeamWithSpells(
-  enemyCount: number,
-  levelMultiplier: number,
-  enemyType: "normal" | "elite" | "boss"
-): Promise<{
-  enemyTeam: IBattleParticipant[];
-  enemySpells: Map<string, HeroSpells>;
-}> {
-  const enemyTeam: IBattleParticipant[] = [];
-  const enemySpells = new Map<string, HeroSpells>();
-
-  try {
-    const baseHeroes = await Hero.aggregate([
-      { $sample: { size: enemyCount } }
-    ]);
-
-    if (baseHeroes.length === 0) {
-      throw new Error("No heroes available to generate enemies");
-    }
-
-    // ✅ NOUVEAU : Calculer d'abord la distribution élémentaire des ennemis
-    const elementDistribution: Record<string, number> = {};
-
-    for (const heroData of baseHeroes) {
-      if (heroData.element) {
-        elementDistribution[heroData.element] = (elementDistribution[heroData.element] || 0) + 1;
-      }
-    }
-
-    // ✅ Maintenant créer les ennemis avec les bonus appliqués
-    for (let i = 0; i < baseHeroes.length; i++) {
-      const heroData = baseHeroes[i];
-      
-      let levelBonus = 1.0;
-      let starsBonus = 1.0;
-      
-      if (enemyType === "elite") {
-        levelBonus = 1.2;
-        starsBonus = 1.1;
-      } else if (enemyType === "boss") {
-        levelBonus = 1.5;
-        starsBonus = 1.3;
-      }
-      
-      const totalMultiplier = levelMultiplier * levelBonus * starsBonus;
-      
-      const baseEnemyStats = {
-        hp: Math.floor(heroData.baseStats.hp * totalMultiplier),
-        maxHp: Math.floor(heroData.baseStats.hp * totalMultiplier),
-        atk: Math.floor(heroData.baseStats.atk * totalMultiplier),
-        def: Math.floor(heroData.baseStats.def * totalMultiplier),
-        defMagique: Math.floor((heroData.baseStats.defMagique || heroData.baseStats.def) * totalMultiplier),
-        vitesse: Math.floor((heroData.baseStats.vitesse || 80) * totalMultiplier),
-        intelligence: Math.floor((heroData.baseStats.intelligence || 70) * totalMultiplier),
-        force: Math.floor((heroData.baseStats.force || 80) * totalMultiplier),
-        moral: Math.floor((heroData.baseStats.moral || 60) * totalMultiplier),
-        precision: Math.floor((heroData.baseStats.precision || 75) * totalMultiplier),
-        esquive: Math.floor((heroData.baseStats.esquive || 50) * totalMultiplier),
-        speed: 90 + Math.floor(enemyCount * 2)
-      };
-      
-      // ✅ NOUVEAU : Appliquer les bonus de synergie aux ennemis
-      const enemyStats = this.applyFormationBonuses(baseEnemyStats, elementDistribution, heroData.element);
-      
-      const enemyId = `enemy_${heroData._id}_${i}`;
-      const enemy: IBattleParticipant = {
-        heroId: enemyId,
-        name: `${enemyType === "boss" ? "Boss " : enemyType === "elite" ? "Elite " : ""}${heroData.name}`,
-        position: i + 1,
-        role: heroData.role,
-        element: heroData.element,
-        rarity: heroData.rarity,
-        level: Math.floor(20 + enemyCount * 2 * levelBonus),
-        stars: enemyType === "boss" ? 5 : enemyType === "elite" ? 4 : 3,
-        stats: enemyStats, // ✅ NOUVEAU : Stats avec bonus
-        currentHp: enemyStats.hp, // ✅ NOUVEAU : HP avec bonus
-        energy: enemyType === "boss" ? 50 : 0,
-        status: {
-          alive: true,
-          buffs: enemyType === "boss" ? ["boss_aura"] : [],
-          debuffs: []
-        }
-      };
-      
-      enemyTeam.push(enemy);
-      
-      const heroSpells = this.extractHeroSpells(heroData);
-      enemySpells.set(enemyId, heroSpells);
-    }
-
-    return { enemyTeam, enemySpells };
-
-  } catch (error) {
-    console.error("Error generating enemy team:", error);
-    throw new Error("Failed to generate enemy team");
-  }
-}
-
   private static extractHeroSpells(heroData: any): HeroSpells {
     const heroSpells: HeroSpells = {};
 
@@ -727,12 +632,6 @@ private static applyFormationBonuses(
   return stats;
 }
   
-  private static getEnemyType(levelId: number): "normal" | "elite" | "boss" {
-    if (levelId % 10 === 0) return "boss";
-    if (levelId % 5 === 0) return "elite";
-    return "normal";
-  }
-
   private static async applyBattleRewards(player: any, result: IBattleResult) {
     player.gold += result.rewards.gold;
     await player.save();
