@@ -69,6 +69,7 @@
             <div class="nav-tabs">
                 <div class="nav-tab active" data-section="overview">📊 Overview</div>
                 <div class="nav-tab" data-section="players">👥 Players</div>
+                <div class="nav-tab" data-section="monsters">👹 Monsters</div>
                 <div class="nav-tab" data-section="economy">💰 Economy</div>
                 <div class="nav-tab" data-section="logs">📜 Audit Logs</div>
                 <div class="nav-tab" data-section="system">⚙️ System</div>
@@ -90,6 +91,13 @@
                     </div>
                 </div>
 
+                <div id="monstersSection" class="content-section">
+                    <h2 class="section-title">Monsters Management</h2>
+                    <div id="monstersContent">
+                        <div class="loading"><div class="spinner"></div><p>Loading...</p></div>
+                    </div>
+                </div>
+                
                 <div id="economySection" class="content-section">
                     <h2 class="section-title">Economy Analytics</h2>
                     <div id="economyContent">
@@ -115,6 +123,11 @@
     </div>
 
 <script type="module" src="./core/admin.js"></script>
+    <!-- Modules Monsters -->
+<script type="module" src="./modules/monsters/monsters-ui.js"></script>
+<script type="module" src="./modules/monsters/monsters-form.js"></script>
+<script type="module" src="./modules/monsters/monsters-main.js"></script>
+    <!-- Modules Player -->
 <script type="module" src="./modules/players/players-ui.js"></script>
 <script type="module" src="./modules/players/players-currency.js"></script>
 <script type="module" src="./modules/players/players-main.js"></script>
@@ -128,7 +141,7 @@
             console.log('🚀 Starting Admin Panel...');
             window.AdminCore.init();
             window.PlayersModule.init();
-            
+            window.MonstersModule.init();
             // Setup event listeners
             document.getElementById('loginBtn').addEventListener('click', () => {
                 window.AdminCore.login();
