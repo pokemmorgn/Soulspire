@@ -142,7 +142,7 @@ function calculateMonsterStats(
     dodge: Math.min(20, Math.floor(csvSPD / 5)),
     accuracy: monsterType === "boss" ? 85 : 75,
     
-    vitesse: csvSPD,
+    vitesse: Math.max(50, csvSPD), 
     moral: monsterType === "boss" ? 100 : monsterType === "elite" ? 80 : 60,
     reductionCooldown: monsterType === "boss" ? 15 : monsterType === "elite" ? 10 : 0,
     healthleech: monsterType === "boss" ? 10 : 0,
