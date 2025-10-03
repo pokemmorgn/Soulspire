@@ -11,6 +11,7 @@ import { WebSocketShop } from './websocket/WebSocketShop';
 import { WebSocketGuild } from './websocket/WebSocketGuild';
 import { WebSocketForge } from './websocket/WebSocketForge';
 import { WebSocketDailyRewards } from './websocket/WebSocketDailyRewards';
+import { WebSocketBestiary } from './websocket/WebSocketBestiary';
 /**
  * SERVICE WEBSOCKET GLOBAL
  * Point d'entrée principal qui délègue aux modules spécialisés
@@ -80,6 +81,7 @@ export class WebSocketService {
     WebSocketGuild.initialize(this.io);
     WebSocketForge.initialize(this.io);
     WebSocketDailyRewards.initialize(this.io);
+    WebSocketBestiary.initialize(this.io);
     console.log('✅ WebSocket Server initialized with specialized modules');
   }
 
@@ -255,6 +257,16 @@ export class WebSocketService {
     socket.on('daily_rewards:unsubscribe', () => {
       socket.leave(`daily_rewards:${socket.serverId}`);
       console.log(`🚪 ${socket.playerName} unsubscribed from Daily Rewards`);
+    });
+    // Événements Bestiaire
+    socket.on('bestiary:join_room', () => {
+      socket.join(`bestiary:${socket.serverId}`);
+      console.log(`📖 ${socket.playerName} joined Bestiary room`);
+    });
+    
+    socket.on('bestiary:leave_room', () => {
+      socket.leave(`bestiary:${socket.serverId}`);
+      console.log(`🚪 ${socket.playerName} left Bestiary room`);
     });
     // Événements génériques
     socket.on('ping', () => {
@@ -889,101 +901,62 @@ public static leaveGuildRoom(playerId: string, guildId: string): void {
   public static notifyForgeEvent(serverId: string, eventData: any): void {
     WebSocketForge.notifyForgeEvent(serverId, eventData);
   }
-  // ===== MÉTHODES BESTIAIRE (DÉLÉGATION) =====
+// ===== MÉTHODES BESTIAIRE (DÉLÉGATION) =====
 
   /**
    * Notifier découverte d'un nouveau monstre
    */
   public static notifyBestiaryDiscovery(playerId: string, discoveryData: any): void {
-    if (!this.io) return;
-    
-    this.io.to(`player:${playerId}`).emit('bestiary:discovery', {
-      data: discoveryData,
-      timestamp: new Date()
-    });
-    
-    console.log(`📖 Discovery notification sent to ${playerId}: ${discoveryData.monsterName}`);
+    WebSocketBestiary.notifyDiscovery(playerId, discoveryData);
   }
 
   /**
    * Notifier progression de niveau (Novice/Veteran/Master)
    */
   public static notifyBestiaryLevelUp(playerId: string, levelUpData: any): void {
-    if (!this.io) return;
-    
-    this.io.to(`player:${playerId}`).emit('bestiary:level_up', {
-      data: levelUpData,
-      timestamp: new Date()
-    });
-    
-    console.log(`📈 Level up notification sent to ${playerId}: ${levelUpData.monsterName} → ${levelUpData.newLevel}`);
+    WebSocketBestiary.notifyLevelUp(playerId, levelUpData);
   }
 
   /**
    * Notifier récompense de complétion réclamée
    */
   public static notifyBestiaryRewardClaimed(playerId: string, rewardData: any): void {
-    if (!this.io) return;
-    
-    this.io.to(`player:${playerId}`).emit('bestiary:reward_claimed', {
-      data: rewardData,
-      timestamp: new Date()
-    });
-    
-    console.log(`🎁 Reward claimed notification sent to ${playerId}: ${rewardData.rewardId}`);
+    WebSocketBestiary.notifyRewardClaimed(playerId, rewardData);
   }
 
   /**
    * Notifier complétion d'un groupe (type/élément)
    */
   public static notifyBestiaryGroupCompletion(playerId: string, completionData: any): void {
-    if (!this.io) return;
-    
-    this.io.to(`player:${playerId}`).emit('bestiary:group_completion', {
-      data: completionData,
-      timestamp: new Date()
-    });
-    
-    console.log(`🏆 Group completion notification sent to ${playerId}: ${completionData.groupType}`);
+    WebSocketBestiary.notifyGroupCompletion(playerId, completionData);
   }
 
   /**
    * Notifier mise à jour du leaderboard (broadcast serveur)
    */
   public static notifyBestiaryLeaderboardUpdate(serverId: string, leaderboardData: any): void {
-    if (!this.io) return;
-    
-    this.io.to(`server:${serverId}`).emit('bestiary:leaderboard_update', {
-      data: leaderboardData,
-      timestamp: new Date()
-    });
-    
-    console.log(`📊 Leaderboard update broadcast to server ${serverId}`);
+    WebSocketBestiary.notifyLeaderboardUpdate(serverId, leaderboardData);
   }
 
   /**
    * Notifier complétion totale du bestiaire (100%)
    */
   public static notifyBestiaryFullCompletion(playerId: string, serverId: string, completionData: any): void {
-    if (!this.io) return;
-    
-    // Notification personnelle
-    this.io.to(`player:${playerId}`).emit('bestiary:full_completion', {
-      data: completionData,
-      timestamp: new Date()
-    });
-    
-    // Broadcast au serveur pour célébrer
-    this.io.to(`server:${serverId}`).emit('bestiary:player_completed', {
-      data: {
-        playerId: completionData.playerId,
-        playerName: completionData.playerName,
-        completionTime: completionData.completionTime
-      },
-      timestamp: new Date()
-    });
-    
-    console.log(`🎊 FULL COMPLETION! ${completionData.playerName} completed bestiary on ${serverId}`);
+    WebSocketBestiary.notifyFullCompletion(playerId, serverId, completionData);
+  }
+
+  /**
+   * Notifier nouveau record personnel
+   */
+  public static notifyBestiaryPersonalRecord(playerId: string, recordData: any): void {
+    WebSocketBestiary.notifyPersonalRecord(playerId, recordData);
+  }
+
+  /**
+   * Notifier mise à jour des statistiques
+   */
+  public static notifyBestiaryStatsUpdate(playerId: string, statsData: any): void {
+    WebSocketBestiary.notifyStatsUpdate(playerId, statsData);
   }
   // ===== MÉTHODES UTILITAIRES =====
 
@@ -1053,7 +1026,8 @@ public static leaveGuildRoom(playerId: string, guildId: string): void {
         shop: WebSocketShop.isAvailable(),
         guild: WebSocketGuild.isAvailable(),
         forge: WebSocketForge.isAvailable(),
-        dailyRewards: WebSocketDailyRewards.isAvailable()
+        dailyRewards: WebSocketDailyRewards.isAvailable(),
+        bestiary: WebSocketBestiary.isAvailable()
       }
     };
   }
