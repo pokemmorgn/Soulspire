@@ -1,9 +1,10 @@
 /**
  * MonstersForm - Gestion du formulaire de création/édition de monstres
+ * Avec import JSON assisté par ChatGPT
  */
 class MonstersForm {
   constructor() {
-    this.currentMode = null; // 'create' ou 'edit'
+    this.currentMode = null;
     this.currentMonster = null;
   }
 
@@ -58,15 +59,21 @@ class MonstersForm {
       <form id="monsterForm" class="monster-form">
         <!-- Onglets -->
         <div class="form-tabs">
-          <button type="button" class="form-tab active" onclick="MonstersForm.switchTab('basic')">📋 Basic Info</button>
+          <button type="button" class="form-tab active" onclick="MonstersForm.switchTab('jsonImport')">🤖 JSON Import</button>
+          <button type="button" class="form-tab" onclick="MonstersForm.switchTab('basic')">📋 Basic Info</button>
           <button type="button" class="form-tab" onclick="MonstersForm.switchTab('stats')">📊 Base Stats</button>
           <button type="button" class="form-tab" onclick="MonstersForm.switchTab('spells')">✨ Spells</button>
           <button type="button" class="form-tab" onclick="MonstersForm.switchTab('appearance')">🎨 Appearance</button>
           <button type="button" class="form-tab" onclick="MonstersForm.switchTab('advanced')">⚙️ Advanced</button>
         </div>
 
+        <!-- Tab: JSON Import -->
+        <div id="formTabJsonImport" class="form-tab-content active">
+          ${this.renderJsonImportTab()}
+        </div>
+
         <!-- Tab: Basic Info -->
-        <div id="formTabBasic" class="form-tab-content active">
+        <div id="formTabBasic" class="form-tab-content">
           ${this.renderBasicInfoTab(monster)}
         </div>
 
@@ -102,488 +109,370 @@ class MonstersForm {
   }
 
   /**
-   * Tab: Basic Info
+   * 🆕 Tab: JSON Import avec prompt ChatGPT
    */
-  renderBasicInfoTab(monster) {
-    return `
-      <div class="form-section">
-        <h3>Basic Information</h3>
-        
-        <div class="form-row">
-          <div class="form-group">
-            <label for="monsterId">Monster ID *</label>
-            <input type="text" id="monsterId" class="form-control" 
-                   placeholder="MON_fire_goblin" 
-                   value="${monster?.monsterId || ''}" 
-                   ${monster ? 'readonly' : ''} required>
-            <small>Format: MON_[element]_[name] (lowercase, no spaces)</small>
-          </div>
-
-          <div class="form-group">
-            <label for="monsterName">Name *</label>
-            <input type="text" id="monsterName" class="form-control" 
-                   placeholder="Fire Goblin" 
-                   value="${MonstersUI.escapeHtml(monster?.name || '')}" required>
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group">
-            <label for="monsterType">Type *</label>
-            <select id="monsterType" class="form-control" required>
-              <option value="normal" ${monster?.type === 'normal' ? 'selected' : ''}>Normal</option>
-              <option value="elite" ${monster?.type === 'elite' ? 'selected' : ''}>Elite</option>
-              <option value="boss" ${monster?.type === 'boss' ? 'selected' : ''}>Boss</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label for="monsterElement">Element *</label>
-            <select id="monsterElement" class="form-control" required>
-              <option value="Fire" ${monster?.element === 'Fire' ? 'selected' : ''}>🔥 Fire</option>
-              <option value="Water" ${monster?.element === 'Water' ? 'selected' : ''}>💧 Water</option>
-              <option value="Wind" ${monster?.element === 'Wind' ? 'selected' : ''}>💨 Wind</option>
-              <option value="Electric" ${monster?.element === 'Electric' ? 'selected' : ''}>⚡ Electric</option>
-              <option value="Light" ${monster?.element === 'Light' ? 'selected' : ''}>✨ Light</option>
-              <option value="Dark" ${monster?.element === 'Dark' ? 'selected' : ''}>🌑 Dark</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label for="monsterRole">Role *</label>
-            <select id="monsterRole" class="form-control" required>
-              <option value="Tank" ${monster?.role === 'Tank' ? 'selected' : ''}>🛡️ Tank</option>
-              <option value="DPS Melee" ${monster?.role === 'DPS Melee' ? 'selected' : ''}>⚔️ DPS Melee</option>
-              <option value="DPS Ranged" ${monster?.role === 'DPS Ranged' ? 'selected' : ''}>🏹 DPS Ranged</option>
-              <option value="Support" ${monster?.role === 'Support' ? 'selected' : ''}>💚 Support</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label for="monsterRarity">Rarity *</label>
-            <select id="monsterRarity" class="form-control" required>
-              <option value="Common" ${monster?.rarity === 'Common' ? 'selected' : ''}>Common</option>
-              <option value="Rare" ${monster?.rarity === 'Rare' ? 'selected' : ''}>Rare</option>
-              <option value="Epic" ${monster?.rarity === 'Epic' ? 'selected' : ''}>Epic</option>
-              <option value="Legendary" ${monster?.rarity === 'Legendary' ? 'selected' : ''}>Legendary</option>
-              <option value="Mythic" ${monster?.rarity === 'Mythic' ? 'selected' : ''}>Mythic</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label for="monsterDescription">Description</label>
-          <textarea id="monsterDescription" class="form-control" rows="3" 
-                    placeholder="A fierce goblin warrior wielding flames...">${MonstersUI.escapeHtml(monster?.description || '')}</textarea>
-        </div>
-      </div>
-    `;
-  }
-
-  /**
-   * Tab: Stats
-   */
-  renderStatsTab(monster) {
-    const stats = monster?.baseStats || {};
+  renderJsonImportTab() {
+    const promptTemplate = this.generateChatGPTPrompt();
     
     return `
-      <div class="form-section">
-        <h3>Base Stats (Level 1, 1 Star)</h3>
+      <div class="form-section json-import-section">
+        <h3>🤖 Quick Monster Creation with ChatGPT</h3>
         
         <div class="alert info" style="margin-bottom: 20px;">
-          <strong>ℹ️ Info:</strong> These are base stats at level 1 with 1 star. Stats will scale automatically with level and stars.
+          <strong>ℹ️ How it works:</strong>
+          <ol style="margin: 10px 0 0 20px; padding: 0;">
+            <li>Copy the prompt below</li>
+            <li>Paste it to ChatGPT with your monster details</li>
+            <li>Copy the JSON response from ChatGPT</li>
+            <li>Paste it in the JSON input below</li>
+            <li>Click "Parse JSON" to auto-fill the form</li>
+          </ol>
         </div>
 
-        <div class="form-row">
-          <div class="form-group">
-            <label for="statHp">HP *</label>
-            <input type="number" id="statHp" class="form-control" min="100" max="20000" 
-                   value="${stats.hp || 1000}" required>
-          </div>
-
-          <div class="form-group">
-            <label for="statAtk">ATK *</label>
-            <input type="number" id="statAtk" class="form-control" min="10" max="4000" 
-                   value="${stats.atk || 100}" required>
-          </div>
-
-          <div class="form-group">
-            <label for="statDef">DEF *</label>
-            <input type="number" id="statDef" class="form-control" min="10" max="2000" 
-                   value="${stats.def || 50}" required>
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group">
-            <label for="statCrit">Crit % (0-100)</label>
-            <input type="number" id="statCrit" class="form-control" min="0" max="100" step="0.1" 
-                   value="${stats.crit || 5}">
-          </div>
-
-          <div class="form-group">
-            <label for="statCritDamage">Crit Damage %</label>
-            <input type="number" id="statCritDamage" class="form-control" min="0" 
-                   value="${stats.critDamage || 50}">
-          </div>
-
-          <div class="form-group">
-            <label for="statVitesse">Speed (50-200)</label>
-            <input type="number" id="statVitesse" class="form-control" min="50" max="200" 
-                   value="${stats.vitesse || 80}">
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group">
-            <label for="statDodge">Dodge % (0-100)</label>
-            <input type="number" id="statDodge" class="form-control" min="0" max="100" step="0.1" 
-                   value="${stats.dodge || 0}">
-          </div>
-
-          <div class="form-group">
-            <label for="statAccuracy">Accuracy % (0-100)</label>
-            <input type="number" id="statAccuracy" class="form-control" min="0" max="100" step="0.1" 
-                   value="${stats.accuracy || 0}">
-          </div>
-
-          <div class="form-group">
-            <label for="statMoral">Moral (30-200)</label>
-            <input type="number" id="statMoral" class="form-control" min="30" max="200" 
-                   value="${stats.moral || 60}">
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  /**
-   * Tab: Spells
-   */
-  renderSpellsTab(monster) {
-    const spells = monster?.spells || {};
-    
-    return `
-      <div class="form-section">
-        <h3>Monster Spells</h3>
-        
-        <div class="alert warning" style="margin-bottom: 20px;">
-          <strong>⚠️ Note:</strong> Spell IDs must exist in your spell database. Leave empty if no spell.
-        </div>
-
+        <!-- ChatGPT Prompt -->
         <div class="form-group">
-          <label for="spellUltimate">Ultimate Spell ID *</label>
-          <input type="text" id="spellUltimate" class="form-control" 
-                 placeholder="fire_storm" 
-                 value="${spells.ultimate?.id || ''}" required>
-          <small>Required spell - main powerful ability</small>
+          <label for="chatgptPrompt">
+            📋 ChatGPT Prompt Template
+            <button type="button" class="btn btn-small btn-info" onclick="MonstersForm.copyChatGPTPrompt()" style="margin-left: 10px;">
+              📋 Copy Prompt
+            </button>
+          </label>
+          <textarea id="chatgptPrompt" class="form-control" rows="12" readonly>${promptTemplate}</textarea>
+          <small style="color: #666; margin-top: 5px; display: block;">
+            Copy this prompt and send it to ChatGPT with your monster description
+          </small>
         </div>
 
-        <div class="form-row">
-          <div class="form-group">
-            <label for="spellPassive">Passive Spell ID</label>
-            <input type="text" id="spellPassive" class="form-control" 
-                   placeholder="flame_aura" 
-                   value="${spells.passive?.id || ''}">
-          </div>
-
-          <div class="form-group">
-            <label for="spell1">Spell 1 ID</label>
-            <input type="text" id="spell1" class="form-control" 
-                   placeholder="fire_strike" 
-                   value="${spells.spell1?.id || ''}">
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group">
-            <label for="spell2">Spell 2 ID</label>
-            <input type="text" id="spell2" class="form-control" 
-                   placeholder="flame_dash" 
-                   value="${spells.spell2?.id || ''}">
-          </div>
-
-          <div class="form-group">
-            <label for="spell3">Spell 3 ID</label>
-            <input type="text" id="spell3" class="form-control" 
-                   placeholder="burning_shield" 
-                   value="${spells.spell3?.id || ''}">
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  /**
-   * Tab: Appearance
-   */
-  renderAppearanceTab(monster) {
-    return `
-      <div class="form-section">
-        <h3>Visual & Thematic</h3>
-        
+        <!-- JSON Input -->
         <div class="form-group">
-          <label for="visualTheme">Visual Theme *</label>
-          <select id="visualTheme" class="form-control" required>
-            <option value="forest" ${monster?.visualTheme === 'forest' ? 'selected' : ''}>🌲 Forest</option>
-            <option value="beast" ${monster?.visualTheme === 'beast' ? 'selected' : ''}>🐺 Beast</option>
-            <option value="undead" ${monster?.visualTheme === 'undead' ? 'selected' : ''}>💀 Undead</option>
-            <option value="demon" ${monster?.visualTheme === 'demon' ? 'selected' : ''}>👿 Demon</option>
-            <option value="elemental" ${monster?.visualTheme === 'elemental' ? 'selected' : ''}>🌟 Elemental</option>
-            <option value="construct" ${monster?.visualTheme === 'construct' ? 'selected' : ''}>🗿 Construct</option>
-            <option value="celestial" ${monster?.visualTheme === 'celestial' ? 'selected' : ''}>👼 Celestial</option>
-            <option value="shadow" ${monster?.visualTheme === 'shadow' ? 'selected' : ''}>🌑 Shadow</option>
-            <option value="dragon" ${monster?.visualTheme === 'dragon' ? 'selected' : ''}>🐉 Dragon</option>
-            <option value="giant" ${monster?.visualTheme === 'giant' ? 'selected' : ''}>🏔️ Giant</option>
-            <option value="insect" ${monster?.visualTheme === 'insect' ? 'selected' : ''}>🐛 Insect</option>
-            <option value="aquatic" ${monster?.visualTheme === 'aquatic' ? 'selected' : ''}>🐟 Aquatic</option>
-            <option value="corrupted" ${monster?.visualTheme === 'corrupted' ? 'selected' : ''}>🧟 Corrupted</option>
-          </select>
+          <label for="jsonInput">
+            🤖 Paste ChatGPT JSON Response Here
+            <button type="button" class="btn btn-small btn-success" onclick="MonstersForm.parseJSON()" style="margin-left: 10px;">
+              ✨ Parse JSON
+            </button>
+            <button type="button" class="btn btn-small btn-secondary" onclick="MonstersForm.clearJSON()" style="margin-left: 5px;">
+              🗑️ Clear
+            </button>
+          </label>
+          <textarea id="jsonInput" class="form-control" rows="15" 
+                    placeholder='Paste the JSON from ChatGPT here...
+
+Example format:
+{
+  "monsterId": "MON_fire_goblin",
+  "name": "Fire Goblin",
+  "type": "normal",
+  ...
+}'></textarea>
+          <small style="color: #666; margin-top: 5px; display: block;">
+            The JSON will automatically fill all the form fields
+          </small>
         </div>
 
-        <div class="form-row">
-          <div class="form-group">
-            <label for="spriteId">Sprite ID</label>
-            <input type="text" id="spriteId" class="form-control" 
-                   placeholder="monster_fire_goblin_01" 
-                   value="${monster?.spriteId || ''}">
-            <small>Unity sprite asset ID</small>
-          </div>
-
-          <div class="form-group">
-            <label for="animationSet">Animation Set</label>
-            <input type="text" id="animationSet" class="form-control" 
-                   placeholder="goblin_basic" 
-                   value="${monster?.animationSet || ''}">
-            <small>Unity animation controller name</small>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  /**
-   * Tab: Advanced
-   */
-  renderAdvancedTab(monster) {
-    const worldTags = monster?.worldTags || [];
-    const worldTagsStr = worldTags.join(',');
-    
-    return `
-      <div class="form-section">
-        <h3>Advanced Settings</h3>
-        
-        <div class="form-group">
-          <label for="worldTags">World Tags (comma-separated)</label>
-          <input type="text" id="worldTags" class="form-control" 
-                 placeholder="1,2,3,4,5" 
-                 value="${worldTagsStr}">
-          <small>Leave empty for all worlds, or specify: 1,2,3 (worlds where this monster appears)</small>
+        <!-- Preview Zone -->
+        <div id="jsonPreview" class="json-preview" style="display: none;">
+          <h4>✅ JSON Parsed Successfully!</h4>
+          <div id="jsonPreviewContent"></div>
+          <p style="margin-top: 15px; color: #28a745; font-weight: 600;">
+            → Switch to other tabs to review the auto-filled data, or click "Create Monster" to submit.
+          </p>
         </div>
 
-        <div class="form-row">
-          <div class="form-group">
-            <label for="minWorldLevel">Min World Level</label>
-            <input type="number" id="minWorldLevel" class="form-control" min="1" max="20" 
-                   value="${monster?.minWorldLevel || ''}" placeholder="Optional">
-          </div>
-
-          <div class="form-group">
-            <label for="maxWorldLevel">Max World Level</label>
-            <input type="number" id="maxWorldLevel" class="form-control" min="1" max="20" 
-                   value="${monster?.maxWorldLevel || ''}" placeholder="Optional">
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group">
-            <label>
-              <input type="checkbox" id="isUnique" ${monster?.isUnique ? 'checked' : ''}>
-              Unique Boss (cannot be duplicated)
-            </label>
-          </div>
-
-          <div class="form-group">
-            <label>
-              <input type="checkbox" id="isSummonable" ${monster?.isSummonable ? 'checked' : ''}>
-              Can be summoned by others
-            </label>
-          </div>
-
-          <div class="form-group">
-            <label>
-              <input type="checkbox" id="canSummon" ${monster?.canSummon ? 'checked' : ''}>
-              Can summon other monsters
-            </label>
-          </div>
+        <!-- Example -->
+        <div class="form-group" style="margin-top: 30px;">
+          <button type="button" class="btn btn-small btn-secondary" onclick="MonstersForm.loadExampleJSON()">
+            📝 Load Example JSON
+          </button>
+          <small style="margin-left: 10px; color: #666;">
+            Load an example to see the expected format
+          </small>
         </div>
       </div>
     `;
   }
 
   /**
-   * Changer d'onglet
+   * 🆕 Générer le prompt ChatGPT
    */
-  switchTab(tabName) {
-    // Désactiver tous les tabs
-    document.querySelectorAll('.form-tab').forEach(tab => tab.classList.remove('active'));
-    document.querySelectorAll('.form-tab-content').forEach(content => content.classList.remove('active'));
-    
-    // Activer le tab sélectionné
-    document.querySelector(`.form-tab[onclick*="${tabName}"]`)?.classList.add('active');
-    document.getElementById(`formTab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`)?.classList.add('active');
+  generateChatGPTPrompt() {
+    return `You are a game designer assistant. I need you to create a monster for my idle RPG game.
+
+**IMPORTANT INSTRUCTIONS:**
+1. Generate a complete monster data in JSON format
+2. Follow the exact structure provided below
+3. Be creative with stats, spells, and descriptions
+4. Ensure all required fields are present
+5. Return ONLY the JSON object, no additional text
+
+**Monster Information I'm Providing:**
+[PASTE YOUR MONSTER DESCRIPTION HERE - e.g., "A fierce fire goblin warrior with high attack"]
+
+**Required JSON Structure:**
+\`\`\`json
+{
+  "monsterId": "MON_[element]_[name]",
+  "name": "Monster Name",
+  "displayName": "Monster Display Name",
+  "type": "normal|elite|boss",
+  "element": "Fire|Water|Wind|Electric|Light|Dark",
+  "role": "Tank|DPS Melee|DPS Ranged|Support",
+  "rarity": "Common|Rare|Epic|Legendary|Mythic",
+  "description": "Detailed monster description",
+  "visualTheme": "forest|beast|undead|demon|elemental|construct|celestial|shadow|dragon|giant|insect|aquatic|corrupted",
+  "spriteId": "monster_sprite_id",
+  "animationSet": "animation_set_name",
+  "baseStats": {
+    "hp": 1000,
+    "atk": 100,
+    "def": 50,
+    "crit": 5,
+    "critDamage": 50,
+    "vitesse": 80,
+    "dodge": 0,
+    "accuracy": 0,
+    "moral": 60
+  },
+  "spells": {
+    "ultimate": {
+      "id": "spell_ultimate_id",
+      "level": 1
+    },
+    "passive": {
+      "id": "spell_passive_id",
+      "level": 1
+    },
+    "spell1": {
+      "id": "spell_1_id",
+      "level": 1
+    }
+  },
+  "worldTags": [1, 2, 3],
+  "minWorldLevel": 1,
+  "maxWorldLevel": 5,
+  "isUnique": false,
+  "isSummonable": false,
+  "canSummon": false
+}
+\`\`\`
+
+**Rules for Monster Creation:**
+- Monster ID format: MON_[element]_[name] (lowercase, underscores)
+- HP range: 500-20000 based on role (Tank = high HP)
+- ATK range: 50-4000 based on role (DPS = high ATK)
+- DEF range: 20-2000 based on role (Tank = high DEF)
+- Crit: 0-30% (most monsters 5-15%)
+- Crit Damage: 50-200%
+- Speed: 50-200 (average 80-100)
+- Spell IDs should be descriptive (e.g., "fire_storm", "shadow_strike")
+
+**Please generate the complete JSON now based on the monster description I provided above.**`;
   }
 
   /**
-   * Collecter les données du formulaire
+   * 🆕 Copier le prompt ChatGPT
    */
-  collectFormData() {
-    // World tags
-    const worldTagsStr = document.getElementById('worldTags').value.trim();
-    const worldTags = worldTagsStr ? worldTagsStr.split(',').map(w => parseInt(w.trim())).filter(w => !isNaN(w)) : [];
-
-    const data = {
-      monsterId: document.getElementById('monsterId').value.trim(),
-      name: document.getElementById('monsterName').value.trim(),
-      type: document.getElementById('monsterType').value,
-      element: document.getElementById('monsterElement').value,
-      role: document.getElementById('monsterRole').value,
-      rarity: document.getElementById('monsterRarity').value,
-      description: document.getElementById('monsterDescription').value.trim(),
-      visualTheme: document.getElementById('visualTheme').value,
-      spriteId: document.getElementById('spriteId').value.trim() || undefined,
-      animationSet: document.getElementById('animationSet').value.trim() || undefined,
-      
-      baseStats: {
-        hp: parseInt(document.getElementById('statHp').value),
-        atk: parseInt(document.getElementById('statAtk').value),
-        def: parseInt(document.getElementById('statDef').value),
-        crit: parseFloat(document.getElementById('statCrit').value),
-        critDamage: parseFloat(document.getElementById('statCritDamage').value),
-        vitesse: parseInt(document.getElementById('statVitesse').value),
-        dodge: parseFloat(document.getElementById('statDodge').value),
-        accuracy: parseFloat(document.getElementById('statAccuracy').value),
-        moral: parseInt(document.getElementById('statMoral').value),
-        critResist: 0,
-        reductionCooldown: 0,
-        healthleech: 0,
-        healingBonus: 0,
-        shieldBonus: 0,
-        energyRegen: 10
-      },
-      
-      spells: {
-        ultimate: {
-          id: document.getElementById('spellUltimate').value.trim(),
-          level: 1
-        }
-      },
-      
-      worldTags,minWorldLevel: parseInt(document.getElementById('minWorldLevel').value) || undefined,
-      maxWorldLevel: parseInt(document.getElementById('maxWorldLevel').value) || undefined,
-      isUnique: document.getElementById('isUnique').checked,
-      isSummonable: document.getElementById('isSummonable').checked,
-      canSummon: document.getElementById('canSummon').checked
-    };
-
-    // Spells optionnels
-    const passiveId = document.getElementById('spellPassive').value.trim();
-    if (passiveId) {
-      data.spells.passive = { id: passiveId, level: 1 };
-    }
-
-    const spell1Id = document.getElementById('spell1').value.trim();
-    if (spell1Id) {
-      data.spells.spell1 = { id: spell1Id, level: 1 };
-    }
-
-    const spell2Id = document.getElementById('spell2').value.trim();
-    if (spell2Id) {
-      data.spells.spell2 = { id: spell2Id, level: 1 };
-    }
-
-    const spell3Id = document.getElementById('spell3').value.trim();
-    if (spell3Id) {
-      data.spells.spell3 = { id: spell3Id, level: 1 };
-    }
-
-    return data;
+  copyChatGPTPrompt() {
+    const promptElement = document.getElementById('chatgptPrompt');
+    promptElement.select();
+    document.execCommand('copy');
+    
+    AdminCore.showAlert('✅ Prompt copied to clipboard! Paste it in ChatGPT.', 'success', 3000);
   }
 
   /**
-   * Soumettre le formulaire
+   * 🆕 Parser le JSON et remplir le formulaire
    */
-  async submitForm(event) {
-    event.preventDefault();
-    
+  parseJSON() {
     try {
-      const data = this.collectFormData();
+      const jsonInput = document.getElementById('jsonInput').value.trim();
       
+      if (!jsonInput) {
+        AdminCore.showAlert('Please paste JSON data first', 'error');
+        return;
+      }
+
+      // Nettoyer le JSON (enlever les backticks markdown si présents)
+      let cleanedJSON = jsonInput
+        .replace(/```json\s*/g, '')
+        .replace(/```\s*/g, '')
+        .trim();
+
+      // Parser le JSON
+      const data = JSON.parse(cleanedJSON);
+
       // Validation basique
-      if (!data.monsterId || !data.name || !data.element || !data.role) {
-        AdminCore.showAlert('Please fill all required fields', 'error');
-        return;
+      if (!data.monsterId || !data.name) {
+        throw new Error('Missing required fields: monsterId or name');
       }
 
-      if (!data.spells.ultimate?.id) {
-        AdminCore.showAlert('Ultimate spell is required', 'error');
-        return;
-      }
+      // Remplir tous les champs du formulaire
+      this.fillFormFromJSON(data);
 
-      let response;
-      
-      if (this.currentMode === 'create') {
-        response = await AdminCore.makeRequest('/api/admin/monsters', {
-          method: 'POST',
-          body: JSON.stringify(data)
-        });
-      } else {
-        response = await AdminCore.makeRequest(`/api/admin/monsters/${this.currentMonster.monsterId}`, {
-          method: 'PUT',
-          body: JSON.stringify(data)
-        });
-      }
+      // Afficher la preview
+      this.showJSONPreview(data);
 
-      if (response.data.success) {
-        AdminCore.showAlert(
-          this.currentMode === 'create' ? 'Monster created successfully!' : 'Monster updated successfully!',
-          'success'
-        );
-        
-        this.closeModal();
-        
-        // Recharger la liste
-        if (window.MonstersModule) {
-          window.MonstersModule.loadMonstersList();
-        }
-      }
+      AdminCore.showAlert('✅ JSON parsed successfully! Form fields auto-filled.', 'success', 5000);
 
     } catch (error) {
-      console.error('Submit form error:', error);
-      AdminCore.showAlert('Failed to save monster: ' + error.message, 'error');
+      console.error('JSON Parse Error:', error);
+      AdminCore.showAlert('❌ Invalid JSON format: ' + error.message, 'error', 8000);
     }
   }
 
   /**
-   * Fermer le modal
+   * 🆕 Remplir le formulaire depuis JSON
    */
-  closeModal() {
-    document.getElementById('monsterFormModal').style.display = 'none';
-    this.currentMode = null;
-    this.currentMonster = null;
+  fillFormFromJSON(data) {
+    // Basic Info
+    if (data.monsterId) document.getElementById('monsterId').value = data.monsterId;
+    if (data.name) document.getElementById('monsterName').value = data.name;
+    if (data.type) document.getElementById('monsterType').value = data.type;
+    if (data.element) document.getElementById('monsterElement').value = data.element;
+    if (data.role) document.getElementById('monsterRole').value = data.role;
+    if (data.rarity) document.getElementById('monsterRarity').value = data.rarity;
+    if (data.description) document.getElementById('monsterDescription').value = data.description;
+
+    // Base Stats
+    if (data.baseStats) {
+      if (data.baseStats.hp) document.getElementById('statHp').value = data.baseStats.hp;
+      if (data.baseStats.atk) document.getElementById('statAtk').value = data.baseStats.atk;
+      if (data.baseStats.def) document.getElementById('statDef').value = data.baseStats.def;
+      if (data.baseStats.crit !== undefined) document.getElementById('statCrit').value = data.baseStats.crit;
+      if (data.baseStats.critDamage) document.getElementById('statCritDamage').value = data.baseStats.critDamage;
+      if (data.baseStats.vitesse) document.getElementById('statVitesse').value = data.baseStats.vitesse;
+      if (data.baseStats.dodge !== undefined) document.getElementById('statDodge').value = data.baseStats.dodge;
+      if (data.baseStats.accuracy !== undefined) document.getElementById('statAccuracy').value = data.baseStats.accuracy;
+      if (data.baseStats.moral) document.getElementById('statMoral').value = data.baseStats.moral;
+    }
+
+    // Spells
+    if (data.spells) {
+      if (data.spells.ultimate?.id) document.getElementById('spellUltimate').value = data.spells.ultimate.id;
+      if (data.spells.passive?.id) document.getElementById('spellPassive').value = data.spells.passive.id;
+      if (data.spells.spell1?.id) document.getElementById('spell1').value = data.spells.spell1.id;
+      if (data.spells.spell2?.id) document.getElementById('spell2').value = data.spells.spell2.id;
+      if (data.spells.spell3?.id) document.getElementById('spell3').value = data.spells.spell3.id;
+    }
+
+    // Appearance
+    if (data.visualTheme) document.getElementById('visualTheme').value = data.visualTheme;
+    if (data.spriteId) document.getElementById('spriteId').value = data.spriteId;
+    if (data.animationSet) document.getElementById('animationSet').value = data.animationSet;
+
+    // Advanced
+    if (data.worldTags) {
+      document.getElementById('worldTags').value = data.worldTags.join(',');
+    }
+    if (data.minWorldLevel) document.getElementById('minWorldLevel').value = data.minWorldLevel;
+    if (data.maxWorldLevel) document.getElementById('maxWorldLevel').value = data.maxWorldLevel;
+    if (data.isUnique !== undefined) document.getElementById('isUnique').checked = data.isUnique;
+    if (data.isSummonable !== undefined) document.getElementById('isSummonable').checked = data.isSummonable;
+    if (data.canSummon !== undefined) document.getElementById('canSummon').checked = data.canSummon;
   }
 
   /**
-   * Initialiser le formulaire
+   * 🆕 Afficher la preview du JSON parsé
    */
-  init() {
-    // Setup du gestionnaire de soumission
-    document.addEventListener('submit', (e) => {
-      if (e.target.id === 'monsterForm') {
-        this.submitForm(e);
-      }
-    });
+  showJSONPreview(data) {
+    const preview = document.getElementById('jsonPreview');
+    const content = document.getElementById('jsonPreviewContent');
+    
+    content.innerHTML = `
+      <div class="json-preview-grid">
+        <div class="preview-item">
+          <strong>Monster:</strong> ${data.name}
+        </div>
+        <div class="preview-item">
+          <strong>Type:</strong> ${data.type}
+        </div>
+        <div class="preview-item">
+          <strong>Element:</strong> ${MonstersUI.getElementIcon(data.element)} ${data.element}
+        </div>
+        <div class="preview-item">
+          <strong>Role:</strong> ${MonstersUI.getRoleIcon(data.role)} ${data.role}
+        </div>
+        <div class="preview-item">
+          <strong>HP:</strong> ${data.baseStats?.hp || 'N/A'}
+        </div>
+        <div class="preview-item">
+          <strong>ATK:</strong> ${data.baseStats?.atk || 'N/A'}
+        </div>
+        <div class="preview-item">
+          <strong>DEF:</strong> ${data.baseStats?.def || 'N/A'}
+        </div>
+        <div class="preview-item">
+          <strong>Ultimate:</strong> ${data.spells?.ultimate?.id || 'N/A'}
+        </div>
+      </div>
+    `;
+    
+    preview.style.display = 'block';
   }
+
+  /**
+   * 🆕 Charger un exemple JSON
+   */
+  loadExampleJSON() {
+    const example = {
+      "monsterId": "MON_fire_goblin_warrior",
+      "name": "Fire Goblin Warrior",
+      "displayName": "Fire Goblin Warrior",
+      "type": "normal",
+      "element": "Fire",
+      "role": "DPS Melee",
+      "rarity": "Common",
+      "description": "A fierce goblin warrior wielding flames. Quick and aggressive, it overwhelms enemies with rapid fire attacks.",
+      "visualTheme": "beast",
+      "spriteId": "monster_fire_goblin_01",
+      "animationSet": "goblin_melee",
+      "baseStats": {
+        "hp": 800,
+        "atk": 120,
+        "def": 40,
+        "crit": 8,
+        "critDamage": 60,
+        "vitesse": 95,
+        "dodge": 5,
+        "accuracy": 0,
+        "moral": 70
+      },
+      "spells": {
+        "ultimate": {
+          "id": "fire_storm",
+          "level": 1
+        },
+        "passive": {
+          "id": "flame_aura",
+          "level": 1
+        },
+        "spell1": {
+          "id": "fire_strike",
+          "level": 1
+        }
+      },
+      "worldTags": [1, 2, 3],
+      "minWorldLevel": 1,
+      "maxWorldLevel": 5,
+      "isUnique": false,
+      "isSummonable": false,
+      "canSummon": false
+    };
+
+    document.getElementById('jsonInput').value = JSON.stringify(example, null, 2);
+    AdminCore.showAlert('✅ Example JSON loaded! Click "Parse JSON" to fill the form.', 'info', 5000);
+  }
+
+  /**
+   * 🆕 Effacer le JSON
+   */
+  clearJSON() {
+    document.getElementById('jsonInput').value = '';
+    document.getElementById('jsonPreview').style.display = 'none';
+    AdminCore.showAlert('JSON cleared', 'info', 2000);
+  }
+
+  // [... Le reste des méthodes existantes reste identique ...]
+  // renderBasicInfoTab, renderStatsTab, renderSpellsTab, etc.
 }
 
 // Créer l'instance globale
