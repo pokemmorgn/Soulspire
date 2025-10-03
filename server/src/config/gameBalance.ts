@@ -531,11 +531,14 @@ export function calculateFinalStats(baseStats: any, level: number, stars: number
 export function getElementalAdvantage(attackerElement: string, defenderElement: string): number {
   const { advantages, advantageMultiplier, disadvantageMultiplier, neutralMultiplier } = GAME_BALANCE.elements;
   
-  if (advantages[attackerElement]?.includes(defenderElement)) {
+  // Cast pour satisfaire TypeScript avec as const
+  const advantagesMap = advantages as Record<string, readonly string[]>;
+  
+  if (advantagesMap[attackerElement]?.includes(defenderElement)) {
     return advantageMultiplier;
   }
   
-  if (advantages[defenderElement]?.includes(attackerElement)) {
+  if (advantagesMap[defenderElement]?.includes(attackerElement)) {
     return disadvantageMultiplier;
   }
   
