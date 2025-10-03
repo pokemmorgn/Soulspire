@@ -113,6 +113,126 @@ router.get("/stats", authMiddleware, async (req: Request, res: Response): Promis
 });
 
 /**
+ * GET /api/bestiary/info
+ * Informations sur le système de bestiaire
+ */
+router.get("/info", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const info = {
+      system: {
+        name: "Monster Encyclopedia (Bestiary)",
+        version: "1.0.0",
+        description: "Collection system inspired by AFK Arena and Pokédex"
+      },
+      features: {
+        autoDiscovery: "Monsters are automatically added after battles",
+        progressionLevels: ["Undiscovered", "Discovered", "Novice (10 kills)", "Veteran (50 kills)", "Master (100 kills)"],
+        rewards: "Gems, gold, lore, bonus stats, titles",
+        tracking: "Combat stats, kill times, damage dealt/taken",
+        completionRewards: "Type, element, and full completion bonuses",
+        leaderboard: "Server-wide collector rankings"
+      },
+      progressionLevels: {
+        Undiscovered: {
+          description: "Never encountered",
+          requirements: "none",
+          rewards: "none",
+          visibility: "Silhouette only"
+        },
+        Discovered: {
+          description: "Encountered at least once",
+          requirements: "1+ encounter",
+          rewards: "10-50 gems (based on type/rarity)",
+          visibility: "Basic info, name, element"
+        },
+        Novice: {
+          description: "Defeated 10+ times",
+          requirements: "10+ defeats",
+          rewards: "25-100 gems",
+          visibility: "Full combat statistics"
+        },
+        Veteran: {
+          description: "Defeated 50+ times",
+          requirements: "50+ defeats",
+          rewards: "75-250 gems + Lore + Drop list",
+          visibility: "Lore story, drop rates"
+        },
+        Master: {
+          description: "Defeated 100+ times",
+          requirements: "100+ defeats",
+          rewards: "150-500 gems + Permanent bonus",
+          visibility: "All info + Master title",
+          bonus: "+5% damage and defense vs this monster type"
+        }
+      },
+      completionRewards: {
+        typeCompletion: {
+          normal: "Complete all normal monsters",
+          elite: "Complete all elite monsters",
+          boss: "Complete all boss monsters"
+        },
+        elementCompletion: {
+          description: "Discover all monsters of an element",
+          reward: "500 gems + elemental damage bonus"
+        },
+        fullCompletion: {
+          description: "Discover 100% of all monsters",
+          reward: "5000 gems + Monster Hunter title + Avatar"
+        }
+      },
+      statistics: {
+        tracked: [
+          "Times encountered",
+          "Times defeated",
+          "Times killed by monster",
+          "Total damage dealt",
+          "Total damage taken",
+          "Fastest kill time",
+          "Average kill time"
+        ]
+      }
+    };
+
+    res.json({
+      success: true,
+      info,
+      endpoints: {
+        listBestiary: "GET /api/bestiary - List all entries with filters",
+        getStats: "GET /api/bestiary/stats - Global statistics",
+        getMonster: "GET /api/bestiary/:monsterId - Specific monster details",
+        getRewards: "GET /api/bestiary/rewards - Available completion rewards",
+        claimReward: "POST /api/bestiary/rewards/claim - Claim a reward",
+        leaderboard: "GET /api/bestiary/leaderboard - Top collectors",
+        mostFought: "GET /api/bestiary/most-fought - Most fought monsters"
+      },
+      websocketEvents: {
+        server: [
+          "bestiary:discovery - New monster discovered",
+          "bestiary:level_up - Progression level increased",
+          "bestiary:reward_claimed - Completion reward claimed",
+          "bestiary:group_completion - Type/element completed",
+          "bestiary:full_completion - 100% completion achieved",
+          "bestiary:personal_record - New personal record",
+          "bestiary:stats_update - Combat stats updated"
+        ],
+        client: [
+          "bestiary:join_room - Subscribe to notifications",
+          "bestiary:leave_room - Unsubscribe from notifications"
+        ]
+      }
+    });
+
+  } catch (err: any) {
+    console.error("❌ Get bestiary info error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      code: "GET_INFO_FAILED"
+    });
+  }
+});
+
+/**
  * GET /api/bestiary/:monsterId
  * Récupérer les détails d'un monstre spécifique dans le bestiaire
  */
@@ -358,126 +478,6 @@ router.post("/unlock/:monsterId", authMiddleware, async (req: Request, res: Resp
       success: false,
       error: "Internal server error",
       code: "UNLOCK_MONSTER_FAILED"
-    });
-  }
-});
-
-/**
- * GET /api/bestiary/info
- * Informations sur le système de bestiaire
- */
-router.get("/info", async (req: Request, res: Response): Promise<void> => {
-  try {
-    const info = {
-      system: {
-        name: "Monster Encyclopedia (Bestiary)",
-        version: "1.0.0",
-        description: "Collection system inspired by AFK Arena and Pokédex"
-      },
-      features: {
-        autoDiscovery: "Monsters are automatically added after battles",
-        progressionLevels: ["Undiscovered", "Discovered", "Novice (10 kills)", "Veteran (50 kills)", "Master (100 kills)"],
-        rewards: "Gems, gold, lore, bonus stats, titles",
-        tracking: "Combat stats, kill times, damage dealt/taken",
-        completionRewards: "Type, element, and full completion bonuses",
-        leaderboard: "Server-wide collector rankings"
-      },
-      progressionLevels: {
-        Undiscovered: {
-          description: "Never encountered",
-          requirements: "none",
-          rewards: "none",
-          visibility: "Silhouette only"
-        },
-        Discovered: {
-          description: "Encountered at least once",
-          requirements: "1+ encounter",
-          rewards: "10-50 gems (based on type/rarity)",
-          visibility: "Basic info, name, element"
-        },
-        Novice: {
-          description: "Defeated 10+ times",
-          requirements: "10+ defeats",
-          rewards: "25-100 gems",
-          visibility: "Full combat statistics"
-        },
-        Veteran: {
-          description: "Defeated 50+ times",
-          requirements: "50+ defeats",
-          rewards: "75-250 gems + Lore + Drop list",
-          visibility: "Lore story, drop rates"
-        },
-        Master: {
-          description: "Defeated 100+ times",
-          requirements: "100+ defeats",
-          rewards: "150-500 gems + Permanent bonus",
-          visibility: "All info + Master title",
-          bonus: "+5% damage and defense vs this monster type"
-        }
-      },
-      completionRewards: {
-        typeCompletion: {
-          normal: "Complete all normal monsters",
-          elite: "Complete all elite monsters",
-          boss: "Complete all boss monsters"
-        },
-        elementCompletion: {
-          description: "Discover all monsters of an element",
-          reward: "500 gems + elemental damage bonus"
-        },
-        fullCompletion: {
-          description: "Discover 100% of all monsters",
-          reward: "5000 gems + Monster Hunter title + Avatar"
-        }
-      },
-      statistics: {
-        tracked: [
-          "Times encountered",
-          "Times defeated",
-          "Times killed by monster",
-          "Total damage dealt",
-          "Total damage taken",
-          "Fastest kill time",
-          "Average kill time"
-        ]
-      }
-    };
-
-    res.json({
-      success: true,
-      info,
-      endpoints: {
-        listBestiary: "GET /api/bestiary - List all entries with filters",
-        getStats: "GET /api/bestiary/stats - Global statistics",
-        getMonster: "GET /api/bestiary/:monsterId - Specific monster details",
-        getRewards: "GET /api/bestiary/rewards - Available completion rewards",
-        claimReward: "POST /api/bestiary/rewards/claim - Claim a reward",
-        leaderboard: "GET /api/bestiary/leaderboard - Top collectors",
-        mostFought: "GET /api/bestiary/most-fought - Most fought monsters"
-      },
-      websocketEvents: {
-        server: [
-          "bestiary:discovery - New monster discovered",
-          "bestiary:level_up - Progression level increased",
-          "bestiary:reward_claimed - Completion reward claimed",
-          "bestiary:group_completion - Type/element completed",
-          "bestiary:full_completion - 100% completion achieved",
-          "bestiary:personal_record - New personal record",
-          "bestiary:stats_update - Combat stats updated"
-        ],
-        client: [
-          "bestiary:join_room - Subscribe to notifications",
-          "bestiary:leave_room - Unsubscribe from notifications"
-        ]
-      }
-    });
-
-  } catch (err: any) {
-    console.error("❌ Get bestiary info error:", err);
-    res.status(500).json({
-      success: false,
-      error: "Internal server error",
-      code: "GET_INFO_FAILED"
     });
   }
 });
