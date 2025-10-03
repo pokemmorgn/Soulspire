@@ -635,4 +635,109 @@ export class MonsterService {
 
     return ultimatesByElement[element] || ultimatesByRole[role] || "basic_ultimate";
   }
+
+  // ========================================
+  // 🔧 MÉTHODES POUR LE PANEL ADMIN
+  // ========================================
+
+  /**
+   * Récupérer les statistiques globales des monstres
+   */
+  public static async getMonsterStats() {
+    try {
+      const totalMonsters = await Monster.countDocuments();
+      
+      const byElement = await Monster.aggregate([
+        { $group: { _id: "$element", count: { $sum: 1 } } }
+      ]);
+
+      const byRole = await Monster.aggregate([
+        { $group: { _id: "$role", count: { $sum: 1 } } }
+      ]);
+
+      const byRarity = await Monster.aggregate([
+        { $group: { _id: "$rarity", count: { $sum: 1 } } }
+      ]);
+
+      return {
+        total: totalMonsters,
+        byElement: byElement.reduce((acc: any, item: any) => {
+          acc[item._id] = item.count;
+          return acc;
+        }, {}),
+        byRole: byRole.reduce((acc: any, item: any) => {
+          acc[item._id] = item.count;
+          return acc;
+        }, {}),
+        byRarity: byRarity.reduce((acc: any, item: any) => {
+          acc[item._id] = item.count;
+          return acc;
+        }, {})
+      };
+    } catch (error) {
+      console.error("Erreur getMonsterStats:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Créer un nouveau monstre
+   */
+  public static async createMonster(monsterData: any) {
+    try {
+      const monster = new Monster(monsterData);
+      await monster.save();
+      
+      console.log(`✅ Monstre créé: ${monster.name} (${monster.monsterId})`);
+      
+      return monster;
+    } catch (error) {
+      console.error("Erreur createMonster:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mettre à jour un monstre existant
+   */
+  public static async updateMonster(monsterId: string, updates: any) {
+    try {
+      const monster = await Monster.findOneAndUpdate(
+        { monsterId },
+        updates,
+        { new: true, runValidators: true }
+      );
+
+      if (!monster) {
+        throw new Error("Monster not found");
+      }
+
+      console.log(`✅ Monstre mis à jour: ${monster.name} (${monster.monsterId})`);
+
+      return monster;
+    } catch (error) {
+      console.error("Erreur updateMonster:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Supprimer un monstre
+   */
+  public static async deleteMonster(monsterId: string) {
+    try {
+      const result = await Monster.deleteOne({ monsterId });
+
+      if (result.deletedCount === 0) {
+        throw new Error("Monster not found");
+      }
+
+      console.log(`✅ Monstre supprimé: ${monsterId}`);
+
+      return true;
+    } catch (error) {
+      console.error("Erreur deleteMonster:", error);
+      throw error;
+    }
+  }
 }
