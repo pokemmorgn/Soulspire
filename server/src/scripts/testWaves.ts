@@ -143,7 +143,7 @@ async function equipTestHeroes(player: any) {
 
 async function createTestWorldWithWaves() {
   // Supprimer l'ancien monde de test s'il existe
-  await CampaignWorld.deleteOne({ worldId: 999 });
+  await CampaignWorld.deleteOne({ worldId: 600 });
 
   // Récupérer quelques monstres pour les tests
   const monsters = await Monster.find().limit(10);
@@ -155,7 +155,7 @@ async function createTestWorldWithWaves() {
 
   // Créer le monde de test
   const testWorld = new CampaignWorld({
-    worldId: 3,
+    worldId: 600,
     name: "Test World - Waves System",
     description: "Monde de test pour le système de vagues",
     mapTheme: "testing_grounds",
