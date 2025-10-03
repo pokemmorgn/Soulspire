@@ -12,7 +12,7 @@ import dashboardRoutes from './PanelAdmin/routes/dashboard';
 import playersRoutes from './PanelAdmin/routes/players';
 import economyRoutes from './PanelAdmin/routes/economy';
 import inventoryRoutes from './PanelAdmin/routes/inventory';
-
+import monsterRoutes from './PanelAdmin/routes/monsters';
 // Import des services pour l'initialisation
 import AdminService from './PanelAdmin/services/AdminService';
 import AnalyticsService from './PanelAdmin/services/AnalyticsService';
@@ -202,6 +202,7 @@ export class AdminPanelServer {
           players: '/api/admin/players/*',
           economy: '/api/admin/economy/*',
           inventory: '/api/admin/inventory/*',
+          monsters: '/api/admin/monsters/*',
           health: '/api/admin/health'
         },
         features: [
@@ -210,6 +211,7 @@ export class AdminPanelServer {
           'Player Management',
           'Economy Monitoring',
           'Inventory Management',
+          'Monster Management',
           'Audit Logging',
           'Security Alerts',
           'Data Export'
@@ -233,6 +235,9 @@ export class AdminPanelServer {
     // Routes de gestion d'inventaire
     app.use('/api/admin/inventory', inventoryRoutes);
     
+    // 🆕 Routes de gestion des monstres
+    app.use('/api/admin/monsters', monsterRoutes);
+    
     // Route 404 pour le panel admin
     app.use('/api/admin/*', (req: Request, res: Response) => {
       res.status(404).json({
@@ -246,7 +251,8 @@ export class AdminPanelServer {
           '/api/admin/dashboard/*',
           '/api/admin/players/*',
           '/api/admin/economy/*',
-          '/api/admin/inventory/*'
+          '/api/admin/inventory/*',
+          '/api/admin/monsters/*'
         ]
       });
     });
@@ -257,6 +263,7 @@ export class AdminPanelServer {
     console.log('   - /api/admin/players/* (Player Management)');
     console.log('   - /api/admin/economy/* (Economy Management)');
     console.log('   - /api/admin/inventory/* (Inventory Management)');
+    console.log('   - /api/admin/monsters/* (Monster Management)');
   }
 
   /**
