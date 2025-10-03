@@ -371,14 +371,14 @@ monsterSchema.methods.getStatsAtLevel = function(level: number = 1, stars: numbe
  * Obtenir le multiplicateur de rareté
  */
 monsterSchema.methods.getRarityMultiplier = function(): number {
-  const multipliers = {
+  const multipliers: Record<MonsterRarity, number> = {
     Common: 1.0,
     Rare: 1.25,
     Epic: 1.5,
     Legendary: 2.0,
     Mythic: 2.5
   };
-  return multipliers[this.rarity] || 1.0;
+  return multipliers[this.rarity as MonsterRarity] || 1.0;
 };
 
 /**
