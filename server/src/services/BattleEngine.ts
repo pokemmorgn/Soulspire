@@ -1,4 +1,4 @@
-import { IBattleParticipant, IBattleAction, IBattleResult } from "../models/Battle";
+import { IBattleParticipant, IBattleAction, IBattleResult, IWaveData } from "../models/Battle";
 import { SpellManager, HeroSpells } from "../gameplay/SpellManager";
 import { EffectManager } from "../gameplay/EffectManager";
 
@@ -6,6 +6,19 @@ export interface IBattleOptions {
   mode: "auto" | "manual";
   speed: 1 | 2 | 3;
   playerVipLevel?: number;
+}
+
+export interface IWaveConfig {
+  waveNumber: number;
+  enemies: IBattleParticipant[];
+  delay: number;
+  isBossWave?: boolean;
+  waveRewards?: {
+    experience: number;
+    gold: number;
+    items?: string[];
+    fragments?: { heroId: string; quantity: number }[];
+  };
 }
 
 export interface IPendingManualAction {
@@ -29,12 +42,18 @@ export class BattleEngine {
 
   private playerPositions: Map<string, number>;
   private enemyPositions: Map<string, number>;
-  constructor(
+  private waveConfigs?: IWaveConfig[];
+  private currentWave: number;
+  private totalWaves: number;
+  private waveData?: IWaveData;
+  private isWaveBattle: boolean;
+constructor(
     playerTeam: IBattleParticipant[], 
     enemyTeam: IBattleParticipant[],
     playerSpells?: Map<string, HeroSpells>,
     enemySpells?: Map<string, HeroSpells>,
-    battleOptions: IBattleOptions = { mode: "auto", speed: 1 }
+    battleOptions: IBattleOptions = { mode: "auto", speed: 1 },
+    waveConfigs?: IWaveConfig[]
   ) {
     this.playerTeam = [...playerTeam];
     this.enemyTeam = [...enemyTeam];
@@ -48,6 +67,22 @@ export class BattleEngine {
     this.actualBattleDuration = 0;
     this.playerPositions = new Map();
     this.enemyPositions = new Map();
+    this.waveConfigs = waveConfigs;
+    this.currentWave = 1;
+    this.totalWaves = waveConfigs?.length || 1;
+    this.isWaveBattle = (waveConfigs && waveConfigs.length > 1) || false;
+    
+    if (this.isWaveBattle && this.waveConfigs) {
+      this.waveData = {
+        totalWaves: this.totalWaves,
+        completedWaves: 0,
+        currentWave: 1,
+        waveRewards: [],
+        playerStatePerWave: []
+      };
+      
+      console.log(`🌊 Combat multi-vagues initialisé: ${this.totalWaves} vagues`);
+    }
       // Stocker les positions des héros
       for (const hero of this.playerTeam) {
         this.playerPositions.set(hero.heroId, hero.position);
@@ -122,18 +157,24 @@ export class BattleEngine {
   }
 
   public simulateBattle(): IBattleResult {
-    console.log("🔥 Combat démarré !");
-    const battleStartTime = Date.now();
-    
-    while (!this.isBattleOver()) {
-      this.processTurn();
-      this.currentTurn++;
+      console.log("🔥 Combat démarré !");
+      const battleStartTime = Date.now();
       
-      if (this.currentTurn > 200) {
-        console.warn("⚠️ Combat arrêté après 200 tours");
-        break;
+      // ✨ NOUVEAU : Combat multi-vagues
+      if (this.isWaveBattle && this.waveConfigs) {
+        return this.simulateWaveBattle();
       }
-    }
+      
+      // Combat classique (existant)
+      while (!this.isBattleOver()) {
+        this.processTurn();
+        this.currentTurn++;
+        
+        if (this.currentTurn > 200) {
+          console.warn("⚠️ Combat arrêté après 200 tours");
+          break;
+        }
+      }
 
     this.actualBattleDuration = Date.now() - battleStartTime;
     const simulatedDuration = Math.floor(this.actualBattleDuration / this.battleOptions.speed);
@@ -146,6 +187,139 @@ export class BattleEngine {
     console.log(`⏱️ Durée: ${simulatedDuration}ms (réelle: ${this.actualBattleDuration}ms, vitesse x${this.battleOptions.speed})`);
     
     return result;
+  }
+
+  // ✨ NOUVEAU : Simulation de combat avec vagues
+  private simulateWaveBattle(): IBattleResult {
+    console.log(`🌊 Combat multi-vagues: ${this.totalWaves} vagues`);
+    const battleStartTime = Date.now();
+    
+    for (let wave = 1; wave <= this.totalWaves; wave++) {
+      this.currentWave = wave;
+      const waveConfig = this.waveConfigs![wave - 1];
+      
+      console.log(`\n🌊 === VAGUE ${wave}/${this.totalWaves} ${waveConfig.isBossWave ? '(BOSS)' : ''} ===`);
+      
+      // Spawn des ennemis de la vague
+      this.spawnWaveEnemies(waveConfig.enemies);
+      
+      // Simuler le délai de spawn (en temps réel, pas en simulation)
+      if (wave > 1 && waveConfig.delay > 0) {
+        console.log(`⏳ Délai avant vague: ${waveConfig.delay}ms`);
+        // Note: Le délai est conceptuel, on ne fait pas vraiment de setTimeout
+      }
+      
+      // Combat jusqu'à victoire ou défaite de la vague
+      let waveTurnLimit = 100; // Limite de tours par vague
+      while (!this.isWaveOver() && waveTurnLimit > 0) {
+        this.processTurn();
+        this.currentTurn++;
+        waveTurnLimit--;
+        
+        if (waveTurnLimit === 0) {
+          console.warn(`⚠️ Vague ${wave} arrêtée après 100 tours`);
+          break;
+        }
+      }
+      
+      // Vérifier le résultat de la vague
+      const playerAlive = this.getAlivePlayers().length > 0;
+      
+      if (playerAlive) {
+        // Victoire de la vague
+        console.log(`✅ Vague ${wave} terminée!`);
+        
+        // Sauvegarder l'état des héros à la fin de la vague
+        this.captureWaveState(wave);
+        
+        // Appliquer les récompenses de vague
+        if (waveConfig.waveRewards && this.waveData) {
+          this.waveData.waveRewards.push({
+            waveNumber: wave,
+            rewards: waveConfig.waveRewards
+          });
+          console.log(`💰 Récompenses vague ${wave}: ${waveConfig.waveRewards.gold} or, ${waveConfig.waveRewards.experience} XP`);
+        }
+        
+        this.waveData!.completedWaves = wave;
+        
+        // Si c'était la dernière vague, victoire totale
+        if (wave === this.totalWaves) {
+          console.log(`🏆 Toutes les vagues terminées! VICTOIRE!`);
+          break;
+        }
+        
+        // Sinon, continuer avec la prochaine vague
+        this.waveData!.currentWave = wave + 1;
+        
+      } else {
+        // Défaite
+        console.log(`💀 Défaite à la vague ${wave}`);
+        this.waveData!.completedWaves = wave - 1; // Vague actuelle non complétée
+        break;
+      }
+    }
+    
+    // Calcul de la durée
+    this.actualBattleDuration = Date.now() - battleStartTime;
+    const simulatedDuration = Math.floor(this.actualBattleDuration / this.battleOptions.speed);
+    
+    const result = this.generateBattleResult();
+    (result as any).battleOptions = this.battleOptions;
+    (result as any).actualDuration = this.actualBattleDuration;
+    (result as any).waveData = this.waveData;
+    
+    console.log(`🏁 Combat terminé! Vagues complétées: ${this.waveData?.completedWaves}/${this.totalWaves}`);
+    
+    return result;
+  }
+
+  // ✨ NOUVEAU : Spawn des ennemis d'une vague
+  private spawnWaveEnemies(newEnemies: IBattleParticipant[]): void {
+    // Remplacer l'équipe ennemie par les nouveaux ennemis
+    this.enemyTeam = [...newEnemies];
+    
+    // Réinitialiser les positions des ennemis
+    this.enemyPositions.clear();
+    for (const enemy of this.enemyTeam) {
+      this.enemyPositions.set(enemy.heroId, enemy.position);
+      
+      // Initialiser l'état de combat
+      enemy.currentHp = enemy.stats.hp;
+      enemy.energy = 0;
+      enemy.status = {
+        alive: true,
+        buffs: [],
+        debuffs: []
+      };
+    }
+    
+    console.log(`👹 ${this.enemyTeam.length} ennemis spawned`);
+  }
+
+  // ✨ NOUVEAU : Vérifier si la vague actuelle est terminée
+  private isWaveOver(): boolean {
+    const aliveEnemies = this.getAliveEnemies().length;
+    return aliveEnemies === 0;
+  }
+
+  // ✨ NOUVEAU : Capturer l'état de l'équipe à la fin d'une vague
+  private captureWaveState(waveNumber: number): void {
+    if (!this.waveData) return;
+    
+    const playerState = this.playerTeam.map(hero => ({
+      heroId: hero.heroId,
+      currentHp: hero.currentHp,
+      energy: hero.energy,
+      alive: hero.status.alive
+    }));
+    
+    this.waveData.playerStatePerWave!.push({
+      waveNumber,
+      heroes: playerState
+    });
+    
+    console.log(`📊 État équipe sauvegardé (vague ${waveNumber})`);
   }
 
   private processTurn(): void {
@@ -595,6 +769,9 @@ private getAvailableTargets(attacker: IBattleParticipant, allTargets: IBattlePar
     }
     
     action.participantsAfter = this.captureParticipantsState();
+    if (this.isWaveBattle) {
+      (action as any).waveNumber = this.currentWave;
+    }
     this.actions.push(action);
     
     const actionDesc = action.actionType === "ultimate" ? "ULTIMATE" :
@@ -799,4 +976,11 @@ private getFormationSummary(team: IBattleParticipant[], positions: Map<string, n
   const summary = team.map(hero => `${hero.name}(${positions.get(hero.heroId)})`).join(", ");
   return summary;
 }
+public getWaveData(): IWaveData | undefined {
+    return this.waveData;
+  }
+  
+public isMultiWaveBattle(): boolean {
+    return this.isWaveBattle;
+  }
 }
