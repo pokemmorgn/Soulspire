@@ -109,7 +109,7 @@ const levelSchema = new Schema<ILevelConfig>({
     elementalAura: { type: String, enum: ["Fire","Water","Wind","Electric","Light","Dark"] },
     atkBuffPct: { type: Number, min: 0, max: 1 },
     defBuffPct: { type: Number, min: 0, max: 1 }
-  }
+  },
   waves: [{
     waveNumber: { type: Number, required: true, min: 1 },
     monsters: [{
