@@ -77,6 +77,8 @@ export class BestiaryService {
       }
 
       // 7. Notifications WebSocket
+      // TODO: Ajouter ces méthodes au WebSocketService
+      /*
       try {
         if (newDiscovery) {
           WebSocketService.notifyBestiaryDiscovery(playerId, {
@@ -100,6 +102,7 @@ export class BestiaryService {
       } catch (wsError) {
         console.error("❌ Erreur notification WebSocket:", wsError);
       }
+      */
 
       return {
         entry,
