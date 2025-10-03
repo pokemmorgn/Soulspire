@@ -107,6 +107,33 @@ export class BattleService {
         result.battleDuration
       );
 
+      // 📖 ENREGISTRER DANS LE BESTIAIRE
+      try {
+        // Enregistrer chaque monstre combattu
+        for (const enemy of enemyTeam) {
+          const monsterId = enemy.heroId; // Les monstres utilisent heroId comme identifiant
+          
+          // Calculer les dégâts (estimation depuis les stats finales)
+          const damageDealt = enemy.stats.hp - (enemy.currentHp || 0);
+          const damageTaken = result.stats?.totalDamageTaken || 0;
+          
+          await BestiaryService.recordMonsterEncounter(
+            playerId,
+            serverId,
+            monsterId,
+            result.victory, // true si monstre vaincu
+            damageDealt,
+            damageTaken,
+            result.victory ? result.battleDuration : undefined
+          );
+        }
+        
+        console.log(`📖 Bestiaire mis à jour: ${enemyTeam.length} monstre(s) enregistré(s)`);
+      } catch (bestiaryError: any) {
+        console.error("⚠️ Erreur enregistrement bestiaire:", bestiaryError);
+        // Ne pas faire échouer le combat si le bestiaire a un problème
+      }
+      
       await Promise.all([
         MissionService.updateProgress(
           playerId, 
