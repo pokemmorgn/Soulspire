@@ -297,8 +297,10 @@ const battleSchema = new Schema<IBattleDocument>({
       type: String, 
       enum: ["normal", "elite", "boss"]
     }
-  }
-},   waveData: {
+  },
+  
+  // ✨ NOUVEAU : Données des vagues
+  waveData: {
     totalWaves: { type: Number, min: 1 },
     completedWaves: { type: Number, min: 0 },
     currentWave: { type: Number, min: 1 },
