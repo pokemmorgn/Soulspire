@@ -889,6 +889,102 @@ public static leaveGuildRoom(playerId: string, guildId: string): void {
   public static notifyForgeEvent(serverId: string, eventData: any): void {
     WebSocketForge.notifyForgeEvent(serverId, eventData);
   }
+  // ===== MÉTHODES BESTIAIRE (DÉLÉGATION) =====
+
+  /**
+   * Notifier découverte d'un nouveau monstre
+   */
+  public static notifyBestiaryDiscovery(playerId: string, discoveryData: any): void {
+    if (!this.io) return;
+    
+    this.io.to(`player:${playerId}`).emit('bestiary:discovery', {
+      data: discoveryData,
+      timestamp: new Date()
+    });
+    
+    console.log(`📖 Discovery notification sent to ${playerId}: ${discoveryData.monsterName}`);
+  }
+
+  /**
+   * Notifier progression de niveau (Novice/Veteran/Master)
+   */
+  public static notifyBestiaryLevelUp(playerId: string, levelUpData: any): void {
+    if (!this.io) return;
+    
+    this.io.to(`player:${playerId}`).emit('bestiary:level_up', {
+      data: levelUpData,
+      timestamp: new Date()
+    });
+    
+    console.log(`📈 Level up notification sent to ${playerId}: ${levelUpData.monsterName} → ${levelUpData.newLevel}`);
+  }
+
+  /**
+   * Notifier récompense de complétion réclamée
+   */
+  public static notifyBestiaryRewardClaimed(playerId: string, rewardData: any): void {
+    if (!this.io) return;
+    
+    this.io.to(`player:${playerId}`).emit('bestiary:reward_claimed', {
+      data: rewardData,
+      timestamp: new Date()
+    });
+    
+    console.log(`🎁 Reward claimed notification sent to ${playerId}: ${rewardData.rewardId}`);
+  }
+
+  /**
+   * Notifier complétion d'un groupe (type/élément)
+   */
+  public static notifyBestiaryGroupCompletion(playerId: string, completionData: any): void {
+    if (!this.io) return;
+    
+    this.io.to(`player:${playerId}`).emit('bestiary:group_completion', {
+      data: completionData,
+      timestamp: new Date()
+    });
+    
+    console.log(`🏆 Group completion notification sent to ${playerId}: ${completionData.groupType}`);
+  }
+
+  /**
+   * Notifier mise à jour du leaderboard (broadcast serveur)
+   */
+  public static notifyBestiaryLeaderboardUpdate(serverId: string, leaderboardData: any): void {
+    if (!this.io) return;
+    
+    this.io.to(`server:${serverId}`).emit('bestiary:leaderboard_update', {
+      data: leaderboardData,
+      timestamp: new Date()
+    });
+    
+    console.log(`📊 Leaderboard update broadcast to server ${serverId}`);
+  }
+
+  /**
+   * Notifier complétion totale du bestiaire (100%)
+   */
+  public static notifyBestiaryFullCompletion(playerId: string, serverId: string, completionData: any): void {
+    if (!this.io) return;
+    
+    // Notification personnelle
+    this.io.to(`player:${playerId}`).emit('bestiary:full_completion', {
+      data: completionData,
+      timestamp: new Date()
+    });
+    
+    // Broadcast au serveur pour célébrer
+    this.io.to(`server:${serverId}`).emit('bestiary:player_completed', {
+      data: {
+        playerId: completionData.playerId,
+        playerName: completionData.playerName,
+        completionTime: completionData.completionTime
+      },
+      timestamp: new Date()
+    });
+    
+    console.log(`🎊 FULL COMPLETION! ${completionData.playerName} completed bestiary on ${serverId}`);
+  }
   // ===== MÉTHODES UTILITAIRES =====
 
   /**
