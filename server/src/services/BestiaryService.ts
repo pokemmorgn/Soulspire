@@ -76,9 +76,7 @@ export class BestiaryService {
         await this.applyRewards(playerId, serverId, rewards);
       }
 
-      // 7. Notifications WebSocket
-      // TODO: Ajouter ces méthodes au WebSocketService
-      /*
+// 7. Notifications WebSocket
       try {
         if (newDiscovery) {
           WebSocketService.notifyBestiaryDiscovery(playerId, {
@@ -86,23 +84,36 @@ export class BestiaryService {
             monsterName: entry.monsterSnapshot.name,
             monsterType: entry.monsterSnapshot.type,
             element: entry.monsterSnapshot.element,
-            rewards: rewards.filter(r => r.type === "gems" || r.type === "gold")
+            rewards: rewards.filter(r => r.type === "gems" || r.type === "gold").map(r => ({
+              type: r.type,
+              amount: r.amount || 0
+            }))
           });
+          
+          console.log(`🔔 Discovery notification sent: ${entry.monsterSnapshot.name}`);
         }
 
-        if (levelUp) {
+        if (levelUp && previousLevel !== "Undiscovered") {
           WebSocketService.notifyBestiaryLevelUp(playerId, {
             monsterId: entry.monsterId,
             monsterName: entry.monsterSnapshot.name,
             previousLevel,
             newLevel: entry.progressionLevel,
-            rewards
+            rewards: rewards.map(r => ({
+              type: r.type,
+              amount: r.amount,
+              identifier: r.identifier,
+              description: r.description
+            })),
+            unlockedFeatures: this.getUnlockedFeatures(entry.progressionLevel)
           });
+          
+          console.log(`🔔 Level up notification sent: ${entry.monsterSnapshot.name} → ${entry.progressionLevel}`);
         }
       } catch (wsError) {
-        console.error("❌ Erreur notification WebSocket:", wsError);
+        console.error("❌ Erreur notification WebSocket bestiaire:", wsError);
+        // Ne pas faire échouer la requête pour des erreurs de notification
       }
-      */
 
       return {
         entry,
@@ -304,7 +315,28 @@ export class BestiaryService {
       console.error("❌ Erreur applyRewards:", error);
     }
   }
+/**
+   * 📋 Déterminer les fonctionnalités débloquées par niveau
+   */
+  private static getUnlockedFeatures(level: BestiaryLevel): string[] {
+    const features: Record<BestiaryLevel, string[]> = {
+      Undiscovered: [],
+      Discovered: ["basic_info", "encounter_count"],
+      Novice: ["full_stats", "damage_tracking", "kill_times"],
+      Veteran: ["lore", "drop_list", "advanced_stats"],
+      Master: ["damage_bonus", "defense_bonus", "special_title"]
+    };
 
+    return features[level] || [];
+  }
+  /**
+   * 🎁 Déterminer le type de récompense depuis son ID
+   */
+  private static getRewardType(rewardId: string): 'type_completion' | 'element_completion' | 'full_completion' {
+    if (rewardId.includes('bestiary_complete')) return 'full_completion';
+    if (rewardId.includes('element')) return 'element_completion';
+    return 'type_completion';
+  }
   /**
    * 📋 Récupérer tout le bestiaire d'un joueur
    */
@@ -503,11 +535,26 @@ export class BestiaryService {
 
       await player.save();
 
-      // Marquer comme réclamée (TODO: système de tracking des récompenses réclamées)
-      console.log(`✅ Récompense ${rewardId} réclamée: ${availableReward.gems} gems`);
+    console.log(`✅ Récompense ${rewardId} réclamée: ${availableReward.gems} gems`);
 
-      // TODO: Ajouter notification WebSocket plus tard
-      // WebSocketService.notifyBestiaryRewardClaimed(...)
+      // Notification WebSocket
+      try {
+        WebSocketService.notifyBestiaryRewardClaimed(playerId, {
+          rewardId,
+          rewardType: this.getRewardType(rewardId),
+          rewards: {
+            gems: availableReward.gems,
+            gold: availableReward.gold,
+            title: availableReward.title,
+            bonus: availableReward.bonus
+          },
+          completionPercentage: (await this.getBestiaryStats(playerId, serverId)).completionPercentage
+        });
+        
+        console.log(`🔔 Reward claimed notification sent: ${rewardId}`);
+      } catch (wsError) {
+        console.error("❌ Erreur notification WebSocket reward:", wsError);
+      }
 
       return {
         success: true,
