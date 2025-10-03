@@ -77,7 +77,7 @@ export class BattleService {
           worldId,
           levelId,
           difficulty,
-          enemyType: this.getEnemyType(levelId)
+          enemyType: this.determineEnemyType(levelId)
         }
       });
 
@@ -847,5 +847,13 @@ private static applyFormationBonuses(
       items: [],
       fragments: []
     };
+  }
+  /**
+   * Déterminer le type d'ennemi selon le levelId (helper)
+   */
+  private static determineEnemyType(levelId: number): "normal" | "elite" | "boss" {
+    if (levelId % 10 === 0) return "boss";
+    if (levelId % 5 === 0) return "elite";
+    return "normal";
   }
 }
