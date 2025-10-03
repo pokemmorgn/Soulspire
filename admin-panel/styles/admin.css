@@ -2005,3 +2005,330 @@ input[type="range"]::-moz-range-thumb {
         font-size: 14px;
     }
 }
+/* ===== MONSTERS MODULE STYLES ===== */
+
+.monsters-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.monsters-controls {
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  border: 1px solid #e9ecef;
+}
+
+.monsters-controls h3 {
+  margin-bottom: 15px;
+  color: #495057;
+}
+
+.monsters-list-section {
+  margin-top: 20px;
+}
+
+.monsters-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.monsters-table-container {
+  overflow-x: auto;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+}
+
+.monster-name {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.monster-id {
+  font-size: 11px;
+  color: #6c757d;
+  font-family: monospace;
+}
+
+.monster-normal {
+  background: #f8f9fa;
+}
+
+.monster-elite {
+  background: #fff3cd;
+}
+
+.monster-boss {
+  background: #f8d7da;
+}
+
+.rarity-common {
+  background: #adb5bd;
+  color: white;
+}
+
+.rarity-rare {
+  background: #339af0;
+  color: white;
+}
+
+.rarity-epic {
+  background: #9775fa;
+  color: white;
+}
+
+.rarity-legendary {
+  background: #ffd43b;
+  color: #333;
+}
+
+.rarity-mythic {
+  background: linear-gradient(135deg, #ff6b6b, #f03e3e);
+  color: white;
+}
+
+/* Monster Details */
+.monster-details {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.stats-display-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px;
+}
+
+.stat-display-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+  text-align: center;
+}
+
+.stat-display-item .stat-icon {
+  font-size: 24px;
+}
+
+.stat-display-item .stat-name {
+  font-size: 12px;
+  color: #6c757d;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.stat-display-item .stat-value {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+}
+
+/* Spells */
+.spells-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.spell-item {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 12px 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.spell-item.ultimate {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border-color: #667eea;
+}
+
+.spell-item.passive {
+  background: #d1ecf1;
+  border-color: #17a2b8;
+}
+
+.spell-slot {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  background: rgba(0,0,0,0.1);
+  border-radius: 4px;
+  min-width: 80px;
+  text-align: center;
+}
+
+.spell-item.ultimate .spell-slot,
+.spell-item.ultimate .spell-id,
+.spell-item.ultimate .spell-level {
+  color: white;
+}
+
+.spell-id {
+  flex: 1;
+  font-family: monospace;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.spell-level {
+  font-size: 12px;
+  padding: 4px 8px;
+  background: rgba(0,0,0,0.05);
+  border-radius: 4px;
+}
+
+/* Monster Form */
+.monster-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-tabs {
+  display: flex;
+  gap: 5px;
+  border-bottom: 2px solid #e9ecef;
+  margin-bottom: 20px;
+}
+
+.form-tab {
+  padding: 12px 20px;
+  background: #f8f9fa;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  font-size: 14px;
+}
+
+.form-tab.active {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+}
+
+.form-tab:hover:not(.active) {
+  background: #e9ecef;
+}
+
+.form-tab-content {
+  display: none;
+}
+
+.form-tab-content.active {
+  display: block;
+}
+
+.form-section {
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 10px;
+  border: 1px solid #e9ecef;
+}
+
+.form-section h3 {
+  margin-bottom: 15px;
+  color: #495057;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #e9ecef;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 20px;
+  border-top: 2px solid #e9ecef;
+}
+
+/* Stat Bar */
+.stat-bar-container {
+  margin-bottom: 15px;
+}
+
+.stat-bar-label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #495057;
+}
+
+.stat-bar-value {
+  color: #667eea;
+}
+
+.stat-bar-track {
+  height: 8px;
+  background: #e9ecef;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  background: #667eea;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+/* Responsive Monsters */
+@media (max-width: 768px) {
+  .monsters-stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .monsters-header {
+    flex-direction: column;
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .form-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .form-tab {
+    white-space: nowrap;
+    padding: 10px 15px;
+    font-size: 12px;
+  }
+
+  .stats-display-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .form-actions {
+    flex-direction: column;
+  }
+}
