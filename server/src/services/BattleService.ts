@@ -116,11 +116,27 @@ export class BattleService {
         result.battleDuration
       );
 
-  // 📖 ENREGISTRER DANS LE BESTIAIRE
+      // 📖 ENREGISTRER DANS LE BESTIAIRE
       try {
         // Enregistrer chaque monstre combattu
         for (const enemy of enemyTeam) {
-          const monsterId = enemy.heroId; // Les monstres utilisent heroId comme identifiant
+          // ✅ FIX: Extraire le vrai monsterId depuis le heroId généré
+          // Format du heroId: "MON_red_yeti_elite_1759500867581_b45e6621"
+          // On veut récupérer: "MON_red_yeti_elite"
+          const heroIdParts = enemy.heroId.split('_');
+          
+          let monsterId: string;
+          
+          // Si le heroId contient un timestamp (format: prefix_timestamp_uuid)
+          // On enlève les 2 derniers segments (timestamp et uuid)
+          if (heroIdParts.length > 3 && !isNaN(Number(heroIdParts[heroIdParts.length - 2]))) {
+            // Format détecté: MON_red_yeti_elite_1759500867581_b45e6621
+            // On garde tout sauf les 2 derniers segments
+            monsterId = heroIdParts.slice(0, -2).join('_');
+          } else {
+            // Sinon, on utilise le heroId tel quel (ancien format ou format inattendu)
+            monsterId = enemy.heroId;
+          }
           
           // Calculer les dégâts infligés au monstre
           const damageDealt = enemy.stats.hp - (enemy.currentHp || 0);
@@ -131,7 +147,7 @@ export class BattleService {
           await BestiaryService.recordMonsterEncounter(
             playerId,
             serverId,
-            monsterId,
+            monsterId, // ✅ Utiliser le monsterId extrait
             result.victory, // true si monstre vaincu
             damageDealt,
             damageTaken,
