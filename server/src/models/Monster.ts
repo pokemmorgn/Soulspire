@@ -146,7 +146,6 @@ export interface IMonsterDocument extends Document {
   isElite(): boolean;
   canAppearInWorld(worldId: number): boolean;
 }
-
 // Schéma Mongoose
 const monsterSchema = new Schema<IMonsterDocument>({
   _id: {
@@ -446,6 +445,36 @@ monsterSchema.methods.canAppearInWorld = function(worldId: number): boolean {
 };
 
 // ═══════════════════════════════════════════════════════════════════
+// INTERFACE DU MODÈLE (pour TypeScript)
+// ═══════════════════════════════════════════════════════════════════
+
+interface IMonsterModel extends mongoose.Model<IMonsterDocument> {
+  findForWorld(
+    worldId: number,
+    type?: MonsterType,
+    element?: MonsterElement
+  ): Promise<IMonsterDocument[]>;
+  
+  findByTheme(
+    visualTheme: VisualTheme,
+    type?: MonsterType
+  ): Promise<IMonsterDocument[]>;
+  
+  findUniqueBosses(): Promise<IMonsterDocument[]>;
+  
+  sampleForWorld(
+    worldId: number,
+    count: number,
+    type?: MonsterType,
+    element?: MonsterElement
+  ): Promise<IMonsterDocument[]>;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MÉTHODES STATIQUES
+// ═══════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════
 // MÉTHODES STATIQUES
 // ═══════════════════════════════════════════════════════════════════
 
@@ -558,4 +587,4 @@ monsterSchema.pre("save", function(next) {
   next();
 });
 
-export default mongoose.model<IMonsterDocument>("Monster", monsterSchema);
+export default mongoose.model<IMonsterDocument, IMonsterModel>("Monster", monsterSchema);
