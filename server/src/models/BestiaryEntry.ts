@@ -461,44 +461,44 @@ bestiaryEntrySchema.statics.getPlayerStats = async function(
   
   const stats = {
     total: entries.length,
-    discovered: entries.filter(e => e.isDiscovered).length,
-    undiscovered: entries.filter(e => !e.isDiscovered).length,
+    discovered: entries.filter((e: IBestiaryEntryDocument) => e.isDiscovered).length,
+    undiscovered: entries.filter((e: IBestiaryEntryDocument) => !e.isDiscovered).length,
     
     byProgressionLevel: {
-      Undiscovered: entries.filter(e => e.progressionLevel === "Undiscovered").length,
-      Discovered: entries.filter(e => e.progressionLevel === "Discovered").length,
-      Novice: entries.filter(e => e.progressionLevel === "Novice").length,
-      Veteran: entries.filter(e => e.progressionLevel === "Veteran").length,
-      Master: entries.filter(e => e.progressionLevel === "Master").length
+      Undiscovered: entries.filter((e: IBestiaryEntryDocument) => e.progressionLevel === "Undiscovered").length,
+      Discovered: entries.filter((e: IBestiaryEntryDocument) => e.progressionLevel === "Discovered").length,
+      Novice: entries.filter((e: IBestiaryEntryDocument) => e.progressionLevel === "Novice").length,
+      Veteran: entries.filter((e: IBestiaryEntryDocument) => e.progressionLevel === "Veteran").length,
+      Master: entries.filter((e: IBestiaryEntryDocument) => e.progressionLevel === "Master").length
     },
     
     byType: {
-      normal: entries.filter(e => e.monsterSnapshot.type === "normal").length,
-      elite: entries.filter(e => e.monsterSnapshot.type === "elite").length,
-      boss: entries.filter(e => e.monsterSnapshot.type === "boss").length
+      normal: entries.filter((e: IBestiaryEntryDocument) => e.monsterSnapshot.type === "normal").length,
+      elite: entries.filter((e: IBestiaryEntryDocument) => e.monsterSnapshot.type === "elite").length,
+      boss: entries.filter((e: IBestiaryEntryDocument) => e.monsterSnapshot.type === "boss").length
     },
     
     byElement: {} as Record<string, number>,
     
     combatTotals: {
-      totalEncounters: entries.reduce((sum, e) => sum + e.combatStats.timesEncountered, 0),
-      totalDefeats: entries.reduce((sum, e) => sum + e.combatStats.timesDefeated, 0),
-      totalDeaths: entries.reduce((sum, e) => sum + e.combatStats.timesKilledBy, 0),
-      totalDamageDealt: entries.reduce((sum, e) => sum + e.combatStats.totalDamageDealt, 0),
-      totalDamageTaken: entries.reduce((sum, e) => sum + e.combatStats.totalDamageTaken, 0)
+      totalEncounters: entries.reduce((sum: number, e: IBestiaryEntryDocument) => sum + e.combatStats.timesEncountered, 0),
+      totalDefeats: entries.reduce((sum: number, e: IBestiaryEntryDocument) => sum + e.combatStats.timesDefeated, 0),
+      totalDeaths: entries.reduce((sum: number, e: IBestiaryEntryDocument) => sum + e.combatStats.timesKilledBy, 0),
+      totalDamageDealt: entries.reduce((sum: number, e: IBestiaryEntryDocument) => sum + e.combatStats.totalDamageDealt, 0),
+      totalDamageTaken: entries.reduce((sum: number, e: IBestiaryEntryDocument) => sum + e.combatStats.totalDamageTaken, 0)
     },
     
     completionPercentage: entries.length > 0 ? 
-      Math.floor((entries.filter(e => e.isDiscovered).length / entries.length) * 100) : 0,
+      Math.floor((entries.filter((e: IBestiaryEntryDocument) => e.isDiscovered).length / entries.length) * 100) : 0,
     
     masterCompletionPercentage: entries.length > 0 ?
-      Math.floor((entries.filter(e => e.progressionLevel === "Master").length / entries.length) * 100) : 0
+      Math.floor((entries.filter((e: IBestiaryEntryDocument) => e.progressionLevel === "Master").length / entries.length) * 100) : 0
   };
   
   // Compter par élément
   const elements = ["Fire", "Water", "Wind", "Electric", "Light", "Dark"];
   elements.forEach(element => {
-    stats.byElement[element] = entries.filter(e => e.monsterSnapshot.element === element).length;
+    stats.byElement[element] = entries.filter((e: IBestiaryEntryDocument) => e.monsterSnapshot.element === element).length;
   });
   
   return stats;
