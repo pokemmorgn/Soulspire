@@ -394,6 +394,15 @@ class AdminCore {
                     this.showPlaceholder('playersContent', 'Players', '👥');
                 }
                 break;
+             case 'monsters': 
+            if (window.MonstersModule && typeof MonstersModule.loadData === 'function') {
+                console.log('👹 Loading monsters data via MonstersModule...');
+                MonstersModule.loadData();
+            } else {
+                console.warn('MonstersModule not available');
+                this.showPlaceholder('monstersContent', 'Monsters', '👹');
+            }
+            break;
             case 'economy':
                 this.showPlaceholder('economyContent', 'Economy', '💰');
                 break;
