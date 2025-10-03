@@ -506,18 +506,8 @@ export class BestiaryService {
       // Marquer comme réclamée (TODO: système de tracking des récompenses réclamées)
       console.log(`✅ Récompense ${rewardId} réclamée: ${availableReward.gems} gems`);
 
-      // Notification WebSocket
-      try {
-        WebSocketService.notifyBestiaryRewardClaimed(playerId, {
-          rewardId,
-          rewardName: availableReward.name,
-          gems: availableReward.gems,
-          title: availableReward.title,
-          avatar: availableReward.avatar
-        });
-      } catch (wsError) {
-        console.error("❌ Erreur notification WebSocket:", wsError);
-      }
+      // TODO: Ajouter notification WebSocket plus tard
+      // WebSocketService.notifyBestiaryRewardClaimed(...)
 
       return {
         success: true,
