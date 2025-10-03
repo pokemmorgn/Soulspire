@@ -1,0 +1,15 @@
+Name,Type,Description,Combat Style,Attacks,Role,ATK,DEF,SPD
+SALAMENDER,,,,,,,,
+Green Salamender,Wind,"Agile, leaf-colored creature with sharp reflexes.",Uses swift charges and leaps to strike enemies.,"Claw swipes, headbutts boosted by gusts of wind.","Fast harasser, hard to pin down.",60,40,85
+Red Salamender,Fire,"Fiery, aggressive look with slightly more pronounced horns.","Direct, fast and brutal attacks.","Burning claws, explosive charges leaving flame trails.","Pure offensive, high damage but fragile.",85,35,70
+Yellow-Brown Salamender,Light,"Sandy body with dark mask-like carapace, protective aura.","Slower but stable, defensive fighter.","Radiant charges, protective spark bursts.","Balanced protector, defense-oriented.",55,75,45
+Blue-Purple Salamender,Water,Ocean-colored with calm expression.,"Smooth movements, almost glides when charging.","Aqua slashes, small waves following steps.","Versatile controller, mobile and adaptive.",65,55,65
+Dark Purple Salamender,Shadow,"Dusky shade with dark horns, menacing presence.","Silent movements, strikes with precision.","Shadow claws, charges leaving dark energy trails.","Assassin, excels at finishing weakened foes.",80,40,75
+Yellow Bright Salamender,Electricity,"Golden bright body, hyperactive and energetic.","Nervous, twitchy rapid attacks.","Electrified claws, crackling charges.","Burst striker, extremely fast but short endurance.",75,40,90
+YETI,,,,,,,,
+Green Yeti,Wind,"Large green beast with a bulky frame, symbol of nature’s resilience.",Slow but powerful punches carried by gusts of wind.,"Ground stomps, sweeping wind-charged fists.","Defensive bruiser, tanky and steady.",70,85,40
+Red Yeti,Fire,"Fiery ape with blazing energy, horns glowing like embers.",Aggressive and relentless melee fighter.,"Explosive ground pounds, flaming fist combos.","Berserker, high damage dealer with risky playstyle.",90,50,60
+Yellow Yeti,Light,"Golden beast with radiant aura, crowned by bright horns.","Balanced fighter, combines defense with radiant strikes.","Blinding fist strikes, radiant shield bursts.","Paladin-like, defender with holy power.",65,80,55
+Cyan Yeti,Water,Aqua-colored gorilla with smooth movements and fluid strikes.,Uses flowing combos and wave-like pressure.,"Water-infused punches, shockwave stomps.","Adaptive brawler, versatile in offense and defense.",75,70,60
+Dark Blue Yeti,Shadow,"Midnight-colored beast, arms encrusted with dark crystals.","Slow, menacing strikes that sap enemy strength.","Shadow-empowered punches, crystal slams.","Debuffer, weakens foes with shadow power.",80,65,45
+Bright Yellow Yeti,Electricity,Hyperactive golden gorilla crackling with energy.,"Explosive speed, striking with violent bursts.","Thunder punches, lightning-charged ground stomps.","Glass cannon striker, fast and volatile.",85,45,90
