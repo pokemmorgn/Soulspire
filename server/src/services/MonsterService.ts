@@ -301,9 +301,10 @@ export class MonsterService {
       const monster = await Monster.findOne({ monsterId: randomMonsterId });
 
       if (monster) {
-        // Ajuster le niveau selon la vague
+        // Ajuster le niveau selon la vague (AVEC CAP À 100)
         const levelBonus = (waveNumber - 1) * 2;
-        const overrideLevel = Math.floor(10 + (worldId - 1) * 5 + levelId * 0.5) + levelBonus;
+        const calculatedLevel = Math.floor(10 + (worldId - 1) * 5 + levelId * 0.5) + levelBonus;
+        const overrideLevel = Math.min(100, calculatedLevel); // ✅ CAP à 100
 
         const participant = this.createEnemyParticipant(
           monster,
@@ -473,8 +474,9 @@ export class MonsterService {
     levelOverride?: number,
     starsOverride?: number
   ): IBattleParticipant {
-    // Calcul du niveau de l'ennemi
-    const baseLevel = levelOverride || Math.floor(10 + (worldId - 1) * 5 + levelId * 0.5);
+    // Calcul du niveau de l'ennemi (AVEC CAP À 100)
+    const calculatedLevel = levelOverride || Math.floor(10 + (worldId - 1) * 5 + levelId * 0.5);
+    const baseLevel = Math.min(100, calculatedLevel); // ✅ CAP à 100
     
     // Multiplicateurs de difficulté
     let diffMultiplier = 1.0;
