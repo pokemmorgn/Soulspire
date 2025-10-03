@@ -29,6 +29,7 @@ export interface IBattleParticipant {
 
 export interface IBattleAction {
   turn: number;
+  waveNumber?: number;
   actionType: "attack" | "skill" | "ultimate" | "passive";
   actorId: string;
   actorName: string;
@@ -54,6 +55,30 @@ export interface IBattleAction {
       alive: boolean;
     };
   };
+}
+
+export interface IWaveData {
+  totalWaves: number;                    // Nombre total de vagues
+  completedWaves: number;                // Vagues terminées
+  currentWave: number;                   // Vague en cours
+  waveRewards: {                         // Récompenses par vague
+    waveNumber: number;
+    rewards: {
+      experience: number;
+      gold: number;
+      items?: string[];
+      fragments?: { heroId: string; quantity: number }[];
+    };
+  }[];
+  playerStatePerWave?: {                 // État de l'équipe à la fin de chaque vague
+    waveNumber: number;
+    heroes: {
+      heroId: string;
+      currentHp: number;
+      energy: number;
+      alive: boolean;
+    }[];
+  }[];
 }
 
 export interface IBattleOptions {
@@ -105,7 +130,7 @@ interface IBattleDocument extends Document {
     difficulty?: "Normal" | "Hard" | "Nightmare";
     enemyType?: "normal" | "elite" | "boss";
   };
-
+  waveData?: IWaveData;
   addAction(action: IBattleAction): Promise<IBattleDocument>;
   completeBattle(result: IBattleResult): Promise<IBattleDocument>;
   getBattleReplay(): any;
@@ -272,6 +297,32 @@ const battleSchema = new Schema<IBattleDocument>({
       type: String, 
       enum: ["normal", "elite", "boss"]
     }
+  }
+},   waveData: {
+    totalWaves: { type: Number, min: 1 },
+    completedWaves: { type: Number, min: 0 },
+    currentWave: { type: Number, min: 1 },
+    waveRewards: [{
+      waveNumber: { type: Number, required: true, min: 1 },
+      rewards: {
+        experience: { type: Number, default: 0 },
+        gold: { type: Number, default: 0 },
+        items: [{ type: String }],
+        fragments: [{
+          heroId: { type: String, required: true },
+          quantity: { type: Number, required: true, min: 1 }
+        }]
+      }
+    }],
+    playerStatePerWave: [{
+      waveNumber: { type: Number, required: true, min: 1 },
+      heroes: [{
+        heroId: { type: String, required: true },
+        currentHp: { type: Number, required: true },
+        energy: { type: Number, required: true },
+        alive: { type: Boolean, required: true }
+      }]
+    }]
   }
 }, {
   timestamps: true,
