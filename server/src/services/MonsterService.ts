@@ -1,26 +1,13 @@
-// server/src/services/MonsterService.ts
-import Monster, { IMonsterDocument, MonsterType, MonsterElement } from "../models/Monster";
-import CampaignWorld, { ILevelConfig, ICampaignWorld } from "../models/CampaignWorld";
-import { GAME_BALANCE, getEnemyTotalMultiplier, calculateFinalStats } from "../config/gameBalance";
+import Monster from "../models/Monster";
+import CampaignWorld, { ILevelConfig, IWaveConfig as ILevelWaveConfig } from "../models/CampaignWorld";
 import { IBattleParticipant } from "../models/Battle";
 import { HeroSpells } from "../gameplay/SpellManager";
-
-/**
- * 👹 MONSTER SERVICE
- * 
- * Gère la génération dynamique des monstres pour les combats.
- * Lit la configuration depuis CampaignWorld.levels et génère les ennemis appropriés.
- */
+import { IWaveConfig } from "./BattleEngine";
 
 export class MonsterService {
 
   /**
-   * 🎯 MÉTHODE PRINCIPALE : Générer les ennemis pour un niveau de campagne
-   * 
-   * Lit la configuration du niveau et génère les monstres selon 3 modes:
-   * 1. Monstres spécifiques assignés manuellement (monsters: [...])
-   * 2. Auto-génération depuis le pool du monde (autoGenerate: {...})
-   * 3. Fallback ancien système (enemyType/enemyCount)
+   * Générer les ennemis pour un niveau de campagne (avec support des vagues)
    */
   public static async generateCampaignEnemies(
     worldId: number,
@@ -29,89 +16,178 @@ export class MonsterService {
   ): Promise<{
     enemyTeam: IBattleParticipant[];
     enemySpells: Map<string, HeroSpells>;
+    waveConfigs?: IWaveConfig[];
   }> {
     try {
-      console.log(`👹 Génération monstres: Monde ${worldId}, Niveau ${levelId}, ${difficulty}`);
+      console.log(`🎯 Génération ennemis: Monde ${worldId}, Niveau ${levelId}, ${difficulty}`);
 
-      // 1. Récupérer la configuration du monde et du niveau
+      // Récupérer la configuration du monde
       const world = await CampaignWorld.findOne({ worldId });
       if (!world) {
-        throw new Error(`World ${worldId} not found`);
+        console.warn(`⚠️ Monde ${worldId} introuvable, génération par défaut`);
+        return this.generateDefaultEnemies(worldId, levelId, difficulty);
       }
 
+      // Trouver le niveau spécifique
       const levelConfig = world.levels.find(l => l.levelIndex === levelId);
       if (!levelConfig) {
-        throw new Error(`Level ${levelId} not found in world ${worldId}`);
+        console.warn(`⚠️ Niveau ${levelId} introuvable, génération par défaut`);
+        return this.generateDefaultEnemies(worldId, levelId, difficulty);
       }
 
-      // 2. Déterminer le mode de génération
-      let enemyTeam: IBattleParticipant[] = [];
-      let enemySpells = new Map<string, HeroSpells>();
-
-      // MODE 1: Monstres spécifiques assignés manuellement
-      if (levelConfig.monsters && levelConfig.monsters.length > 0) {
-        console.log(`✅ Mode: Monstres spécifiques (${levelConfig.monsters.length} configurés)`);
-        
-        const result = await this.generateFromSpecificMonsters(
-          levelConfig.monsters,
-          worldId,
-          levelId,
-          difficulty
-        );
-        
-        enemyTeam = result.enemyTeam;
-        enemySpells = result.enemySpells;
-      }
-      // MODE 2: Auto-génération depuis pool du monde
-      else if (levelConfig.autoGenerate) {
-        console.log(`✅ Mode: Auto-génération (pool du monde)`);
-        
-        const result = await this.generateFromWorldPool(
-          world,
-          levelConfig,
-          worldId,
-          levelId,
-          difficulty
-        );
-        
-        enemyTeam = result.enemyTeam;
-        enemySpells = result.enemySpells;
-      }
-      // MODE 3: Fallback ancien système
-      else {
-        console.log(`⚠️ Mode: Fallback ancien système`);
-        
-        const enemyType = levelConfig.enemyType || this.determineEnemyType(levelId);
-        const enemyCount = levelConfig.enemyCount || this.determineEnemyCount(enemyType);
-        
-        const result = await this.generateFromLegacySystem(
-          worldId,
-          levelId,
-          difficulty,
-          enemyType,
-          enemyCount,
-          world.elementBias
-        );
-        
-        enemyTeam = result.enemyTeam;
-        enemySpells = result.enemySpells;
-      }
-
-      console.log(`✅ ${enemyTeam.length} monstres générés pour Monde ${worldId}-${levelId}`);
+      // ✨ NOUVEAU : Vérifier si c'est un combat à vagues
+      const shouldUseWaves = this.shouldLevelHaveWaves(levelConfig);
       
+      if (shouldUseWaves) {
+        console.log(`🌊 Combat multi-vagues détecté pour niveau ${levelId}`);
+        return await this.generateWaveEnemies(world, levelConfig, worldId, levelId, difficulty);
+      }
+
+      // Combat classique (une seule vague)
+      const { enemyTeam, enemySpells } = await this.generateSingleWaveEnemies(
+        world,
+        levelConfig,
+        worldId,
+        levelId,
+        difficulty
+      );
+
       return { enemyTeam, enemySpells };
 
-    } catch (error: any) {
-      console.error("❌ Erreur generateCampaignEnemies:", error);
-      throw error;
+    } catch (error) {
+      console.error("❌ Erreur génération ennemis:", error);
+      return this.generateDefaultEnemies(worldId, levelId, difficulty);
     }
   }
 
   /**
-   * 🎯 MODE 1: Générer depuis monstres spécifiques assignés
+   * ✨ NOUVEAU : Vérifier si un niveau doit avoir des vagues
    */
-  private static async generateFromSpecificMonsters(
-    monsterConfigs: any[],
+  private static shouldLevelHaveWaves(levelConfig: ILevelConfig): boolean {
+    // 1. Si waves est explicitement défini et non vide
+    if (levelConfig.waves && levelConfig.waves.length > 1) {
+      return true;
+    }
+
+    // 2. Si enableWaves est activé
+    if (levelConfig.enableWaves === true) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * ✨ NOUVEAU : Générer les vagues pour un combat multi-vagues
+   */
+  private static async generateWaveEnemies(
+    world: any,
+    levelConfig: ILevelConfig,
+    worldId: number,
+    levelId: number,
+    difficulty: "Normal" | "Hard" | "Nightmare"
+  ): Promise<{
+    enemyTeam: IBattleParticipant[];
+    enemySpells: Map<string, HeroSpells>;
+    waveConfigs: IWaveConfig[];
+  }> {
+    const waveConfigs: IWaveConfig[] = [];
+    const allEnemySpells = new Map<string, HeroSpells>();
+
+    // Cas 1 : Vagues explicitement définies dans la config
+    if (levelConfig.waves && levelConfig.waves.length > 0) {
+      console.log(`📋 Utilisation des vagues configurées (${levelConfig.waves.length} vagues)`);
+      
+      for (const waveConfigData of levelConfig.waves) {
+        const { enemyTeam, enemySpells } = await this.generateWaveFromConfig(
+          world,
+          waveConfigData,
+          worldId,
+          levelId,
+          difficulty
+        );
+
+        // Fusionner les sorts
+        enemySpells.forEach((spells, heroId) => {
+          allEnemySpells.set(heroId, spells);
+        });
+
+        // Calculer les récompenses de vague
+        const waveRewards = this.calculateWaveRewards(
+          worldId,
+          levelId,
+          difficulty,
+          waveConfigData.waveNumber,
+          levelConfig.waves!.length,
+          levelConfig.waveRewards
+        );
+
+        waveConfigs.push({
+          waveNumber: waveConfigData.waveNumber,
+          enemies: enemyTeam,
+          delay: waveConfigData.delay || 3000,
+          isBossWave: waveConfigData.isBossWave || false,
+          waveRewards
+        });
+      }
+    }
+    // Cas 2 : Génération automatique des vagues
+    else if (levelConfig.enableWaves === true) {
+      const waveCount = levelConfig.autoWaveCount || this.getDefaultWaveCount(levelConfig.enemyType);
+      console.log(`🤖 Génération automatique de ${waveCount} vagues`);
+
+      for (let wave = 1; wave <= waveCount; wave++) {
+        const { enemyTeam, enemySpells } = await this.generateAutoWave(
+          world,
+          levelConfig,
+          worldId,
+          levelId,
+          difficulty,
+          wave,
+          waveCount
+        );
+
+        // Fusionner les sorts
+        enemySpells.forEach((spells, heroId) => {
+          allEnemySpells.set(heroId, spells);
+        });
+
+        const isBossWave = wave === waveCount;
+        const waveRewards = this.calculateWaveRewards(
+          worldId,
+          levelId,
+          difficulty,
+          wave,
+          waveCount,
+          levelConfig.waveRewards
+        );
+
+        waveConfigs.push({
+          waveNumber: wave,
+          enemies: enemyTeam,
+          delay: wave === 1 ? 0 : 3000,
+          isBossWave,
+          waveRewards
+        });
+      }
+    }
+
+    // La première vague sert d'équipe initiale
+    const initialEnemyTeam = waveConfigs[0]?.enemies || [];
+
+    return {
+      enemyTeam: initialEnemyTeam,
+      enemySpells: allEnemySpells,
+      waveConfigs
+    };
+  }
+
+  /**
+   * ✨ NOUVEAU : Générer une vague depuis la configuration
+   */
+  private static async generateWaveFromConfig(
+    world: any,
+    waveConfig: ILevelWaveConfig,
     worldId: number,
     levelId: number,
     difficulty: "Normal" | "Hard" | "Nightmare"
@@ -121,40 +197,127 @@ export class MonsterService {
   }> {
     const enemyTeam: IBattleParticipant[] = [];
     const enemySpells = new Map<string, HeroSpells>();
-    
-    let positionCounter = 1;
 
-    for (const config of monsterConfigs) {
-      const count = config.count || 1;
-      
-      // Récupérer le monstre depuis la DB
-      const monsterData = await Monster.findOne({ monsterId: config.monsterId });
-      if (!monsterData) {
-        console.warn(`⚠️ Monstre ${config.monsterId} non trouvé, skip`);
-        continue;
+    // Si des monstres sont explicitement définis
+    if (waveConfig.monsters && waveConfig.monsters.length > 0) {
+      for (const monsterConfig of waveConfig.monsters) {
+        const monster = await Monster.findOne({ monsterId: monsterConfig.monsterId });
+        if (!monster) {
+          console.warn(`⚠️ Monstre ${monsterConfig.monsterId} introuvable`);
+          continue;
+        }
+
+        const count = monsterConfig.count || 1;
+        for (let i = 0; i < count; i++) {
+          const participant = this.createEnemyParticipant(
+            monster,
+            worldId,
+            levelId,
+            difficulty,
+            monsterConfig.position || (enemyTeam.length + 1),
+            monsterConfig.levelOverride,
+            monsterConfig.starsOverride
+          );
+
+          enemyTeam.push(participant);
+
+          const spells = this.extractMonsterSpells(monster);
+          enemySpells.set(participant.heroId, spells);
+        }
       }
+    }
+    // Sinon, génération automatique
+    else if (waveConfig.autoGenerate) {
+      const autoGenConfig = waveConfig.autoGenerate;
+      const monsterPool = world.defaultMonsterPool || [];
 
-      // Générer X instances de ce monstre
-      for (let i = 0; i < count; i++) {
-        const level = config.levelOverride || this.calculateMonsterLevel(worldId, levelId, monsterData.type);
-        const stars = config.starsOverride || GAME_BALANCE.monsters.spawnRules.starsByType[monsterData.type];
-        const position = config.position || positionCounter++;
+      for (let i = 0; i < autoGenConfig.count; i++) {
+        const randomMonsterId = monsterPool[Math.floor(Math.random() * monsterPool.length)];
+        const monster = await Monster.findOne({ monsterId: randomMonsterId });
 
-        const participant = await this.createBattleParticipant(
-          monsterData,
-          level,
-          stars,
-          position,
+        if (monster) {
+          const participant = this.createEnemyParticipant(
+            monster,
+            worldId,
+            levelId,
+            difficulty,
+            i + 1
+          );
+
+          enemyTeam.push(participant);
+
+          const spells = this.extractMonsterSpells(monster);
+          enemySpells.set(participant.heroId, spells);
+        }
+      }
+    }
+
+    return { enemyTeam, enemySpells };
+  }
+
+  /**
+   * ✨ NOUVEAU : Générer automatiquement une vague
+   */
+  private static async generateAutoWave(
+    world: any,
+    levelConfig: ILevelConfig,
+    worldId: number,
+    levelId: number,
+    difficulty: "Normal" | "Hard" | "Nightmare",
+    waveNumber: number,
+    totalWaves: number
+  ): Promise<{
+    enemyTeam: IBattleParticipant[];
+    enemySpells: Map<string, HeroSpells>;
+  }> {
+    const enemyTeam: IBattleParticipant[] = [];
+    const enemySpells = new Map<string, HeroSpells>();
+
+    // Déterminer le type d'ennemis selon la vague
+    let enemyType: "normal" | "elite" | "boss";
+    let enemyCount: number;
+
+    if (waveNumber === totalWaves) {
+      // Dernière vague = boss
+      enemyType = "boss";
+      enemyCount = 1;
+    } else if (waveNumber === totalWaves - 1 && totalWaves >= 3) {
+      // Avant-dernière vague = élites
+      enemyType = "elite";
+      enemyCount = 2;
+    } else {
+      // Vagues normales
+      enemyType = "normal";
+      enemyCount = 3;
+    }
+
+    console.log(`🎲 Vague ${waveNumber}: ${enemyCount} ${enemyType}(s)`);
+
+    // Générer les ennemis
+    const monsterPool = world.defaultMonsterPool || [];
+    
+    for (let i = 0; i < enemyCount; i++) {
+      const randomMonsterId = monsterPool[Math.floor(Math.random() * monsterPool.length)];
+      const monster = await Monster.findOne({ monsterId: randomMonsterId });
+
+      if (monster) {
+        // Ajuster le niveau selon la vague
+        const levelBonus = (waveNumber - 1) * 2;
+        const overrideLevel = Math.floor(10 + (worldId - 1) * 5 + levelId * 0.5) + levelBonus;
+
+        const participant = this.createEnemyParticipant(
+          monster,
           worldId,
           levelId,
           difficulty,
-          i
+          i + 1,
+          overrideLevel,
+          enemyType === "boss" ? 5 : enemyType === "elite" ? 4 : 3
         );
 
         enemyTeam.push(participant);
 
-        // Extraire les sorts
-        const spells = this.extractMonsterSpells(monsterData);
+        const spells = this.extractMonsterSpells(monster);
         enemySpells.set(participant.heroId, spells);
       }
     }
@@ -163,10 +326,59 @@ export class MonsterService {
   }
 
   /**
-   * 🎯 MODE 2: Générer depuis le pool du monde (auto-génération)
+   * ✨ NOUVEAU : Calculer les récompenses d'une vague
    */
-  private static async generateFromWorldPool(
-    world: ICampaignWorld,
+  private static calculateWaveRewards(
+    worldId: number,
+    levelId: number,
+    difficulty: "Normal" | "Hard" | "Nightmare",
+    waveNumber: number,
+    totalWaves: number,
+    configRewards?: any
+  ) {
+    // Si des récompenses sont définies dans la config
+    if (configRewards) {
+      if (waveNumber === totalWaves && configRewards.finalWave) {
+        return configRewards.finalWave;
+      } else if (configRewards.perWave) {
+        return configRewards.perWave;
+      }
+    }
+
+    // Récompenses par défaut
+    const baseExp = 20 + (worldId - 1) * 5 + levelId;
+    const baseGold = 15 + (worldId - 1) * 3 + levelId;
+
+    // Multiplicateur de difficulté
+    let diffMultiplier = 1.0;
+    if (difficulty === "Hard") diffMultiplier = 1.5;
+    if (difficulty === "Nightmare") diffMultiplier = 2.0;
+
+    // Bonus pour la dernière vague
+    const waveMultiplier = waveNumber === totalWaves ? 2.0 : 0.5;
+
+    return {
+      experience: Math.floor(baseExp * diffMultiplier * waveMultiplier),
+      gold: Math.floor(baseGold * diffMultiplier * waveMultiplier),
+      items: waveNumber === totalWaves ? ["wave_completion_token"] : [],
+      fragments: []
+    };
+  }
+
+  /**
+   * ✨ NOUVEAU : Obtenir le nombre de vagues par défaut selon le type d'ennemi
+   */
+  private static getDefaultWaveCount(enemyType?: string): number {
+    if (enemyType === "boss") return 3;
+    if (enemyType === "elite") return 2;
+    return 1;
+  }
+
+  /**
+   * Générer les ennemis pour une seule vague (combat classique)
+   */
+  private static async generateSingleWaveEnemies(
+    world: any,
     levelConfig: ILevelConfig,
     worldId: number,
     levelId: number,
@@ -175,438 +387,252 @@ export class MonsterService {
     enemyTeam: IBattleParticipant[];
     enemySpells: Map<string, HeroSpells>;
   }> {
-    const autoGen = levelConfig.autoGenerate!;
-    const count = autoGen.count || 3;
-    const enemyType = autoGen.enemyType || "normal";
-
-    let monsters: IMonsterDocument[] = [];
-
-    // Utiliser le pool du monde ou faire un sample aléatoire
-    if (autoGen.useWorldPool && world.defaultMonsterPool && world.defaultMonsterPool.length > 0) {
-      console.log(`📦 Utilisation du pool du monde (${world.defaultMonsterPool.length} monstres disponibles)`);
-      
-      // Récupérer les monstres du pool
-      const poolMonsters = await Monster.find({
-        monsterId: { $in: world.defaultMonsterPool },
-        type: enemyType
-      });
-
-      // Si pas assez de monstres du bon type, prendre tous ceux du pool
-      if (poolMonsters.length === 0) {
-        const allPoolMonsters = await Monster.find({
-          monsterId: { $in: world.defaultMonsterPool }
-        });
-        monsters = this.randomSample(allPoolMonsters, count);
-      } else {
-        monsters = this.randomSample(poolMonsters, count);
-      }
-    } else {
-      console.log(`🎲 Sample aléatoire depuis la DB`);
-      
-      // Sample aléatoire depuis tous les monstres compatibles
-      monsters = await Monster.sampleForWorld(worldId, count, enemyType);
-    }
-
-    // Si toujours pas de monstres, fallback sur n'importe quel monstre
-    if (monsters.length === 0) {
-      console.warn(`⚠️ Aucun monstre trouvé, fallback sur sample global`);
-      monsters = await Monster.aggregate([
-        { $match: { type: enemyType } },
-        { $sample: { size: count } }
-      ]);
-    }
-
-    // Générer les participants
     const enemyTeam: IBattleParticipant[] = [];
     const enemySpells = new Map<string, HeroSpells>();
 
-    for (let i = 0; i < monsters.length; i++) {
-      const monsterData = monsters[i];
-      const level = this.calculateMonsterLevel(worldId, levelId, enemyType);
-      const stars = GAME_BALANCE.monsters.spawnRules.starsByType[enemyType];
-      const position = i + 1;
+    // Cas 1 : Monstres explicitement définis
+    if (levelConfig.monsters && levelConfig.monsters.length > 0) {
+      console.log(`📋 Utilisation des monstres configurés (${levelConfig.monsters.length})`);
 
-      const participant = await this.createBattleParticipant(
-        monsterData,
-        level,
-        stars,
-        position,
-        worldId,
-        levelId,
-        difficulty,
-        i
-      );
+      for (const monsterConfig of levelConfig.monsters) {
+        const monster = await Monster.findOne({ monsterId: monsterConfig.monsterId });
+        if (!monster) {
+          console.warn(`⚠️ Monstre ${monsterConfig.monsterId} introuvable`);
+          continue;
+        }
 
-      enemyTeam.push(participant);
+        const count = monsterConfig.count || 1;
+        for (let i = 0; i < count; i++) {
+          const participant = this.createEnemyParticipant(
+            monster,
+            worldId,
+            levelId,
+            difficulty,
+            monsterConfig.position || (enemyTeam.length + 1),
+            monsterConfig.levelOverride,
+            monsterConfig.starsOverride
+          );
 
-      const spells = this.extractMonsterSpells(monsterData);
-      enemySpells.set(participant.heroId, spells);
+          enemyTeam.push(participant);
+
+          const spells = this.extractMonsterSpells(monster);
+          enemySpells.set(participant.heroId, spells);
+        }
+      }
+    }
+    // Cas 2 : Auto-génération
+    else if (levelConfig.autoGenerate) {
+      console.log(`🤖 Génération automatique`);
+
+      const autoGenConfig = levelConfig.autoGenerate;
+      const monsterPool = autoGenConfig.useWorldPool ? world.defaultMonsterPool : [];
+
+      if (!monsterPool || monsterPool.length === 0) {
+        console.warn(`⚠️ Pool de monstres vide, utilisation fallback`);
+        return this.generateDefaultEnemies(worldId, levelId, difficulty);
+      }
+
+      for (let i = 0; i < autoGenConfig.count; i++) {
+        const randomMonsterId = monsterPool[Math.floor(Math.random() * monsterPool.length)];
+        const monster = await Monster.findOne({ monsterId: randomMonsterId });
+
+        if (monster) {
+          const participant = this.createEnemyParticipant(
+            monster,
+            worldId,
+            levelId,
+            difficulty,
+            i + 1
+          );
+
+          enemyTeam.push(participant);
+
+          const spells = this.extractMonsterSpells(monster);
+          enemySpells.set(participant.heroId, spells);
+        }
+      }
+    }
+    // Cas 3 : Fallback
+    else {
+      console.warn(`⚠️ Aucune config de monstres, utilisation fallback`);
+      return this.generateDefaultEnemies(worldId, levelId, difficulty);
     }
 
     return { enemyTeam, enemySpells };
   }
 
   /**
-   * 🎯 MODE 3: Fallback ancien système (compatibilité)
+   * Créer un participant ennemi depuis un monstre
    */
-  private static async generateFromLegacySystem(
+  private static createEnemyParticipant(
+    monster: any,
     worldId: number,
     levelId: number,
     difficulty: "Normal" | "Hard" | "Nightmare",
-    enemyType: MonsterType,
-    enemyCount: number,
-    elementBias?: string[]
-  ): Promise<{
-    enemyTeam: IBattleParticipant[];
-    enemySpells: Map<string, HeroSpells>;
-  }> {
-    console.log(`🔄 Génération legacy: ${enemyCount}x ${enemyType}`);
-
-    // Sample aléatoire
-    let monsters = await Monster.sampleForWorld(worldId, enemyCount, enemyType);
-
-    // Si pas assez de monstres, sample global
-    if (monsters.length < enemyCount) {
-      monsters = await Monster.aggregate([
-        { $match: { type: enemyType } },
-        { $sample: { size: enemyCount } }
-      ]);
-    }
-
-    const enemyTeam: IBattleParticipant[] = [];
-    const enemySpells = new Map<string, HeroSpells>();
-
-    for (let i = 0; i < monsters.length; i++) {
-      const monsterData = monsters[i];
-      const level = this.calculateMonsterLevel(worldId, levelId, enemyType);
-      const stars = GAME_BALANCE.monsters.spawnRules.starsByType[enemyType];
-      const position = i + 1;
-
-      const participant = await this.createBattleParticipant(
-        monsterData,
-        level,
-        stars,
-        position,
-        worldId,
-        levelId,
-        difficulty,
-        i
-      );
-
-      enemyTeam.push(participant);
-
-      const spells = this.extractMonsterSpells(monsterData);
-      enemySpells.set(participant.heroId, spells);
-    }
-
-    return { enemyTeam, enemySpells };
-  }
-
-  /**
-   * 🏗️ Créer un IBattleParticipant depuis un monstre
-   */
-  private static async createBattleParticipant(
-    monsterData: IMonsterDocument,
-    level: number,
-    stars: number,
     position: number,
-    worldId: number,
-    levelId: number,
-    difficulty: "Normal" | "Hard" | "Nightmare",
-    instanceIndex: number
-  ): Promise<IBattleParticipant> {
+    levelOverride?: number,
+    starsOverride?: number
+  ): IBattleParticipant {
+    // Calcul du niveau de l'ennemi
+    const baseLevel = levelOverride || Math.floor(10 + (worldId - 1) * 5 + levelId * 0.5);
     
-    // Calculer le multiplicateur total
-    const totalMultiplier = getEnemyTotalMultiplier(worldId, levelId, difficulty, monsterData.type);
+    // Multiplicateurs de difficulté
+    let diffMultiplier = 1.0;
+    if (difficulty === "Hard") diffMultiplier = 2.0;
+    if (difficulty === "Nightmare") diffMultiplier = 4.0;
 
-    // Obtenir les stats de base du monstre
-    const baseStats = monsterData.getStatsAtLevel(level, stars);
+    // Déterminer le type d'ennemi
+    const enemyType = levelId % 10 === 0 ? "boss" : levelId % 5 === 0 ? "elite" : "normal";
+    let typeMultiplier = 1.0;
+    if (enemyType === "boss") typeMultiplier = 1.5;
+    if (enemyType === "elite") typeMultiplier = 1.2;
 
-    // Appliquer le multiplicateur de difficulté/monde
-    const finalStats: any = {};
-    for (const [key, value] of Object.entries(baseStats)) {
-      if (typeof value === 'number') {
-        finalStats[key] = Math.floor(value * totalMultiplier);
-      } else {
-        finalStats[key] = value;
-      }
-    }
+    const totalMultiplier = diffMultiplier * typeMultiplier;
 
-    // Bonus spécifiques pour boss/elite
-    if (monsterData.type === "boss") {
-      const bossBonus = GAME_BALANCE.campaign.bossStatBonus;
-      finalStats.hp = Math.floor(finalStats.hp * bossBonus.hpMultiplier);
-      finalStats.maxHp = finalStats.hp;
-      finalStats.atk = Math.floor(finalStats.atk * bossBonus.atkMultiplier);
-      finalStats.def = Math.floor(finalStats.def * bossBonus.defMultiplier);
-    } else if (monsterData.type === "elite") {
-      const eliteBonus = GAME_BALANCE.campaign.eliteStatBonus;
-      finalStats.hp = Math.floor(finalStats.hp * eliteBonus.hpMultiplier);
-      finalStats.maxHp = finalStats.hp;
-      finalStats.atk = Math.floor(finalStats.atk * eliteBonus.atkMultiplier);
-      finalStats.def = Math.floor(finalStats.def * eliteBonus.defMultiplier);
-    }
-
-    // Nom avec préfixe selon le type
-    let displayName = monsterData.displayName || monsterData.name;
-    if (monsterData.type === "boss") {
-      displayName = `Boss ${displayName}`;
-    } else if (monsterData.type === "elite") {
-      displayName = `Elite ${displayName}`;
-    }
-
-    // ID unique pour cette instance
-    const uniqueId = `${monsterData.monsterId}_${worldId}_${levelId}_${instanceIndex}`;
-
-    // Energy de départ (boss commence avec de l'énergie)
-    const startingEnergy = monsterData.type === "boss" ? 
-      GAME_BALANCE.campaign.bossStatBonus.startingEnergy : 
-      monsterData.type === "elite" ? 
-        GAME_BALANCE.campaign.eliteStatBonus.startingEnergy : 
-        0;
-
-    // Buffs de départ (boss a boss_aura)
-    const startingBuffs = monsterData.type === "boss" ? 
-      [...GAME_BALANCE.campaign.bossStatBonus.initialBuffs] : 
-      [];
+    // Stats finales
+    const finalHp = Math.floor(monster.baseStats.hp * totalMultiplier);
+    const finalAtk = Math.floor(monster.baseStats.atk * totalMultiplier);
+    const finalDef = Math.floor(monster.baseStats.def * totalMultiplier);
+    const finalSpeed = monster.baseStats.vitesse || 80;
 
     return {
-      heroId: uniqueId,
-      name: displayName,
+      heroId: `${monster.monsterId}_${Date.now()}_${Math.random()}`,
+      name: monster.name,
       position,
-      role: monsterData.role,
-      element: monsterData.element,
-      rarity: monsterData.rarity,
-      level,
-      stars,
-      stats: finalStats,
-      currentHp: finalStats.hp,
-      energy: startingEnergy,
+      role: monster.role,
+      element: monster.element,
+      rarity: monster.rarity,
+      level: baseLevel,
+      stars: starsOverride || 3,
+      stats: {
+        hp: finalHp,
+        maxHp: finalHp,
+        atk: finalAtk,
+        def: finalDef,
+        speed: finalSpeed
+      },
+      currentHp: finalHp,
+      energy: 0,
       status: {
         alive: true,
-        buffs: startingBuffs,
+        buffs: [],
         debuffs: []
       }
     };
   }
 
   /**
-   * 📜 Extraire les sorts d'un monstre
+   * Extraire les sorts d'un monstre
    */
-  private static extractMonsterSpells(monsterData: IMonsterDocument): HeroSpells {
-    const spells: HeroSpells = {};
+  private static extractMonsterSpells(monster: any): HeroSpells {
+    const heroSpells: HeroSpells = {};
 
-    if (monsterData.spells.spell1?.id) {
-      spells.spell1 = {
-        id: monsterData.spells.spell1.id,
-        level: monsterData.spells.spell1.level || 1
+    if (monster.spells) {
+      if (monster.spells.spell1?.id) {
+        heroSpells.spell1 = {
+          id: monster.spells.spell1.id,
+          level: monster.spells.spell1.level || 1
+        };
+      }
+
+      if (monster.spells.spell2?.id) {
+        heroSpells.spell2 = {
+          id: monster.spells.spell2.id,
+          level: monster.spells.spell2.level || 1
+        };
+      }
+
+      if (monster.spells.spell3?.id) {
+        heroSpells.spell3 = {
+          id: monster.spells.spell3.id,
+          level: monster.spells.spell3.level || 1
+        };
+      }
+
+      if (monster.spells.ultimate?.id) {
+        heroSpells.ultimate = {
+          id: monster.spells.ultimate.id,
+          level: monster.spells.ultimate.level || 1
+        };
+      }
+
+      if (monster.spells.passive?.id) {
+        heroSpells.passive = {
+          id: monster.spells.passive.id,
+          level: monster.spells.passive.level || 1
+        };
+      }
+    }
+
+    // Ultimate par défaut si pas défini
+    if (!heroSpells.ultimate) {
+      heroSpells.ultimate = {
+        id: this.getDefaultUltimate(monster.element, monster.role),
+        level: 1
       };
     }
 
-    if (monsterData.spells.spell2?.id) {
-      spells.spell2 = {
-        id: monsterData.spells.spell2.id,
-        level: monsterData.spells.spell2.level || 1
-      };
-    }
-
-    if (monsterData.spells.spell3?.id) {
-      spells.spell3 = {
-        id: monsterData.spells.spell3.id,
-        level: monsterData.spells.spell3.level || 1
-      };
-    }
-
-    if (monsterData.spells.ultimate?.id) {
-      spells.ultimate = {
-        id: monsterData.spells.ultimate.id,
-        level: monsterData.spells.ultimate.level || 1
-      };
-    }
-
-    if (monsterData.spells.passive?.id) {
-      spells.passive = {
-        id: monsterData.spells.passive.id,
-        level: monsterData.spells.passive.level || 1
-      };
-    }
-
-    return spells;
+    return heroSpells;
   }
 
   /**
-   * 📊 Calculer le niveau d'un monstre selon le monde/niveau
+   * Générer des ennemis par défaut (fallback)
    */
-  private static calculateMonsterLevel(
+  private static async generateDefaultEnemies(
     worldId: number,
     levelId: number,
-    enemyType: MonsterType
-  ): number {
-    const { levelByType } = GAME_BALANCE.monsters.spawnRules;
-    const config = levelByType[enemyType];
-    
-    return config.base + (worldId * config.perWorld);
-  }
+    difficulty: "Normal" | "Hard" | "Nightmare"
+  ): Promise<{
+    enemyTeam: IBattleParticipant[];
+    enemySpells: Map<string, HeroSpells>;
+  }> {
+    console.warn(`⚠️ Génération d'ennemis par défaut pour ${worldId}-${levelId}`);
 
-  /**
-   * 🎲 Sample aléatoire d'un tableau
-   */
-  private static randomSample<T>(array: T[], count: number): T[] {
-    const shuffled = [...array].sort(() => Math.random() - 0.5);
-    return shuffled.slice(0, Math.min(count, array.length));
-  }
+    const enemyTeam: IBattleParticipant[] = [];
+    const enemySpells = new Map<string, HeroSpells>();
 
-  /**
-   * 🎯 Déterminer le type d'ennemi selon le niveau (fallback)
-   */
-  private static determineEnemyType(levelId: number): MonsterType {
-    if (levelId % 10 === 0) return "boss";
-    if (levelId % 5 === 0) return "elite";
-    return "normal";
-  }
+    // Récupérer 3 monstres aléatoires
+    const monsters = await Monster.aggregate([{ $sample: { size: 3 } }]);
 
-  /**
-   * 🔢 Déterminer le nombre d'ennemis selon le type (fallback)
-   */
-  private static determineEnemyCount(enemyType: MonsterType): number {
-    switch (enemyType) {
-      case "boss": return 1;
-      case "elite": return 2;
-      case "normal": return 3;
-      default: return 3;
-    }
-  }
-
-  /**
-   * 🔍 Obtenir un monstre par ID
-   */
-  public static async getMonsterById(monsterId: string): Promise<IMonsterDocument | null> {
-    return await Monster.findOne({ monsterId });
-  }
-
-  /**
-   * 📦 Obtenir tous les monstres d'un monde
-   */
-  public static async getMonstersForWorld(worldId: number): Promise<IMonsterDocument[]> {
-    return await Monster.findForWorld(worldId);
-  }
-
-  /**
-   * 👑 Obtenir tous les boss
-   */
-  public static async getAllBosses(): Promise<IMonsterDocument[]> {
-    return await Monster.find({ type: "boss" }).sort({ minWorldLevel: 1 });
-  }
-
-  /**
-   * 🎨 Obtenir les monstres par thème visuel
-   */
-  public static async getMonstersByTheme(theme: string): Promise<IMonsterDocument[]> {
-    return await Monster.findByTheme(theme as any);
-  }
-
-  /**
-   * ✨ Créer un nouveau monstre
-   */
-  public static async createMonster(monsterData: any): Promise<IMonsterDocument> {
-    try {
-      const monster = new Monster(monsterData);
-      await monster.save();
-      
-      console.log(`✅ Monstre créé: ${monster.monsterId} - ${monster.name}`);
-      return monster;
-    } catch (error: any) {
-      console.error("❌ Erreur création monstre:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * 🔄 Mettre à jour un monstre
-   */
-  public static async updateMonster(
-    monsterId: string,
-    updates: Partial<IMonsterDocument>
-  ): Promise<IMonsterDocument | null> {
-    try {
-      const monster = await Monster.findOneAndUpdate(
-        { monsterId },
-        { $set: updates },
-        { new: true }
+    for (let i = 0; i < monsters.length; i++) {
+      const monster = monsters[i];
+      const participant = this.createEnemyParticipant(
+        monster,
+        worldId,
+        levelId,
+        difficulty,
+        i + 1
       );
 
-      if (monster) {
-        console.log(`✅ Monstre mis à jour: ${monsterId}`);
-      }
+      enemyTeam.push(participant);
 
-      return monster;
-    } catch (error: any) {
-      console.error("❌ Erreur update monstre:", error);
-      throw error;
+      const spells = this.extractMonsterSpells(monster);
+      enemySpells.set(participant.heroId, spells);
     }
+
+    return { enemyTeam, enemySpells };
   }
 
   /**
-   * 🗑️ Supprimer un monstre
+   * Obtenir un ultimate par défaut
    */
-  public static async deleteMonster(monsterId: string): Promise<boolean> {
-    try {
-      const result = await Monster.deleteOne({ monsterId });
-      
-      if (result.deletedCount > 0) {
-        console.log(`✅ Monstre supprimé: ${monsterId}`);
-        return true;
-      }
+  private static getDefaultUltimate(element: string, role: string): string {
+    const ultimatesByElement: Record<string, string> = {
+      "Fire": "fire_storm",
+      "Water": "tidal_wave",
+      "Wind": "tornado",
+      "Electric": "lightning_strike",
+      "Light": "divine_light",
+      "Dark": "shadow_realm"
+    };
 
-      return false;
-    } catch (error: any) {
-      console.error("❌ Erreur suppression monstre:", error);
-      throw error;
-    }
-  }
+    const ultimatesByRole: Record<string, string> = {
+      "Tank": "fortress_shield",
+      "DPS Melee": "berserker_rage",
+      "DPS Ranged": "arrow_storm",
+      "Support": "mass_healing"
+    };
 
-  /**
-   * 📊 Obtenir les statistiques des monstres
-   */
-  public static async getMonsterStats() {
-    try {
-      const stats = await Monster.aggregate([
-        {
-          $group: {
-            _id: "$type",
-            count: { $sum: 1 },
-            avgLevel: { $avg: "$baseStats.hp" }
-          }
-        }
-      ]);
-
-      const elementStats = await Monster.aggregate([
-        {
-          $group: {
-            _id: "$element",
-            count: { $sum: 1 }
-          }
-        }
-      ]);
-
-      const themeStats = await Monster.aggregate([
-        {
-          $group: {
-            _id: "$visualTheme",
-            count: { $sum: 1 }
-          }
-        }
-      ]);
-
-      return {
-        byType: stats,
-        byElement: elementStats,
-        byTheme: themeStats,
-        total: await Monster.countDocuments()
-      };
-    } catch (error: any) {
-      console.error("❌ Erreur stats monstres:", error);
-      throw error;
-    }
+    return ultimatesByElement[element] || ultimatesByRole[role] || "basic_ultimate";
   }
 }
