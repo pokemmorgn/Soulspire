@@ -68,22 +68,51 @@ const testWaves = async (): Promise<void> => {
 };
 
 async function getOrCreateTestPlayer() {
-  let player = await Player.findOne({ username: "WaveTestPlayer" });
+  // Importer Account et IdGenerator
+  const Account = (await import("../models/Account")).default;
+  const { IdGenerator } = await import("../utils/idGenerator");
+  
+  // Chercher ou créer le compte
+  let account = await Account.findOne({ username: "WaveTestAccount" });
+  
+  if (!account) {
+    account = new Account({
+      username: "WaveTestAccount",
+      password: "test123hash", // Hashé en production
+      accountStatus: "active"
+    });
+    await account.save();
+    colorLog(colors.yellow, "🆕 Compte de test créé");
+  }
+  
+  // Chercher ou créer le joueur sur S1
+  let player = await Player.findOne({ 
+    accountId: account._id,
+    serverId: "S1" 
+  });
   
   if (!player) {
     player = new Player({
-      username: "WaveTestPlayer",
-      password: "test123",
+      accountId: account._id,
       serverId: "S1",
+      displayName: "WaveTestPlayer",
+      level: 50,
       gold: 10000,
       gems: 1000,
       vipLevel: 5,
       vipExperience: 0,
       world: 1,
-      level: 50
+      stage: 1
     });
     await player.save();
-    colorLog(colors.yellow, "🆕 Joueur de test créé");
+    colorLog(colors.yellow, "🆕 Joueur de test créé sur serveur S1");
+  } else {
+    // Mettre à jour le VIP si nécessaire
+    if (player.vipLevel < 5) {
+      player.vipLevel = 5;
+      await player.save();
+      colorLog(colors.blue, "📋 VIP mis à jour à 5");
+    }
   }
   
   return player;
