@@ -3,7 +3,7 @@ import CampaignWorld, { ILevelConfig, IWaveConfig as ILevelWaveConfig } from "..
 import { IBattleParticipant } from "../models/Battle";
 import { HeroSpells } from "../gameplay/SpellManager";
 import { IWaveConfig } from "./BattleEngine";
-
+import { IdGenerator } from "../utils/idGenerator";
 export class MonsterService {
 
   /**
@@ -498,7 +498,7 @@ export class MonsterService {
     const finalSpeed = monster.baseStats.vitesse || 80;
 
     return {
-      heroId: `${monster.monsterId}_${Date.now()}_${Math.random()}`,
+      heroId: `${monster.monsterId}_${Date.now()}_${IdGenerator.generateCompactUUID().slice(0, 8)}`,
       name: monster.name,
       position,
       role: monster.role,
