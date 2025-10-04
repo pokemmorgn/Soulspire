@@ -1,5 +1,6 @@
 import mongoose, { Document, Schema } from "mongoose";
 import { IdGenerator } from "../utils/idGenerator";
+import { achievementEmitter, AchievementEvent } from '../utils/AchievementEmitter';
 
 // ----- Sous-interfaces -----
 export interface IPlayerHero {
@@ -722,5 +723,24 @@ playerSchema.methods.performDailyReset = function() {
   return this.save();
 };
 
+// Middleware post-save pour achievements
+playerSchema.post('save', function(doc) {
+  if (this.isModified('world')) {
+    achievementEmitter.emit(AchievementEvent.WORLD_REACHED, {
+      playerId: doc._id.toString(),
+      serverId: doc.serverId,
+      value: doc.world
+    });
+  }
+  
+  if (this.isModified('towerProgress.highestFloor')) {
+    achievementEmitter.emit(AchievementEvent.TOWER_FLOOR, {
+      playerId: doc._id.toString(),
+      serverId: doc.serverId,
+      value: doc.towerProgress.highestFloor
+    });
+  }
+});
 export default mongoose.model<IPlayerDocument>("Player", playerSchema);
+
 
