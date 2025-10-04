@@ -10,6 +10,7 @@ import { MissionService } from "./MissionService";
 import { HeroSpells } from "../gameplay/SpellManager";
 import { MonsterService } from "./MonsterService";
 import { calculateFormationSynergies } from "../config/FormationBonusConfig";
+import { achievementEmitter, AchievementEvent } from '../utils/AchievementEmitter';
 export class BattleService {
 
   public static async startCampaignBattle(
@@ -104,6 +105,27 @@ export class BattleService {
       if (result.victory) {
         await this.applyBattleRewards(player, result);
         await this.updatePlayerProgress(player, worldId, levelId, difficulty);
+
+        achievementEmitter.emit(AchievementEvent.BATTLE_WON, {
+          playerId,
+          serverId,
+          value: 1,
+          metadata: { 
+            battleType: 'campaign', 
+            worldId, 
+            levelId,
+            difficulty 
+          }
+        });
+        
+        // Si boss
+        if (this.determineEnemyType(levelId) === 'boss') {
+          achievementEmitter.emit(AchievementEvent.BOSS_DEFEATED, {
+            playerId,
+            serverId,
+            metadata: { worldId, levelId }
+          });
+        }
       }
 
       await LevelProgress.recordAttempt(
