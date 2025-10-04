@@ -370,48 +370,68 @@ router.get('/:accountId/achievements',
       }
 
       // Récupérer tous les achievements actifs
-      const allAchievements = await Achievement.find({ isActive: true })
+      const allAchievements: any[] = await Achievement.find({ isActive: true })
         .sort({ category: 1, displayOrder: 1, name: 1 })
         .lean();
 
       // Récupérer les achievements du joueur
-      const playerAchievements = await PlayerAchievement.find({
+      const playerAchievements: any[] = await PlayerAchievement.find({
         playerId: playerId as string,
         serverId: serverId as string
       }).lean();
 
       // Créer un map des achievements débloqués
       const unlockedMap = new Map(
-        playerAchievements.map(pa => [pa.achievementId, pa])
+        playerAchievements.map((pa: any) => [pa.achievementId, pa])
       );
 
       // Combiner les données
-      const achievements = allAchievements.map(achievement => {
-        const playerData = unlockedMap.get(achievement.achievementId);
+      const achievements = allAchievements.map((achievement: any) => {
+        const playerData: any = unlockedMap.get(achievement.achievementId);
+        
+        // Gérer les différents noms possibles de propriétés
+        const unlockedAt = playerData?.unlockedAt || 
+                          playerData?.completedAt || 
+                          playerData?.earnedAt;
+        
+        const target = achievement.conditions?.target || 
+                      achievement.targetValue || 
+                      1;
+        
+        const currentProgress = playerData?.progress?.current || 
+                               playerData?.currentProgress || 
+                               0;
         
         return {
-          ...achievement,
+          achievementId: achievement.achievementId,
+          name: achievement.name,
+          description: achievement.description,
+          category: achievement.category,
+          rarity: achievement.rarity,
+          pointsValue: achievement.pointsValue,
+          rewards: achievement.rewards,
+          conditions: achievement.conditions,
           isUnlocked: !!playerData,
-          unlockedAt: playerData?.unlockedAt,
-          progress: playerData?.progress || { 
-            current: 0, 
-            target: achievement.conditions.target 
+          unlockedAt: unlockedAt,
+          progress: {
+            current: currentProgress,
+            target: target
           }
         };
       });
 
       // Calculer les stats
-      const unlockedCount = achievements.filter(a => a.isUnlocked).length;
+      const unlockedCount = achievements.filter((a: any) => a.isUnlocked).length;
       const totalPoints = achievements
-        .filter(a => a.isUnlocked)
-        .reduce((sum, a) => sum + a.pointsValue, 0);
+        .filter((a: any) => a.isUnlocked)
+        .reduce((sum: number, a: any) => sum + a.pointsValue, 0);
       const completionRate = allAchievements.length > 0 
         ? Math.round((unlockedCount / allAchievements.length) * 100) 
         : 0;
 
       // Compter les catégories complétées
       const categoriesMap = new Map();
-      achievements.forEach(a => {
+      achievements.forEach((a: any) => {
         if (!categoriesMap.has(a.category)) {
           categoriesMap.set(a.category, { total: 0, unlocked: 0 });
         }
@@ -421,7 +441,7 @@ router.get('/:accountId/achievements',
       });
 
       const categoriesCompleted = Array.from(categoriesMap.values())
-        .filter(cat => cat.unlocked === cat.total)
+        .filter((cat: any) => cat.unlocked === cat.total)
         .length;
 
       res.json({
