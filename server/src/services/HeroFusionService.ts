@@ -4,6 +4,7 @@ import FusionHistoryModel from "../models/FusionHistory";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
 import { IPlayerHero } from "../types/index";
+import { achievementEmitter, AchievementEvent } from '../utils/AchievementEmitter';
 
 export interface FusionRequirements {
   mainHero: string;
@@ -201,148 +202,204 @@ export class HeroFusionService {
     }
   }
 
-  public static async fuseHero(
-    accountId: string,
-    serverId: string,
-    heroInstanceId: string,
-    requirements: FusionRequirements
-  ): Promise<FusionResult> {
-    try {
-      const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
-      if (!player) {
-        return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
-      }
-
-      const heroInstance = player.heroes.find((h: any) => h._id?.toString() === heroInstanceId);
-      if (!heroInstance) {
-        return { success: false, error: "Hero not found", code: "HERO_NOT_FOUND" };
-      }
-
-      const validationResult = await this.validateFusionRequest(player, heroInstance, requirements);
-      if (!validationResult.valid) {
-        return { 
-          success: false, 
-          error: validationResult.error, 
-          code: "VALIDATION_FAILED" 
-        };
-      }
-
-      const heroData = heroInstance.heroId as any;
-      const currentRarity = heroData.rarity;
-      const currentStars = (heroInstance as any).ascensionStars || 0;
-
-      const nextLevel = this.getNextAscensionLevel(currentRarity, currentStars);
-      if (!nextLevel) {
-        return { 
-          success: false, 
-          error: "Hero is already at maximum ascension", 
-          code: "MAX_ASCENSION_REACHED" 
-        };
-      }
-
-      if (player.gold < requirements.gold) {
-        return { 
-          success: false, 
-          error: `Insufficient gold. Required: ${requirements.gold}`, 
-          code: "INSUFFICIENT_GOLD" 
-        };
-      }
-
-      for (const [materialId, quantity] of Object.entries(requirements.materials)) {
-        const available = player.materials.get(materialId) || 0;
-        if (available < quantity) {
-          return { 
-            success: false, 
-            error: `Insufficient ${materialId}. Required: ${quantity}, Available: ${available}`, 
-            code: "INSUFFICIENT_MATERIALS" 
-          };
-        }
-      }
-
-      const oldStats = this.calculateAscendedStats(heroData, heroInstance.level, currentRarity, currentStars);
-
-      player.gold -= requirements.gold;
-      for (const [materialId, quantity] of Object.entries(requirements.materials)) {
-        const current = player.materials.get(materialId) || 0;
-        player.materials.set(materialId, current - quantity);
-      }
-
-      const consumedHeroNames: string[] = [];
-      const allConsumedIds = [...requirements.copies, ...requirements.foodHeroes];
-      
-      for (const consumedId of allConsumedIds) {
-        const heroIndex = player.heroes.findIndex((h: any) => h._id?.toString() === consumedId);
-        if (heroIndex !== -1) {
-          const consumedHero = player.heroes[heroIndex].heroId as any;
-          consumedHeroNames.push(consumedHero.name);
-          player.heroes.splice(heroIndex, 1);
-        }
-      }
-
-      if (nextLevel.rarity !== currentRarity) {
-        heroData.rarity = nextLevel.rarity;
-        await heroData.save();
-      }
-      
-      (heroInstance as any).ascensionStars = nextLevel.stars;
-
-      const newStats = this.calculateAscendedStats(heroData, heroInstance.level, nextLevel.rarity, nextLevel.stars);
-      const powerGained = this.calculatePower(newStats) - this.calculatePower(oldStats);
-
-      await player.save();
-
-      await this.saveFusionHistory({
-        accountId,
-        mainHeroId: heroData._id.toString(),
-        fromRarity: currentRarity,
-        fromStars: currentStars,
-        toRarity: nextLevel.rarity,
-        toStars: nextLevel.stars,
-        consumedHeroes: allConsumedIds.map((id: string, index: number) => ({
-          heroId: id,
-          heroName: consumedHeroNames[index] || "Unknown",
-          rarity: requirements.copies.includes(id) ? currentRarity : "Food",
-          role: requirements.copies.includes(id) ? "copy" as const : "food" as const
-        })),
-        cost: {
-          gold: requirements.gold,
-          materials: requirements.materials
-        },
-        timestamp: new Date()
-      }, serverId, powerGained, heroData.name);
-
-      await this.updateProgressTracking(accountId, serverId, nextLevel.rarity, nextLevel.stars);
-
-      return {
-        success: true,
-        fusedHero: {
-          instanceId: heroInstanceId,
-          heroData: {
-            name: heroData.name,
-            rarity: heroData.rarity,
-            element: heroData.element,
-            role: heroData.role
-          },
-          newRarity: nextLevel.rarity,
-          newStars: nextLevel.stars,
-          newStats,
-          powerGained
-        },
-        consumedHeroes: allConsumedIds,
-        cost: {
-          gold: requirements.gold,
-          materials: requirements.materials
-        },
-        playerResources: {
-          gold: player.gold,
-          materials: Object.fromEntries(player.materials.entries())
-        }
-      };
-
-    } catch (error: any) {
-      return { success: false, error: error.message, code: "FUSION_FAILED" };
+public static async fuseHero(
+  accountId: string,
+  serverId: string,
+  heroInstanceId: string,
+  requirements: FusionRequirements
+): Promise<FusionResult> {
+  try {
+    const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
+    if (!player) {
+      return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
     }
+
+    const heroInstance = player.heroes.find((h: any) => h._id?.toString() === heroInstanceId);
+    if (!heroInstance) {
+      return { success: false, error: "Hero not found", code: "HERO_NOT_FOUND" };
+    }
+
+    const validationResult = await this.validateFusionRequest(player, heroInstance, requirements);
+    if (!validationResult.valid) {
+      return { 
+        success: false, 
+        error: validationResult.error, 
+        code: "VALIDATION_FAILED" 
+      };
+    }
+
+    const heroData = heroInstance.heroId as any;
+    const currentRarity = heroData.rarity;
+    const currentStars = (heroInstance as any).ascensionStars || 0;
+
+    const nextLevel = this.getNextAscensionLevel(currentRarity, currentStars);
+    if (!nextLevel) {
+      return { 
+        success: false, 
+        error: "Hero is already at maximum ascension", 
+        code: "MAX_ASCENSION_REACHED" 
+      };
+    }
+
+    if (player.gold < requirements.gold) {
+      return { 
+        success: false, 
+        error: `Insufficient gold. Required: ${requirements.gold}`, 
+        code: "INSUFFICIENT_GOLD" 
+      };
+    }
+
+    for (const [materialId, quantity] of Object.entries(requirements.materials)) {
+      const available = player.materials.get(materialId) || 0;
+      if (available < quantity) {
+        return { 
+          success: false, 
+          error: `Insufficient ${materialId}. Required: ${quantity}, Available: ${available}`, 
+          code: "INSUFFICIENT_MATERIALS" 
+        };
+      }
+    }
+
+    const oldStats = this.calculateAscendedStats(heroData, heroInstance.level, currentRarity, currentStars);
+
+    player.gold -= requirements.gold;
+    for (const [materialId, quantity] of Object.entries(requirements.materials)) {
+      const current = player.materials.get(materialId) || 0;
+      player.materials.set(materialId, current - quantity);
+    }
+
+    const consumedHeroNames: string[] = [];
+    const allConsumedIds = [...requirements.copies, ...requirements.foodHeroes];
+    
+    for (const consumedId of allConsumedIds) {
+      const heroIndex = player.heroes.findIndex((h: any) => h._id?.toString() === consumedId);
+      if (heroIndex !== -1) {
+        const consumedHero = player.heroes[heroIndex].heroId as any;
+        consumedHeroNames.push(consumedHero.name);
+        player.heroes.splice(heroIndex, 1);
+      }
+    }
+
+    if (nextLevel.rarity !== currentRarity) {
+      heroData.rarity = nextLevel.rarity;
+      await heroData.save();
+    }
+    
+    (heroInstance as any).ascensionStars = nextLevel.stars;
+
+    const newStats = this.calculateAscendedStats(heroData, heroInstance.level, nextLevel.rarity, nextLevel.stars);
+    const powerGained = this.calculatePower(newStats) - this.calculatePower(oldStats);
+
+    await player.save();
+
+    await this.saveFusionHistory({
+      accountId,
+      mainHeroId: String(heroData._id),
+      fromRarity: currentRarity,
+      fromStars: currentStars,
+      toRarity: nextLevel.rarity,
+      toStars: nextLevel.stars,
+      consumedHeroes: allConsumedIds.map((id: string, index: number) => ({
+        heroId: id,
+        heroName: consumedHeroNames[index] || "Unknown",
+        rarity: requirements.copies.includes(id) ? currentRarity : "Food",
+        role: requirements.copies.includes(id) ? "copy" as const : "food" as const
+      })),
+      cost: {
+        gold: requirements.gold,
+        materials: requirements.materials
+      },
+      timestamp: new Date()
+    }, serverId, powerGained, heroData.name);
+
+    // ========================================
+    // 🏆 ACHIEVEMENTS - Événements de fusion/ascension
+    // ========================================
+    
+    // Événement d'ascension (changement de rareté OU upgrade d'étoiles)
+    achievementEmitter.emit(AchievementEvent.HERO_ASCENDED, {
+      playerId: accountId,
+      serverId,
+      value: 1,
+      metadata: {
+        heroId: String(heroData._id),
+        heroName: heroData.name,
+        fromRarity: currentRarity,
+        toRarity: nextLevel.rarity,
+        fromStars: currentStars,
+        toStars: nextLevel.stars,
+        element: heroData.element,
+        role: heroData.role,
+        powerGained: powerGained,
+        heroesConsumed: allConsumedIds.length
+      }
+    });
+
+    // Si changement de rareté (ex: Epic -> Legendary)
+    if (nextLevel.rarity !== currentRarity) {
+      achievementEmitter.emit(AchievementEvent.HERO_AWAKENED, {
+        playerId: accountId,
+        serverId,
+        value: 1,
+        metadata: {
+          heroId: String(heroData._id),
+          heroName: heroData.name,
+          oldRarity: currentRarity,
+          newRarity: nextLevel.rarity,
+          element: heroData.element,
+          role: heroData.role,
+          level: heroInstance.level,
+          ascensionStars: nextLevel.stars
+        }
+      });
+    }
+
+    // Événement d'or dépensé
+    achievementEmitter.emit(AchievementEvent.GOLD_SPENT, {
+      playerId: accountId,
+      serverId,
+      value: requirements.gold,
+      metadata: {
+        spentOn: 'hero_fusion',
+        heroId: String(heroData._id),
+        heroName: heroData.name,
+        newRarity: nextLevel.rarity,
+        newStars: nextLevel.stars
+      }
+    });
+
+    await this.updateProgressTracking(accountId, serverId, nextLevel.rarity, nextLevel.stars);
+
+    return {
+      success: true,
+      fusedHero: {
+        instanceId: heroInstanceId,
+        heroData: {
+          name: heroData.name,
+          rarity: heroData.rarity,
+          element: heroData.element,
+          role: heroData.role
+        },
+        newRarity: nextLevel.rarity,
+        newStars: nextLevel.stars,
+        newStats,
+        powerGained
+      },
+      consumedHeroes: allConsumedIds,
+      cost: {
+        gold: requirements.gold,
+        materials: requirements.materials
+      },
+      playerResources: {
+        gold: player.gold,
+        materials: Object.fromEntries(player.materials.entries())
+      }
+    };
+
+  } catch (error: any) {
+    return { success: false, error: error.message, code: "FUSION_FAILED" };
   }
+}
 
   public static async getFusableHeroes(accountId: string, serverId: string) {
     try {
