@@ -5,7 +5,7 @@ import { BattleService } from "./BattleService";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
 import { WebSocketService } from "./WebSocketService";
-
+import { achievementEmitter, AchievementEvent } from '../utils/AchievementEmitter';
 export class CampaignService {
 
   public static async getAllWorlds() {
@@ -258,6 +258,115 @@ export class CampaignService {
 
         const starsEarned = this.calculateStarsEarned(battleResult.result, difficulty);
 
+        // ========================================
+        // 🏆 ACHIEVEMENTS - Événements de bataille
+        // ========================================
+        if (battleResult.result.victory) {
+          // Événement de victoire générique
+          achievementEmitter.emit(AchievementEvent.BATTLE_WON, {
+            playerId,
+            serverId,
+            value: 1,
+            metadata: {
+              battleType: 'campaign',
+              worldId,
+              levelIndex,
+              difficulty,
+              stars: this.calculateStarsEarned(battleResult.result, difficulty)
+            }
+          });
+        
+          // Événement de stage cleared
+          achievementEmitter.emit(AchievementEvent.STAGE_CLEARED, {
+            playerId,
+            serverId,
+            value: 1,
+            metadata: {
+              worldId,
+              levelIndex,
+              difficulty,
+              stars: this.calculateStarsEarned(battleResult.result, difficulty)
+            }
+          });
+        
+          // Si c'est un boss (niveaux 10, 20, 30, etc.)
+          const levelConfig = world.levels.find(l => l.levelIndex === levelIndex);
+          if (levelConfig && this.determineEnemyType(levelIndex) === 'boss') {
+            achievementEmitter.emit(AchievementEvent.BOSS_DEFEATED, {
+              playerId,
+              serverId,
+              value: 1,
+              metadata: {
+                worldId,
+                levelIndex,
+                difficulty,
+                bossType: 'campaign_boss'
+              }
+            });
+          }
+        
+          // Si nouveau monde débloqué
+          if (newWorldUnlocked && newPlayerLevel) {
+            achievementEmitter.emit(AchievementEvent.WORLD_REACHED, {
+              playerId,
+              serverId,
+              value: worldId + 1, // Le nouveau monde débloqué
+              metadata: {
+                previousWorld: worldId,
+                playerLevel: newPlayerLevel,
+                unlockedBy: 'campaign_completion'
+              }
+            });
+          }
+        
+          // Si difficulté débloquée
+          const isFirstClearNormal = difficulty === "Normal" && 
+            await this.isFirstClear(playerId, serverId, worldId, levelIndex, difficulty);
+          
+          if (isFirstClearNormal && levelIndex === world.levelCount) {
+            // Campagne complétée en Normal = déblocage Hard
+            achievementEmitter.emit(AchievementEvent.DIFFICULTY_UNLOCKED, {
+              playerId,
+              serverId,
+              value: 1,
+              metadata: {
+                difficulty: 'Hard',
+                worldId,
+                unlockedBy: 'normal_completion'
+              }
+            });
+          }
+        
+          // Vérifier si c'est la complétion totale d'une difficulté
+          if (levelIndex === world.levelCount) {
+            achievementEmitter.emit(AchievementEvent.CAMPAIGN_COMPLETED, {
+              playerId,
+              serverId,
+              value: 1,
+              metadata: {
+                difficulty,
+                worldId,
+                totalStars: await this.getPerfectClearCount(playerId, serverId, worldId)
+              }
+            });
+          }
+        
+          // Victoire parfaite (3 étoiles)
+          if (this.calculateStarsEarned(battleResult.result, difficulty) === 3) {
+            achievementEmitter.emit(AchievementEvent.PERFECT_VICTORY, {
+              playerId,
+              serverId,
+              value: 1,
+              metadata: {
+                worldId,
+                levelIndex,
+                difficulty,
+                battleDuration: battleResult.result.battleDuration
+              }
+            });
+          }
+        }
+        
         try {
           WebSocketService.notifyCampaignBattleCompleted(playerId, {
             worldId,
@@ -741,7 +850,20 @@ export class CampaignService {
             
             playerLevelUp = true;
             newPlayerLevel = calculatedPlayerLevel;
-            
+            // 🏆 ACHIEVEMENT - Niveau joueur atteint
+            if (playerLevelUp && newPlayerLevel) {
+              achievementEmitter.emit(AchievementEvent.PLAYER_LEVEL_REACHED, {
+                playerId,
+                serverId,
+                value: newPlayerLevel,
+                metadata: {
+                  previousLevel: player.level,
+                  worldId,
+                  levelIndex,
+                  difficulty
+                }
+              });
+            }
             const nextWorld = await CampaignWorld.findOne({ 
               minPlayerLevel: { $lte: calculatedPlayerLevel, $gt: oldLevel }
             });
