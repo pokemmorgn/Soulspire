@@ -16,6 +16,23 @@ import { IAuthenticatedAdminRequest } from '../types/adminTypes';
 
 const router = express.Router();
 
+// Interface pour les détails de monstres enrichis
+interface IMonsterDetail {
+  monsterId: string;
+  count?: number;
+  position?: number;
+  levelOverride?: number;
+  starsOverride?: number;
+  monsterData?: {
+    monsterId: string;
+    name: string;
+    element: string;
+    type: string;
+    rarity: string;
+    visualTheme: string;
+  } | null;
+}
+
 // Rate limiting pour les modifications
 const modifyRateLimit = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
@@ -117,7 +134,7 @@ router.get('/worlds/:worldId',
 
       // Enrichir chaque niveau avec des infos sur les monstres
       const enrichedLevels = await Promise.all(world.levels.map(async (level) => {
-        let monsterDetails = [];
+        let monsterDetails: IMonsterDetail[] = [];
         
         if (level.monsters && level.monsters.length > 0) {
           // Récupérer les détails des monstres configurés
@@ -130,7 +147,14 @@ router.get('/worlds/:worldId',
             const monsterData = monsters.find(m => m.monsterId === config.monsterId);
             return {
               ...config,
-              monsterData
+              monsterData: monsterData ? {
+                monsterId: monsterData.monsterId,
+                name: monsterData.name,
+                element: monsterData.element as string,
+                type: monsterData.type as string,
+                rarity: monsterData.rarity as string,
+                visualTheme: monsterData.visualTheme as string
+              } : null
             };
           });
         }
@@ -194,7 +218,7 @@ router.get('/worlds/:worldId/levels/:levelIndex',
       }
 
       // Récupérer les détails des monstres configurés
-      let monsterDetails = [];
+      let monsterDetails: IMonsterDetail[] = [];
       if (level.monsters && level.monsters.length > 0) {
         const monsterIds = level.monsters.map(m => m.monsterId);
         const monsters = await Monster.find({ monsterId: { $in: monsterIds } }).lean();
@@ -203,7 +227,14 @@ router.get('/worlds/:worldId/levels/:levelIndex',
           const monsterData = monsters.find(m => m.monsterId === config.monsterId);
           return {
             ...config,
-            monsterData
+            monsterData: monsterData ? {
+              monsterId: monsterData.monsterId,
+              name: monsterData.name,
+              element: monsterData.element as string,
+              type: monsterData.type as string,
+              rarity: monsterData.rarity as string,
+              visualTheme: monsterData.visualTheme as string
+            } : null
           };
         });
       }
