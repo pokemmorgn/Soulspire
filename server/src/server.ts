@@ -38,6 +38,7 @@ import dailyRewardsRoutes from "./routes/dailyRewards";
 import collectionRouter from "./routes/collection";
 import wishlistRoutes from "./routes/wishlist";
 import bestiaryRoutes from "./routes/bestiaryRoutes";
+import achievementRoutes from "./routes/achievements";
 // Import des services
 import { ShopService } from "./services/ShopService";
 import { SchedulerService } from "./services/SchedulerService";
@@ -180,6 +181,7 @@ app.use("/api/daily-rewards", dailyRewardsRoutes);
 app.use("/api/collection", collectionRouter);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/bestiary", bestiaryRoutes);
+app.use("/api/achievements", achievementRoutes);
 // Route de santé de l'API
 app.get("/", (req: Request, res: Response) => {
   res.json({
