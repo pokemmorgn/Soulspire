@@ -255,7 +255,8 @@ export class AdminPanelServer {
           '/api/admin/players/*',
           '/api/admin/economy/*',
           '/api/admin/inventory/*',
-          '/api/admin/monsters/*'
+          '/api/admin/monsters/*',
+          '/api/admin/achievements/*'
         ]
       });
     });
