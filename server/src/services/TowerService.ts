@@ -7,6 +7,7 @@ import { IBattleParticipant } from "../models/Battle";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
 import { calculateFormationSynergies } from "../config/FormationBonusConfig";
+import { achievementEmitter, AchievementEvent } from '../utils/AchievementEmitter';
 
 export class TowerService {
   
@@ -104,117 +105,190 @@ export class TowerService {
   }
 
   // === COMBATTRE UN ÉTAGE ===
-  public static async fightFloor(
-    playerId: string, 
-    serverId: string
-  ) {
-    try {
-      console.log(`⚔️ Combat d'étage - Joueur: ${playerId}`);
+public static async fightFloor(
+  playerId: string, 
+  serverId: string
+) {
+  try {
+    console.log(`⚔️ Combat d'étage - Joueur: ${playerId}`);
 
-      // Récupérer la progression
-      const towerProgress = await TowerProgress.findOne({ playerId, serverId });
-      if (!towerProgress || !towerProgress.currentRun.isActive) {
-        throw new Error("No active tower run found");
-      }
-
-      const currentFloor = towerProgress.currentRun.currentFloor;
-      const floorConfig = TowerFloorConfig.getFloorConfig(currentFloor);
-
-      // Récupérer le joueur et construire son équipe
-      const player = await Player.findOne({ _id: playerId, serverId });
-      if (!player) {
-        throw new Error("Player not found");
-      }
-
-      const playerTeam = await this.buildTowerPlayerTeam(player, towerProgress.currentRun.heroTeam);
-      const enemyTeam = await this.generateTowerEnemies(floorConfig);
-
-      console.log(`🎯 Étage ${currentFloor}: ${playerTeam.length} héros vs ${enemyTeam.length} ennemis`);
-
-      // Simulation du combat
-      const battleEngine = new BattleEngine(playerTeam, enemyTeam);
-      const battleResult = battleEngine.simulateBattle();
-
-      // Traitement du résultat
-      if (battleResult.victory) {
-        // Victoire - progression
-        const floorRewards = this.calculateFloorRewards(floorConfig);
-        
-        await towerProgress.completeFloor(floorRewards);
-        
-        // Appliquer les récompenses au joueur
-        if (floorRewards.gold > 0) player.gold += floorRewards.gold;
-        if (floorRewards.exp > 0) {
-          // TODO: Distribuer l'XP aux héros
-        }
-        await player.save();
-
-        await Promise.all([
-          MissionService.updateProgress(
-            playerId, 
-            serverId, 
-            "tower_floors", 
-            1
-          ),
-          EventService.updatePlayerProgress(
-            playerId, 
-            serverId, 
-            "tower_floors", 
-            1, 
-            { 
-              floor: currentFloor,
-              isBossFloor: floorConfig.enemyConfig.bossFloor 
-            }
-          )
-        ]);
-
-        console.log(`🏆 Victoire étage ${currentFloor}! Missions et événements mis à jour.`);
-        
-        // Vérifier si c'est un étage boss (récompense spéciale)
-        let specialReward = null;
-        if (floorConfig.rewards.firstClearBonus && currentFloor > towerProgress.highestFloor) {
-          specialReward = floorConfig.rewards.firstClearBonus;
-          player.gold += specialReward.gold;
-          if (specialReward.gems) player.gems += specialReward.gems;
-          await player.save();
-        }
-
-        console.log(`🏆 Victoire étage ${currentFloor}! Récompenses: ${floorRewards.gold} or`);
-
-        return {
-          success: true,
-          victory: true,
-          currentFloor: towerProgress.currentRun.currentFloor,
-          rewards: floorRewards,
-          specialReward,
-          battleResult: battleResult,
-          nextFloorAvailable: true
-        };
-
-      } else {
-        // Défaite - fin du run
-        await towerProgress.endRun("defeated");
-
-        // Mettre à jour le classement si nécessaire
-        await this.updatePlayerRanking(playerId, serverId, player.displayName, towerProgress);
-
-        console.log(`💀 Défaite étage ${currentFloor}. Run terminé.`);
-
-        return {
-          success: true,
-          victory: false,
-          finalFloor: currentFloor - 1,
-          totalRewards: towerProgress.rewards,
-          battleResult: battleResult,
-          runCompleted: true
-        };
-      }
-
-    } catch (error: any) {
-      console.error("❌ Erreur fightFloor:", error);
-      throw error;
+    // Récupérer la progression
+    const towerProgress = await TowerProgress.findOne({ playerId, serverId });
+    if (!towerProgress || !towerProgress.currentRun.isActive) {
+      throw new Error("No active tower run found");
     }
+
+    const currentFloor = towerProgress.currentRun.currentFloor;
+    const floorConfig = TowerFloorConfig.getFloorConfig(currentFloor);
+
+    // Récupérer le joueur et construire son équipe
+    const player = await Player.findOne({ _id: playerId, serverId });
+    if (!player) {
+      throw new Error("Player not found");
+    }
+
+    const playerTeam = await this.buildTowerPlayerTeam(player, towerProgress.currentRun.heroTeam);
+    const enemyTeam = await this.generateTowerEnemies(floorConfig);
+
+    console.log(`🎯 Étage ${currentFloor}: ${playerTeam.length} héros vs ${enemyTeam.length} ennemis`);
+
+    // Simulation du combat
+    const battleEngine = new BattleEngine(playerTeam, enemyTeam);
+    const battleResult = battleEngine.simulateBattle();
+
+    // Traitement du résultat
+    if (battleResult.victory) {
+      // Victoire - progression
+      const floorRewards = this.calculateFloorRewards(floorConfig);
+      
+      await towerProgress.completeFloor(floorRewards);
+      
+      // Appliquer les récompenses au joueur
+      if (floorRewards.gold > 0) player.gold += floorRewards.gold;
+      if (floorRewards.exp > 0) {
+        // TODO: Distribuer l'XP aux héros
+      }
+      await player.save();
+
+      await Promise.all([
+        MissionService.updateProgress(
+          playerId, 
+          serverId, 
+          "tower_floors", 
+          1
+        ),
+        EventService.updatePlayerProgress(
+          playerId, 
+          serverId, 
+          "tower_floors", 
+          1, 
+          { 
+            floor: currentFloor,
+            isBossFloor: floorConfig.enemyConfig.bossFloor 
+          }
+        )
+      ]);
+
+      console.log(`🏆 Victoire étage ${currentFloor}! Missions et événements mis à jour.`);
+      
+      // ========================================
+      // 🏆 ACHIEVEMENTS - Événements de tour
+      // ========================================
+      
+      // Événement d'étage complété
+      achievementEmitter.emit(AchievementEvent.TOWER_FLOOR, {
+        playerId,
+        serverId,
+        value: currentFloor,
+        metadata: {
+          floor: currentFloor,
+          isBossFloor: floorConfig.enemyConfig.bossFloor,
+          difficulty: floorConfig.difficultyMultiplier,
+          goldEarned: floorRewards.gold,
+          expEarned: floorRewards.exp,
+          isNewRecord: currentFloor > towerProgress.highestFloor
+        }
+      });
+
+      // Événement de victoire générique
+      achievementEmitter.emit(AchievementEvent.BATTLE_WON, {
+        playerId,
+        serverId,
+        value: 1,
+        metadata: {
+          battleType: 'tower',
+          floor: currentFloor,
+          isBossFloor: floorConfig.enemyConfig.bossFloor
+        }
+      });
+
+      // Si c'est un boss floor
+      if (floorConfig.enemyConfig.bossFloor) {
+        achievementEmitter.emit(AchievementEvent.BOSS_DEFEATED, {
+          playerId,
+          serverId,
+          value: 1,
+          metadata: {
+            bossType: 'tower_boss',
+            floor: currentFloor,
+            difficulty: floorConfig.difficultyMultiplier
+          }
+        });
+      }
+
+      // Événement d'or gagné
+      if (floorRewards.gold > 0) {
+        achievementEmitter.emit(AchievementEvent.GOLD_EARNED, {
+          playerId,
+          serverId,
+          value: floorRewards.gold,
+          metadata: {
+            earnedFrom: 'tower',
+            floor: currentFloor
+          }
+        });
+      }
+      
+      // Vérifier si c'est un étage boss (récompense spéciale)
+      let specialReward = null;
+      if (floorConfig.rewards.firstClearBonus && currentFloor > towerProgress.highestFloor) {
+        specialReward = floorConfig.rewards.firstClearBonus;
+        player.gold += specialReward.gold;
+        if (specialReward.gems) player.gems += specialReward.gems;
+        await player.save();
+      }
+
+      console.log(`🏆 Victoire étage ${currentFloor}! Récompenses: ${floorRewards.gold} or`);
+
+      return {
+        success: true,
+        victory: true,
+        currentFloor: towerProgress.currentRun.currentFloor,
+        rewards: floorRewards,
+        specialReward,
+        battleResult: battleResult,
+        nextFloorAvailable: true
+      };
+
+    } else {
+      // Défaite - fin du run
+      await towerProgress.endRun("defeated");
+
+      // Mettre à jour le classement si nécessaire
+      await this.updatePlayerRanking(playerId, serverId, player.displayName, towerProgress);
+
+      // ========================================
+      // 🏆 ACHIEVEMENTS - Défaite
+      // ========================================
+      
+      achievementEmitter.emit(AchievementEvent.BATTLE_LOST, {
+        playerId,
+        serverId,
+        value: 1,
+        metadata: {
+          battleType: 'tower',
+          floor: currentFloor,
+          highestFloorReached: currentFloor - 1
+        }
+      });
+
+      console.log(`💀 Défaite étage ${currentFloor}. Run terminé.`);
+
+      return {
+        success: true,
+        victory: false,
+        finalFloor: currentFloor - 1,
+        totalRewards: towerProgress.rewards,
+        battleResult: battleResult,
+        runCompleted: true
+      };
+    }
+
+  } catch (error: any) {
+    console.error("❌ Erreur fightFloor:", error);
+    throw error;
   }
+}
 
   // === ABANDONNER LE RUN ACTUEL ===
   public static async abandonRun(playerId: string, serverId: string) {
