@@ -2143,126 +2143,168 @@ public static async getBannerRates(bannerId: string, serverId: string) {
   /**
    * Effectuer un pull sur une bannière élémentaire avec des tickets
    */
-  public static async performElementalPull(
-    playerId: string,
-    serverId: string,
-    element: string,
-    count: number = 1
-  ): Promise<GachaResponse> {
-    try {
-      console.log(`🔮 ${playerId} performs ${count} elemental pull(s) on ${element} banner`);
+public static async performElementalPull(
+  playerId: string,
+  serverId: string,
+  element: string,
+  count: number = 1
+): Promise<GachaResponse> {
+  try {
+    console.log(`🔮 ${playerId} performs ${count} elemental pull(s) on ${element} banner`);
 
-      // 1. Vérifier que l'élément est valide
-      const validElements = ["Fire", "Water", "Wind", "Electric", "Light", "Shadow"];
-      if (!validElements.includes(element)) {
-        throw new Error(`Invalid element: ${element}. Valid: ${validElements.join(", ")}`);
+    // 1. Vérifier que l'élément est valide
+    const validElements = ["Fire", "Water", "Wind", "Electric", "Light", "Shadow"];
+    if (!validElements.includes(element)) {
+      throw new Error(`Invalid element: ${element}. Valid: ${validElements.join(", ")}`);
+    }
+
+    // 2. Vérifier la rotation (bannière active aujourd'hui ?)
+    const isActive = await ElementalBannerService.isElementActive(serverId, element);
+    if (!isActive) {
+      throw new Error(`${element} elemental banner is not active today`);
+    }
+
+    // 3. Vérifier que le joueur existe et a assez de tickets
+    const player = await Player.findOne({ _id: playerId, serverId });
+    if (!player) {
+      throw new Error("Player not found on this server");
+    }
+
+    if (!player.hasElementalTickets(element, count)) {
+      throw new Error(
+        `Insufficient ${element} tickets. Required: ${count}, Available: ${player.elementalTickets[element.toLowerCase() as keyof typeof player.elementalTickets]}`
+      );
+    }
+
+    // 4. Trouver la bannière élémentaire
+    const banner = await Banner.findOne({
+      isActive: true,
+      isVisible: true,
+      "elementalConfig.element": element,
+      $or: [
+        { "serverConfig.allowedServers": serverId },
+        { "serverConfig.allowedServers": "ALL" }
+      ]
+    });
+
+    if (!banner) {
+      throw new Error(`No active ${element} elemental banner found`);
+    }
+
+    console.log(`✅ Found elemental banner: ${banner.name} (${banner.bannerId})`);
+
+    // 5. Effectuer le pull (réutiliser la logique existante)
+    const pullResponse = await this.executeBannerPullsElemental(
+      playerId,
+      serverId,
+      banner.bannerId,
+      element,
+      count
+    );
+
+    // 6. Déduire les tickets
+    await player.spendElementalTickets(element, count);
+    console.log(`💎 Spent ${count}x ${element} ticket(s)`);
+
+    // 7. Calculer les stats finales
+    const finalStats = this.calculatePullStats(pullResponse.results);
+
+    // 8. Calculer les effets spéciaux
+    const pityConfig = {
+      legendaryPity: banner.pityConfig?.legendaryPity || 50,
+      epicPity: banner.pityConfig?.epicPity || 0
+    };
+    const specialEffects = this.calculateSpecialEffects(
+      pullResponse.results, 
+      pullResponse.pityState, 
+      count
+    );
+
+    // 9. Construire la réponse
+    const response: GachaResponse = {
+      success: true,
+      results: pullResponse.results,
+      stats: finalStats,
+      cost: { 
+        // Pas de gems/tickets normaux, seulement les tickets élémentaires
+      },
+      remaining: {
+        gems: player.gems,
+        tickets: player.tickets
+      },
+      pityStatus: {
+        pullsSinceLegendary: pullResponse.pityState.pullsSinceLegendary,
+        pullsSinceEpic: 0,
+        legendaryPityIn: Math.max(0, pityConfig.legendaryPity - pullResponse.pityState.pullsSinceLegendary),
+        epicPityIn: 0
+      },
+      bannerInfo: {
+        bannerId: banner.bannerId,
+        name: banner.name,
+        focusHeroes: banner.focusHeroes?.map((f: any) => f.heroId) || []
+      },
+      specialEffects,
+      notifications: {
+        hasLegendary: finalStats.legendary > 0,
+        hasUltraRare: pullResponse.results.some((r: any) => r.dropRate && r.dropRate < GACHA_CONFIG.rareDrop.legendaryThreshold),
+        hasLuckyStreak: specialEffects.luckyStreakCount >= GACHA_CONFIG.rareDrop.streakThreshold,
+        hasPityTrigger: specialEffects.hasPityBreak,
+        hasNewHero: finalStats.newHeroes > 0,
+        hasCollectionProgress: true
       }
+    };
 
-      // 2. Vérifier la rotation (bannière active aujourd'hui ?)
-      const isActive = await ElementalBannerService.isElementActive(serverId, element);
-      if (!isActive) {
-        throw new Error(`${element} elemental banner is not active today`);
+    // ========================================
+    // 🏆 ACHIEVEMENTS - Événements de gacha élémentaire
+    // ========================================
+    
+    // Événement de pull élémentaire
+    achievementEmitter.emit(AchievementEvent.GACHA_PULL, {
+      playerId,
+      serverId,
+      value: count,
+      metadata: {
+        bannerId: banner.bannerId,
+        bannerType: 'Elemental',
+        element: element,
+        isElementalPull: true,
+        legendary: finalStats.legendary,
+        epic: finalStats.epic,
+        rare: finalStats.rare,
+        common: finalStats.common
       }
+    });
 
-      // 3. Vérifier que le joueur existe et a assez de tickets
-      const player = await Player.findOne({ _id: playerId, serverId });
-      if (!player) {
-        throw new Error("Player not found on this server");
-      }
-
-      if (!player.hasElementalTickets(element, count)) {
-        throw new Error(
-          `Insufficient ${element} tickets. Required: ${count}, Available: ${player.elementalTickets[element.toLowerCase() as keyof typeof player.elementalTickets]}`
-        );
-      }
-
-      // 4. Trouver la bannière élémentaire
-      const banner = await Banner.findOne({
-        isActive: true,
-        isVisible: true,
-        "elementalConfig.element": element,
-        $or: [
-          { "serverConfig.allowedServers": serverId },
-          { "serverConfig.allowedServers": "ALL" }
-        ]
-      });
-
-      if (!banner) {
-        throw new Error(`No active ${element} elemental banner found`);
-      }
-
-      console.log(`✅ Found elemental banner: ${banner.name} (${banner.bannerId})`);
-
-      // 5. Effectuer le pull (réutiliser la logique existante)
-      const pullResponse = await this.executeBannerPullsElemental(
+    // Événement pour chaque nouveau héro collecté
+    const newHeroes = pullResponse.results.filter(r => r.isNew);
+    for (const newHero of newHeroes) {
+      achievementEmitter.emit(AchievementEvent.HERO_COLLECTED, {
         playerId,
         serverId,
-        banner.bannerId,
-        element,
-        count
-      );
-
-      // 6. Déduire les tickets
-      await player.spendElementalTickets(element, count);
-      console.log(`💎 Spent ${count}x ${element} ticket(s)`);
-
-      // 7. Calculer les stats finales
-      const finalStats = this.calculatePullStats(pullResponse.results);
-
-      // 8. Calculer les effets spéciaux
-      const pityConfig = {
-        legendaryPity: banner.pityConfig?.legendaryPity || 50,
-        epicPity: banner.pityConfig?.epicPity || 0
-      };
-      const specialEffects = this.calculateSpecialEffects(
-        pullResponse.results, 
-        pullResponse.pityState, 
-        count
-      );
-
-      // 9. Construire la réponse
-      const response: GachaResponse = {
-        success: true,
-        results: pullResponse.results,
-        stats: finalStats,
-        cost: { 
-          // Pas de gems/tickets normaux, seulement les tickets élémentaires
-        },
-        remaining: {
-          gems: player.gems,
-          tickets: player.tickets
-        },
-        pityStatus: {
-          pullsSinceLegendary: pullResponse.pityState.pullsSinceLegendary,
-          pullsSinceEpic: 0,
-          legendaryPityIn: Math.max(0, pityConfig.legendaryPity - pullResponse.pityState.pullsSinceLegendary),
-          epicPityIn: 0
-        },
-        bannerInfo: {
+        value: 1,
+        metadata: {
+          heroId: newHero.hero._id,
+          heroName: newHero.hero.name,
+          rarity: newHero.rarity,
+          element: newHero.hero.element,
+          role: newHero.hero.role,
           bannerId: banner.bannerId,
-          name: banner.name,
-          focusHeroes: banner.focusHeroes?.map((f: any) => f.heroId) || []
-        },
-        specialEffects,
-        notifications: {
-          hasLegendary: finalStats.legendary > 0,
-          hasUltraRare: pullResponse.results.some((r: any) => r.dropRate && r.dropRate < GACHA_CONFIG.rareDrop.legendaryThreshold),
-          hasLuckyStreak: specialEffects.luckyStreakCount >= GACHA_CONFIG.rareDrop.streakThreshold,
-          hasPityTrigger: specialEffects.hasPityBreak,
-          hasNewHero: finalStats.newHeroes > 0,
-          hasCollectionProgress: true
+          isNew: true,
+          isElementalPull: true,
+          targetElement: element
         }
-      };
-
-      console.log(`✅ Elemental pull completed: ${pullResponse.results.length} heroes (${finalStats.legendary}L/${finalStats.epic}E)`);
-
-      return response;
-
-    } catch (error: any) {
-      console.error("❌ Error performElementalPull:", error);
-      throw error;
+      });
     }
+
+    console.log(`✅ Elemental pull completed: ${pullResponse.results.length} heroes (${finalStats.legendary}L/${finalStats.epic}E)`);
+
+    return response;
+
+  } catch (error: any) {
+    console.error("❌ Error performElementalPull:", error);
+    throw error;
   }
+}
 
   /**
    * Effectuer les pulls élémentaires avec pity élémentaire et wishlist élémentaire
