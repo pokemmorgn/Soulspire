@@ -122,7 +122,7 @@ public static async levelUpHero(
       serverId,
       value: finalTargetLevel,
       metadata: {
-        heroId: heroData._id.toString(),
+        heroId: (heroData._id as any).toString(),
         heroName: heroData.name,
         rarity: heroData.rarity,
         element: heroData.element,
@@ -139,7 +139,7 @@ public static async levelUpHero(
       value: totalCost.gold,
       metadata: {
         spentOn: 'hero_level_up',
-        heroId: heroData._id.toString(),
+        heroId: (heroData._id as any).toString(),
         heroName: heroData.name,
         newLevel: finalTargetLevel
       }
@@ -240,7 +240,7 @@ public static async upgradeHeroStars(
       serverId,
       value: heroInstance.stars,
       metadata: {
-        heroId: heroData._id.toString(),
+        heroId: (heroData._id as any).toString(),
         heroName: heroData.name,
         rarity: heroData.rarity,
         element: heroData.element,
@@ -441,7 +441,7 @@ public static async evolveHero(
       serverId,
       value: 1,
       metadata: {
-        heroId: heroData._id.toString(),
+        heroId: (heroData._id as any).toString(),
         heroName: heroData.name,
         oldRarity: oldRarity,
         newRarity: newRarity,
@@ -576,7 +576,7 @@ public static async evolveHero(
 
         return {
           instanceId: heroInstance._id?.toString() || "",
-          heroId: heroData._id.toString(),
+          heroId: (heroData._id as any).toString(),
           name: heroData.name,
           rarity: heroData.rarity,
           element: heroData.element,
