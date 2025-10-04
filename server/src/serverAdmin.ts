@@ -14,6 +14,7 @@ import economyRoutes from './PanelAdmin/routes/economy';
 import inventoryRoutes from './PanelAdmin/routes/inventory';
 import monsterRoutes from './PanelAdmin/routes/monsters';
 import achievementRoutes from './PanelAdmin/routes/achievementRoutes';
+import campaignRoutes from './routes/campaign';
 // Import des services pour l'initialisation
 import AdminService from './PanelAdmin/services/AdminService';
 import AnalyticsService from './PanelAdmin/services/AnalyticsService';
@@ -240,6 +241,7 @@ export class AdminPanelServer {
     app.use('/api/admin/monsters', monsterRoutes);
 
     app.use('/api/admin/achievements', achievementRoutes);
+    app.use('/api/admin/campaign', campaignRoutes);
     
     // Route 404 pour le panel admin
     app.use('/api/admin/*', (req: Request, res: Response) => {
