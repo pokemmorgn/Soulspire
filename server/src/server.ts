@@ -373,6 +373,17 @@ const startServer = async (): Promise<void> => {
     } catch (error) {
       console.warn("⚠️ WebSocket indisponible:", error);
     }
+
+    // 🏆 INITIALISATION DU SYSTÈME D'ACHIEVEMENTS
+    console.log("🏆 Initialisation du système d'achievements...");
+    try {
+      const { AchievementService } = await import('./services/AchievementService');
+      AchievementService.initialize();
+      console.log("✅ Achievement System initialisé");
+    } catch (error) {
+      console.error("⚠️ Erreur initialisation achievements:", error);
+      console.log("ℹ️ Le système d'achievements sera indisponible");
+    }
     
     // Démarrage du serveur
     const server = httpServer.listen(PORT, "0.0.0.0", () => {
