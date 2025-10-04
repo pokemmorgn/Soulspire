@@ -20,6 +20,7 @@ class PlayersModule {
         this.heroes = null;
         this.moderation = null;
         this.ui = null;
+        this.achievements = null;
     }
 
     /**
@@ -34,6 +35,7 @@ class PlayersModule {
         this.heroes = window.PlayersHeroes;
         this.moderation = window.PlayersModeration;
         this.ui = window.PlayersUI;
+        this.achievements = window.PlayersAchievements;
         
         console.log('✅ Players Module initialized with sub-modules');
     }
@@ -125,6 +127,7 @@ class PlayersModule {
             ${this.vip ? this.vip.renderModal() : ''}
             ${this.heroes ? this.heroes.renderModal() : ''}
             ${this.moderation ? this.moderation.renderModal() : ''}
+            ${this.achievements ? this.achievements.renderModal() : ''} 
         `;
     }
 
