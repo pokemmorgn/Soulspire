@@ -11,6 +11,7 @@ import { WishlistService } from "./WishlistService";
 import { ElementalBannerService } from "./ElementalBannerService";
 import { MythicService } from "./MythicService"; 
 import { FreePullService } from "./FreePullService";
+import { achievementEmitter, AchievementEvent } from '../utils/AchievementEmitter';
 // Configuration de base (fallback seulement)
 const FALLBACK_CONFIG = {
   pity: {
@@ -159,158 +160,198 @@ export class GachaService {
   }
 
   // === EFFECTUER UN PULL GRATUIT SUR UNE BANNIÈRE ===
-  public static async performFreePullOnBanner(
-    playerId: string,
-    serverId: string,
-    bannerId: string,
-    count: number = 1
-  ): Promise<GachaResponse> {
-    try {
-      console.log(`🎁 ${playerId} effectue ${count} pull(s) GRATUIT(S) sur bannière ${bannerId}`);
+public static async performFreePullOnBanner(
+  playerId: string,
+  serverId: string,
+  bannerId: string,
+  count: number = 1
+): Promise<GachaResponse> {
+  try {
+    console.log(`🎁 ${playerId} effectue ${count} pull(s) GRATUIT(S) sur bannière ${bannerId}`);
 
-      // Vérifier et utiliser le pull gratuit
-      const useResult = await FreePullService.useFreePull(playerId, serverId, bannerId, count);
-      
-      if (!useResult.success) {
-        throw new Error(useResult.labelKey || "Failed to use free pull");
-      }
+    // Vérifier et utiliser le pull gratuit
+    const useResult = await FreePullService.useFreePull(playerId, serverId, bannerId, count);
+    
+    if (!useResult.success) {
+      throw new Error(useResult.labelKey || "Failed to use free pull");
+    }
 
-      // Récupérer la bannière
-      const banner = await Banner.findOne({
-        bannerId,
-        isActive: true,
-        isVisible: true,
-        startTime: { $lte: new Date() },
-        endTime: { $gte: new Date() },
-        $or: [
-          { "serverConfig.allowedServers": serverId },
-          { "serverConfig.allowedServers": "ALL" }
-        ]
-      });
+    // Récupérer la bannière
+    const banner = await Banner.findOne({
+      bannerId,
+      isActive: true,
+      isVisible: true,
+      startTime: { $lte: new Date() },
+      endTime: { $gte: new Date() },
+      $or: [
+        { "serverConfig.allowedServers": serverId },
+        { "serverConfig.allowedServers": "ALL" }
+      ]
+    });
 
-      if (!banner) {
-        throw new Error("Banner not found or not active");
-      }
+    if (!banner) {
+      throw new Error("Banner not found or not active");
+    }
 
-      // Effectuer les pulls (logique identique à performPullOnBanner mais SANS déduction de coût)
-      const pullResponse = await this.executeBannerPulls(
+    // Effectuer les pulls (logique identique à performPullOnBanner mais SANS déduction de coût)
+    const pullResponse = await this.executeBannerPulls(
+      playerId,
+      serverId,
+      banner.bannerId,
+      count
+    );
+
+    // ✅ NOUVEAU : Appliquer les drops de tickets élémentaires SI configuré
+    let elementalTicketDrops: ElementalTicketDrop[] = [];
+    
+    if (banner.freePullConfig?.applyTicketDrops !== false) {
+      elementalTicketDrops = await this.rollElementalTicketDrops(
         playerId,
         serverId,
-        banner.bannerId,
         count
       );
-
-      // ✅ NOUVEAU : Appliquer les drops de tickets élémentaires SI configuré
-      let elementalTicketDrops: ElementalTicketDrop[] = [];
       
-      if (banner.freePullConfig?.applyTicketDrops !== false) {
-        elementalTicketDrops = await this.rollElementalTicketDrops(
+      if (elementalTicketDrops.length > 0) {
+        await this.grantElementalTickets(playerId, elementalTicketDrops);
+      }
+    }
+
+    // Enregistrer l'invocation
+    await this.recordSummon(playerId, pullResponse.results, banner.type, bannerId);
+
+    // Mettre à jour les statistiques de la bannière
+    const rarities = pullResponse.results.map((r: any) => r.rarity);
+    await banner.updateStats(count, rarities);
+
+    // Calculer les statistiques finales
+    const finalStats = this.calculatePullStats(pullResponse.results);
+
+    // Calculer le nouveau pity status
+    const pityConfig = {
+      legendaryPity: banner.pityConfig?.legendaryPity || 90,
+      epicPity: banner.pityConfig?.epicPity || 0
+    };
+
+    const newPityStatus = {
+      pullsSinceLegendary: pullResponse.pityState.pullsSinceLegendary,
+      pullsSinceEpic: 0,
+      legendaryPityIn: Math.max(0, pityConfig.legendaryPity - pullResponse.pityState.pullsSinceLegendary),
+      epicPityIn: 0
+    };
+
+    // Calculer les effets spéciaux
+    const specialEffects = this.calculateSpecialEffects(pullResponse.results, newPityStatus, count);
+
+    // Obtenir le statut des pulls gratuits restants
+    const freePullStatus = await FreePullService.getFreePullStatusForBanner(
+      playerId,
+      serverId,
+      bannerId
+    );
+
+    // Construire la réponse
+    const response: GachaResponse = {
+      success: true,
+      results: pullResponse.results,
+      stats: finalStats,
+      cost: {}, // ✅ Pas de coût pour un pull gratuit
+      remaining: pullResponse.currency,
+      pityStatus: newPityStatus,
+      bannerInfo: {
+        bannerId: banner.bannerId,
+        name: banner.name,
+        focusHeroes: banner.focusHeroes.map((f: any) => f.heroId)
+      },
+      specialEffects,
+      notifications: {
+        hasLegendary: finalStats.legendary > 0,
+        hasUltraRare: pullResponse.results.some((r: any) => r.dropRate && r.dropRate < GACHA_CONFIG.rareDrop.legendaryThreshold),
+        hasLuckyStreak: specialEffects.luckyStreakCount >= GACHA_CONFIG.rareDrop.streakThreshold,
+        hasPityTrigger: specialEffects.hasPityBreak,
+        hasNewHero: finalStats.newHeroes > 0,
+        hasCollectionProgress: true
+      },
+      freePullUsed: true, // ✅ NOUVEAU
+      freePullsRemaining: freePullStatus?.pullsAvailable || 0, // ✅ NOUVEAU
+      ...(elementalTicketDrops.length > 0 && {
+        bonusRewards: {
+          elementalTickets: elementalTicketDrops
+        }
+      })
+    };
+
+    // Notifications WebSocket
+    await this.processGachaNotifications(playerId, serverId, response, banner);
+
+    // Système mythique (si applicable)
+    if (banner.type === "Standard" || banner.type === "Limited") {
+      try {
+        const mythicUpdate = await MythicService.incrementFusedCounter(
           playerId,
           serverId,
           count
         );
         
-        if (elementalTicketDrops.length > 0) {
-          await this.grantElementalTickets(playerId, elementalTicketDrops);
+        if (mythicUpdate.scrollsEarned > 0) {
+          console.log(`🎁 Player earned ${mythicUpdate.scrollsEarned} mythic scroll(s) from FREE pull!`);
         }
+      } catch (error) {
+        console.error("⚠️ Error updating mythic fused counter:", error);
       }
+    }
 
-      // Enregistrer l'invocation
-      await this.recordSummon(playerId, pullResponse.results, banner.type, bannerId);
+    // ========================================
+    // 🏆 ACHIEVEMENTS - Événements de gacha GRATUIT
+    // ========================================
+    
+    // Événement de pull (toujours émis, même pour les pulls gratuits)
+    achievementEmitter.emit(AchievementEvent.GACHA_PULL, {
+      playerId,
+      serverId,
+      value: count,
+      metadata: {
+        bannerId,
+        bannerType: banner.type,
+        isFree: true, // Indicateur pull gratuit
+        legendary: finalStats.legendary,
+        epic: finalStats.epic,
+        rare: finalStats.rare,
+        common: finalStats.common
+      }
+    });
 
-      // Mettre à jour les statistiques de la bannière
-      const rarities = pullResponse.results.map((r: any) => r.rarity);
-      await banner.updateStats(count, rarities);
-
-      // Calculer les statistiques finales
-      const finalStats = this.calculatePullStats(pullResponse.results);
-
-      // Calculer le nouveau pity status
-      const pityConfig = {
-        legendaryPity: banner.pityConfig?.legendaryPity || 90,
-        epicPity: banner.pityConfig?.epicPity || 0
-      };
-
-      const newPityStatus = {
-        pullsSinceLegendary: pullResponse.pityState.pullsSinceLegendary,
-        pullsSinceEpic: 0,
-        legendaryPityIn: Math.max(0, pityConfig.legendaryPity - pullResponse.pityState.pullsSinceLegendary),
-        epicPityIn: 0
-      };
-
-      // Calculer les effets spéciaux
-      const specialEffects = this.calculateSpecialEffects(pullResponse.results, newPityStatus, count);
-
-      // Obtenir le statut des pulls gratuits restants
-      const freePullStatus = await FreePullService.getFreePullStatusForBanner(
+    // Événement pour chaque nouveau héro collecté
+    const newHeroes = pullResponse.results.filter(r => r.isNew);
+    for (const newHero of newHeroes) {
+      achievementEmitter.emit(AchievementEvent.HERO_COLLECTED, {
         playerId,
         serverId,
-        bannerId
-      );
-
-      // Construire la réponse
-      const response: GachaResponse = {
-        success: true,
-        results: pullResponse.results,
-        stats: finalStats,
-        cost: {}, // ✅ Pas de coût pour un pull gratuit
-        remaining: pullResponse.currency,
-        pityStatus: newPityStatus,
-        bannerInfo: {
-          bannerId: banner.bannerId,
-          name: banner.name,
-          focusHeroes: banner.focusHeroes.map((f: any) => f.heroId)
-        },
-        specialEffects,
-        notifications: {
-          hasLegendary: finalStats.legendary > 0,
-          hasUltraRare: pullResponse.results.some((r: any) => r.dropRate && r.dropRate < GACHA_CONFIG.rareDrop.legendaryThreshold),
-          hasLuckyStreak: specialEffects.luckyStreakCount >= GACHA_CONFIG.rareDrop.streakThreshold,
-          hasPityTrigger: specialEffects.hasPityBreak,
-          hasNewHero: finalStats.newHeroes > 0,
-          hasCollectionProgress: true
-        },
-        freePullUsed: true, // ✅ NOUVEAU
-        freePullsRemaining: freePullStatus?.pullsAvailable || 0, // ✅ NOUVEAU
-        ...(elementalTicketDrops.length > 0 && {
-          bonusRewards: {
-            elementalTickets: elementalTicketDrops
-          }
-        })
-      };
-
-      // Notifications WebSocket
-      await this.processGachaNotifications(playerId, serverId, response, banner);
-
-      // Système mythique (si applicable)
-      if (banner.type === "Standard" || banner.type === "Limited") {
-        try {
-          const mythicUpdate = await MythicService.incrementFusedCounter(
-            playerId,
-            serverId,
-            count
-          );
-          
-          if (mythicUpdate.scrollsEarned > 0) {
-            console.log(`🎁 Player earned ${mythicUpdate.scrollsEarned} mythic scroll(s) from FREE pull!`);
-          }
-        } catch (error) {
-          console.error("⚠️ Error updating mythic fused counter:", error);
+        value: 1,
+        metadata: {
+          heroId: newHero.hero._id,
+          heroName: newHero.hero.name,
+          rarity: newHero.rarity,
+          element: newHero.hero.element,
+          role: newHero.hero.role,
+          bannerId,
+          isNew: true,
+          isFree: true
         }
-      }
-
-      // Mettre à jour les missions et événements
-      await this.updateProgressTracking(playerId, serverId, count);
-
-      console.log(`✅ FREE Gacha complété sur ${banner.name}: ${pullResponse.results.length} héros obtenus (0 coût)`);
-
-      return response;
-
-    } catch (error: any) {
-      console.error("❌ Erreur performFreePullOnBanner:", error);
-      throw error;
+      });
     }
+    
+    // Mettre à jour les missions et événements
+    await this.updateProgressTracking(playerId, serverId, count);
+
+    console.log(`✅ FREE Gacha complété sur ${banner.name}: ${pullResponse.results.length} héros obtenus (0 coût)`);
+
+    return response;
+
+  } catch (error: any) {
+    console.error("❌ Erreur performFreePullOnBanner:", error);
+    throw error;
   }
+}
   
   // === EFFECTUER UNE INVOCATION SUR UNE BANNIÈRE SPÉCIFIQUE (VERSION ENRICHIE) ===
 public static async performPullOnBanner(
@@ -443,14 +484,14 @@ public static async performPullOnBanner(
     // === SYSTÈME DE NOTIFICATIONS WEBSOCKET ENRICHI ===
     await this.processGachaNotifications(playerId, serverId, response, banner);
 
-if (banner.type === "Standard" || banner.type === "Limited") {
-  try {
-    const mythicUpdate = await MythicService.incrementFusedCounter(
-      playerId,
-      serverId,
-      count
-    );
-    
+    if (banner.type === "Standard" || banner.type === "Limited") {
+      try {
+        const mythicUpdate = await MythicService.incrementFusedCounter(
+          playerId,
+          serverId,
+          count
+        );
+        
         // Notifier si des parchemins ont été gagnés
         if (mythicUpdate.scrollsEarned > 0) {
           console.log(`🎁 Player earned ${mythicUpdate.scrollsEarned} mythic scroll(s)!`);
@@ -472,6 +513,58 @@ if (banner.type === "Standard" || banner.type === "Limited") {
         console.error("⚠️ Error updating mythic fused counter:", error);
         // Ne pas bloquer le pull principal si erreur mythique
       }
+    }
+    
+    // ========================================
+    // 🏆 ACHIEVEMENTS - Événements de gacha
+    // ========================================
+    
+    // Événement de pull (toujours émis)
+    achievementEmitter.emit(AchievementEvent.GACHA_PULL, {
+      playerId,
+      serverId,
+      value: count,
+      metadata: {
+        bannerId,
+        bannerType: banner.type,
+        legendary: finalStats.legendary,
+        epic: finalStats.epic,
+        rare: finalStats.rare,
+        common: finalStats.common
+      }
+    });
+
+    // Événement pour chaque nouveau héro collecté
+    const newHeroes = pullResults.filter(r => r.isNew);
+    for (const newHero of newHeroes) {
+      achievementEmitter.emit(AchievementEvent.HERO_COLLECTED, {
+        playerId,
+        serverId,
+        value: 1,
+        metadata: {
+          heroId: newHero.hero._id,
+          heroName: newHero.hero.name,
+          rarity: newHero.rarity,
+          element: newHero.hero.element,
+          role: newHero.hero.role,
+          bannerId,
+          isNew: true
+        }
+      });
+    }
+
+    // Événement pour gems dépensés
+    if (costCheck.cost?.gems && costCheck.cost.gems > 0) {
+      achievementEmitter.emit(AchievementEvent.GEMS_SPENT, {
+        playerId,
+        serverId,
+        value: costCheck.cost.gems,
+        metadata: {
+          spentOn: 'gacha',
+          bannerId,
+          pullCount: count
+        }
+      });
     }
     
     // Mettre à jour les missions et événements
