@@ -32,7 +32,9 @@ router.get('/stats', async (req, res) => {
       }
     ]);
     
-    const totalPlayers = await PlayerAchievement.distinct('playerId').length;
+    // 🔧 CORRECTION : await distinct() puis accéder à .length
+    const playerIds = await PlayerAchievement.distinct('playerId');
+    const totalPlayers = playerIds.length;
     
     res.json({ success: true, stats, totalPlayers });
   } catch (error: any) {
