@@ -380,7 +380,7 @@ class AdminCore {
         this.loadSectionData(sectionName);
     }
 
-    /**
+/**
      * Charger les données d'une section
      */
     loadSectionData(sectionName) {
@@ -394,24 +394,40 @@ class AdminCore {
                     this.showPlaceholder('playersContent', 'Players', '👥');
                 }
                 break;
-             case 'monsters': 
-            if (window.MonstersModule && typeof MonstersModule.loadData === 'function') {
-                console.log('👹 Loading monsters data via MonstersModule...');
-                MonstersModule.loadData();
-            } else {
-                console.warn('MonstersModule not available');
-                this.showPlaceholder('monstersContent', 'Monsters', '👹');
-            }
-            break;
+                
+            case 'monsters': 
+                if (window.MonstersModule && typeof MonstersModule.loadData === 'function') {
+                    console.log('👹 Loading monsters data via MonstersModule...');
+                    MonstersModule.loadData();
+                } else {
+                    console.warn('MonstersModule not available');
+                    this.showPlaceholder('monstersContent', 'Monsters', '👹');
+                }
+                break;
+                
+            // 🆕 NOUVEAU CAS ACHIEVEMENTS
+            case 'achievements':
+                if (window.AchievementsModule && typeof AchievementsModule.loadData === 'function') {
+                    console.log('🏆 Loading achievements data via AchievementsModule...');
+                    AchievementsModule.loadData();
+                } else {
+                    console.warn('AchievementsModule not available');
+                    this.showPlaceholder('achievementsContent', 'Achievements', '🏆');
+                }
+                break;
+                
             case 'economy':
                 this.showPlaceholder('economyContent', 'Economy', '💰');
                 break;
+                
             case 'logs':
                 this.showPlaceholder('logsContent', 'Audit Logs', '📜');
                 break;
+                
             case 'system':
                 this.loadSystemInfo();
                 break;
+                
             case 'overview':
                 this.loadOverviewData();
                 break;
