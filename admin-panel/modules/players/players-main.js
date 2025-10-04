@@ -454,6 +454,10 @@ class PlayersModule {
                     <button class="btn btn-small btn-success" onclick="PlayersModule.viewCharacterHeroes('${character.playerId}', '${character.serverId}')">
                         ⚔️ Manage Heroes
                     </button>
+                    <button class="btn btn-small" style="background: linear-gradient(135deg, #6f42c1, #8b5cf6); color: white;" 
+                         onclick="PlayersAchievements.showModal('${this.selectedPlayer.account.accountId}', '${character.playerId}', '${character.serverId}')">
+                        🏆 View Achievements
+                    </button>
                 </div>
             </div>
         `;
