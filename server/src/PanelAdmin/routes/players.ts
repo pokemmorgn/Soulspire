@@ -334,6 +334,120 @@ router.get('/:accountId/heroes',
   }
 );
 /**
+ * GET /api/admin/players/:accountId/achievements
+ * Récupérer les achievements d'un joueur avec progression
+ */
+router.get('/:accountId/achievements',
+  authenticateAdmin,
+  requirePermission('player.view'),
+  async (req: Request, res: Response) => {
+    try {
+      const { accountId } = req.params;
+      const { serverId, playerId } = req.query;
+
+      if (!serverId || !playerId) {
+        return res.status(400).json({
+          success: false,
+          error: 'serverId and playerId are required'
+        });
+      }
+
+      // Import des modèles
+      const Achievement = (await import('../../models/Achievement')).default;
+      const PlayerAchievement = (await import('../../models/PlayerAchievement')).default;
+
+      // Vérifier que le joueur existe
+      const player = await Player.findOne({ 
+        _id: playerId as string, 
+        serverId: serverId as string 
+      });
+
+      if (!player) {
+        return res.status(404).json({
+          success: false,
+          error: 'Player not found'
+        });
+      }
+
+      // Récupérer tous les achievements actifs
+      const allAchievements = await Achievement.find({ isActive: true })
+        .sort({ category: 1, displayOrder: 1, name: 1 })
+        .lean();
+
+      // Récupérer les achievements du joueur
+      const playerAchievements = await PlayerAchievement.find({
+        playerId: playerId as string,
+        serverId: serverId as string
+      }).lean();
+
+      // Créer un map des achievements débloqués
+      const unlockedMap = new Map(
+        playerAchievements.map(pa => [pa.achievementId, pa])
+      );
+
+      // Combiner les données
+      const achievements = allAchievements.map(achievement => {
+        const playerData = unlockedMap.get(achievement.achievementId);
+        
+        return {
+          ...achievement,
+          isUnlocked: !!playerData,
+          unlockedAt: playerData?.unlockedAt,
+          progress: playerData?.progress || { 
+            current: 0, 
+            target: achievement.conditions.target 
+          }
+        };
+      });
+
+      // Calculer les stats
+      const unlockedCount = achievements.filter(a => a.isUnlocked).length;
+      const totalPoints = achievements
+        .filter(a => a.isUnlocked)
+        .reduce((sum, a) => sum + a.pointsValue, 0);
+      const completionRate = allAchievements.length > 0 
+        ? Math.round((unlockedCount / allAchievements.length) * 100) 
+        : 0;
+
+      // Compter les catégories complétées
+      const categoriesMap = new Map();
+      achievements.forEach(a => {
+        if (!categoriesMap.has(a.category)) {
+          categoriesMap.set(a.category, { total: 0, unlocked: 0 });
+        }
+        const cat = categoriesMap.get(a.category);
+        cat.total++;
+        if (a.isUnlocked) cat.unlocked++;
+      });
+
+      const categoriesCompleted = Array.from(categoriesMap.values())
+        .filter(cat => cat.unlocked === cat.total)
+        .length;
+
+      res.json({
+        success: true,
+        playerName: player.displayName,
+        achievements,
+        stats: {
+          unlockedCount,
+          totalCount: allAchievements.length,
+          totalPoints,
+          completionRate,
+          categoriesCompleted,
+          totalCategories: categoriesMap.size
+        }
+      });
+
+    } catch (error) {
+      console.error('Get player achievements error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to get player achievements'
+      });
+    }
+  }
+);
+/**
  * GET /api/admin/players/:accountId
  * Détails complets d'un joueur
  */
