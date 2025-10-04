@@ -11,6 +11,7 @@ import { WishlistService } from "./WishlistService";
 import { ElementalBannerService } from "./ElementalBannerService";
 import { MythicService } from "./MythicService"; 
 import { FreePullService } from "./FreePullService";
+import { achievementEmitter, AchievementEvent } from '../utils/AchievementEmitter';
 // Configuration de base (fallback seulement)
 const FALLBACK_CONFIG = {
   pity: {
@@ -1103,7 +1104,33 @@ private static async checkAndDeductBannerCost(
   if (totalCost.tickets) player.tickets -= totalCost.tickets;
   
   await player.save();
+// ========================================
+  // 🏆 ACHIEVEMENTS - Dépenses gacha
+  // ========================================
+  if (totalCost.gems && totalCost.gems > 0) {
+    achievementEmitter.emit(AchievementEvent.GEMS_SPENT, {
+      playerId: player._id.toString(),
+      serverId: player.serverId || 'unknown',
+      value: totalCost.gems,
+      metadata: {
+        source: 'gacha',
+        bannerId,
+        isFirstPull: !isFirstPull
+      }
+    });
+  }
 
+  if (totalCost.gold && totalCost.gold > 0) {
+    achievementEmitter.emit(AchievementEvent.GOLD_SPENT, {
+      playerId: player._id.toString(),
+      serverId: player.serverId || 'unknown',
+      value: totalCost.gold,
+      metadata: {
+        source: 'gacha',
+        bannerId
+      }
+    });
+  }
   return {
     success: true,
     cost: totalCost
@@ -1341,7 +1368,19 @@ private static async executeBannerPulls(
 
     // Sauvegarder le joueur
     await player.save();
-
+      // ========================================
+      // 🏆 ACHIEVEMENTS - Pulls gacha
+      // ========================================
+      achievementEmitter.emit(AchievementEvent.GACHA_PULL, {
+        playerId,
+        serverId,
+        value: count,
+        metadata: {
+          bannerId: banner.bannerId,
+          bannerType: banner.type,
+          pullType: count === 1 ? 'single' : 'multi'
+        }
+      });
     console.log(`\n✅ ${count} pulls completed successfully`);
     console.log(`📊 Final Pity State:`);
     console.log(`   Legendary: ${pityState.pullsSinceLegendary}/${pityConfig.legendaryPity}`);
@@ -2325,6 +2364,21 @@ public static async getBannerRates(bannerId: string, serverId: string) {
         } else {
           await player.addHero(selectedHero._id.toString(), 1, 1);
           console.log(`   ✅ New hero added`);
+         // 🏆 ACHIEVEMENT - Nouveau héros collecté
+          achievementEmitter.emit(AchievementEvent.HERO_COLLECTED, {
+            playerId,
+            serverId,
+            value: 1,
+            metadata: {
+              heroId: selectedHero._id.toString(),
+              heroName: selectedHero.name,
+              rarity: selectedHero.rarity,
+              element: selectedHero.element,
+              bannerId: banner.bannerId,
+              isPityPull: isPityTriggered,
+              isWishlistPull: isWishlistPity
+            }
+        });
         }
 
         results.push({
@@ -2346,6 +2400,24 @@ public static async getBannerRates(bannerId: string, serverId: string) {
           await WishlistService.resetElementalWishlistPity(playerId, serverId, element);
 
           console.log(`   └─ Pity RESET → Elemental Legendary: 0, Elemental Wishlist: 0`);
+            // 🏆 ACHIEVEMENT - Héros légendaire obtenu
+          if (selectedHero.rarity === "Legendary") {
+            achievementEmitter.emit(AchievementEvent.HERO_COLLECTED, {
+              playerId,
+              serverId,
+              value: 1,
+              metadata: {
+                heroId: selectedHero._id.toString(),
+                heroName: selectedHero.name,
+                rarity: "Legendary",
+                element: selectedHero.element,
+                bannerId: banner.bannerId,
+                isPityPull: isPityTriggered,
+                isWishlistPull: isWishlistPity,
+                pullNumber: i + 1
+              }
+            });
+          }
         } else {
           currentPullsSinceLegendary++;
 
