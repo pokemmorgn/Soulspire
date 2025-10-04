@@ -5,45 +5,74 @@ import mongoose, { Document, Schema } from "mongoose";
  * Progression d'un critère individuel pour un joueur
  */
 export interface IPlayerAchievementProgress {
-  criteriaIndex: number;           // Index du critère dans Achievement.criteria[]
-  currentValue: number;            // Valeur actuelle du joueur
-  targetValue: number;             // Valeur cible à atteindre
-  completed: boolean;              // Ce critère est-il complété ?
+  criteriaIndex: number;
+  currentValue: number;
+  targetValue: number;
+  completed: boolean;
+}
+
+/**
+ * Interface pour les méthodes d'instance
+ */
+interface IPlayerAchievementMethods {
+  checkCompletion(): boolean;
+  calculateProgressPercentage(): number;
+  updateCriteriaProgress(criteriaIndex: number, newValue: number): boolean;
+}
+
+/**
+ * Interface pour les méthodes statiques
+ */
+interface IPlayerAchievementModel extends mongoose.Model<IPlayerAchievement, {}, IPlayerAchievementMethods> {
+  getPlayerAchievements(
+    playerId: string,
+    serverId: string,
+    filters?: {
+      completed?: boolean;
+      claimed?: boolean;
+      category?: string;
+    }
+  ): Promise<IPlayerAchievement[]>;
+  
+  getUnclaimedRewards(playerId: string, serverId: string): Promise<IPlayerAchievement[]>;
+  
+  getLeaderboard(achievementId: string, serverId: string, limit?: number): Promise<IPlayerAchievement[]>;
+  
+  getOrCreate(
+    playerId: string,
+    serverId: string,
+    achievementId: string,
+    initialProgress: IPlayerAchievementProgress[]
+  ): Promise<IPlayerAchievement>;
+  
+  updateRanks(achievementId: string, serverId: string): Promise<number>;
 }
 
 /**
  * Document PlayerAchievement
- * Représente la progression d'un joueur sur un achievement spécifique
  */
-export interface IPlayerAchievement extends Document {
+export interface IPlayerAchievement extends Document, IPlayerAchievementMethods {
   playerId: string;
   serverId: string;
   achievementId: string;
   
-  // Progression par critère
   progress: IPlayerAchievementProgress[];
   
-  // État global
   isCompleted: boolean;
   completedAt?: Date;
   
-  // Pour les leaderboards
-  currentRank?: number;            // Position actuelle dans le classement
-  currentScore?: number;           // Score actuel (pour tri)
-  lastRankUpdate?: Date;           // Dernière mise à jour du rang
+  currentRank?: number;
+  currentScore?: number;
+  lastRankUpdate?: Date;
   
-  // Gestion des récompenses
   rewardsClaimed: boolean;
   claimedAt?: Date;
   
-  // Notifications
-  notified: boolean;               // Notification de déblocage envoyée
+  notified: boolean;
   notifiedAt?: Date;
   
-  // Statistiques
-  progressPercentage?: number;     // Pourcentage global de complétion
+  progressPercentage?: number;
   
-  // Métadonnées
   createdAt: Date;
   updatedAt: Date;
 }
@@ -70,7 +99,7 @@ const playerAchievementProgressSchema = new Schema({
   }
 }, { _id: false });
 
-const playerAchievementSchema = new Schema<IPlayerAchievement>({
+const playerAchievementSchema = new Schema<IPlayerAchievement, IPlayerAchievementModel, IPlayerAchievementMethods>({
   playerId: {
     type: String,
     required: true,
@@ -149,29 +178,23 @@ const playerAchievementSchema = new Schema<IPlayerAchievement>({
   collection: "player_achievements"
 });
 
-// Index composés pour requêtes optimisées
+// Index composés
 playerAchievementSchema.index({ playerId: 1, serverId: 1, achievementId: 1 }, { unique: true });
 playerAchievementSchema.index({ playerId: 1, isCompleted: 1 });
 playerAchievementSchema.index({ playerId: 1, rewardsClaimed: 1 });
 playerAchievementSchema.index({ achievementId: 1, isCompleted: 1 });
-playerAchievementSchema.index({ achievementId: 1, currentScore: -1 }); // Pour leaderboards (tri DESC)
-playerAchievementSchema.index({ serverId: 1, achievementId: 1, currentScore: -1 }); // Leaderboard serveur
+playerAchievementSchema.index({ achievementId: 1, currentScore: -1 });
+playerAchievementSchema.index({ serverId: 1, achievementId: 1, currentScore: -1 });
 
 // Méthodes d'instance
 
-/**
- * Vérifier si tous les critères sont complétés
- */
-playerAchievementSchema.methods.checkCompletion = function(): boolean {
+playerAchievementSchema.method('checkCompletion', function checkCompletion(): boolean {
   if (this.progress.length === 0) return false;
   
   return this.progress.every((p: IPlayerAchievementProgress) => p.completed);
-};
+});
 
-/**
- * Calculer le pourcentage de progression global
- */
-playerAchievementSchema.methods.calculateProgressPercentage = function(): number {
+playerAchievementSchema.method('calculateProgressPercentage', function calculateProgressPercentage(): number {
   if (this.progress.length === 0) return 0;
   
   const totalProgress = this.progress.reduce((sum: number, p: IPlayerAchievementProgress) => {
@@ -180,12 +203,9 @@ playerAchievementSchema.methods.calculateProgressPercentage = function(): number
   }, 0);
   
   return Math.floor(totalProgress / this.progress.length);
-};
+});
 
-/**
- * Mettre à jour la progression d'un critère
- */
-playerAchievementSchema.methods.updateCriteriaProgress = function(
+playerAchievementSchema.method('updateCriteriaProgress', function updateCriteriaProgress(
   criteriaIndex: number, 
   newValue: number
 ): boolean {
@@ -196,27 +216,23 @@ playerAchievementSchema.methods.updateCriteriaProgress = function(
   criteria.currentValue = newValue;
   criteria.completed = newValue >= criteria.targetValue;
   
-  // Recalculer le pourcentage global
   this.progressPercentage = this.calculateProgressPercentage();
   
-  // Vérifier si l'achievement est maintenant complété
   if (this.checkCompletion() && !this.isCompleted) {
     this.isCompleted = true;
     this.completedAt = new Date();
-    return true; // Nouveau déblocage
+    return true;
   }
   
-  return false; // Pas encore débloqué
-};
+  return false;
+});
 
 // Middleware pre-save
 playerAchievementSchema.pre('save', function(next) {
-  // Auto-calculer le pourcentage de progression
   if (this.isModified('progress')) {
     this.progressPercentage = this.calculateProgressPercentage();
   }
   
-  // Valider que isCompleted correspond bien aux critères
   if (this.isModified('progress') || this.isModified('isCompleted')) {
     const allCompleted = this.checkCompletion();
     
@@ -231,10 +247,7 @@ playerAchievementSchema.pre('save', function(next) {
 
 // Méthodes statiques
 
-/**
- * Obtenir tous les achievements d'un joueur
- */
-playerAchievementSchema.statics.getPlayerAchievements = function(
+playerAchievementSchema.static('getPlayerAchievements', function getPlayerAchievements(
   playerId: string,
   serverId: string,
   filters?: {
@@ -256,12 +269,9 @@ playerAchievementSchema.statics.getPlayerAchievements = function(
   return this.find(query)
     .populate('achievementId')
     .sort({ completedAt: -1, progressPercentage: -1 });
-};
+});
 
-/**
- * Obtenir les achievements non réclamés
- */
-playerAchievementSchema.statics.getUnclaimedRewards = function(
+playerAchievementSchema.static('getUnclaimedRewards', function getUnclaimedRewards(
   playerId: string,
   serverId: string
 ) {
@@ -271,12 +281,9 @@ playerAchievementSchema.statics.getUnclaimedRewards = function(
     isCompleted: true,
     rewardsClaimed: false
   }).populate('achievementId');
-};
+});
 
-/**
- * Obtenir le leaderboard pour un achievement
- */
-playerAchievementSchema.statics.getLeaderboard = function(
+playerAchievementSchema.static('getLeaderboard', function getLeaderboard(
   achievementId: string,
   serverId: string,
   limit: number = 100
@@ -289,12 +296,9 @@ playerAchievementSchema.statics.getLeaderboard = function(
     .sort({ currentScore: -1, completedAt: 1 })
     .limit(limit)
     .populate('playerId', 'displayName level vipLevel');
-};
+});
 
-/**
- * Obtenir ou créer un PlayerAchievement
- */
-playerAchievementSchema.statics.getOrCreate = async function(
+playerAchievementSchema.static('getOrCreate', async function getOrCreate(
   playerId: string,
   serverId: string,
   achievementId: string,
@@ -322,12 +326,9 @@ playerAchievementSchema.statics.getOrCreate = async function(
   }
   
   return playerAchievement;
-};
+});
 
-/**
- * Mettre à jour le rang d'un joueur dans un leaderboard
- */
-playerAchievementSchema.statics.updateRanks = async function(
+playerAchievementSchema.static('updateRanks', async function updateRanks(
   achievementId: string,
   serverId: string
 ) {
@@ -352,6 +353,6 @@ playerAchievementSchema.statics.updateRanks = async function(
   }
   
   return updates.length;
-};
+});
 
-export default mongoose.model<IPlayerAchievement>("PlayerAchievement", playerAchievementSchema);
+export default mongoose.model<IPlayerAchievement, IPlayerAchievementModel>("PlayerAchievement", playerAchievementSchema);
