@@ -53,7 +53,7 @@ class AchievementsModule {
   renderAchievementsInterface() {
     return `
       <!-- Stats Cards -->
-      <div class="achievements-stats-grid" id="achievementsStatsGrid">
+      <div class="stats-grid" id="achievementsStatsGrid">
         <div class="loading"><div class="spinner"></div><p>Loading statistics...</p></div>
       </div>
 
