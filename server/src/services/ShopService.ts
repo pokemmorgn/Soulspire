@@ -9,6 +9,7 @@ import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
 import { WebSocketService } from "./WebSocketService"; 
 import { resetDailyShop, resetWeeklyShop, resetMonthlyShop } from "../scripts/generateShops";
+import { achievementEmitter, AchievementEvent } from '../utils/AchievementEmitter';
 
 export interface ShopPurchaseResult {
   success: boolean;
@@ -786,80 +787,141 @@ public static async processShopResets(): Promise<ShopResetResult> {
     if (cost.tickets) player.tickets -= cost.tickets;
   }
 
-  private static async executePurchaseTransaction(
-    player: any,
-    shop: any,
-    shopItem: any,
-    quantity: number,
-    finalCost: Record<string, number>
-  ): Promise<ShopPurchaseResult> {
+private static async executePurchaseTransaction(
+  player: any,
+  shop: any,
+  shopItem: any,
+  quantity: number,
+  finalCost: Record<string, number>
+): Promise<ShopPurchaseResult> {
+  
+  try {
+    this.deductResources(player, finalCost);
+
+    const rewards = await this.processItemRewards(player, shopItem, quantity);
+
+    if (shopItem.maxStock !== -1) {
+      shopItem.currentStock -= quantity;
+    }
+    
+    shopItem.purchaseHistory.push({
+      playerId: player._id.toString(),
+      quantity,
+      purchaseDate: new Date()
+    });
+
+    const inventory = await Inventory.findOne({ playerId: player._id }) || 
+                    new Inventory({ playerId: player._id });
+    
+    await Promise.all([
+      player.save(),
+      inventory.save(),
+      shop.save()
+    ]);
     
     try {
-      this.deductResources(player, finalCost);
-
-      const rewards = await this.processItemRewards(player, shopItem, quantity);
-
-      if (shopItem.maxStock !== -1) {
-        shopItem.currentStock -= quantity;
-      }
-      
-      shopItem.purchaseHistory.push({
-        playerId: player._id.toString(),
+      WebSocketService.notifyShopPurchaseSuccess(player._id.toString(), {
+        shopType: shop.shopType,
+        itemName: shopItem.name,
         quantity,
-        purchaseDate: new Date()
-      });
-
-      const inventory = await Inventory.findOne({ playerId: player._id }) || 
-                      new Inventory({ playerId: player._id });
-      
-      await Promise.all([
-        player.save(),
-        inventory.save(),
-        shop.save()
-      ]);
-      
-      try {
-        WebSocketService.notifyShopPurchaseSuccess(player._id.toString(), {
-          shopType: shop.shopType,
-          itemName: shopItem.name,
-          quantity,
-          cost: finalCost,
-          rewards,
-          remainingStock: shopItem.currentStock,
-          playerResources: {
-            gold: player.gold,
-            gems: player.gems,
-            paidGems: player.paidGems,
-            tickets: player.tickets
-          }
-        });
-      } catch (error) {
-        console.warn("⚠️ Failed to send purchase success notification:", error);
-      }
-      
-      await this.updateProgressTracking(player._id.toString(), shopItem, quantity);
-
-      return {
-        success: true,
-        purchase: {
-          itemName: shopItem.name,
-          quantity,
-          cost: finalCost,
-          rewards
-        },
+        cost: finalCost,
+        rewards,
+        remainingStock: shopItem.currentStock,
         playerResources: {
           gold: player.gold,
           gems: player.gems,
           paidGems: player.paidGems,
           tickets: player.tickets
         }
-      };
-
-    } catch (error: any) {
-      console.error("❌ Transaction échouée:", error);
-      return { success: false, error: "Transaction failed", code: "TRANSACTION_FAILED" };
+      });
+    } catch (error) {
+      console.warn("⚠️ Failed to send purchase success notification:", error);
     }
+    
+    // ========================================
+    // 🏆 ACHIEVEMENTS - Événements de boutique
+    // ========================================
+    
+    // Événement d'achat en boutique
+    achievementEmitter.emit(AchievementEvent.SHOP_PURCHASE, {
+      playerId: player._id.toString(),
+      serverId: player.serverId || '', // À adapter selon ton modèle
+      value: quantity,
+      metadata: {
+        shopType: shop.shopType,
+        itemName: shopItem.name,
+        itemType: shopItem.type,
+        rarity: shopItem.rarity,
+        totalCost: Object.values(finalCost).reduce((sum, val) => sum + val, 0)
+      }
+    });
+
+    // Événement pour l'or dépensé
+    if (finalCost.gold && finalCost.gold > 0) {
+      achievementEmitter.emit(AchievementEvent.GOLD_SPENT, {
+        playerId: player._id.toString(),
+        serverId: player.serverId || '',
+        value: finalCost.gold,
+        metadata: {
+          spentOn: 'shop',
+          shopType: shop.shopType,
+          itemName: shopItem.name
+        }
+      });
+    }
+
+    // Événement pour les gems dépensées
+    if (finalCost.gems && finalCost.gems > 0) {
+      achievementEmitter.emit(AchievementEvent.GEMS_SPENT, {
+        playerId: player._id.toString(),
+        serverId: player.serverId || '',
+        value: finalCost.gems,
+        metadata: {
+          spentOn: 'shop',
+          shopType: shop.shopType,
+          itemName: shopItem.name
+        }
+      });
+    }
+
+    // Événement pour les paidGems dépensées
+    if (finalCost.paidGems && finalCost.paidGems > 0) {
+      achievementEmitter.emit(AchievementEvent.GEMS_SPENT, {
+        playerId: player._id.toString(),
+        serverId: player.serverId || '',
+        value: finalCost.paidGems,
+        metadata: {
+          spentOn: 'shop',
+          shopType: shop.shopType,
+          itemName: shopItem.name,
+          isPaidGems: true
+        }
+      });
+    }
+    
+    await this.updateProgressTracking(player._id.toString(), shopItem, quantity);
+
+    return {
+      success: true,
+      purchase: {
+        itemName: shopItem.name,
+        quantity,
+        cost: finalCost,
+        rewards
+      },
+      playerResources: {
+        gold: player.gold,
+        gems: player.gems,
+        paidGems: player.paidGems,
+        tickets: player.tickets
+      }
+    };
+
+  } catch (error: any) {
+    console.error("❌ Transaction échouée:", error);
+    return { success: false, error: "Transaction failed", code: "TRANSACTION_FAILED" };
   }
+}
 
   // === TRAITER LES RÉCOMPENSES D'UN OBJET AVEC ITEMGENERATOR ===
   private static async processItemRewards(player: any, shopItem: any, quantity: number): Promise<any[]> {
@@ -920,20 +982,71 @@ public static async processShopResets(): Promise<ShopResetResult> {
         }
         break;
 
-      case "Currency":
-        const currencyAmount = shopItem.content.quantity * quantity;
-        switch (shopItem.content.currencyType) {
-          case "gold": player.gold += currencyAmount; break;
-          case "gems": player.gems += currencyAmount; break;
-          case "paidGems": player.paidGems += currencyAmount; break;
-          case "tickets": player.tickets += currencyAmount; break;
+case "Currency":
+  const currencyAmount = shopItem.content.quantity * quantity;
+  switch (shopItem.content.currencyType) {
+    case "gold": 
+      player.gold += currencyAmount;
+      
+      // ========================================
+      // 🏆 ACHIEVEMENT - Or gagné via boutique
+      // ========================================
+      achievementEmitter.emit(AchievementEvent.GOLD_EARNED, {
+        playerId: player._id.toString(),
+        serverId: player.serverId || '',
+        value: currencyAmount,
+        metadata: {
+          earnedFrom: 'shop',
+          shopType: shopItem.type
         }
-        rewards.push({
-          type: "Currency",
-          currencyType: shopItem.content.currencyType,
-          quantity: currencyAmount
-        });
-        break;
+      });
+      break;
+      
+    case "gems": 
+      player.gems += currencyAmount;
+      
+      // ========================================
+      // 🏆 ACHIEVEMENT - Gems gagnées via boutique
+      // ========================================
+      achievementEmitter.emit(AchievementEvent.GEMS_EARNED, {
+        playerId: player._id.toString(),
+        serverId: player.serverId || '',
+        value: currencyAmount,
+        metadata: {
+          earnedFrom: 'shop',
+          shopType: shopItem.type
+        }
+      });
+      break;
+      
+    case "paidGems": 
+      player.paidGems += currencyAmount;
+      
+      // ========================================
+      // 🏆 ACHIEVEMENT - Paid Gems gagnées
+      // ========================================
+      achievementEmitter.emit(AchievementEvent.GEMS_EARNED, {
+        playerId: player._id.toString(),
+        serverId: player.serverId || '',
+        value: currencyAmount,
+        metadata: {
+          earnedFrom: 'shop',
+          shopType: shopItem.type,
+          isPaidGems: true
+        }
+      });
+      break;
+      
+    case "tickets": 
+      player.tickets += currencyAmount; 
+      break;
+  }
+  rewards.push({
+    type: "Currency",
+    currencyType: shopItem.content.currencyType,
+    quantity: currencyAmount
+  });
+  break;
 
       case "ElementalTicket":
         // ✅ NOUVEAU : Gérer l'achat de tickets élémentaires
@@ -969,33 +1082,50 @@ public static async processShopResets(): Promise<ShopResetResult> {
         }
         break;
 
-      case "Hero":
-        if (shopItem.content.heroId) {
-          const existingHero = player.heroes.find((h: any) => h.heroId === shopItem.content.heroId);
-          if (!existingHero) {
-            player.heroes.push({
-              heroId: shopItem.content.heroId,
-              level: shopItem.content.level || 1,
-              stars: 1,
-              equipped: false
-            });
-            rewards.push({
-              type: "Hero",
-              heroId: shopItem.content.heroId,
-              quantity: 1
-            });
-          } else {
-            const fragments = 50;
-            const currentFragments = player.fragments.get(shopItem.content.heroId) || 0;
-            player.fragments.set(shopItem.content.heroId, currentFragments + fragments);
-            rewards.push({
-              type: "Fragment",
-              heroId: shopItem.content.heroId,
-              quantity: fragments
-            });
-          }
+case "Hero":
+  if (shopItem.content.heroId) {
+    const existingHero = player.heroes.find((h: any) => h.heroId === shopItem.content.heroId);
+    if (!existingHero) {
+      player.heroes.push({
+        heroId: shopItem.content.heroId,
+        level: shopItem.content.level || 1,
+        stars: 1,
+        equipped: false
+      });
+      rewards.push({
+        type: "Hero",
+        heroId: shopItem.content.heroId,
+        quantity: 1
+      });
+
+      // ========================================
+      // 🏆 ACHIEVEMENT - Héro collecté via boutique
+      // ========================================
+      achievementEmitter.emit(AchievementEvent.HERO_COLLECTED, {
+        playerId: player._id.toString(),
+        serverId: player.serverId || '',
+        value: 1,
+        metadata: {
+          heroId: shopItem.content.heroId,
+          rarity: shopItem.rarity,
+          source: 'shop',
+          shopType: shopItem.type,
+          isNew: true
         }
-        break;
+      });
+
+    } else {
+      const fragments = 50;
+      const currentFragments = player.fragments.get(shopItem.content.heroId) || 0;
+      player.fragments.set(shopItem.content.heroId, currentFragments + fragments);
+      rewards.push({
+        type: "Fragment",
+        heroId: shopItem.content.heroId,
+        quantity: fragments
+      });
+    }
+  }
+  break;
 
       case "Bundle":
         if (shopItem.content.bundleItems) {
