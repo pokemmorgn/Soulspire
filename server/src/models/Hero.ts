@@ -1,18 +1,19 @@
 import mongoose, { Document, Schema } from "mongoose";
+import { getHeroSpellDefinition, getInitialSpells } from '../data/heroSpellDefinitions';
 
 // Interface pour les sorts équipés
 interface IHeroSpells {
   spell1?: { id: string; level: number };
   spell2?: { id: string; level: number };
-  ultimate: { id: string; level: number };
+  ultimate?: { id: string; level: number };
   passive1?: { id: string; level: number };
   passive2?: { id: string; level: number };
   passive3?: { id: string; level: number };
 }
 
-// ✅ NOUVELLE INTERFACE pour l'équipement
+// Interface pour l'équipement
 interface IHeroEquipment {
-  weapon?: string;      // instanceId de l'item équipé
+  weapon?: string;
   helmet?: string;
   armor?: string;
   boots?: string;
@@ -26,7 +27,6 @@ export interface IHeroDocument extends Document {
   element: "Fire" | "Water" | "Wind" | "Electric" | "Light" | "Dark";
   rarity: "Common" | "Rare" | "Epic" | "Legendary" | "Mythic";
 
-  // Stats alignées sur IItemStats
   baseStats: {
     hp: number; atk: number; def: number;
     crit: number; critDamage: number; critResist: number; dodge: number; accuracy: number;
@@ -35,17 +35,13 @@ export interface IHeroDocument extends Document {
   };
 
   spells: IHeroSpells;
-  
-  // ✅ NOUVEAU: Équipement du héros
   equipment: IHeroEquipment;
 
-  // ✅ NOUVELLES MÉTHODES pour l'équipement
+  // Méthodes
   getStatsAtLevel(level: number, stars?: number, includeEquipment?: boolean): any;
   getEquipmentStats(playerId?: string): Promise<any>;
   getTotalStats(level: number, stars: number, playerId: string): Promise<any>;
   getSetBonuses(playerId: string): Promise<any>;
-  
-  // Méthodes existantes
   getRarityMultiplier(): number;
   getElementAdvantage(targetElement: string): number;
   getEffectiveCooldown(baseCooldown: number): number;
@@ -62,7 +58,7 @@ const heroSchema = new Schema<IHeroDocument>({
   element: { type: String, enum: ["Fire", "Water", "Wind", "Electric", "Light", "Dark"], required: true },
   rarity: { type: String, enum: ["Common", "Rare", "Epic", "Legendary", "Mythic"], required: true },
 
-  // === Stats ===
+  // Stats
   baseStats: {
     hp:  { type: Number, required: true, min: 100, max: 15000 },
     atk: { type: Number, required: true, min: 10,  max: 3000 },
@@ -105,7 +101,7 @@ const heroSchema = new Schema<IHeroDocument>({
     energyRegen:  { type: Number, required: true, min: 0, default: 10 },
   },
 
-  // === Sorts ===
+  // Sorts
   spells: {
     spell1:   { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
     spell2:   { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
@@ -115,9 +111,9 @@ const heroSchema = new Schema<IHeroDocument>({
     passive3: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
   },
 
-  // ✅ NOUVEAU: Équipement
+  // Équipement
   equipment: {
-    weapon:    { type: String, ref: 'Inventory' },  // instanceId de l'item équipé
+    weapon:    { type: String, ref: 'Inventory' },
     helmet:    { type: String, ref: 'Inventory' },
     armor:     { type: String, ref: 'Inventory' },
     boots:     { type: String, ref: 'Inventory' },
@@ -131,19 +127,18 @@ heroSchema.index({ rarity: 1 });
 heroSchema.index({ role: 1 });
 heroSchema.index({ element: 1 });
 heroSchema.index({ "spells.ultimate.id": 1 });
-// ✅ NOUVEAUX INDEX pour l'équipement
-heroSchema.index({ "equipment.weapon": 1 });
-heroSchema.index({ "equipment.helmet": 1 });
-heroSchema.index({ "equipment.armor": 1 });
 heroSchema.index({ "spells.passive1.id": 1 });
 heroSchema.index({ "spells.passive2.id": 1 });
 heroSchema.index({ "spells.passive3.id": 1 });
+heroSchema.index({ "equipment.weapon": 1 });
+heroSchema.index({ "equipment.helmet": 1 });
+heroSchema.index({ "equipment.armor": 1 });
 
 // Utils
 function cap(n: number, min: number, max: number) { return Math.max(min, Math.min(max, n)); }
 function scalePercent(base: number, factor: number, capMax = 100) { return cap(base * factor, 0, capMax); }
 
-// ✅ MÉTHODE MODIFIÉE: getStatsAtLevel avec équipement optionnel
+// Méthode getStatsAtLevel
 heroSchema.methods.getStatsAtLevel = function (level: number, stars: number = 1, includeEquipment: boolean = false) {
   const levelMul = 1 + (level - 1) * 0.08;
   const starMul  = 1 + (stars - 1) * 0.15;
@@ -171,20 +166,17 @@ heroSchema.methods.getStatsAtLevel = function (level: number, stars: number = 1,
     energyRegen:  Math.floor(b.energyRegen  * (1 + (mul - 1) * 0.15)),
   };
 
-  // ✅ Si pas d'équipement demandé, retourner les stats de base
   if (!includeEquipment) {
     return baseStats;
   }
 
-  // ✅ Si équipement demandé, il faut utiliser la méthode async getTotalStats
   console.warn("Pour inclure l'équipement, utilisez getTotalStats() qui est async");
   return baseStats;
 };
 
-// ✅ NOUVELLE MÉTHODE: Récupérer les stats de l'équipement
+// Méthode getEquipmentStats
 heroSchema.methods.getEquipmentStats = async function (playerId?: string): Promise<any> {
   try {
-    // Si pas de playerId fourni, on ne peut pas récupérer l'inventaire
     if (!playerId) {
       console.warn("PlayerId requis pour calculer les stats d'équipement");
       return this.getEmptyStats();
@@ -201,28 +193,21 @@ heroSchema.methods.getEquipmentStats = async function (playerId?: string): Promi
     const totalEquipmentStats = this.getEmptyStats();
     const equippedItems = [];
 
-    // ✅ Parcourir chaque slot d'équipement
     const slots = ['weapon', 'helmet', 'armor', 'boots', 'gloves', 'accessory'];
     
     for (const slot of slots) {
       const instanceId = this.equipment[slot];
       if (!instanceId) continue;
 
-      // Trouver l'item dans l'inventaire
       const ownedItem = inventory.getItem(instanceId);
       if (!ownedItem) continue;
 
-      // Récupérer les données de base de l'item
       const itemData = await Item.findOne({ itemId: ownedItem.itemId });
       if (!itemData) continue;
 
-      // Calculer les stats de cet item à son niveau actuel
       const itemStats = itemData.getStatsAtLevel(ownedItem.level);
+      const enhancementMultiplier = 1 + (ownedItem.enhancement * 0.05);
       
-      // Appliquer le bonus d'amélioration (+0 à +15)
-      const enhancementMultiplier = 1 + (ownedItem.enhancement * 0.05); // +5% par niveau d'amélioration
-      
-      // Additionner les stats
       this.addStats(totalEquipmentStats, itemStats, enhancementMultiplier);
       
       equippedItems.push({
@@ -248,23 +233,18 @@ heroSchema.methods.getEquipmentStats = async function (playerId?: string): Promi
   }
 };
 
-// ✅ NOUVELLE MÉTHODE: Stats totales (héros + équipement)
+// Méthode getTotalStats
 heroSchema.methods.getTotalStats = async function (level: number, stars: number, playerId: string): Promise<any> {
   try {
-    // Stats de base du héros
     const heroStats = this.getStatsAtLevel(level, stars, false);
-    
-    // Stats de l'équipement
     const equipmentData = await this.getEquipmentStats(playerId);
     const equipmentStats = equipmentData.stats;
     const setsBonuses = equipmentData.setsBonus;
 
-    // Combiner toutes les stats
     const totalStats = { ...heroStats };
     this.addStats(totalStats, equipmentStats);
     this.addStats(totalStats, setsBonuses);
 
-    // Appliquer les caps
     totalStats.crit = Math.min(100, totalStats.crit);
     totalStats.critResist = Math.min(100, totalStats.critResist);
     totalStats.dodge = Math.min(100, totalStats.dodge);
@@ -285,7 +265,6 @@ heroSchema.methods.getTotalStats = async function (level: number, stars: number,
 
   } catch (error: any) {
     console.error("Erreur getTotalStats:", error);
-    // Retourner au moins les stats de base en cas d'erreur
     return {
       totalStats: this.getStatsAtLevel(level, stars, false),
       breakdown: { hero: this.getStatsAtLevel(level, stars, false), equipment: {}, sets: {} },
@@ -295,7 +274,7 @@ heroSchema.methods.getTotalStats = async function (level: number, stars: number,
   }
 };
 
-// ✅ NOUVELLE MÉTHODE: Calculer les bonus de sets
+// Méthode getSetBonuses
 heroSchema.methods.getSetBonuses = async function (playerId: string): Promise<any> {
   try {
     const Inventory = mongoose.model('Inventory');
@@ -304,9 +283,7 @@ heroSchema.methods.getSetBonuses = async function (playerId: string): Promise<an
     const inventory = await Inventory.findOne({ playerId });
     if (!inventory) return this.getEmptyStats();
 
-    const equippedSets = new Map<string, number>(); // setId -> nombre de pièces équipées
-    
-    // Compter les pièces de set équipées
+    const equippedSets = new Map<string, number>();
     const slots = ['weapon', 'helmet', 'armor', 'boots', 'gloves', 'accessory'];
     
     for (const slot of slots) {
@@ -323,14 +300,11 @@ heroSchema.methods.getSetBonuses = async function (playerId: string): Promise<an
       equippedSets.set(setId, (equippedSets.get(setId) || 0) + 1);
     }
 
-    // Calculer les bonus de sets
     const totalSetBonus = this.getEmptyStats();
     const activeSets = [];
 
     for (const [setId, piecesCount] of equippedSets) {
       if (piecesCount >= 2) {
-        // ✅ TODO: Récupérer les vrais bonus de sets depuis une base de données
-        // Pour l'instant, bonus basique selon le nombre de pièces
         const setBonus = this.calculateSetBonus(setId, piecesCount);
         this.addStats(totalSetBonus, setBonus);
         
@@ -353,8 +327,7 @@ heroSchema.methods.getSetBonuses = async function (playerId: string): Promise<an
   }
 };
 
-// ✅ MÉTHODES UTILITAIRES privées
-
+// Méthodes utilitaires
 heroSchema.methods.getEmptyStats = function () {
   return {
     hp: 0, atk: 0, def: 0,
@@ -376,16 +349,14 @@ heroSchema.methods.addStats = function (target: any, source: any, multiplier: nu
 };
 
 heroSchema.methods.calculateSetBonus = function (setId: string, piecesCount: number) {
-  // ✅ Bonus de sets basiques (à remplacer par une vraie base de données)
   const baseBonuses: Record<number, any> = {
-    2: { hp: 500, atk: 50 },      // 2 pièces
-    4: { hp: 1200, atk: 120, crit: 5 },  // 4 pièces  
-    6: { hp: 2500, atk: 250, crit: 10, critDamage: 25 }  // 6 pièces
+    2: { hp: 500, atk: 50 },
+    4: { hp: 1200, atk: 120, crit: 5 },
+    6: { hp: 2500, atk: 250, crit: 10, critDamage: 25 }
   };
 
   const bonus = this.getEmptyStats();
   
-  // Appliquer les bonus selon le nombre de pièces
   for (let pieces = 2; pieces <= piecesCount && pieces <= 6; pieces += 2) {
     if (baseBonuses[pieces]) {
       this.addStats(bonus, baseBonuses[pieces]);
@@ -406,15 +377,14 @@ heroSchema.methods.calculatePower = function (stats: any): number {
   );
 };
 
-// === MÉTHODES EXISTANTES (inchangées) ===
-
+// Méthodes existantes
 heroSchema.methods.getRarityMultiplier = function () {
   return ({ 
     Common: 1, 
     Rare: 1.25, 
     Epic: 1.5, 
     Legendary: 2,
-    Mythic: 2.5  // ✅ NOUVEAU: Mythic x2.5
+    Mythic: 2.5
   } as Record<string, number>)[this.rarity] || 1;
 };
 
@@ -463,13 +433,14 @@ heroSchema.methods.setSpell = function (slot: string, id: string, level = 1) {
 heroSchema.methods.upgradeSpell = function (slot: string, newLevel: number) {
   const s: any = this.spells[slot as keyof IHeroSpells];
   if (!s?.id) return false;
-  const max = (slot === "ultimate" || slot === "passive") ? 5 : 10;
+  const max = (slot === "ultimate") ? 10 : 12;
   if (newLevel > max || newLevel <= s.level) return false;
   s.level = newLevel; return true;
 };
 
-// Pré-save (cohérence & clamps)
+// Pré-save hook
 heroSchema.pre("save", function (next) {
+  // Clamp des stats
   this.baseStats.reductionCooldown = cap(this.baseStats.reductionCooldown, 0, 50);
   this.baseStats.crit        = cap(this.baseStats.crit, 0, 100);
   this.baseStats.critResist  = cap(this.baseStats.critResist, 0, 100);
@@ -477,16 +448,46 @@ heroSchema.pre("save", function (next) {
   this.baseStats.accuracy    = cap(this.baseStats.accuracy, 0, 100);
   this.baseStats.healthleech = cap(this.baseStats.healthleech, 0, 100);
 
-  // Ultimate par défaut si manquant
-  if (!this.spells.ultimate?.id) {
-    const defaults: Record<IHeroDocument["element"], string> = {
-      Fire: "fire_storm", Water: "tidal_wave", Wind: "tornado",
-      Electric: "lightning_strike", Light: "divine_light", Dark: "shadow_realm"
-    };
-    this.spells.ultimate = { id: defaults[this.element] || "basic_ultimate", level: 1 };
+  // Initialiser les sorts selon heroSpellDefinitions
+  const heroId = this.name.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '');
+  
+  try {
+    const spellDefinition = getHeroSpellDefinition(heroId);
+    
+    if (spellDefinition) {
+      const initialSpells = getInitialSpells(heroId, this.rarity);
+      
+      if (!this.spells.spell1?.id && initialSpells.spell1) {
+        this.spells.spell1 = initialSpells.spell1;
+      }
+      
+      if (!this.spells.spell2?.id && initialSpells.spell2) {
+        this.spells.spell2 = initialSpells.spell2;
+      }
+      
+      if (!this.spells.ultimate?.id && initialSpells.ultimate) {
+        this.spells.ultimate = initialSpells.ultimate;
+      }
+      
+      if (!this.spells.passive1?.id && initialSpells.passive1) {
+        this.spells.passive1 = initialSpells.passive1;
+      }
+      
+      if (!this.spells.passive2?.id && initialSpells.passive2) {
+        this.spells.passive2 = initialSpells.passive2;
+      }
+      
+      if (!this.spells.passive3?.id && initialSpells.passive3) {
+        this.spells.passive3 = initialSpells.passive3;
+      }
+    } else {
+      console.warn(`⚠️ Aucune définition de sorts pour: ${this.name} (${heroId})`);
+    }
+  } catch (error) {
+    console.error(`❌ Erreur initialisation sorts pour ${this.name}:`, error);
   }
 
-  // ✅ NOUVEAU: Initialiser l'équipement s'il n'existe pas
+  // Initialiser l'équipement
   if (!this.equipment) {
     this.equipment = {};
   }
@@ -495,8 +496,3 @@ heroSchema.pre("save", function (next) {
 });
 
 export default mongoose.model<IHeroDocument>("Hero", heroSchema);
-
-
-
-
-
