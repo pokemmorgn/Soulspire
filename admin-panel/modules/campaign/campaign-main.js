@@ -168,41 +168,32 @@ class CampaignModule {
 
       CampaignUI.showLoading('campaignMainContent', `Loading World ${worldId}...`);
 
-      // 🔧 Utiliser l'API admin
-      const response = await AdminCore.makeRequest(`/api/admin/campaign/worlds/${worldId}`);
+      // 🔧 AdminCore.makeRequest retourne { response, data }
+      // où data est le JSON parsé { success: true, data: { world: {...} } }
+      const result = await AdminCore.makeRequest(`/api/admin/campaign/worlds/${worldId}`);
       
-      console.log('🔍 Full API response:', response);
-      console.log('🔍 response.data:', response.data);
-      console.log('🔍 response.data?.world:', response.data?.world);
+      console.log('🔍 API result:', result);
       
-      // L'API admin retourne { success: true, data: { world: {...} } }
-      // AdminCore.makeRequest retourne déjà la réponse parsée
-      let worldData = null;
+      // result.data contient la réponse JSON complète
+      const jsonResponse = result.data || result;
+      console.log('🔍 JSON response:', jsonResponse);
       
-      // Essayer différents chemins possibles
-      if (response.data && response.data.world) {
-        worldData = response.data.world;
-      } else if (response.world) {
-        worldData = response.world;
-      } else if (response.data && !response.data.world) {
-        // Peut-être que data EST le monde ?
-        worldData = response.data;
-      }
+      // Extraire le monde depuis la structure { success: true, data: { world: {...} } }
+      this.currentWorldData = jsonResponse.data?.world;
       
-      console.log('🔍 Extracted worldData:', worldData);
+      console.log('🔍 Extracted world:', this.currentWorldData);
       
-      if (!worldData) {
-        console.error('❌ Could not extract world data from response');
+      if (!this.currentWorldData) {
+        console.error('❌ Could not extract world data');
         throw new Error('No world data received from API');
       }
       
-      if (!worldData.levels || !Array.isArray(worldData.levels)) {
-        console.error('❌ Invalid world data - missing levels array:', worldData);
+      if (!this.currentWorldData.levels || !Array.isArray(this.currentWorldData.levels)) {
+        console.error('❌ Invalid world data - missing levels array:', this.currentWorldData);
         throw new Error('World data is missing levels array');
       }
 
-      this.currentWorldData = worldData;
-      console.log(`✅ Loaded world ${worldId} with ${worldData.levels.length} levels`);
+      console.log(`✅ Loaded world ${worldId} with ${this.currentWorldData.levels.length} levels`);
 
       this.updateBreadcrumb();
       this.renderWorldView();
