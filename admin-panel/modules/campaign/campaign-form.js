@@ -485,88 +485,106 @@ ITEM_mana_crystal">${(rewards.items || []).join('\n')}</textarea>
    * 💾 SAUVEGARDE
    */
 
-  async saveLevelConfig() {
-    try {
-      const configMode = document.querySelector('input[name="configMode"]:checked')?.value || 'manual';
+async saveLevelConfig() {
+  try {
+    const configMode = document.querySelector('input[name="configMode"]:checked')?.value || 'manual';
 
-      let updates = {
-        name: document.getElementById('levelName')?.value || this.currentLevel.name,
-        enemyType: document.getElementById('enemyType')?.value,
-        difficultyMultiplier: parseFloat(document.getElementById('difficultyMultiplier')?.value || 1.0),
-        staminaCost: parseInt(document.getElementById('staminaCost')?.value || 6)
-      };
+    // 🔍 DEBUG: Vérifier les données avant sauvegarde
+    console.log('📍 Current World:', this.currentWorld);
+    console.log('📍 Current Level:', this.currentLevel);
+    console.log('📍 Saving to:', {
+      worldId: this.currentWorld?.worldId,
+      levelIndex: this.currentLevel?.levelIndex
+    });
 
-      // Monsters configuration
-      if (configMode === 'manual') {
-        updates.monsters = this.selectedMonsters.map(m => ({
-          monsterId: m.monsterId,
-          count: m.count || 1,
-          position: m.position,
-          levelOverride: m.levelOverride,
-          starsOverride: m.starsOverride || 3
-        }));
-        updates.autoGenerate = undefined;
-      } else {
-        updates.monsters = [];
-        updates.autoGenerate = {
-          useWorldPool: true,
-          count: parseInt(document.getElementById('autoGenCount')?.value || 3),
-          enemyType: document.getElementById('autoGenType')?.value || 'normal'
-        };
-      }
-
-      // Modifiers
-      const elementalAura = document.getElementById('elementalAura')?.value;
-      const atkBuff = parseFloat(document.getElementById('atkBuffPct')?.value || 0) / 100;
-      const defBuff = parseFloat(document.getElementById('defBuffPct')?.value || 0) / 100;
-
-      if (elementalAura || atkBuff > 0 || defBuff > 0) {
-        updates.modifiers = {
-          elementalAura: elementalAura || undefined,
-          atkBuffPct: atkBuff || undefined,
-          defBuffPct: defBuff || undefined
-        };
-      }
-
-      // Rewards
-      const rewardExp = parseInt(document.getElementById('rewardExp')?.value || 0);
-      const rewardGold = parseInt(document.getElementById('rewardGold')?.value || 0);
-      const rewardItems = document.getElementById('rewardItems')?.value.split('\n').filter(i => i.trim());
-
-      updates.rewards = {
-        experience: rewardExp,
-        gold: rewardGold,
-        items: rewardItems,
-        fragments: []
-      };
-
-      console.log('💾 Saving level config:', updates);
-      console.log('📍 World:', this.currentWorld.worldId, 'Level:', this.currentLevel.levelIndex);
-
-      // 🔧 Envoyer la requête à l'API admin
-      const result = await AdminCore.makeRequest(
-        `/api/admin/campaign/worlds/${this.currentWorld.worldId}/levels/${this.currentLevel.levelIndex}`,
-        {
-          method: 'PUT',
-          body: JSON.stringify(updates)
-        }
-      );
-
-      console.log('✅ Save result:', result);
-
-      AdminCore.showAlert('Level configuration saved successfully!', 'success');
-      this.closeEditModal();
-      
-      // Recharger la vue du monde
-      if (window.CampaignModule) {
-        CampaignModule.viewWorld(this.currentWorld.worldId);
-      }
-
-    } catch (error) {
-      console.error('❌ Save error:', error);
-      AdminCore.showAlert('Failed to save: ' + error.message, 'error');
+    // ✅ Vérification de sécurité
+    if (!this.currentWorld || !this.currentLevel) {
+      throw new Error('Missing world or level data');
     }
+
+    let updates = {
+      name: document.getElementById('levelName')?.value || this.currentLevel.name,
+      enemyType: document.getElementById('enemyType')?.value,
+      difficultyMultiplier: parseFloat(document.getElementById('difficultyMultiplier')?.value || 1.0),
+      staminaCost: parseInt(document.getElementById('staminaCost')?.value || 6)
+    };
+
+    // Monsters configuration
+    if (configMode === 'manual') {
+      updates.monsters = this.selectedMonsters.map(m => ({
+        monsterId: m.monsterId,
+        count: m.count || 1,
+        position: m.position,
+        levelOverride: m.levelOverride,
+        starsOverride: m.starsOverride || 3
+      }));
+      updates.autoGenerate = undefined;
+    } else {
+      updates.monsters = [];
+      updates.autoGenerate = {
+        useWorldPool: true,
+        count: parseInt(document.getElementById('autoGenCount')?.value || 3),
+        enemyType: document.getElementById('autoGenType')?.value || 'normal'
+      };
+    }
+
+    // Modifiers
+    const elementalAura = document.getElementById('elementalAura')?.value;
+    const atkBuff = parseFloat(document.getElementById('atkBuffPct')?.value || 0) / 100;
+    const defBuff = parseFloat(document.getElementById('defBuffPct')?.value || 0) / 100;
+
+    if (elementalAura || atkBuff > 0 || defBuff > 0) {
+      updates.modifiers = {
+        elementalAura: elementalAura || undefined,
+        atkBuffPct: atkBuff || undefined,
+        defBuffPct: defBuff || undefined
+      };
+    }
+
+    // Rewards
+    const rewardExp = parseInt(document.getElementById('rewardExp')?.value || 0);
+    const rewardGold = parseInt(document.getElementById('rewardGold')?.value || 0);
+    const rewardItems = document.getElementById('rewardItems')?.value.split('\n').filter(i => i.trim());
+
+    updates.rewards = {
+      experience: rewardExp,
+      gold: rewardGold,
+      items: rewardItems,
+      fragments: []
+    };
+
+    console.log('💾 Saving level config:', updates);
+    console.log('📍 World:', this.currentWorld.worldId, 'Level:', this.currentLevel.levelIndex);
+
+    // 🔧 Construire l'URL correctement
+    const url = `/api/admin/campaign/worlds/${this.currentWorld.worldId}/levels/${this.currentLevel.levelIndex}`;
+    console.log('🌐 Request URL:', url);
+
+    // 🔧 Envoyer la requête à l'API admin
+    const result = await AdminCore.makeRequest(url, {
+      method: 'PUT',
+      body: JSON.stringify(updates)
+    });
+
+    console.log('✅ Save result:', result);
+
+    AdminCore.showAlert('Level configuration saved successfully!', 'success');
+    this.closeEditModal();
+    
+    // Recharger la vue du monde
+    if (window.CampaignModule) {
+      await CampaignModule.viewWorld(this.currentWorld.worldId);
+    }
+
+  } catch (error) {
+    console.error('❌ Save error:', error);
+    console.error('❌ Error details:', {
+      message: error.message,
+      stack: error.stack
+    });
+    AdminCore.showAlert('Failed to save: ' + error.message, 'error');
   }
+}
 
   previewConfig() {
     const preview = {
