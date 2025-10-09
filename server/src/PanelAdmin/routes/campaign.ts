@@ -344,23 +344,48 @@ router.put('/worlds/:worldId/levels/:levelIndex',
       const levelIndex = parseInt(req.params.levelIndex);
       const updates = req.body;
 
+      console.log('🔍 PUT Level Request:', {
+        worldId,
+        levelIndex,
+        admin: adminReq.admin?.username
+      });
+
       const world = await CampaignWorld.findOne({ worldId });
 
       if (!world) {
+        console.log('❌ World not found:', worldId);
         return res.status(404).json({
           error: 'World not found',
           code: 'WORLD_NOT_FOUND'
         });
       }
 
+      console.log('✅ World found:', {
+        worldId: world.worldId,
+        name: world.name,
+        totalLevels: world.levels.length
+      });
+
       const levelIdx = world.levels.findIndex(l => l.levelIndex === levelIndex);
 
       if (levelIdx === -1) {
+        console.log('❌ Level not found in world:', {
+          worldId,
+          levelIndex,
+          availableLevels: world.levels.map(l => l.levelIndex)
+        });
         return res.status(404).json({
           error: 'Level not found',
-          code: 'LEVEL_NOT_FOUND'
+          code: 'LEVEL_NOT_FOUND',
+          details: {
+            worldId,
+            levelIndex,
+            availableLevels: world.levels.map(l => l.levelIndex)
+          }
         });
       }
+
+      console.log('✅ Level found at index:', levelIdx);
 
       // Sauvegarder l'ancien état pour audit
       const oldLevel = { ...world.levels[levelIdx] };
@@ -387,9 +412,14 @@ router.put('/worlds/:worldId/levels/:levelIndex',
       if (updates.modifiers !== undefined) {
         world.levels[levelIdx].modifiers = updates.modifiers;
       }
+      if (updates.staminaCost !== undefined) {
+        world.levels[levelIdx].staminaCost = updates.staminaCost;
+      }
 
       world.markModified('levels');
       await world.save();
+
+      console.log('✅ Level updated successfully');
 
       // Logger l'action
       await AuditLog.createLog({
@@ -427,7 +457,8 @@ router.put('/worlds/:worldId/levels/:levelIndex',
       console.error('❌ Update level error:', error);
       res.status(500).json({
         error: error.message || 'Failed to update level',
-        code: 'UPDATE_LEVEL_ERROR'
+        code: 'UPDATE_LEVEL_ERROR',
+        details: error.toString()
       });
     }
   }
