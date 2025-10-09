@@ -168,9 +168,16 @@ class CampaignModule {
 
       CampaignUI.showLoading('campaignMainContent', `Loading World ${worldId}...`);
 
-      // 🔧 Utiliser l'API admin pour les détails (plus complet)
+      // 🔧 Utiliser l'API admin pour les détails complets
       const { data } = await AdminCore.makeRequest(`/api/admin/campaign/worlds/${worldId}`);
+      
+      // L'API admin retourne { data: { world: {...} } }
       this.currentWorldData = data.world;
+      
+      // Vérifier que les données sont valides
+      if (!this.currentWorldData || !this.currentWorldData.levels) {
+        throw new Error('Invalid world data received');
+      }
 
       this.updateBreadcrumb();
       this.renderWorldView();
@@ -280,11 +287,29 @@ class CampaignModule {
       
       document.getElementById('campaignMonsterPoolModal').style.display = 'block';
 
-      // Charger les monstres disponibles pour ce monde
+      // 🔧 Charger les monstres disponibles pour ce monde (utiliser l'API admin)
       const { data } = await AdminCore.makeRequest(`/api/admin/campaign/monsters/available?worldId=${worldId}`);
       const monsters = data.monsters || [];
+      
+      console.log(`✅ Loaded ${monsters.length} monsters for world ${worldId}`);
 
       const currentPool = world.defaultMonsterPool || [];
+
+      // Si aucun monstre n'est disponible, afficher un message
+      if (monsters.length === 0) {
+        modalBody.innerHTML = `
+          <div class="alert warning">
+            <strong>⚠️ No monsters available</strong>
+            <p>No monsters are configured for this world yet. Create monsters first in the Monsters section.</p>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="CampaignModule.closeMonsterPoolModal()">
+              Close
+            </button>
+          </div>
+        `;
+        return;
+      }
 
       modalBody.innerHTML = `
         <div class="monster-pool-editor">
