@@ -109,7 +109,7 @@ const heroSchema = new Schema<IHeroDocument>({
   spells: {
     spell1:   { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
     spell2:   { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
-    ultimate: { id: { type: String, required: true }, level: { type: Number, default: 1, min: 1, max: 10 } },
+    ultimate: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 10 } },
     passive1: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
     passive2: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
     passive3: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
@@ -495,6 +495,7 @@ heroSchema.pre("save", function (next) {
 });
 
 export default mongoose.model<IHeroDocument>("Hero", heroSchema);
+
 
 
 
