@@ -171,21 +171,38 @@ class CampaignModule {
       // 🔧 Utiliser l'API admin
       const response = await AdminCore.makeRequest(`/api/admin/campaign/worlds/${worldId}`);
       
-      // L'API admin retourne { success: true, data: { world: {...} } }
-      // Donc on accède à response.data.world
-      this.currentWorldData = response.data.world;
+      console.log('🔍 Full API response:', response);
+      console.log('🔍 response.data:', response.data);
+      console.log('🔍 response.data?.world:', response.data?.world);
       
-      // Vérifier que les données sont valides
-      if (!this.currentWorldData) {
+      // L'API admin retourne { success: true, data: { world: {...} } }
+      // AdminCore.makeRequest retourne déjà la réponse parsée
+      let worldData = null;
+      
+      // Essayer différents chemins possibles
+      if (response.data && response.data.world) {
+        worldData = response.data.world;
+      } else if (response.world) {
+        worldData = response.world;
+      } else if (response.data && !response.data.world) {
+        // Peut-être que data EST le monde ?
+        worldData = response.data;
+      }
+      
+      console.log('🔍 Extracted worldData:', worldData);
+      
+      if (!worldData) {
+        console.error('❌ Could not extract world data from response');
         throw new Error('No world data received from API');
       }
       
-      if (!this.currentWorldData.levels || !Array.isArray(this.currentWorldData.levels)) {
-        console.error('❌ Invalid world data:', this.currentWorldData);
+      if (!worldData.levels || !Array.isArray(worldData.levels)) {
+        console.error('❌ Invalid world data - missing levels array:', worldData);
         throw new Error('World data is missing levels array');
       }
 
-      console.log(`✅ Loaded world ${worldId} with ${this.currentWorldData.levels.length} levels`);
+      this.currentWorldData = worldData;
+      console.log(`✅ Loaded world ${worldId} with ${worldData.levels.length} levels`);
 
       this.updateBreadcrumb();
       this.renderWorldView();
