@@ -541,14 +541,18 @@ ITEM_mana_crystal">${(rewards.items || []).join('\n')}</textarea>
       };
 
       console.log('💾 Saving level config:', updates);
+      console.log('📍 World:', this.currentWorld.worldId, 'Level:', this.currentLevel.levelIndex);
 
-      await AdminCore.makeRequest(
+      // 🔧 Envoyer la requête à l'API admin
+      const result = await AdminCore.makeRequest(
         `/api/admin/campaign/worlds/${this.currentWorld.worldId}/levels/${this.currentLevel.levelIndex}`,
         {
           method: 'PUT',
           body: JSON.stringify(updates)
         }
       );
+
+      console.log('✅ Save result:', result);
 
       AdminCore.showAlert('Level configuration saved successfully!', 'success');
       this.closeEditModal();
