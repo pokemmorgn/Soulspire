@@ -26,16 +26,24 @@ class CampaignForm {
     try {
       console.log(`📝 Opening level editor: World ${worldId}, Level ${levelIndex}`);
 
-      // Charger les données du niveau
-      const { data } = await AdminCore.makeRequest(`/api/admin/campaign/worlds/${worldId}/levels/${levelIndex}`);
+      // Charger les données du niveau depuis l'API admin
+      const result = await AdminCore.makeRequest(`/api/admin/campaign/worlds/${worldId}/levels/${levelIndex}`);
       
-      this.currentWorld = data.world;
-      this.currentLevel = data.level;
-      this.originalConfig = JSON.parse(JSON.stringify(data.level));
+      console.log('🔍 Level API result:', result);
+      
+      // Extraire depuis { response, data: { success: true, data: { world, level } } }
+      const jsonResponse = result.data || result;
+      const responseData = jsonResponse.data || jsonResponse;
+      
+      this.currentWorld = responseData.world;
+      this.currentLevel = responseData.level;
+      this.originalConfig = JSON.parse(JSON.stringify(responseData.level));
+
+      console.log('✅ Loaded level data:', this.currentLevel);
 
       // Initialiser les monstres sélectionnés
-      if (data.level.monsters && data.level.monsters.length > 0) {
-        this.selectedMonsters = data.level.monsterDetails || [];
+      if (responseData.level.monsters && responseData.level.monsters.length > 0) {
+        this.selectedMonsters = responseData.level.monsterDetails || [];
       } else {
         this.selectedMonsters = [];
       }
