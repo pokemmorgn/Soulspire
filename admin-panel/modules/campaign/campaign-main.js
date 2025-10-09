@@ -306,9 +306,11 @@ class CampaignModule {
       // 🔧 Charger les monstres disponibles depuis l'API admin
       const result = await AdminCore.makeRequest(`/api/admin/campaign/monsters/available?worldId=${worldId}`);
       
-      // Extraire depuis { response, data: { success: true, data: { monsters: [...] } } }
-      const jsonResponse = result.data || result;
-      const responseData = jsonResponse.data || jsonResponse;
+      console.log('🔍 Monsters API result:', result);
+      
+      // Extraire depuis { response: {...}, data: { success: true, data: { monsters: [...] } } }
+      const jsonResponse = result.data;
+      const responseData = jsonResponse.data;
       const monsters = responseData.monsters || [];
       
       console.log(`✅ Loaded ${monsters.length} monsters for world ${worldId}`);
