@@ -14,7 +14,7 @@ import economyRoutes from './PanelAdmin/routes/economy';
 import inventoryRoutes from './PanelAdmin/routes/inventory';
 import monsterRoutes from './PanelAdmin/routes/monsters';
 import achievementRoutes from './PanelAdmin/routes/achievementRoutes';
-import campaignRoutes from './routes/campaign';
+import campaignRoutes from './PanelAdmin/routes/campaign';
 // Import des services pour l'initialisation
 import AdminService from './PanelAdmin/services/AdminService';
 import AnalyticsService from './PanelAdmin/services/AnalyticsService';
@@ -258,7 +258,8 @@ export class AdminPanelServer {
           '/api/admin/economy/*',
           '/api/admin/inventory/*',
           '/api/admin/monsters/*',
-          '/api/admin/achievements/*'
+          '/api/admin/achievements/*',
+          '/api/admin/campaign/*'
         ]
       });
     });
@@ -270,6 +271,8 @@ export class AdminPanelServer {
     console.log('   - /api/admin/economy/* (Economy Management)');
     console.log('   - /api/admin/inventory/* (Inventory Management)');
     console.log('   - /api/admin/monsters/* (Monster Management)');
+    console.log('   - /api/admin/achievements/* (Achievements Management)');
+    console.log('   - /api/admin/campaign/* (Campaign Level Editor)');
   }
 
   /**
