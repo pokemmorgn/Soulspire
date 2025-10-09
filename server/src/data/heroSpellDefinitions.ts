@@ -15,7 +15,7 @@ export interface HeroSpellDefinition {
   // Sorts par slot
   spell1: string;           // Débloqué: Common+
   spell2?: string;          // Débloqué: Rare+
-  ultimate: string;         // Débloqué: Epic+ (vide pour Common/Rare)
+  ultimate: string;         // Débloqué: Legendary+ (vide pour Common/Rare/Epic)
   passive1?: string;        // Débloqué: Rare+
   passive2?: string;        // Débloqué: Legendary+
   passive3?: string;        // Débloqué: Mythic+ (avec condition)
@@ -97,7 +97,7 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     rarity: "Epic",
     spell1: "abyssal_strike",
     spell2: "pirate_dance",
-    ultimate: "whirlpool_execution",
+    ultimate: "",
     passive1: "tidal_lifesteal"
   },
   
@@ -178,7 +178,7 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     rarity: "Epic",
     spell1: "chain_slam",
     spell2: "molten_bind",
-    ultimate: "volcanic_chains",
+    ultimate: "",
     passive1: "burning_aura"
   },
   
@@ -284,7 +284,7 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     rarity: "Epic",
     spell1: "wind_arrow",
     spell2: "cyclone_shot",
-    ultimate: "hurricane_pierce",
+    ultimate: "",
     passive1: "wind_mastery"
   },
   
@@ -337,7 +337,7 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     rarity: "Epic",
     spell1: "volt_punch",
     spell2: "thunder_combo",
-    ultimate: "lightning_storm",
+    ultimate: "",
     passive1: "static_charge"
   },
   
@@ -350,7 +350,7 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     rarity: "Epic",
     spell1: "thunder_hammer",
     spell2: "volt_shield",
-    ultimate: "lightning_bastion",
+    ultimate: "",
     passive1: "armored_conductor"
   },
   
@@ -363,7 +363,7 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     rarity: "Epic",
     spell1: "thunder_slam",
     spell2: "shock_wave",
-    ultimate: "storm_colossus",
+    ultimate: "",
     passive1: "conductive_armor"
   },
   
@@ -490,7 +490,7 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     rarity: "Epic",
     spell1: "shadow_strike",
     spell2: "void_dash",
-    ultimate: "darkness_burst",
+    ultimate: "",
     passive1: "assassin_fury"
   },
   
@@ -503,7 +503,7 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     rarity: "Epic",
     spell1: "toll_bell",
     spell2: "shadow_aura",
-    ultimate: "nightmare_hymn",
+    ultimate: "",
     passive1: "fear_aura"
   },
   
@@ -516,7 +516,7 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     rarity: "Epic",
     spell1: "shadow_dagger",
     spell2: "dark_curse",
-    ultimate: "void_storm",
+    ultimate: "",
     passive1: "shadow_weaver"
   },
   
@@ -529,7 +529,7 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     rarity: "Epic",
     spell1: "bone_slam",
     spell2: "life_drain",
-    ultimate: "death_fortress",
+    ultimate: "",
     passive1: "undead_resilience"
   },
   
@@ -629,8 +629,8 @@ export function getSlotsForRarity(rarity: string): {
     slots.passive1 = true;
   }
   
-  // Epic+
-  if (["Epic", "Legendary", "Mythic"].includes(rarity)) {
+  // Legendary+ uniquement
+  if (["Legendary", "Mythic"].includes(rarity)) {
     slots.ultimate = true;
   }
   
