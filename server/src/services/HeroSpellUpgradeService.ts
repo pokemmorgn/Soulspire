@@ -486,4 +486,221 @@ export class HeroSpellUpgradeService {
 
     return essences;
   }
+  /**
+ * Obtenir les détails complets d'un sort spécifique
+ */
+static async getSpellDetails(
+  accountId: string,
+  serverId: string,
+  heroInstanceId: string,
+  spellSlot: "spell1" | "spell2" | "ultimate" | "passive1" | "passive2" | "passive3"
+) {
+  try {
+    const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
+    if (!player) {
+      return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
+    }
+
+    const heroInstance = player.heroes.find((h: any) => h._id?.toString() === heroInstanceId);
+    if (!heroInstance) {
+      return { success: false, error: "Hero not found", code: "HERO_NOT_FOUND" };
+    }
+
+    const heroData = heroInstance.heroId as any;
+    if (!heroData) {
+      return { success: false, error: "Hero data not found", code: "HERO_DATA_NOT_FOUND" };
+    }
+
+    // Vérifier que le slot existe
+    const spellData = heroData.spells?.[spellSlot];
+    if (!spellData?.id) {
+      return { 
+        success: false, 
+        error: `Spell slot ${spellSlot} is not unlocked or empty`, 
+        code: "SPELL_SLOT_EMPTY" 
+      };
+    }
+
+    const currentLevel = spellData.level;
+    const maxLevel = this.getMaxSpellLevel(heroData.rarity);
+    const essenceType = this.getEssenceType(heroData.element);
+    const currentEssence = player.materials.get(essenceType) || 0;
+
+    // Calculer les coûts pour tous les niveaux suivants
+    const upgradePath: any[] = [];
+    let cumulativeGold = 0;
+    let cumulativeEssence = 0;
+
+    for (let level = currentLevel; level < maxLevel; level++) {
+      const cost = this.calculateUpgradeCost(level, heroData.rarity, heroData.element);
+      cumulativeGold += cost.gold;
+      cumulativeEssence += cost.essence;
+
+      upgradePath.push({
+        level: level + 1,
+        cost,
+        cumulativeCost: {
+          gold: cumulativeGold,
+          essence: cumulativeEssence
+        },
+        canAfford: player.gold >= cumulativeGold && currentEssence >= cumulativeEssence
+      });
+    }
+
+    // Informations sur le sort depuis le SpellManager si disponible
+    let spellDefinition = null;
+    try {
+      const { SpellManager } = await import('../gameplay/SpellManager');
+      const spell = SpellManager.getSpell(spellData.id);
+      if (spell) {
+        spellDefinition = {
+          name: spell.config.name,
+          description: spell.config.description,
+          type: spell.config.type,
+          category: spell.config.category,
+          targetType: spell.config.targetType,
+          energyCost: spell.config.energyCost,
+          baseCooldown: spell.config.baseCooldown,
+          element: spell.config.element
+        };
+      }
+    } catch (error) {
+      console.warn("⚠️ SpellManager non disponible pour récupérer la définition du sort");
+    }
+
+    return {
+      success: true,
+      hero: {
+        instanceId: heroInstanceId,
+        name: heroData.name,
+        element: heroData.element,
+        rarity: heroData.rarity,
+        role: heroData.role
+      },
+      spell: {
+        slot: spellSlot,
+        spellId: spellData.id,
+        currentLevel,
+        maxLevel,
+        definition: spellDefinition,
+        upgradePath,
+        progress: {
+          currentLevel,
+          maxLevel,
+          percentComplete: Math.round((currentLevel / maxLevel) * 100),
+          levelsRemaining: maxLevel - currentLevel
+        }
+      },
+      playerResources: {
+        gold: player.gold,
+        [essenceType]: currentEssence,
+        canUpgradeOnce: player.gold >= (upgradePath[0]?.cost.gold || 0) && 
+                        currentEssence >= (upgradePath[0]?.cost.essence || 0),
+        canMaxUpgrade: player.gold >= cumulativeGold && currentEssence >= cumulativeEssence
+      },
+      recommendations: this.getSpellUpgradeRecommendations(
+        currentLevel, 
+        maxLevel, 
+        player.gold, 
+        currentEssence, 
+        upgradePath
+      )
+    };
+
+  } catch (error: any) {
+    return { 
+      success: false, 
+      error: error.message, 
+      code: "GET_SPELL_DETAILS_FAILED" 
+    };
+  }
+}
+
+/**
+ * Obtenir des recommandations d'upgrade pour un sort
+ */
+private static getSpellUpgradeRecommendations(
+  currentLevel: number,
+  maxLevel: number,
+  playerGold: number,
+  playerEssence: number,
+  upgradePath: any[]
+): any {
+  const recommendations: string[] = [];
+  let recommendedTargetLevel = currentLevel;
+
+  if (currentLevel >= maxLevel) {
+    return {
+      priority: "none",
+      message: "Sort au niveau maximum",
+      recommendations: []
+    };
+  }
+
+  // Calculer jusqu'où on peut upgrader avec les ressources actuelles
+  let affordableLevels = 0;
+  for (const upgrade of upgradePath) {
+    if (upgrade.canAfford) {
+      affordableLevels++;
+      recommendedTargetLevel = upgrade.level;
+    } else {
+      break;
+    }
+  }
+
+  let priority = "low";
+  
+  if (affordableLevels === 0) {
+    priority = "blocked";
+    recommendations.push("Ressources insuffisantes pour l'upgrade");
+    
+    const nextUpgrade = upgradePath[0];
+    if (nextUpgrade) {
+      if (playerGold < nextUpgrade.cost.gold) {
+        recommendations.push(`Manque ${nextUpgrade.cost.gold - playerGold} or`);
+      }
+      if (playerEssence < nextUpgrade.cost.essence) {
+        recommendations.push(`Manque ${nextUpgrade.cost.essence - playerEssence} essence`);
+      }
+    }
+  } else if (affordableLevels >= 5) {
+    priority = "high";
+    recommendations.push(`Peut upgrader ${affordableLevels} niveaux immédiatement`);
+    recommendations.push(`Recommandé: Upgrade jusqu'au niveau ${recommendedTargetLevel}`);
+  } else if (affordableLevels >= 2) {
+    priority = "medium";
+    recommendations.push(`Peut upgrader ${affordableLevels} niveaux`);
+  } else {
+    priority = "low";
+    recommendations.push("Upgrade d'un seul niveau possible");
+  }
+
+  // Priorité selon le niveau actuel
+  if (currentLevel < 3 && priority !== "blocked") {
+    priority = "high";
+    recommendations.push("Les premiers niveaux offrent le meilleur ratio coût/efficacité");
+  }
+
+  return {
+    priority,
+    affordableLevels,
+    recommendedTargetLevel,
+    recommendations,
+    estimatedPowerGain: this.estimateSpellPowerGain(currentLevel, recommendedTargetLevel)
+  };
+}
+
+/**
+ * Estimer le gain de puissance d'un upgrade de sort
+ */
+private static estimateSpellPowerGain(fromLevel: number, toLevel: number): string {
+  const levelGain = toLevel - fromLevel;
+  const percentGain = Math.round(levelGain * 20); // ~20% par niveau
+  
+  if (levelGain === 0) return "Aucun gain";
+  if (percentGain < 25) return "Faible (+10-25%)";
+  if (percentGain < 50) return "Moyen (+25-50%)";
+  if (percentGain < 100) return "Élevé (+50-100%)";
+  return "Très élevé (+100%+)";
+}
 }
