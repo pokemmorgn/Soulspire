@@ -428,6 +428,16 @@ class AdminCore {
                 this.loadSystemInfo();
                 break;
                 
+            case 'campaign':
+            if (window.CampaignModule && typeof CampaignModule.loadData === 'function') {
+                console.log('🗺️ Loading campaign data via CampaignModule...');
+                CampaignModule.loadData();
+            } else {
+                console.warn('CampaignModule not available');
+                this.showPlaceholder('campaignContent', 'Campaign', '🗺️');
+            }
+            break;
+                
             case 'overview':
                 this.loadOverviewData();
                 break;
