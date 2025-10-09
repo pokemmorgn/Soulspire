@@ -113,7 +113,7 @@ const heroSchema = new Schema<IHeroDocument>({
     passive1: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
     passive2: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
     passive3: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
-  }
+  },
 
   // ✅ NOUVEAU: Équipement
   equipment: {
@@ -495,6 +495,7 @@ heroSchema.pre("save", function (next) {
 });
 
 export default mongoose.model<IHeroDocument>("Hero", heroSchema);
+
 
 
 
