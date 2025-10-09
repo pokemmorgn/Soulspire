@@ -4,9 +4,10 @@ import mongoose, { Document, Schema } from "mongoose";
 interface IHeroSpells {
   spell1?: { id: string; level: number };
   spell2?: { id: string; level: number };
-  spell3?: { id: string; level: number };
   ultimate: { id: string; level: number };
-  passive?: { id: string; level: number };
+  passive1?: { id: string; level: number };
+  passive2?: { id: string; level: number };
+  passive3?: { id: string; level: number };
 }
 
 // ✅ NOUVELLE INTERFACE pour l'équipement
@@ -106,12 +107,13 @@ const heroSchema = new Schema<IHeroDocument>({
 
   // === Sorts ===
   spells: {
-    spell1:   { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 10 } },
-    spell2:   { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 10 } },
-    spell3:   { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 10 } },
-    ultimate: { id: { type: String, required: true }, level: { type: Number, default: 1, min: 1, max: 5 } },
-    passive:  { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 5 } },
-  },
+    spell1:   { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
+    spell2:   { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
+    ultimate: { id: { type: String, required: true }, level: { type: Number, default: 1, min: 1, max: 10 } },
+    passive1: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
+    passive2: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
+    passive3: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
+  }
 
   // ✅ NOUVEAU: Équipement
   equipment: {
@@ -133,6 +135,9 @@ heroSchema.index({ "spells.ultimate.id": 1 });
 heroSchema.index({ "equipment.weapon": 1 });
 heroSchema.index({ "equipment.helmet": 1 });
 heroSchema.index({ "equipment.armor": 1 });
+heroSchema.index({ "spells.passive1.id": 1 });
+heroSchema.index({ "spells.passive2.id": 1 });
+heroSchema.index({ "spells.passive3.id": 1 });
 
 // Utils
 function cap(n: number, min: number, max: number) { return Math.max(min, Math.min(max, n)); }
@@ -437,9 +442,10 @@ heroSchema.methods.getAllSpells = function () {
   const s = this.spells;
   if (s.spell1?.id) out.push({ slot: "spell1", id: s.spell1.id, level: s.spell1.level });
   if (s.spell2?.id) out.push({ slot: "spell2", id: s.spell2.id, level: s.spell2.level });
-  if (s.spell3?.id) out.push({ slot: "spell3", id: s.spell3.id, level: s.spell3.level });
   if (s.ultimate?.id) out.push({ slot: "ultimate", id: s.ultimate.id, level: s.ultimate.level });
-  if (s.passive?.id) out.push({ slot: "passive", id: s.passive.id, level: s.passive.level });
+  if (s.passive1?.id) out.push({ slot: "passive1", id: s.passive1.id, level: s.passive1.level });
+  if (s.passive2?.id) out.push({ slot: "passive2", id: s.passive2.id, level: s.passive2.level });
+  if (s.passive3?.id) out.push({ slot: "passive3", id: s.passive3.id, level: s.passive3.level });
   return out;
 };
 
@@ -489,5 +495,6 @@ heroSchema.pre("save", function (next) {
 });
 
 export default mongoose.model<IHeroDocument>("Hero", heroSchema);
+
 
 
