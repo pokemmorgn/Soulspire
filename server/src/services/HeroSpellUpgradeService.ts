@@ -89,7 +89,7 @@ export class HeroSpellUpgradeService {
       const slots = ['spell1', 'spell2', 'ultimate', 'passive1', 'passive2', 'passive3'];
 
       for (const slot of slots) {
-        const spellData = heroInstance.spells?.[slot as keyof typeof heroInstance.spells];
+        const spellData = heroData.spells?.[slot as keyof typeof heroData.spells];
         
         if (spellData?.id) {
           const currentLevel = spellData.level;
