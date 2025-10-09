@@ -149,7 +149,7 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     element: "Fire",
     role: "DPS Ranged",
     rarity: "Rare",
-    spell1: "fireball",
+    spell1: "blazing_surge",
     ultimate: "",
     passive1: "burning_grimoire"
   },
