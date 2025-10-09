@@ -6,6 +6,8 @@ class CampaignForm {
   constructor() {
     this.currentWorld = null;
     this.currentLevel = null;
+    this.currentWorldId = null;      // 🔧 Nouveau
+    this.currentLevelIndex = null;   // 🔧 Nouveau
     this.availableMonsters = [];
     this.selectedMonsters = [];
     this.originalConfig = null;
@@ -22,44 +24,66 @@ class CampaignForm {
    * 🎬 MODAL D'ÉDITION DE NIVEAU
    */
   
-  async showEditLevelModal(worldId, levelIndex) {
-    try {
-      console.log(`📝 Opening level editor: World ${worldId}, Level ${levelIndex}`);
+async showEditLevelModal(worldId, levelIndex) {
+  try {
+    console.log(`📝 Opening level editor: World ${worldId}, Level ${levelIndex}`);
 
-      // Charger les données du niveau depuis l'API admin
-      const result = await AdminCore.makeRequest(`/api/admin/campaign/worlds/${worldId}/levels/${levelIndex}`);
-      
-      console.log('🔍 Level API result:', result);
-      
-      // Extraire depuis { response, data: { success: true, data: { world, level } } }
-      const jsonResponse = result.data || result;
-      const responseData = jsonResponse.data || jsonResponse;
-      
-      this.currentWorld = responseData.world;
-      this.currentLevel = responseData.level;
-      this.originalConfig = JSON.parse(JSON.stringify(responseData.level));
+    // Charger les données du niveau depuis l'API admin
+    const result = await AdminCore.makeRequest(`/api/admin/campaign/worlds/${worldId}/levels/${levelIndex}`);
+    
+    console.log('🔍 Level API result:', result);
+    
+    // Extraire depuis { response, data: { success: true, data: { world, level } } }
+    const jsonResponse = result.data || result;
+    const responseData = jsonResponse.data || jsonResponse;
+    
+    this.currentWorld = responseData.world;
+    
+    // 🔧 FIX: Convertir l'objet Mongoose en objet JavaScript simple
+    // et s'assurer que levelIndex est bien présent
+    const rawLevel = responseData.level;
+    this.currentLevel = {
+      levelIndex: rawLevel.levelIndex || rawLevel._doc?.levelIndex || levelIndex,
+      name: rawLevel.name || rawLevel._doc?.name || `Level ${levelIndex}`,
+      enemyType: rawLevel.enemyType || rawLevel._doc?.enemyType,
+      enemyCount: rawLevel.enemyCount || rawLevel._doc?.enemyCount,
+      difficultyMultiplier: rawLevel.difficultyMultiplier || rawLevel._doc?.difficultyMultiplier || 1.0,
+      staminaCost: rawLevel.staminaCost || rawLevel._doc?.staminaCost || 6,
+      monsters: rawLevel.monsters || rawLevel._doc?.monsters || [],
+      autoGenerate: rawLevel.autoGenerate || rawLevel._doc?.autoGenerate,
+      rewards: rawLevel.rewards || rawLevel._doc?.rewards || {},
+      modifiers: rawLevel.modifiers || rawLevel._doc?.modifiers || {},
+      monsterDetails: rawLevel.monsterDetails || []
+    };
+    
+    // 🔧 FIX: Stocker aussi levelIndex comme propriété directe pour éviter tout problème
+    this.currentLevelIndex = levelIndex;
+    this.currentWorldId = worldId;
+    
+    this.originalConfig = JSON.parse(JSON.stringify(this.currentLevel));
 
-      console.log('✅ Loaded level data:', this.currentLevel);
+    console.log('✅ Loaded level data:', this.currentLevel);
+    console.log('✅ Level Index:', this.currentLevel.levelIndex);
 
-      // Initialiser les monstres sélectionnés
-      if (responseData.level.monsters && responseData.level.monsters.length > 0) {
-        this.selectedMonsters = responseData.level.monsterDetails || [];
-      } else {
-        this.selectedMonsters = [];
-      }
-
-      // Charger les monstres disponibles
-      await this.loadAvailableMonsters(worldId);
-
-      // Afficher le modal
-      this.renderEditLevelModal();
-      document.getElementById('campaignLevelModal').style.display = 'block';
-
-    } catch (error) {
-      console.error('❌ Error opening level editor:', error);
-      AdminCore.showAlert('Failed to load level editor: ' + error.message, 'error');
+    // Initialiser les monstres sélectionnés
+    if (this.currentLevel.monsters && this.currentLevel.monsters.length > 0) {
+      this.selectedMonsters = this.currentLevel.monsterDetails || [];
+    } else {
+      this.selectedMonsters = [];
     }
+
+    // Charger les monstres disponibles
+    await this.loadAvailableMonsters(worldId);
+
+    // Afficher le modal
+    this.renderEditLevelModal();
+    document.getElementById('campaignLevelModal').style.display = 'block';
+
+  } catch (error) {
+    console.error('❌ Error opening level editor:', error);
+    AdminCore.showAlert('Failed to load level editor: ' + error.message, 'error');
   }
+}
 
   async loadAvailableMonsters(worldId) {
     try {
@@ -489,17 +513,17 @@ async saveLevelConfig() {
   try {
     const configMode = document.querySelector('input[name="configMode"]:checked')?.value || 'manual';
 
-    // 🔍 DEBUG: Vérifier les données avant sauvegarde
+    // 🔧 FIX: Utiliser les IDs stockés directement
+    const worldId = this.currentWorldId || this.currentWorld?.worldId;
+    const levelIndex = this.currentLevelIndex || this.currentLevel?.levelIndex;
+
     console.log('📍 Current World:', this.currentWorld);
     console.log('📍 Current Level:', this.currentLevel);
-    console.log('📍 Saving to:', {
-      worldId: this.currentWorld?.worldId,
-      levelIndex: this.currentLevel?.levelIndex
-    });
+    console.log('📍 Saving to:', { worldId, levelIndex });
 
     // ✅ Vérification de sécurité
-    if (!this.currentWorld || !this.currentLevel) {
-      throw new Error('Missing world or level data');
+    if (!worldId || !levelIndex) {
+      throw new Error('Missing world ID or level index');
     }
 
     let updates = {
@@ -554,10 +578,10 @@ async saveLevelConfig() {
     };
 
     console.log('💾 Saving level config:', updates);
-    console.log('📍 World:', this.currentWorld.worldId, 'Level:', this.currentLevel.levelIndex);
+    console.log('📍 World:', worldId, 'Level:', levelIndex);
 
     // 🔧 Construire l'URL correctement
-    const url = `/api/admin/campaign/worlds/${this.currentWorld.worldId}/levels/${this.currentLevel.levelIndex}`;
+    const url = `/api/admin/campaign/worlds/${worldId}/levels/${levelIndex}`;
     console.log('🌐 Request URL:', url);
 
     // 🔧 Envoyer la requête à l'API admin
@@ -573,7 +597,7 @@ async saveLevelConfig() {
     
     // Recharger la vue du monde
     if (window.CampaignModule) {
-      await CampaignModule.viewWorld(this.currentWorld.worldId);
+      await CampaignModule.viewWorld(worldId);
     }
 
   } catch (error) {
@@ -637,6 +661,8 @@ async saveLevelConfig() {
     document.getElementById('campaignLevelModal').style.display = 'none';
     this.currentWorld = null;
     this.currentLevel = null;
+    this.currentWorldId = null; 
+    this.currentLevelIndex = null; 
     this.selectedMonsters = [];
     this.availableMonsters = [];
   }
