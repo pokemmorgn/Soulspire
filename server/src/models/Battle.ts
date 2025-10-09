@@ -37,6 +37,9 @@ export interface IBattleAction {
   
   damage?: number;
   healing?: number;
+  perTargetDamage?: {
+    [heroId: string]: number;
+  };
   energyGain?: number;
   energyCost?: number;
   
@@ -188,6 +191,11 @@ const actionSchema = new Schema<IBattleAction>({
   
   damage: { type: Number, min: 0 },
   healing: { type: Number, min: 0 },
+    perTargetDamage: {
+    type: Map,
+    of: { type: Number },
+    default: undefined
+  },
   energyGain: { type: Number, min: 0 },
   energyCost: { type: Number, min: 0 },
   
