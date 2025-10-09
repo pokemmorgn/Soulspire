@@ -153,7 +153,7 @@ export class HeroSpellUpgradeService {
       }
 
       // Vérifier que le slot existe
-      const spellData = heroInstance.spells?.[spellSlot];
+     const spellData = heroData.spells?.[spellSlot];
       if (!spellData?.id) {
         return { 
           success: false, 
@@ -275,7 +275,7 @@ export class HeroSpellUpgradeService {
       const slots = ['spell1', 'spell2', 'ultimate', 'passive1', 'passive2', 'passive3'];
 
       for (const slot of slots) {
-        const spellData = heroInstance.spells?.[slot as keyof typeof heroInstance.spells];
+        const spellData = heroData.spells?.[slot as keyof typeof heroData.spells];
         
         if (!spellData?.id) continue;
 
@@ -360,7 +360,7 @@ export class HeroSpellUpgradeService {
         let totalUpgradeCost = { gold: 0, essence: 0 };
 
         for (const slot of slots) {
-          const spellData = heroInstance.spells?.[slot as keyof typeof heroInstance.spells];
+          const spellData = heroData.spells?.[slot as keyof typeof heroData.spells];
           if (spellData?.id && spellData.level < maxLevel) {
             upgradeableSpells++;
             const cost = this.calculateUpgradeCost(spellData.level, heroData.rarity, heroData.element);
