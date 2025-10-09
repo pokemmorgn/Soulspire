@@ -100,8 +100,12 @@ class CampaignModule {
     try {
       CampaignUI.showLoading('campaignMainContent', 'Loading worlds...');
 
-      const { data } = await AdminCore.makeRequest('/api/admin/campaign/worlds');
-      this.worlds = data.worlds || [];
+      // 🔧 Utiliser l'API publique campaign qui existe déjà
+      const response = await fetch('/api/campaign/worlds');
+      const result = await response.json();
+      
+      // L'API publique retourne { worlds: [...], totalWorlds: X }
+      this.worlds = result.worlds || [];
 
       this.updateStats();
       this.renderWorldsList();
@@ -164,6 +168,7 @@ class CampaignModule {
 
       CampaignUI.showLoading('campaignMainContent', `Loading World ${worldId}...`);
 
+      // 🔧 Utiliser l'API admin pour les détails (plus complet)
       const { data } = await AdminCore.makeRequest(`/api/admin/campaign/worlds/${worldId}`);
       this.currentWorldData = data.world;
 
