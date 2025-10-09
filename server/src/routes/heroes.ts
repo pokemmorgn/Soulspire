@@ -1382,4 +1382,54 @@ router.get("/spells/summary", authMiddleware, async (req: Request, res: Response
     res.status(500).json({ error: "Internal server error", code: "GET_SPELL_SUMMARY_FAILED" });
   }
 });
+/**
+ * GET /api/heroes/spells/:heroInstanceId/:spellSlot
+ * Obtenir les détails complets d'un sort spécifique
+ */
+router.get("/spells/:heroInstanceId/:spellSlot", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const identifiers = getPlayerIdentifiers(req);
+    const { heroInstanceId, spellSlot } = req.params;
+
+    // Validation du slot
+    const validSlots = ['spell1', 'spell2', 'ultimate', 'passive1', 'passive2', 'passive3'];
+    if (!validSlots.includes(spellSlot)) {
+      res.status(400).json({ 
+        error: "Invalid spell slot", 
+        code: "INVALID_SPELL_SLOT",
+        validSlots 
+      });
+      return;
+    }
+
+    const result = await HeroSpellUpgradeService.getSpellDetails(
+      identifiers.accountId || identifiers.playerId!,
+      identifiers.serverId,
+      heroInstanceId,
+      spellSlot as any
+    );
+
+    if (!result.success) {
+      res.status(404).json({ 
+        error: result.error, 
+        code: result.code 
+      });
+      return;
+    }
+
+    res.json({
+      message: "Spell details retrieved successfully",
+      serverId: identifiers.serverId,
+      ...result
+    });
+
+  } catch (err) {
+    console.error("Get spell details error:", err);
+    res.status(500).json({ 
+      error: "Internal server error", 
+      code: "GET_SPELL_DETAILS_FAILED" 
+    });
+  }
+});
 export default router;
+
