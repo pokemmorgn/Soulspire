@@ -303,9 +303,13 @@ class CampaignModule {
       
       document.getElementById('campaignMonsterPoolModal').style.display = 'block';
 
-      // 🔧 Charger les monstres disponibles pour ce monde (utiliser l'API admin)
-      const { data } = await AdminCore.makeRequest(`/api/admin/campaign/monsters/available?worldId=${worldId}`);
-      const monsters = data.monsters || [];
+      // 🔧 Charger les monstres disponibles depuis l'API admin
+      const result = await AdminCore.makeRequest(`/api/admin/campaign/monsters/available?worldId=${worldId}`);
+      
+      // Extraire depuis { response, data: { success: true, data: { monsters: [...] } } }
+      const jsonResponse = result.data || result;
+      const responseData = jsonResponse.data || jsonResponse;
+      const monsters = responseData.monsters || [];
       
       console.log(`✅ Loaded ${monsters.length} monsters for world ${worldId}`);
 
