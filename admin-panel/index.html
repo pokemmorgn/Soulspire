@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Idle Gacha - Admin Panel</title>
     <link rel="stylesheet" href="/styles/admin.css">
+    <link rel="stylesheet" href="/styles/campaign.css">
 </head>
 <body>
     <div class="admin-container">
@@ -70,6 +71,7 @@
                 <div class="nav-tab active" data-section="overview">📊 Overview</div>
                 <div class="nav-tab" data-section="players">👥 Players</div>
                 <div class="nav-tab" data-section="monsters">👹 Monsters</div>
+                <div class="nav-tab" data-section="campaign">🗺️ Campaign</div>
                 <div class="nav-tab" data-section="achievements">🏆 Achievements</div>
                 <div class="nav-tab" data-section="economy">💰 Economy</div>
                 <div class="nav-tab" data-section="logs">📜 Audit Logs</div>
@@ -98,7 +100,12 @@
                         <div class="loading"><div class="spinner"></div><p>Loading...</p></div>
                     </div>
                 </div>
-
+                <div id="campaignSection" class="content-section">
+                    <h2 class="section-title">Campaign Level Editor</h2>
+                    <div id="campaignContent">
+                        <div class="loading"><div class="spinner"></div><p>Loading...</p></div>
+                    </div>
+                </div>
                 <!-- 🆕 NOUVELLE SECTION ACHIEVEMENTS -->
                 <div id="achievementsSection" class="content-section">
                     <h2 class="section-title">Achievements Management</h2>
@@ -151,6 +158,12 @@
     <script type="module" src="./modules/players/players-vip.js"></script>
     <script type="module" src="./modules/players/players-moderation.js"></script>
     <script type="module" src="./modules/players/players-heroes.js"></script>
+
+    <!-- Modules Campaign -->
+    <script type="module" src="./modules/campaign/campaign-ui.js"></script>
+    <script type="module" src="./modules/campaign/campaign-form.js"></script>
+    <script type="module" src="./modules/campaign/campaign-main.js"></script>
+    
     <!-- 🆕 Players Achievements -->
     <script type="module" src="./modules/players/players-achievements.js"></script>
     
@@ -162,12 +175,12 @@
             window.PlayersModule.init();
             window.MonstersModule.init();
             window.AchievementsModule.init(); // 🆕 Init Achievements
-            
+            window.CampaignModule.init();
             // Setup event listeners
             document.getElementById('loginBtn').addEventListener('click', () => {
                 window.AdminCore.login();
             });
-            
+
             document.getElementById('logoutBtn').addEventListener('click', () => {
                 window.AdminCore.logout();
             });
