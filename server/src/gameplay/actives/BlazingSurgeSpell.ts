@@ -42,37 +42,36 @@ class BlazingSurgeSpell extends BaseSpell {
 
     action.damage = 0;
     action.energyCost = this.getEnergyCost(spellLevel);
-    action.energyGain = 8; // gain un peu supérieur car AoE
+    action.energyGain = 8; // AoE -> plus de récupération d'énergie
     action.debuffsApplied = [];
+    action.perTargetDamage = {}; // ✅ nouveau champ utile pour stocker dégâts par cible
 
-for (const target of targets) {
-  if (!target.status.alive) continue;
+    for (const target of targets) {
+      if (!target.status.alive) continue;
 
-  // Calcul des dégâts individuels
-  let damage = this.calculateDamage(caster, target, baseDamage, spellLevel, "magical");
+      // Calcul des dégâts individuels
+      let damage = this.calculateDamage(caster, target, baseDamage, spellLevel, "magical");
 
-  // Bonus si la cible est déjà brûlée
-  if (target.status.debuffs.includes("burn")) {
-    damage = Math.floor(damage * 1.25);
-  }
+      // Bonus si la cible est déjà brûlée
+      if (target.status.debuffs.includes("burn")) {
+        damage = Math.floor(damage * 1.25);
+      }
 
-  // Ajoute les dégâts dans l’action (au lieu de les appliquer directement)
-  if (!action.perTargetDamage) action.perTargetDamage = {};
-  action.perTargetDamage[target.id] = damage;
-  action.damage += damage;
+      // Stocker les dégâts dans l’action
+      action.perTargetDamage[target.heroId] = damage;
+      action.damage += damage;
 
-  // Application de la brûlure
-  const burnDuration = this.getBurnDuration(spellLevel);
-  const burnStacks = 1;
+      // Application de la brûlure
+      const burnDuration = this.getBurnDuration(spellLevel);
+      const burnStacks = 1;
 
-  const burnResult = EffectManager.applyEffect("burn", target, caster, burnDuration, burnStacks);
-  if (burnResult && burnResult.message) {
-    console.log(`🔥 ${burnResult.message}`);
-  }
+      const burnResult = EffectManager.applyEffect("burn", target, caster, burnDuration, burnStacks);
+      if (burnResult && burnResult.message) {
+        console.log(`🔥 ${burnResult.message}`);
+      }
 
-  action.debuffsApplied.push("burn");
-}
-
+      action.debuffsApplied.push("burn");
+    }
 
     return action;
   }
