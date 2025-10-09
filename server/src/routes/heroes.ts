@@ -7,6 +7,8 @@ import serverMiddleware from "../middleware/serverMiddleware";
 import { requireFeature } from "../middleware/featureMiddleware";
 import { HeroUpgradeService } from "../services/HeroUpgradeService";
 import { InventoryService } from "../services/InventoryService";
+import { HeroSpellUpgradeService } from "../services/HeroSpellUpgradeService";
+
 import mongoose from "mongoose";
 
 const router = express.Router();
@@ -119,6 +121,15 @@ const unequipItemSchema = Joi.object({
   slot: Joi.string().valid("weapon", "helmet", "armor", "boots", "gloves", "accessory").required(),
 });
 
+const upgradeSpellSchema = Joi.object({
+  heroInstanceId: Joi.string().required(),
+  spellSlot: Joi.string().valid("spell1", "spell2", "ultimate", "passive1", "passive2", "passive3").required()
+});
+
+const autoUpgradeSpellsSchema = Joi.object({
+  heroInstanceId: Joi.string().required(),
+  maxGoldToSpend: Joi.number().min(0).optional()
+});
 // CATALOG ROUTES
 router.get("/catalog", optionalAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -1241,10 +1252,134 @@ router.post("/my/:heroInstanceId/equipment/optimize", authMiddleware, async (req
   }
 });
 
+// ============================================
+// SPELL UPGRADE ROUTES
+// ============================================
+
+/**
+ * GET /api/heroes/spells/:heroInstanceId
+ * Obtenir les informations d'upgrade des sorts d'un héros
+ */
+router.get("/spells/:heroInstanceId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const identifiers = getPlayerIdentifiers(req);
+    const { heroInstanceId } = req.params;
+
+    const result = await HeroSpellUpgradeService.getHeroSpellUpgradeInfo(
+      identifiers.accountId || identifiers.playerId!,
+      identifiers.serverId,
+      heroInstanceId
+    );
+
+    res.json({
+      message: "Hero spell upgrade info retrieved successfully",
+      serverId: identifiers.serverId,
+      ...result
+    });
+
+  } catch (err) {
+    console.error("Get spell upgrade info error:", err);
+    res.status(500).json({ error: "Internal server error", code: "GET_SPELL_INFO_FAILED" });
+  }
+});
+
+/**
+ * POST /api/heroes/spells/upgrade
+ * Upgrader un sort spécifique
+ */
+router.post("/spells/upgrade", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const identifiers = getPlayerIdentifiers(req);
+
+    const { error } = upgradeSpellSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const { heroInstanceId, spellSlot } = req.body;
+
+    const result = await HeroSpellUpgradeService.upgradeSpell(
+      identifiers.accountId || identifiers.playerId!,
+      identifiers.serverId,
+      heroInstanceId,
+      spellSlot
+    );
+
+    if (!result.success) {
+      res.status(400).json({ error: result.error, code: result.code });
+      return;
+    }
+
+    res.json({
+      message: "Spell upgraded successfully",
+      serverId: identifiers.serverId,
+      ...result
+    });
+
+  } catch (err) {
+    console.error("Upgrade spell error:", err);
+    res.status(500).json({ error: "Internal server error", code: "UPGRADE_SPELL_FAILED" });
+  }
+});
+
+/**
+ * POST /api/heroes/spells/auto-upgrade
+ * Auto-upgrader tous les sorts d'un héros
+ */
+router.post("/spells/auto-upgrade", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const identifiers = getPlayerIdentifiers(req);
+
+    const { error } = autoUpgradeSpellsSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const { heroInstanceId, maxGoldToSpend } = req.body;
+
+    const result = await HeroSpellUpgradeService.autoUpgradeAllSpells(
+      identifiers.accountId || identifiers.playerId!,
+      identifiers.serverId,
+      heroInstanceId,
+      maxGoldToSpend
+    );
+
+    res.json({
+      message: "Spells auto-upgraded successfully",
+      serverId: identifiers.serverId,
+      ...result
+    });
+
+  } catch (err) {
+    console.error("Auto-upgrade spells error:", err);
+    res.status(500).json({ error: "Internal server error", code: "AUTO_UPGRADE_SPELLS_FAILED" });
+  }
+});
+
+/**
+ * GET /api/heroes/spells/summary
+ * Obtenir un résumé des upgrades possibles pour tous les héros
+ */
+router.get("/spells/summary", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const identifiers = getPlayerIdentifiers(req);
+
+    const result = await HeroSpellUpgradeService.getAllHeroesSpellUpgradeSummary(
+      identifiers.accountId || identifiers.playerId!,
+      identifiers.serverId
+    );
+
+    res.json({
+      message: "Heroes spell upgrade summary retrieved successfully",
+      serverId: identifiers.serverId,
+      ...result
+    });
+
+  } catch (err) {
+    console.error("Get spell upgrade summary error:", err);
+    res.status(500).json({ error: "Internal server error", code: "GET_SPELL_SUMMARY_FAILED" });
+  }
+});
 export default router;
-
-
-
-
-
-
