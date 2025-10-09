@@ -168,16 +168,24 @@ class CampaignModule {
 
       CampaignUI.showLoading('campaignMainContent', `Loading World ${worldId}...`);
 
-      // 🔧 Utiliser l'API admin pour les détails complets
-      const { data } = await AdminCore.makeRequest(`/api/admin/campaign/worlds/${worldId}`);
+      // 🔧 Utiliser l'API admin
+      const response = await AdminCore.makeRequest(`/api/admin/campaign/worlds/${worldId}`);
       
-      // L'API admin retourne { data: { world: {...} } }
-      this.currentWorldData = data.world;
+      // L'API admin retourne { success: true, data: { world: {...} } }
+      // Donc on accède à response.data.world
+      this.currentWorldData = response.data.world;
       
       // Vérifier que les données sont valides
-      if (!this.currentWorldData || !this.currentWorldData.levels) {
-        throw new Error('Invalid world data received');
+      if (!this.currentWorldData) {
+        throw new Error('No world data received from API');
       }
+      
+      if (!this.currentWorldData.levels || !Array.isArray(this.currentWorldData.levels)) {
+        console.error('❌ Invalid world data:', this.currentWorldData);
+        throw new Error('World data is missing levels array');
+      }
+
+      console.log(`✅ Loaded world ${worldId} with ${this.currentWorldData.levels.length} levels`);
 
       this.updateBreadcrumb();
       this.renderWorldView();
