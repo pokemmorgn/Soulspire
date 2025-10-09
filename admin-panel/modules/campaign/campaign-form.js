@@ -63,9 +63,23 @@ class CampaignForm {
 
   async loadAvailableMonsters(worldId) {
     try {
-      const { data } = await AdminCore.makeRequest(`/api/admin/campaign/monsters/available?worldId=${worldId}`);
-      this.availableMonsters = data.monsters || [];
+      const result = await AdminCore.makeRequest(`/api/admin/campaign/monsters/available?worldId=${worldId}`);
+      
+      console.log('🔍 Monsters API result:', result);
+      
+      // Extraire depuis { response: {...}, data: { success: true, data: { monsters: [...] } } }
+      const jsonResponse = result.data;
+      console.log('🔍 JSON response:', jsonResponse);
+      
+      const responseData = jsonResponse.data;
+      console.log('🔍 Response data:', responseData);
+      
+      this.availableMonsters = responseData.monsters || [];
       console.log(`✅ Loaded ${this.availableMonsters.length} available monsters`);
+      
+      if (this.availableMonsters.length === 0) {
+        console.warn('⚠️ No monsters found! Check worldTags in database.');
+      }
     } catch (error) {
       console.error('❌ Error loading monsters:', error);
       this.availableMonsters = [];
