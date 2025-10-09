@@ -14,7 +14,7 @@ export interface HeroSpellDefinition {
   
   // Sorts par slot
   spell1: string;           // Débloqué: Common+
-  spell2?: string;          // Débloqué: Rare+
+  spell2?: string;          // Débloqué: Epic+
   ultimate: string;         // Débloqué: Legendary+ (vide pour Common/Rare/Epic)
   passive1?: string;        // Débloqué: Rare+
   passive2?: string;        // Débloqué: Legendary+
@@ -138,7 +138,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     role: "Tank",
     rarity: "Rare",
     spell1: "ember_bash",
-    spell2: "scorched_defense",
     ultimate: "",
     passive1: "heated_armor"
   },
@@ -151,7 +150,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     role: "DPS Ranged",
     rarity: "Rare",
     spell1: "fireball",
-    spell2: "flame_orb",
     ultimate: "",
     passive1: "burning_grimoire"
   },
@@ -164,7 +162,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     role: "Support",
     rarity: "Rare",
     spell1: "flame_turret",
-    spell2: "repair_kit",
     ultimate: "",
     passive1: "engineer_mind"
   },
@@ -244,7 +241,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     role: "DPS Ranged",
     rarity: "Rare",
     spell1: "javelin_throw",
-    spell2: "wind_dive",
     ultimate: "",
     passive1: "harpy_grace"
   },
@@ -257,7 +253,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     role: "Support",
     rarity: "Rare",
     spell1: "wind_song",
-    spell2: "gust_shield",
     ultimate: "",
     passive1: "bard_inspiration"
   },
@@ -270,7 +265,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     role: "DPS Melee",
     rarity: "Rare",
     spell1: "dual_slash",
-    spell2: "wind_step",
     ultimate: "",
     passive1: "swift_strikes"
   },
@@ -418,7 +412,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     role: "Tank",
     rarity: "Rare",
     spell1: "light_shield",
-    spell2: "holy_guard",
     ultimate: "",
     passive1: "divine_protection"
   },
@@ -431,7 +424,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     role: "DPS Ranged",
     rarity: "Rare",
     spell1: "light_arrow",
-    spell2: "piercing_ray",
     ultimate: "",
     passive1: "precision_aim"
   },
@@ -444,7 +436,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     role: "Support",
     rarity: "Rare",
     spell1: "heal",
-    spell2: "holy_shield",
     ultimate: "",
     passive1: "light_aura"
   },
@@ -617,16 +608,20 @@ export function getSlotsForRarity(rarity: string): {
   const slots = {
     spell1: true,     // Toujours débloqué (Common+)
     spell2: false,
-    ultimate: false,  // Seulement Epic+
+    ultimate: false,
     passive1: false,
     passive2: false,
     passive3: false
   };
   
-  // Rare+
+  // Rare+ : passive1
   if (["Rare", "Epic", "Legendary", "Mythic"].includes(rarity)) {
-    slots.spell2 = true;
     slots.passive1 = true;
+  }
+  
+  // Epic+ : spell2
+  if (["Epic", "Legendary", "Mythic"].includes(rarity)) {
+    slots.spell2 = true;
   }
   
   // Legendary+ uniquement
