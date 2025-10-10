@@ -324,24 +324,22 @@ const seedHeroes = async () => {
     let insertedCount = 0;
     let updatedCount = 0;
 
-    for (const heroData of heroes) {
-      const existing = await Hero.findOne({ name: heroData.name });
+for (const heroData of heroes) {
+  const existing = await Hero.findOne({ name: heroData.name });
 
-      if (existing) {
-        // Mettre à jour
-        await Hero.updateOne(
-          { name: heroData.name },
-          { $set: heroData }
-        );
-        updatedCount++;
-        console.log(`   🔄 Updated: ${heroData.name} (${heroData.rarity})`);
-      } else {
-        // Insérer
-        await Hero.create(heroData);
-        insertedCount++;
-        console.log(`   ✅ Inserted: ${heroData.name} (${heroData.rarity})`);
-      }
-    }
+  if (existing) {
+    // ✅ NOUVEAU : Utiliser .save() pour déclencher le hook
+    Object.assign(existing, heroData);
+    await existing.save();
+    updatedCount++;
+    console.log(`   🔄 Updated: ${heroData.name} (${heroData.rarity})`);
+  } else {
+    // Insérer
+    await Hero.create(heroData);
+    insertedCount++;
+    console.log(`   ✅ Inserted: ${heroData.name} (${heroData.rarity})`);
+  }
+}
 
     console.log(`\n📊 Seeding Summary:`);
     console.log(`   ✅ Inserted: ${insertedCount} heroes`);
