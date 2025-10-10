@@ -526,57 +526,49 @@ export class MonsterService {
   /**
    * Extraire les sorts d'un monstre
    */
-  private static extractMonsterSpells(monster: any): HeroSpells {
-    const heroSpells: HeroSpells = {};
-
-    if (monster.spells) {
-      if (monster.spells.spell1?.id) {
-        heroSpells.spell1 = {
-          id: monster.spells.spell1.id,
-          level: monster.spells.spell1.level || 1
-        };
-      }
-
-      if (monster.spells.spell2?.id) {
-        heroSpells.spell2 = {
-          id: monster.spells.spell2.id,
-          level: monster.spells.spell2.level || 1
-        };
-      }
-
-      if (monster.spells.spell3?.id) {
-        heroSpells.spell3 = {
-          id: monster.spells.spell3.id,
-          level: monster.spells.spell3.level || 1
-        };
-      }
-
-      if (monster.spells.ultimate?.id) {
-        heroSpells.ultimate = {
-          id: monster.spells.ultimate.id,
-          level: monster.spells.ultimate.level || 1
-        };
-      }
-
-      if (monster.spells.passive?.id) {
-        heroSpells.passive = {
-          id: monster.spells.passive.id,
-          level: monster.spells.passive.level || 1
-        };
-      }
-    }
-
-    // Ultimate par défaut si pas défini
-    if (!heroSpells.ultimate) {
-      heroSpells.ultimate = {
-        id: this.getDefaultUltimate(monster.element, monster.role),
-        level: 1
+private static extractMonsterSpells(monster: any): HeroSpells {
+  const heroSpells: HeroSpells = {};
+  if (monster.spells) {
+    if (monster.spells.active1?.id) {
+      heroSpells.active1 = {
+        id: monster.spells.active1.id,
+        level: monster.spells.active1.level || 1
       };
     }
-
-    return heroSpells;
+    if (monster.spells.active2?.id) {
+      heroSpells.active2 = {
+        id: monster.spells.active2.id,
+        level: monster.spells.active2.level || 1
+      };
+    }
+    if (monster.spells.active3?.id) {
+      heroSpells.active3 = {
+        id: monster.spells.active3.id,
+        level: monster.spells.active3.level || 1
+      };
+    }
+    if (monster.spells.ultimate?.id) {
+      heroSpells.ultimate = {
+        id: monster.spells.ultimate.id,
+        level: monster.spells.ultimate.level || 1
+      };
+    }
+    if (monster.spells.passive?.id) {
+      heroSpells.passive = {
+        id: monster.spells.passive.id,
+        level: monster.spells.passive.level || 1
+      };
+    }
   }
-
+  // Ultimate par défaut si pas défini
+  if (!heroSpells.ultimate) {
+    heroSpells.ultimate = {
+      id: this.getDefaultUltimate(monster.element, monster.role),
+      level: 1
+    };
+  }
+  return heroSpells;
+}
   /**
    * Générer des ennemis par défaut (fallback)
    */
