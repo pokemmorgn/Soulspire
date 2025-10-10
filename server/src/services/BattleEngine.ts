@@ -1,6 +1,7 @@
 import { IBattleParticipant, IBattleAction, IBattleResult, IWaveData } from "../models/Battle";
 import { SpellManager, HeroSpells } from "../gameplay/SpellManager";
 import { EffectManager } from "../gameplay/EffectManager";
+import { DotManager } from "../gameplay/DotManager";
 
 export interface IBattleOptions {
   mode: "auto" | "manual";
@@ -621,17 +622,19 @@ private determineAction(participant: IBattleParticipant, skipUltimate: boolean =
     }
     
     let defense = defenderStats.def;
-    if (attackType === "skill" || attackType === "ultimate") {
-      defense = Math.floor((defenderStats.defMagique || defense) * 0.7 + defense * 0.3);
-    }
-    
-    let damage = Math.max(1, baseAttack - Math.floor(defense / 2));
-    damage *= this.getElementalAdvantage(attacker.element, defender.element);
-    damage *= this.getRarityMultiplier(attacker.rarity);
-    damage *= (0.9 + Math.random() * 0.2);
-    
-    return Math.floor(damage);
+    defense = DotManager.applyDefenseReduction(defender, defense);
+  
+  if (attackType === "skill" || attackType === "ultimate") {
+    defense = Math.floor((defenderStats.defMagique || defense) * 0.7 + defense * 0.3);
   }
+  
+  let damage = Math.max(1, baseAttack - Math.floor(defense / 2));
+  damage *= this.getElementalAdvantage(attacker.element, defender.element);
+  damage *= this.getRarityMultiplier(attacker.rarity);
+  damage *= (0.9 + Math.random() * 0.2);
+  
+  return Math.floor(damage);
+}
 
 /**
  * Sélectionner une cible en fonction de la position et du rôle
@@ -789,14 +792,14 @@ private executeAction(action: IBattleAction): void {
             EffectManager.removeEffect(target, "shield");
             console.log(`🛡️ Shield brisé ! ${overflow} dégâts passent`);
             
-            // ✅ NOUVEAU : Vérifier réveil de Sleep
+            // Vérifier réveil de Sleep
             this.checkSleepWakeUp(target, overflow);
           }
         } else {
           // Dégâts normaux
           target.currentHp -= action.damage;
           
-          // ✅ NOUVEAU : Vérifier réveil de Sleep
+          // Vérifier réveil de Sleep
           this.checkSleepWakeUp(target, action.damage);
         }
         
@@ -808,62 +811,77 @@ private executeAction(action: IBattleAction): void {
       }
     }
   }
-    
-    if (action.healing && action.healing > 0) {
-      for (const targetId of action.targetIds) {
-        const target = this.findParticipant(targetId);
-        if (target && target.status.alive) {
-          target.currentHp = Math.min(target.stats.maxHp, target.currentHp + action.healing);
-        }
-      }
-    }
-    
-    if (action.buffsApplied && action.buffsApplied.length > 0) {
-      for (const targetId of action.targetIds) {
-        const target = this.findParticipant(targetId);
-        if (target && target.status.alive) {
-          for (const buff of action.buffsApplied) {
-            if (!target.status.buffs.includes(buff)) {
-              target.status.buffs.push(buff);
-            }
-          }
-        }
-      }
-    }
-    
-    if (action.debuffsApplied && action.debuffsApplied.length > 0) {
-      for (const targetId of action.targetIds) {
-        const target = this.findParticipant(targetId);
-        if (target && target.status.alive) {
-          for (const debuff of action.debuffsApplied) {
-            if (!target.status.debuffs.includes(debuff)) {
-              target.status.debuffs.push(debuff);
-            }
-          }
-        }
-      }
-    }
-    
+  
+  // ✅ NOUVEAU : Vérifier Bleed après qu'un participant attaque
+  if (action.actionType === "attack" || action.actionType === "skill" || action.actionType === "ultimate") {
     const actor = this.findParticipant(action.actorId);
-    if (actor) {
-      if (action.energyGain) {
-        actor.energy = Math.min(100, actor.energy + action.energyGain);
-      }
-      if (action.energyCost) {
-        actor.energy = Math.max(0, actor.energy - action.energyCost);
-      }
+    if (actor && actor.status.alive) {
+      DotManager.applyBleedMovementDamage(actor);
     }
-    
-    action.participantsAfter = this.captureParticipantsState();
-    if (this.isWaveBattle) {
-      (action as any).waveNumber = this.currentWave;
-    }
-    this.actions.push(action);
-    
-    const actionDesc = action.actionType === "ultimate" ? "ULTIMATE" :
-                      action.actionType === "skill" ? "compétence" : "attaque";
-    console.log(`⚔️ ${action.actorName} utilise ${actionDesc} et inflige ${action.damage || 0} dégâts${action.healing ? `, soigne ${action.healing}` : ""}`);
   }
+  
+  if (action.healing && action.healing > 0) {
+    for (const targetId of action.targetIds) {
+      const target = this.findParticipant(targetId);
+      if (target && target.status.alive) {
+        // ✅ Appliquer réduction Poison via DotManager
+        const finalHealing = DotManager.applyHealingReduction(target, action.healing);
+        
+        target.currentHp = Math.min(target.stats.maxHp, target.currentHp + finalHealing);
+        
+        if (finalHealing > 0) {
+          console.log(`💚 ${target.name} récupère ${finalHealing} HP`);
+        }
+      }
+    }
+  }
+  
+  if (action.buffsApplied && action.buffsApplied.length > 0) {
+    for (const targetId of action.targetIds) {
+      const target = this.findParticipant(targetId);
+      if (target && target.status.alive) {
+        for (const buff of action.buffsApplied) {
+          if (!target.status.buffs.includes(buff)) {
+            target.status.buffs.push(buff);
+          }
+        }
+      }
+    }
+  }
+  
+  if (action.debuffsApplied && action.debuffsApplied.length > 0) {
+    for (const targetId of action.targetIds) {
+      const target = this.findParticipant(targetId);
+      if (target && target.status.alive) {
+        for (const debuff of action.debuffsApplied) {
+          if (!target.status.debuffs.includes(debuff)) {
+            target.status.debuffs.push(debuff);
+          }
+        }
+      }
+    }
+  }
+  
+  const actor = this.findParticipant(action.actorId);
+  if (actor) {
+    if (action.energyGain) {
+      actor.energy = Math.min(100, actor.energy + action.energyGain);
+    }
+    if (action.energyCost) {
+      actor.energy = Math.max(0, actor.energy - action.energyCost);
+    }
+  }
+  
+  action.participantsAfter = this.captureParticipantsState();
+  if (this.isWaveBattle) {
+    (action as any).waveNumber = this.currentWave;
+  }
+  this.actions.push(action);
+  
+  const actionDesc = action.actionType === "ultimate" ? "ULTIMATE" :
+                    action.actionType === "skill" ? "compétence" : "attaque";
+  console.log(`⚔️ ${action.actorName} utilise ${actionDesc} et inflige ${action.damage || 0} dégâts${action.healing ? `, soigne ${action.healing}` : ""}`);
+}
 /**
  * Vérifier si un participant endormi se réveille en prenant des dégâts
  */
