@@ -1,14 +1,14 @@
+// server/src/models/Hero.ts
 import mongoose, { Document, Schema } from "mongoose";
 import { getHeroSpellDefinition, getInitialSpells } from '../data/heroSpellDefinitions';
 
-// Interface pour les sorts équipés
+// Interface pour les sorts équipés - NOUVELLE STRUCTURE
 interface IHeroSpells {
-  spell1?: { id: string; level: number };
-  spell2?: { id: string; level: number };
+  active1?: { id: string; level: number };
+  active2?: { id: string; level: number };
+  active3?: { id: string; level: number };
   ultimate?: { id: string; level: number };
-  passive1?: { id: string; level: number };
-  passive2?: { id: string; level: number };
-  passive3?: { id: string; level: number };
+  passive?: { id: string; level: number };
 }
 
 // Interface pour l'équipement
@@ -101,14 +101,13 @@ const heroSchema = new Schema<IHeroDocument>({
     energyRegen:  { type: Number, required: true, min: 0, default: 10 },
   },
 
-  // Sorts
+  // Sorts - NOUVELLE STRUCTURE
   spells: {
-    spell1:   { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
-    spell2:   { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
+    active1:  { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
+    active2:  { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
+    active3:  { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
     ultimate: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 10 } },
-    passive1: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
-    passive2: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
-    passive3: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
+    passive:  { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
   },
 
   // Équipement
@@ -122,14 +121,15 @@ const heroSchema = new Schema<IHeroDocument>({
   }
 }, { timestamps: true, collection: "heroes" });
 
-// Index
+// Index - MISE À JOUR
 heroSchema.index({ rarity: 1 });
 heroSchema.index({ role: 1 });
 heroSchema.index({ element: 1 });
+heroSchema.index({ "spells.active1.id": 1 });
+heroSchema.index({ "spells.active2.id": 1 });
+heroSchema.index({ "spells.active3.id": 1 });
 heroSchema.index({ "spells.ultimate.id": 1 });
-heroSchema.index({ "spells.passive1.id": 1 });
-heroSchema.index({ "spells.passive2.id": 1 });
-heroSchema.index({ "spells.passive3.id": 1 });
+heroSchema.index({ "spells.passive.id": 1 });
 heroSchema.index({ "equipment.weapon": 1 });
 heroSchema.index({ "equipment.helmet": 1 });
 heroSchema.index({ "equipment.armor": 1 });
@@ -407,15 +407,15 @@ heroSchema.methods.getEnergyGeneration = function () {
   return Math.floor(10 + (this.baseStats.moral / 10) + (this.baseStats.energyRegen || 0));
 };
 
+// MÉTHODES DE SORTS - MISE À JOUR
 heroSchema.methods.getAllSpells = function () {
   const out: Array<{ slot: string; id: string; level: number }> = [];
   const s = this.spells;
-  if (s.spell1?.id) out.push({ slot: "spell1", id: s.spell1.id, level: s.spell1.level });
-  if (s.spell2?.id) out.push({ slot: "spell2", id: s.spell2.id, level: s.spell2.level });
+  if (s.active1?.id) out.push({ slot: "active1", id: s.active1.id, level: s.active1.level });
+  if (s.active2?.id) out.push({ slot: "active2", id: s.active2.id, level: s.active2.level });
+  if (s.active3?.id) out.push({ slot: "active3", id: s.active3.id, level: s.active3.level });
   if (s.ultimate?.id) out.push({ slot: "ultimate", id: s.ultimate.id, level: s.ultimate.level });
-  if (s.passive1?.id) out.push({ slot: "passive1", id: s.passive1.id, level: s.passive1.level });
-  if (s.passive2?.id) out.push({ slot: "passive2", id: s.passive2.id, level: s.passive2.level });
-  if (s.passive3?.id) out.push({ slot: "passive3", id: s.passive3.id, level: s.passive3.level });
+  if (s.passive?.id) out.push({ slot: "passive", id: s.passive.id, level: s.passive.level });
   return out;
 };
 
@@ -435,10 +435,11 @@ heroSchema.methods.upgradeSpell = function (slot: string, newLevel: number) {
   if (!s?.id) return false;
   const max = (slot === "ultimate") ? 10 : 12;
   if (newLevel > max || newLevel <= s.level) return false;
-  s.level = newLevel; return true;
+  s.level = newLevel; 
+  return true;
 };
 
-// Pré-save hook
+// Pré-save hook - MISE À JOUR
 heroSchema.pre("save", function (next) {
   // Clamp des stats
   this.baseStats.reductionCooldown = cap(this.baseStats.reductionCooldown, 0, 50);
@@ -457,28 +458,29 @@ heroSchema.pre("save", function (next) {
     if (spellDefinition) {
       const initialSpells = getInitialSpells(heroId, this.rarity);
       
-      if (!this.spells.spell1?.id && initialSpells.spell1) {
-        this.spells.spell1 = initialSpells.spell1;
+      // Active1 - toujours présent
+      if (!this.spells.active1?.id && initialSpells.active1) {
+        this.spells.active1 = initialSpells.active1;
       }
       
-      if (!this.spells.spell2?.id && initialSpells.spell2) {
-        this.spells.spell2 = initialSpells.spell2;
+      // Active2 - si défini
+      if (!this.spells.active2?.id && initialSpells.active2) {
+        this.spells.active2 = initialSpells.active2;
       }
       
+      // Active3 - si défini
+      if (!this.spells.active3?.id && initialSpells.active3) {
+        this.spells.active3 = initialSpells.active3;
+      }
+      
+      // Ultimate - si défini
       if (!this.spells.ultimate?.id && initialSpells.ultimate) {
         this.spells.ultimate = initialSpells.ultimate;
       }
       
-      if (!this.spells.passive1?.id && initialSpells.passive1) {
-        this.spells.passive1 = initialSpells.passive1;
-      }
-      
-      if (!this.spells.passive2?.id && initialSpells.passive2) {
-        this.spells.passive2 = initialSpells.passive2;
-      }
-      
-      if (!this.spells.passive3?.id && initialSpells.passive3) {
-        this.spells.passive3 = initialSpells.passive3;
+      // Passive - si défini
+      if (!this.spells.passive?.id && initialSpells.passive) {
+        this.spells.passive = initialSpells.passive;
       }
     } else {
       console.warn(`⚠️ Aucune définition de sorts pour: ${this.name} (${heroId})`);
