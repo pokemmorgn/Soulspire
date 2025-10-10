@@ -2,6 +2,7 @@ import { IBattleParticipant, IBattleAction, IBattleResult, IWaveData } from "../
 import { SpellManager, HeroSpells } from "../gameplay/SpellManager";
 import { EffectManager } from "../gameplay/EffectManager";
 import { DotManager } from "../gameplay/DotManager";
+import { DebuffManager } from "../gameplay/DebuffManager";
 
 export interface IBattleOptions {
   mode: "auto" | "manual";
@@ -328,8 +329,9 @@ private processTurn(): void {
   
   const aliveParticipants = this.getAllAliveParticipants()
     .sort((a, b) => {
-      const speedA = a.stats.speed + Math.random() * 10;
-      const speedB = b.stats.speed + Math.random() * 10;
+      // ✅ Appliquer Slow via DebuffManager
+      const speedA = DebuffManager.getEffectiveSpeed(a, a.stats.speed) + Math.random() * 10;
+      const speedB = DebuffManager.getEffectiveSpeed(b, b.stats.speed) + Math.random() * 10;
       return speedB - speedA;
     });
   
@@ -341,10 +343,9 @@ private processTurn(): void {
     
     if (!participant.status.alive) continue;
     
-    // ✅ NOUVEAU : Vérifier si le participant est sous contrôle
     if (this.isControlled(participant)) {
       console.log(`⛔ ${participant.name} est contrôlé, skip son tour`);
-      continue; // Skip ce participant
+      continue;
     }
     
     const action = this.determineActionWithMode(participant);
@@ -599,39 +600,51 @@ private determineAction(participant: IBattleParticipant, skipUltimate: boolean =
     };
   }
 
-  private calculateDamage(
-    attacker: IBattleParticipant, 
-    defender: IBattleParticipant, 
-    attackType: "attack" | "skill" | "ultimate"
-  ): number {
-    const attackerStats = attacker.stats as any;
-    const defenderStats = defender.stats as any;
-    
-    let baseAttack = attackerStats.atk;
-    
-    if (attackType === "skill") {
-      baseAttack += Math.floor((attackerStats.intelligence || 70) * 0.4);
-      baseAttack *= 1.6;
-    } else if (attackType === "ultimate") {
-      baseAttack += Math.floor((attackerStats.intelligence || 70) * 0.6);
-      baseAttack *= 2.5;
-    }
-    
-    if (attacker.role === "DPS Melee" || attacker.role === "Tank") {
-      baseAttack += Math.floor((attackerStats.force || 80) * 0.3);
-    }
-    
-    let defense = defenderStats.def;
-    defense = DotManager.applyDefenseReduction(defender, defense);
+private calculateDamage(
+  attacker: IBattleParticipant, 
+  defender: IBattleParticipant, 
+  attackType: "attack" | "skill" | "ultimate"
+): number {
+  const attackerStats = attacker.stats as any;
+  const defenderStats = defender.stats as any;
+  
+  let baseAttack = attackerStats.atk;
+  
+  if (attackType === "skill") {
+    baseAttack += Math.floor((attackerStats.intelligence || 70) * 0.4);
+    baseAttack *= 1.6;
+  } else if (attackType === "ultimate") {
+    baseAttack += Math.floor((attackerStats.intelligence || 70) * 0.6);
+    baseAttack *= 2.5;
+  }
+  
+  if (attacker.role === "DPS Melee" || attacker.role === "Tank") {
+    baseAttack += Math.floor((attackerStats.force || 80) * 0.3);
+  }
+  
+  let defense = defenderStats.def;
+  
+  // ✅ Appliquer Corrosion (DoT) via DotManager
+  defense = DotManager.applyDefenseReduction(defender, defense);
+  
+  // ✅ Appliquer Armor Break (Debuff) via DebuffManager
+  defense = DebuffManager.applyArmorBreak(defender, defense);
   
   if (attackType === "skill" || attackType === "ultimate") {
     defense = Math.floor((defenderStats.defMagique || defense) * 0.7 + defense * 0.3);
   }
   
   let damage = Math.max(1, baseAttack - Math.floor(defense / 2));
+  
+  // ✅ Appliquer Weakness (Debuff) via DebuffManager
+  damage = DebuffManager.applyWeakness(attacker, damage);
+  
   damage *= this.getElementalAdvantage(attacker.element, defender.element);
   damage *= this.getRarityMultiplier(attacker.rarity);
   damage *= (0.9 + Math.random() * 0.2);
+  
+  // ✅ Appliquer Vulnerability (Debuff) via DebuffManager - DERNIER
+  damage = DebuffManager.applyVulnerability(defender, damage);
   
   return Math.floor(damage);
 }
