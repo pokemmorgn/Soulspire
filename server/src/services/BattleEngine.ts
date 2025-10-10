@@ -360,6 +360,9 @@ private processTurn(): void {
   /**
  * Vérifier si un participant est sous contrôle (stun, freeze, sleep)
  */
+/**
+ * Vérifier si un participant est sous contrôle (stun, freeze, sleep, fear)
+ */
 private isControlled(participant: IBattleParticipant): boolean {
   // Vérifier Stun
   if (participant.status.debuffs.includes("stunned")) {
@@ -373,9 +376,15 @@ private isControlled(participant: IBattleParticipant): boolean {
     return true;
   }
   
-  // Vérifier Sleep (si implémenté plus tard)
+  // ✅ NOUVEAU : Vérifier Sleep
   if (participant.status.debuffs.includes("sleeping")) {
     console.log(`😴 ${participant.name} dort - skip action`);
+    return true;
+  }
+  
+  // ✅ NOUVEAU : Vérifier Fear
+  if (participant.status.debuffs.includes("feared")) {
+    console.log(`😱 ${participant.name} est terrifié - skip action`);
     return true;
   }
   
@@ -756,20 +765,49 @@ private getAvailableTargets(attacker: IBattleParticipant, allTargets: IBattlePar
     return Math.random() < totalChance;
   }
 
-  private executeAction(action: IBattleAction): void {
-    if (action.damage && action.damage > 0) {
-      for (const targetId of action.targetIds) {
-        const target = this.findParticipant(targetId);
-        if (target && target.status.alive) {
-          target.currentHp = Math.max(0, target.currentHp - action.damage);
+private executeAction(action: IBattleAction): void {
+  if (action.damage && action.damage > 0) {
+    for (const targetId of action.targetIds) {
+      const target = this.findParticipant(targetId);
+      if (target && target.status.alive) {
+        // Vérifier Shield
+        if (EffectManager.hasEffect(target, "shield")) {
+          const shieldData = EffectManager.getEffectData(target, "shield");
+          const remainingShield = shieldData?.metadata?.hp || 0;
           
-          if (target.currentHp === 0) {
-            target.status.alive = false;
-            console.log(`💀 ${target.name} est KO !`);
+          if (action.damage <= remainingShield) {
+            // Shield absorbe tout
+            if (shieldData && shieldData.metadata) {
+              shieldData.metadata.hp -= action.damage;
+            }
+            console.log(`🛡️ Shield absorbe ${action.damage} dégâts`);
+            continue; // Pas de dégâts sur HP
+          } else {
+            // Shield absorde une partie
+            const overflow = action.damage - remainingShield;
+            target.currentHp -= overflow;
+            EffectManager.removeEffect(target, "shield");
+            console.log(`🛡️ Shield brisé ! ${overflow} dégâts passent`);
+            
+            // ✅ NOUVEAU : Vérifier réveil de Sleep
+            this.checkSleepWakeUp(target, overflow);
           }
+        } else {
+          // Dégâts normaux
+          target.currentHp -= action.damage;
+          
+          // ✅ NOUVEAU : Vérifier réveil de Sleep
+          this.checkSleepWakeUp(target, action.damage);
+        }
+        
+        if (target.currentHp <= 0) {
+          target.currentHp = 0;
+          target.status.alive = false;
+          console.log(`💀 ${target.name} est KO !`);
         }
       }
     }
+  }
     
     if (action.healing && action.healing > 0) {
       for (const targetId of action.targetIds) {
@@ -826,7 +864,17 @@ private getAvailableTargets(attacker: IBattleParticipant, allTargets: IBattlePar
                       action.actionType === "skill" ? "compétence" : "attaque";
     console.log(`⚔️ ${action.actorName} utilise ${actionDesc} et inflige ${action.damage || 0} dégâts${action.healing ? `, soigne ${action.healing}` : ""}`);
   }
-
+/**
+ * Vérifier si un participant endormi se réveille en prenant des dégâts
+ */
+  private checkSleepWakeUp(target: IBattleParticipant, damageTaken: number): void {
+    if (damageTaken > 0 && target.status.debuffs.includes("sleeping")) {
+      // Retirer l'effet de sommeil immédiatement
+      EffectManager.removeEffect(target, "sleep");
+      console.log(`👁️ ${target.name} se réveille en prenant ${damageTaken} dégâts !`);
+    }
+  }
+  
   private captureParticipantsState(): any {
     const state: any = {};
     const allParticipants = [...this.playerTeam, ...this.enemyTeam];
