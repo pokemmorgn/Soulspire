@@ -3,7 +3,7 @@ import { SpellManager, HeroSpells } from "../gameplay/SpellManager";
 import { EffectManager } from "../gameplay/EffectManager";
 import { DotManager } from "../gameplay/DotManager";
 import { DebuffManager } from "../gameplay/DebuffManager";
-
+import { BuffManager } from "../gameplay/BuffManager";
 export interface IBattleOptions {
   mode: "auto" | "manual";
   speed: 1 | 2 | 3;
@@ -646,7 +646,23 @@ private calculateDamage(
   // ✅ Appliquer Vulnerability (Debuff) via DebuffManager - DERNIER
   damage = DebuffManager.applyVulnerability(defender, damage);
   
-  return Math.floor(damage);
+  damage = Math.floor(damage);
+  
+  // ✅ NOUVEAU : Appliquer Incandescent Guard (réduction de dégâts)
+  damage = BuffManager.applyIncandescentGuard(defender, damage);
+  
+  // ✅ NOUVEAU : Vérifier Shield (absorption de dégâts) - TOUT DERNIER
+  if (BuffManager.hasShield(defender)) {
+    const result = BuffManager.applyShieldAbsorption(defender, damage);
+    damage = result.damageTaken;
+    
+    // Log pour debug
+    if (result.damageBlocked > 0) {
+      console.log(`🛡️ Bouclier de ${defender.name} absorbe ${result.damageBlocked} dégâts`);
+    }
+  }
+  
+  return Math.max(1, damage);
 }
 
 /**
@@ -782,52 +798,69 @@ private getAvailableTargets(attacker: IBattleParticipant, allTargets: IBattlePar
   }
 
 private executeAction(action: IBattleAction): void {
+  const actor = this.findParticipant(action.actorId);
+  
   if (action.damage && action.damage > 0) {
     for (const targetId of action.targetIds) {
       const target = this.findParticipant(targetId);
       if (target && target.status.alive) {
-        // Vérifier Shield
-        if (EffectManager.hasEffect(target, "shield")) {
-          const shieldData = EffectManager.getEffectData(target, "shield");
-          const remainingShield = shieldData?.metadata?.hp || 0;
+        let finalDamage = action.damage;
+        
+        // ✅ NOUVEAU : Vérifier Shield (absorption)
+        if (BuffManager.hasShield(target)) {
+          const result = BuffManager.applyShieldAbsorption(target, finalDamage);
+          finalDamage = result.damageTaken;
           
-          if (action.damage <= remainingShield) {
-            // Shield absorbe tout
-            if (shieldData && shieldData.metadata) {
-              shieldData.metadata.hp -= action.damage;
-            }
-            console.log(`🛡️ Shield absorbe ${action.damage} dégâts`);
-            continue; // Pas de dégâts sur HP
-          } else {
-            // Shield absorde une partie
-            const overflow = action.damage - remainingShield;
-            target.currentHp -= overflow;
-            EffectManager.removeEffect(target, "shield");
-            console.log(`🛡️ Shield brisé ! ${overflow} dégâts passent`);
-            
-            // Vérifier réveil de Sleep
-            this.checkSleepWakeUp(target, overflow);
+          // Log pour UI
+          if (result.damageBlocked > 0) {
+            console.log(`🛡️ Bouclier de ${target.name} absorbe ${result.damageBlocked} dégâts`);
           }
-        } else {
-          // Dégâts normaux
-          target.currentHp -= action.damage;
-          
-          // Vérifier réveil de Sleep
-          this.checkSleepWakeUp(target, action.damage);
         }
         
-        if (target.currentHp <= 0) {
-          target.currentHp = 0;
+        // Appliquer dégâts aux HP
+        if (finalDamage > 0) {
+          target.currentHp = Math.max(0, target.currentHp - finalDamage);
+          
+          // Vérifier réveil de Sleep
+          this.checkSleepWakeUp(target, finalDamage);
+        }
+        
+        // Vérifier mort
+        if (target.currentHp === 0) {
           target.status.alive = false;
           console.log(`💀 ${target.name} est KO !`);
+        }
+        
+        // ✅ NOUVEAU : Vérifier contre-attaque Garde Incandescente
+        if (target.status.alive && actor) {
+          const isMeleeAttack = action.actionType === "attack" || 
+                                (actor.role === "DPS Melee" || actor.role === "Tank");
+          
+          const counterData = BuffManager.triggerIncandescentGuardCounter(
+            target, 
+            actor, 
+            isMeleeAttack
+          );
+          
+          if (counterData) {
+            // Appliquer brûlure à l'attaquant
+            EffectManager.applyEffect(
+              "burn", 
+              actor, 
+              target, 
+              counterData.burnDuration, 
+              counterData.burnStacks
+            );
+            
+            console.log(`🔥⚔️ ${actor.name} est brûlé par la Garde Incandescente de ${target.name} !`);
+          }
         }
       }
     }
   }
   
-  // ✅ NOUVEAU : Vérifier Bleed après qu'un participant attaque
+  // ✅ Vérifier Bleed après qu'un participant attaque
   if (action.actionType === "attack" || action.actionType === "skill" || action.actionType === "ultimate") {
-    const actor = this.findParticipant(action.actorId);
     if (actor && actor.status.alive) {
       DotManager.applyBleedMovementDamage(actor);
     }
@@ -875,7 +908,6 @@ private executeAction(action: IBattleAction): void {
     }
   }
   
-  const actor = this.findParticipant(action.actorId);
   if (actor) {
     if (action.energyGain) {
       actor.energy = Math.min(100, actor.energy + action.energyGain);
