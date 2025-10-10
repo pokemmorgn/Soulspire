@@ -30,6 +30,39 @@ export class BuffManager {
   }
   
   /**
+   * Appliquer la réduction de dégâts de la Garde Incandescente
+   * @param target - Cible qui reçoit les dégâts
+   * @param baseDamage - Dégâts de base
+   * @returns Dégâts après réduction
+   */
+  static applyIncandescentGuard(target: IBattleParticipant, baseDamage: number): number {
+    if (!IncandescentGuardEffect.hasIncandescentGuard(target)) {
+      return baseDamage;
+    }
+    
+    return IncandescentGuardEffect.applyDamageReduction(target, baseDamage);
+  }
+  
+  /**
+   * Déclencher la contre-attaque de la Garde Incandescente
+   * @param defender - Défenseur avec Garde Incandescente
+   * @param attacker - Attaquant mêlée
+   * @param isMeleeAttack - true si attaque mêlée
+   * @returns Données de contre-attaque si déclenchée, null sinon
+   */
+  static triggerIncandescentGuardCounter(
+    defender: IBattleParticipant,
+    attacker: IBattleParticipant,
+    isMeleeAttack: boolean
+  ): { burnDuration: number; burnStacks: number } | null {
+    if (!IncandescentGuardEffect.triggerCounterAttack(defender, attacker, isMeleeAttack)) {
+      return null;
+    }
+    
+    return IncandescentGuardEffect.getCounterAttackData(defender);
+  }
+  
+  /**
    * Vérifier si une cible a un bouclier actif
    * @param target - Cible à vérifier
    * @returns true si bouclier actif
@@ -104,7 +137,7 @@ export class BuffManager {
     const activeEffects = (target as any).activeEffects as any[];
     if (!activeEffects) return [];
     
-    const buffIds = ["shield", "haste", "fortify", "rage", "regeneration"];
+    const buffIds = ["shield", "incandescent_guard", "haste", "fortify", "rage", "regeneration"];
     return activeEffects
       .filter((effect: any) => buffIds.includes(effect.id))
       .map((effect: any) => effect.id);
@@ -143,6 +176,12 @@ export class BuffManager {
       parts.push(`🛡️ Bouclier (${shieldHp} HP)`);
     }
     
+    // Incandescent Guard
+    if (activeBuffs.includes("incandescent_guard")) {
+      const reduction = IncandescentGuardEffect.getDamageReduction(target);
+      parts.push(`🔥🛡️ Garde Incandescente (-${reduction}% dégâts)`);
+    }
+    
     // Autres buffs (à implémenter)
     if (activeBuffs.includes("haste")) {
       parts.push("⚡ Célérité");
@@ -168,6 +207,7 @@ export class BuffManager {
    */
   static calculateBuffImpact(target: IBattleParticipant): {
     shieldHp: number;
+    damageReduction: number;
     atkBonus: number;
     defBonus: number;
     speedBonus: number;
@@ -175,6 +215,7 @@ export class BuffManager {
   } {
     return {
       shieldHp: this.getShieldHp(target),
+      damageReduction: IncandescentGuardEffect.getDamageReduction(target),
       atkBonus: 0, // TODO: Rage, autres buffs d'attaque
       defBonus: 0, // TODO: Fortify
       speedBonus: 0, // TODO: Haste
