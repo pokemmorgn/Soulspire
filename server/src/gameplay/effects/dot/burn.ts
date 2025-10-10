@@ -1,6 +1,6 @@
 // server/src/gameplay/effects/burn.ts
-import { IBattleParticipant } from "../../models/Battle";
-import { BaseEffect, IEffectConfig, EffectResult } from "./base/BaseEffect";
+import { IBattleParticipant } from "../../../models/Battle";
+import { BaseEffect, IEffectConfig, EffectResult } from "../base/BaseEffect";
 
 /**
  * Effet Burn (Brûlure)
@@ -87,4 +87,4 @@ export class BurnEffect extends BaseEffect {
 export const burnEffect = new BurnEffect();
 
 // Réexport des types pour compatibilité avec l'ancien code
-export { IEffect, EffectResult } from "./base/BaseEffect";
+export { IEffect, EffectResult } from "../base/BaseEffect";
