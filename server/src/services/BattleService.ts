@@ -565,30 +565,30 @@ for (const slot of sortedSlots) {
   return { playerTeam: team, playerSpells: spells };
 }
 
-  private static extractHeroSpells(heroData: any): HeroSpells {
-    const heroSpells: HeroSpells = {};
+private static extractHeroSpells(heroData: any): HeroSpells {
+  const heroSpells: HeroSpells = {};
 
-    if (heroData.spells) {
-      if (heroData.spells.spell1?.id) {
-        heroSpells.spell1 = {
-          id: heroData.spells.spell1.id,
-          level: heroData.spells.spell1.level || 1
-        };
-      }
-      
-      if (heroData.spells.spell2?.id) {
-        heroSpells.spell2 = {
-          id: heroData.spells.spell2.id,
-          level: heroData.spells.spell2.level || 1
-        };
-      }
-      
-      if (heroData.spells.spell3?.id) {
-        heroSpells.spell3 = {
-          id: heroData.spells.spell3.id,
-          level: heroData.spells.spell3.level || 1
-        };
-      }
+  if (heroData.spells) {
+    if (heroData.spells.active1?.id) {
+      heroSpells.active1 = {
+        id: heroData.spells.active1.id,
+        level: heroData.spells.active1.level || 1
+      };
+    }
+    
+    if (heroData.spells.active2?.id) {
+      heroSpells.active2 = {
+        id: heroData.spells.active2.id,
+        level: heroData.spells.active2.level || 1
+      };
+    }
+    
+    if (heroData.spells.active3?.id) {
+      heroSpells.active3 = {
+        id: heroData.spells.active3.id,
+        level: heroData.spells.active3.level || 1
+      };
+    }
       
       if (heroData.spells.ultimate?.id) {
         heroSpells.ultimate = {
