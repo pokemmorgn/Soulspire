@@ -497,4 +497,39 @@ heroSchema.pre("save", function (next) {
   next();
 });
 
+heroSchema.methods.calculateSpellStats = function (spellSlot: string, level: number) {
+  const spell = this.getSpell(spellSlot);
+  
+  if (!spell || !spell.id) {
+    return {
+      damage: 0,
+      healing: 0,
+      cooldown: 3,
+      duration: 0,
+      effect: "",
+      additionalEffects: {}
+    };
+  }
+
+  try {
+    // Charger la définition du sort depuis heroSpellDefinitions
+    const { getSpellStats } = require('../data/heroSpellDefinitions');
+    const spellStats = getSpellStats(spell.id, level, this.rarity);
+    
+    return spellStats;
+  } catch (error) {
+    console.error(`Erreur calculateSpellStats pour ${spell.id}:`, error);
+    
+    // Fallback avec des valeurs basées sur le level
+    return {
+      damage: level * 50,
+      healing: level * 40,
+      cooldown: Math.max(1, 5 - Math.floor(level / 3)),
+      duration: 3,
+      effect: spell.id,
+      additionalEffects: {}
+    };
+  }
+};
 export default mongoose.model<IHeroDocument>("Hero", heroSchema);
+
