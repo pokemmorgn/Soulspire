@@ -1,6 +1,7 @@
 // server/src/gameplay/BuffManager.ts
 import { IBattleParticipant } from "../models/Battle";
 import { ShieldEffect } from "./effects/buffs/shield";
+import { IncandescentGuardEffect } from "./effects/buffs/incandescent_guard";
 
 /**
  * Gestionnaire centralisé pour tous les effets secondaires des Buffs
