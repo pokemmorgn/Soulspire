@@ -12,9 +12,9 @@ interface SpellCooldown {
 
 // Interface pour les sorts équipés sur un héros
 export interface HeroSpells {
-  spell1?: { id: string; level: number };
-  spell2?: { id: string; level: number };
-  spell3?: { id: string; level: number };
+  active1?: { id: string; level: number };
+  active2?: { id: string; level: number };
+  active3?: { id: string; level: number };
   ultimate?: { id: string; level: number };
   passive?: { id: string; level: number };
 }
