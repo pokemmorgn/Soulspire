@@ -668,3 +668,112 @@ export function getInitialSpells(heroId: string, rarity: string): {
   
   return spells;
 }
+/**
+ * Obtenir les stats d'un sort à un niveau donné
+ */
+export function getSpellStats(spellId: string, level: number, rarity: string): {
+  damage: number;
+  healing: number;
+  cooldown: number;
+  duration: number;
+  energyCost: number;
+  effect: string;
+  additionalEffects: Record<string, any>;
+} {
+  // Trouver le héros qui possède ce sort
+  const heroWithSpell = Object.values(HERO_SPELL_DEFINITIONS).find(hero => 
+    hero.active1 === spellId || 
+    hero.active2 === spellId || 
+    hero.active3 === spellId || 
+    hero.ultimate === spellId || 
+    hero.passive === spellId
+  );
+
+  if (!heroWithSpell) {
+    console.warn(`⚠️ Sort ${spellId} non trouvé dans les définitions`);
+    return {
+      damage: 0,
+      healing: 0,
+      cooldown: 3,
+      duration: 0,
+      energyCost: 20,
+      effect: spellId,
+      additionalEffects: {}
+    };
+  }
+
+  // Déterminer le type de sort
+  const isUltimate = heroWithSpell.ultimate === spellId;
+  const isPassive = heroWithSpell.passive === spellId;
+
+  // Multiplicateurs de base selon la rareté
+  const rarityMultipliers: Record<string, number> = {
+    Common: 1.0,
+    Rare: 1.25,
+    Epic: 1.5,
+    Legendary: 2.0,
+    Mythic: 2.5
+  };
+
+  const rarityMult = rarityMultipliers[rarity] || 1.0;
+  const element = heroWithSpell.element;
+  const role = heroWithSpell.role;
+
+  // Les passifs n'ont pas de stats de combat
+  if (isPassive) {
+    return {
+      damage: 0,
+      healing: 0,
+      cooldown: 0,
+      duration: 0,
+      energyCost: 0,
+      effect: spellId,
+      additionalEffects: {
+        type: "passive",
+        description: `Passive effect: ${spellId}`
+      }
+    };
+  }
+
+  // Base stats selon le rôle
+  let baseDamage = 0;
+  let baseHealing = 0;
+  let baseCooldown = 3;
+  let baseEnergyCost = 20;
+  let duration = 0;
+
+  if (isUltimate) {
+    baseDamage = role === "DPS Melee" ? 300 : 
+                 role === "DPS Ranged" ? 250 : 
+                 role === "Tank" ? 150 : 100;
+    baseHealing = role === "Support" ? 200 : 0;
+    baseCooldown = 8;
+    baseEnergyCost = 100;
+    duration = 3;
+  } else {
+    baseDamage = role === "DPS Melee" ? 100 : 
+                 role === "DPS Ranged" ? 80 : 
+                 role === "Tank" ? 50 : 30;
+    baseHealing = role === "Support" ? 60 : 0;
+    baseCooldown = 3;
+    baseEnergyCost = 20;
+    duration = 2;
+  }
+
+  // Scaling par niveau
+  const levelScaling = 1 + (level - 1) * 0.15;
+
+  return {
+    damage: Math.floor(baseDamage * rarityMult * levelScaling),
+    healing: Math.floor(baseHealing * rarityMult * levelScaling),
+    cooldown: Math.max(1, baseCooldown - Math.floor(level / 3)),
+    duration: duration,
+    energyCost: Math.max(10, baseEnergyCost - Math.floor(level / 2)),
+    effect: spellId,
+    additionalEffects: {
+      element: element,
+      role: role,
+      type: isUltimate ? "ultimate" : "active"
+    }
+  };
+}
