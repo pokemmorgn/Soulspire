@@ -1382,6 +1382,88 @@ router.get("/spells/summary", authMiddleware, async (req: Request, res: Response
     res.status(500).json({ error: "Internal server error", code: "GET_SPELL_SUMMARY_FAILED" });
   }
 });
+
+/**
+ * GET /api/heroes/catalog/:heroId/spell/:spellSlot
+ * Obtenir les détails d'un sort d'un héros du catalogue (sans auth)
+ */
+router.get("/catalog/:heroId/spell/:spellSlot", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { heroId, spellSlot } = req.params;
+
+    // Validation du slot
+    const validSlots = ['active1', 'active2', 'active3', 'ultimate', 'passive'];
+    if (!validSlots.includes(spellSlot)) {
+      res.status(400).json({ 
+        error: "Invalid spell slot", 
+        code: "INVALID_SPELL_SLOT",
+        validSlots 
+      });
+      return;
+    }
+
+    // Trouver le héros dans le catalogue
+    const hero = await Hero.findById(heroId);
+    if (!hero) {
+      res.status(404).json({ error: "Hero not found", code: "HERO_NOT_FOUND" });
+      return;
+    }
+
+    // Récupérer les données du sort (niveau 1 par défaut pour le catalogue)
+    const spellLevel = 1;
+    const spellData = (hero as any).spells?.[spellSlot];
+    
+    if (!spellData) {
+      res.status(404).json({ 
+        error: "Spell not found for this hero", 
+        code: "SPELL_NOT_FOUND" 
+      });
+      return;
+    }
+
+    // Calculer les stats du sort au niveau 1
+    const currentStats = (hero as any).calculateSpellStats ? 
+      (hero as any).calculateSpellStats(spellSlot, spellLevel) : 
+      {
+        damage: 0,
+        healing: 0,
+        cooldown: 3,
+        duration: 0,
+        effect: "",
+        additionalEffects: {}
+      };
+
+    const nextLevelStats = (hero as any).calculateSpellStats ? 
+      (hero as any).calculateSpellStats(spellSlot, spellLevel + 1) : null;
+
+    res.json({
+      message: "Catalog spell details retrieved successfully",
+      serverId: req.serverId,
+      success: true,
+      spell: {
+        spellId: spellData.id || spellSlot,
+        name: spellData.id || spellSlot,
+        description: spellData.id || spellSlot,
+        currentLevel: spellLevel,
+        maxLevel: 10,
+        currentStats: currentStats,
+        nextLevelStats: nextLevelStats,
+        upgradeCost: null, // Pas de coût pour le catalogue
+        canUpgrade: false, // Pas d'upgrade possible dans le catalogue
+        type: spellSlot
+      }
+    });
+
+  } catch (err) {
+    console.error("Get catalog spell error:", err);
+    res.status(500).json({ 
+      error: "Internal server error", 
+      code: "GET_CATALOG_SPELL_FAILED" 
+    });
+  }
+});
+
+
 /**
  * GET /api/heroes/spells/:heroInstanceId/:spellSlot
  * Obtenir les détails complets d'un sort spécifique
@@ -1432,5 +1514,6 @@ router.get("/spells/:heroInstanceId/:spellSlot", authMiddleware, async (req: Req
   }
 });
 export default router;
+
 
 
