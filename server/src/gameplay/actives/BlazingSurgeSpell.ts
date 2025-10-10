@@ -1,6 +1,6 @@
 import { BaseSpell, ISpellConfig } from "../base/BaseSpell";
 import { IBattleParticipant, IBattleAction } from "../../models/Battle";
-import { EffectManager } from "../effects/burn";
+import { EffectManager } from "../EffectManager";
 
 class BlazingSurgeSpell extends BaseSpell {
   constructor() {
