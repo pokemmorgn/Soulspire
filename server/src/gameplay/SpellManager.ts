@@ -148,25 +148,22 @@ export class SpellManager {
     }
 
     // Vérifier les sorts actifs
-    [heroSpells.spell1, heroSpells.spell2, heroSpells.spell3].forEach((spellData, index) => {
-      if (!spellData) return;
-
-      const spell = this.getSpell(spellData.id);
-      if (!spell) return;
-
-      // Vérifier si le sort peut être utilisé
-      if (!spell.canCast(caster, spellData.level)) return;
-      if (this.isOnCooldown(caster.heroId, spellData.id)) return;
-
-      // Calculer la priorité selon le contexte
-      const priority = this.calculateSpellPriority(spell, caster, allPlayers, allEnemies, battleContext);
-      
-      availableSpells.push({
-        id: spellData.id,
-        level: spellData.level,
-        priority
-      });
-    });
+[heroSpells.active1, heroSpells.active2, heroSpells.active3].forEach((spellData, index) => {
+  if (!spellData) return;
+  const spell = this.getSpell(spellData.id);
+  if (!spell) return;
+  // Vérifier si le sort peut être utilisé
+  if (!spell.canCast(caster, spellData.level)) return;
+  if (this.isOnCooldown(caster.heroId, spellData.id)) return;
+  // Calculer la priorité selon le contexte
+  const priority = this.calculateSpellPriority(spell, caster, allPlayers, allEnemies, battleContext);
+  
+  availableSpells.push({
+    id: spellData.id,
+    level: spellData.level,
+    priority
+  });
+});
 
     // Retourner le sort avec la plus haute priorité
     if (availableSpells.length === 0) return null;
