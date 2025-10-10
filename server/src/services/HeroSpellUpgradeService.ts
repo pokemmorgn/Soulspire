@@ -86,7 +86,7 @@ export class HeroSpellUpgradeService {
       const essenceType = this.getEssenceType(heroData.element);
 
       const spellsInfo: any = {};
-      const slots = ['spell1', 'spell2', 'ultimate', 'passive1', 'passive2', 'passive3'];
+      const slots = ['active1', 'active2', 'active3', 'ultimate', 'passive'];
 
       for (const slot of slots) {
         const spellData = heroData.spells?.[slot as keyof typeof heroData.spells];
@@ -134,7 +134,7 @@ export class HeroSpellUpgradeService {
     accountId: string,
     serverId: string,
     heroInstanceId: string,
-    spellSlot: "spell1" | "spell2" | "ultimate" | "passive1" | "passive2" | "passive3"
+    spellSlot: "active1" | "active2" | "active3" | "ultimate" | "passive"
   ): Promise<SpellUpgradeResult> {
     try {
       const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
@@ -272,7 +272,7 @@ export class HeroSpellUpgradeService {
       let totalEssenceSpent = 0;
       const availableGold = maxGoldToSpend || player.gold;
 
-      const slots = ['spell1', 'spell2', 'ultimate', 'passive1', 'passive2', 'passive3'];
+      const slots = ['active1', 'active2', 'active3', 'ultimate', 'passive'];
 
       for (const slot of slots) {
         const spellData = heroData.spells?.[slot as keyof typeof heroData.spells];
@@ -354,7 +354,7 @@ export class HeroSpellUpgradeService {
         if (!heroData) continue;
 
         const maxLevel = this.getMaxSpellLevel(heroData.rarity);
-        const slots = ['spell1', 'spell2', 'ultimate', 'passive1', 'passive2', 'passive3'];
+        const slots = ['active1', 'active2', 'active3', 'ultimate', 'passive'];
         
         let upgradeableSpells = 0;
         let totalUpgradeCost = { gold: 0, essence: 0 };
