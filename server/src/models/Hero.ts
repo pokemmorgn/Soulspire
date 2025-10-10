@@ -484,6 +484,7 @@ heroSchema.methods.calculateSpellStats = function (spellSlot: string, level: num
 };
 
 // Pré-save hook - MISE À JOUR
+// Pré-save hook - MISE À JOUR
 heroSchema.pre("save", function (next) {
   // Clamp des stats
   this.baseStats.reductionCooldown = cap(this.baseStats.reductionCooldown, 0, 50);
@@ -495,37 +496,47 @@ heroSchema.pre("save", function (next) {
 
   // Initialiser les sorts selon heroSpellDefinitions
   const heroId = this.name.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '');
-  console.log(`🔍 Pre-save hook for: ${this.name}, heroId: ${heroId}`);  // ✅ AJOUTER
-
+  
+  console.log(`🔍 Pre-save hook for: ${this.name}, heroId: ${heroId}`);
+  
   try {
     const spellDefinition = getHeroSpellDefinition(heroId);
-    console.log(`🔍 Spell definition found:`, spellDefinition);  // ✅ AJOUTER
+    
+    console.log(`🔍 Spell definition found:`, spellDefinition);
+    
     if (spellDefinition) {
       const initialSpells = getInitialSpells(heroId, this.rarity);
       
-      // Active1 - toujours présent
-      if (!this.spells.active1?.id && initialSpells.active1) {
+      console.log(`🔍 Initial spells:`, JSON.stringify(initialSpells));
+      
+      // Active1 - toujours remplacer
+      if (initialSpells.active1) {
         this.spells.active1 = initialSpells.active1;
+        console.log(`✅ Set active1:`, initialSpells.active1);
       }
       
-      // Active2 - si défini
-      if (!this.spells.active2?.id && initialSpells.active2) {
+      // Active2 - toujours remplacer
+      if (initialSpells.active2) {
         this.spells.active2 = initialSpells.active2;
+        console.log(`✅ Set active2:`, initialSpells.active2);
       }
       
-      // Active3 - si défini
-      if (!this.spells.active3?.id && initialSpells.active3) {
+      // Active3 - toujours remplacer
+      if (initialSpells.active3) {
         this.spells.active3 = initialSpells.active3;
+        console.log(`✅ Set active3:`, initialSpells.active3);
       }
       
-      // Ultimate - si défini
-      if (!this.spells.ultimate?.id && initialSpells.ultimate) {
+      // Ultimate - toujours remplacer
+      if (initialSpells.ultimate) {
         this.spells.ultimate = initialSpells.ultimate;
+        console.log(`✅ Set ultimate:`, initialSpells.ultimate);
       }
       
-      // Passive - si défini
-      if (!this.spells.passive?.id && initialSpells.passive) {
+      // Passive - toujours remplacer
+      if (initialSpells.passive) {
         this.spells.passive = initialSpells.passive;
+        console.log(`✅ Set passive:`, initialSpells.passive);
       }
     } else {
       console.warn(`⚠️ Aucune définition de sorts pour: ${this.name} (${heroId})`);
@@ -543,6 +554,7 @@ heroSchema.pre("save", function (next) {
 });
 
 export default mongoose.model<IHeroDocument>("Hero", heroSchema);
+
 
 
 
