@@ -308,7 +308,6 @@ const seedHeroes = async () => {
             role: normalizedRole,
             element: normalizedElement,
             baseStats: stats,
-            spells,
             appearance: row.Appearance || "",
             personality: row.Personality || "",
             strengths: row.Strengths || "",
