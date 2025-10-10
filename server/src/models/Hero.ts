@@ -50,6 +50,7 @@ export interface IHeroDocument extends Document {
   getSpell(spellSlot: string): { id: string; level: number } | null;
   setSpell(spellSlot: string, spellId: string, level?: number): void;
   upgradeSpell(spellSlot: string, newLevel: number): boolean;
+  calculateSpellStats(spellSlot: string, level: number): any;
 }
 
 const heroSchema = new Schema<IHeroDocument>({
@@ -541,5 +542,6 @@ heroSchema.pre("save", function (next) {
 });
 
 export default mongoose.model<IHeroDocument>("Hero", heroSchema);
+
 
 
