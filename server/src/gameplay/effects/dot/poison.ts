@@ -43,7 +43,7 @@ export class PoisonEffect extends BaseEffect {
     
     // Résistance élémentaire
     // Nature/Wind résistent mieux au poison
-    if (target.element === "Wind" || target.element === "Nature") {
+    if (target.element === "Wind") {
       totalDamage = Math.floor(totalDamage * 0.6); // 40% de réduction
     }
     
@@ -83,13 +83,13 @@ export class PoisonEffect extends BaseEffect {
     }
     
     // Les héros Nature/Wind ont 25% de chance de résister complètement
-    if (target.element === "Wind" || target.element === "Nature") {
-      const resistanceChance = 0.25; // 25%
-      if (Math.random() < resistanceChance) {
-        console.log(`🛡️ ${target.name} résiste au poison (${target.element} resistance)`);
-        return false;
-      }
+     if (target.element === "Wind") {
+    const resistanceChance = 0.25; // 25%
+    if (Math.random() < resistanceChance) {
+      console.log(`🛡️ ${target.name} résiste au poison (Wind resistance)`);
+      return false;
     }
+  }
     
     return true;
   }
