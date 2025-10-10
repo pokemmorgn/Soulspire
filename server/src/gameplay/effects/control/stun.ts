@@ -89,4 +89,3 @@ export class StunEffect extends BaseEffect {
 
 // Export de l'instance pour EffectManager
 export const stunEffect = new StunEffect();
-export { StunEffect };
