@@ -438,6 +438,49 @@ heroSchema.methods.upgradeSpell = function (slot: string, newLevel: number) {
   s.level = newLevel; 
   return true;
 };
+// Méthode calculateSpellStats
+heroSchema.methods.calculateSpellStats = function (spellSlot: string, level: number) {
+  const spell = this.getSpell(spellSlot);
+  
+  if (!spell || !spell.id) {
+    return {
+      damage: 0,
+      healing: 0,
+      cooldown: 3,
+      duration: 0,
+      energyCost: 20,
+      effect: "",
+      additionalEffects: {}
+    };
+  }
+
+  try {
+    // Importer la fonction depuis heroSpellDefinitions
+    const { getSpellStats } = require('../data/heroSpellDefinitions');
+    
+    // Obtenir les stats du sort
+    const spellStats = getSpellStats(spell.id, level, this.rarity);
+    
+    return spellStats;
+  } catch (error) {
+    console.error(`❌ Erreur calculateSpellStats pour ${spell.id}:`, error);
+    
+    // Fallback avec des valeurs génériques
+    const levelScaling = 1 + (level - 1) * 0.1;
+    
+    return {
+      damage: Math.floor(50 * levelScaling),
+      healing: Math.floor(40 * levelScaling),
+      cooldown: Math.max(1, 5 - Math.floor(level / 3)),
+      duration: 2,
+      energyCost: Math.max(10, 20 - level),
+      effect: spell.id,
+      additionalEffects: {
+        note: "Using fallback stats"
+      }
+    };
+  }
+};
 
 // Pré-save hook - MISE À JOUR
 heroSchema.pre("save", function (next) {
@@ -497,39 +540,6 @@ heroSchema.pre("save", function (next) {
   next();
 });
 
-heroSchema.methods.calculateSpellStats = function (spellSlot: string, level: number) {
-  const spell = this.getSpell(spellSlot);
-  
-  if (!spell || !spell.id) {
-    return {
-      damage: 0,
-      healing: 0,
-      cooldown: 3,
-      duration: 0,
-      effect: "",
-      additionalEffects: {}
-    };
-  }
-
-  try {
-    // Charger la définition du sort depuis heroSpellDefinitions
-    const { getSpellStats } = require('../data/heroSpellDefinitions');
-    const spellStats = getSpellStats(spell.id, level, this.rarity);
-    
-    return spellStats;
-  } catch (error) {
-    console.error(`Erreur calculateSpellStats pour ${spell.id}:`, error);
-    
-    // Fallback avec des valeurs basées sur le level
-    return {
-      damage: level * 50,
-      healing: level * 40,
-      cooldown: Math.max(1, 5 - Math.floor(level / 3)),
-      duration: 3,
-      effect: spell.id,
-      additionalEffects: {}
-    };
-  }
-};
 export default mongoose.model<IHeroDocument>("Hero", heroSchema);
+
 
