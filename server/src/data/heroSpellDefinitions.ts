@@ -2,28 +2,35 @@
 
 /**
  * Définitions des sorts par héros
- * Chaque héros a ses sorts fixes selon sa rareté
+ * Structure selon la rareté:
+ * - Common: 1 Actif
+ * - Rare: 2 Actifs + 1 Ultime OU 1 Actif + 1 Passif + 1 Ultime
+ * - Epic: 2 Actifs + 1 Passif + 1 Ultime OU 3 Actifs + 1 Ultime
+ * - Legendary: 2 Actifs + 1 Passif + 1 Ultime OU 3 Actifs + 1 Ultime
+ * - Mythic: 2 Actifs + 1 Passif + 1 Ultime OU 3 Actifs + 1 Ultime (avec sorts combinés)
  */
 
 export interface HeroSpellDefinition {
-  heroId: string;           // ID unique du héros (slugified name)
-  name: string;             // Nom affiché
+  heroId: string;
+  name: string;
   element: "Fire" | "Water" | "Wind" | "Electric" | "Light" | "Dark";
   role: "Tank" | "DPS Melee" | "DPS Ranged" | "Support";
   rarity: "Common" | "Rare" | "Epic" | "Legendary" | "Mythic";
   
-  // Sorts par slot
-  spell1: string;           // Débloqué: Common+
-  spell2?: string;          // Débloqué: Epic+
-  ultimate: string;         // Débloqué: Legendary+ (vide pour Common/Rare/Epic)
-  passive1?: string;        // Débloqué: Rare+
-  passive2?: string;        // Débloqué: Legendary+
-  passive3?: string;        // Débloqué: Mythic+ (avec condition)
+  // Sorts actifs (1-3 selon rareté)
+  active1: string;           // Toutes raretés
+  active2?: string;          // Rare+
+  active3?: string;          // Epic+ (variante 3 actifs)
+  
+  // Sort ultime (Rare+)
+  ultimate?: string;
+  
+  // Sort passif (Rare+ selon variante, Epic+ toujours pour variante 2 actifs)
+  passive?: string;
 }
 
 /**
  * Base de données des sorts par héros
- * Format: heroId → définition des sorts
  */
 export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
   
@@ -31,559 +38,534 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
   // WATER HEROES (7 total)
   // ============================================
   
-  // Common Tank
+  // Common Tank - 1 Actif
   "nerya": {
     heroId: "nerya",
     name: "Nerya",
     element: "Water",
     role: "Tank",
     rarity: "Common",
-    spell1: "water_barrier",
-    ultimate: "" // Pas d'ultimate pour Common
+    active1: "water_barrier"
   },
   
-  // Common Support
+  // Common Support - 1 Actif
   "thalwen": {
     heroId: "thalwen",
     name: "Thalwen",
     element: "Water",
     role: "Support",
     rarity: "Common",
-    spell1: "curse_of_the_deep",
-    ultimate: "" // Pas d'ultimate pour Common
+    active1: "curse_of_the_deep"
   },
   
-  // Common DPS Ranged
+  // Common DPS Ranged - 1 Actif
   "nora": {
     heroId: "nora",
     name: "Nora",
     element: "Water",
     role: "DPS Ranged",
     rarity: "Common",
-    spell1: "water_bolt",
-    ultimate: "" // Pas d'ultimate pour Common
+    active1: "water_bolt"
   },
   
-  // Common DPS Melee
+  // Common DPS Melee - 1 Actif
   "narud": {
     heroId: "narud",
     name: "Narud",
     element: "Water",
     role: "DPS Melee",
     rarity: "Common",
-    spell1: "tidal_slash",
-    ultimate: "" // Pas d'ultimate pour Common
+    active1: "tidal_slash"
   },
   
-  // Rare Support
+  // Rare Support - Variante: 1 Actif + 1 Passif + 1 Ultime
   "nereida": {
     heroId: "nereida",
     name: "Nereida",
     element: "Water",
     role: "Support",
     rarity: "Rare",
-    spell1: "healing_tide",
-    spell2: "water_shield",
-    ultimate: "", // Pas d'ultimate pour Rare
-    passive1: "flowing_mana"
+    active1: "healing_tide",
+    passive: "flowing_mana",
+    ultimate: "tidal_blessing"
   },
   
-  // Epic DPS Melee
+  // Epic DPS Melee - Variante: 2 Actifs + 1 Passif + 1 Ultime
   "vayna": {
     heroId: "vayna",
     name: "Vayna",
     element: "Water",
     role: "DPS Melee",
     rarity: "Epic",
-    spell1: "abyssal_strike",
-    spell2: "pirate_dance",
-    ultimate: "",
-    passive1: "tidal_lifesteal"
+    active1: "abyssal_strike",
+    active2: "pirate_dance",
+    passive: "tidal_lifesteal",
+    ultimate: "maelstrom_fury"
   },
   
-  // Legendary DPS Melee
+  // Legendary DPS Melee - Variante: 2 Actifs + 1 Passif + 1 Ultime
   "kaelis": {
     heroId: "kaelis",
     name: "Kaelis",
     element: "Water",
     role: "DPS Melee",
     rarity: "Legendary",
-    spell1: "feline_slash",
-    spell2: "hydro_dash",
-    ultimate: "tsunami_fury",
-    passive1: "fluid_movement",
-    passive2: "ocean_rage"
+    active1: "feline_slash",
+    active2: "hydro_dash",
+    passive: "fluid_movement",
+    ultimate: "tsunami_fury"
   },
   
   // ============================================
   // FIRE HEROES (7 total)
   // ============================================
   
-  // Common Tank
+  // Common Tank - 1 Actif
   "brakka": {
     heroId: "brakka",
     name: "Brakka",
     element: "Fire",
     role: "Tank",
     rarity: "Common",
-    spell1: "furnace_strike",
-    ultimate: ""
+    active1: "furnace_strike"
   },
   
-  // Rare Tank
+  // Rare Tank - Variante: 2 Actifs + 1 Ultime
   "korran": {
     heroId: "korran",
     name: "Korran",
     element: "Fire",
     role: "Tank",
     rarity: "Rare",
-    spell1: "ember_bash",
-    ultimate: "",
-    passive1: "heated_armor"
+    active1: "ember_bash",
+    active2: "flame_shield",
+    ultimate: "molten_fortress"
   },
   
-  // Rare DPS Ranged
+  // Rare DPS Ranged - Variante: 2 Actifs + 1 Ultime
   "ignara": {
     heroId: "ignara",
     name: "Ignara",
     element: "Fire",
     role: "DPS Ranged",
     rarity: "Rare",
-    spell1: "blazing_surge",
-    ultimate: "",
-    passive1: "burning_grimoire"
+    active1: "blazing_surge",
+    active2: "fire_blast",
+    ultimate: "inferno_rain"
   },
   
-  // Rare Support
+  // Rare Support - Variante: 1 Actif + 1 Passif + 1 Ultime
   "albert": {
     heroId: "albert",
     name: "Albert",
     element: "Fire",
     role: "Support",
     rarity: "Rare",
-    spell1: "flame_turret",
-    ultimate: "",
-    passive1: "engineer_mind"
+    active1: "flame_turret",
+    passive: "engineer_mind",
+    ultimate: "overclock_turret"
   },
   
-  // Epic Tank
+  // Epic Tank - Variante: 2 Actifs + 1 Passif + 1 Ultime
   "grathul": {
     heroId: "grathul",
     name: "Grathul",
     element: "Fire",
     role: "Tank",
     rarity: "Epic",
-    spell1: "chain_slam",
-    spell2: "molten_bind",
-    ultimate: "",
-    passive1: "burning_aura"
+    active1: "chain_slam",
+    active2: "molten_bind",
+    passive: "burning_aura",
+    ultimate: "infernal_chains"
   },
   
-  // Legendary Support
+  // Legendary Support - Variante: 2 Actifs + 1 Passif + 1 Ultime
   "pyra": {
     heroId: "pyra",
     name: "Pyra",
     element: "Fire",
     role: "Support",
     rarity: "Legendary",
-    spell1: "ember_heal",
-    spell2: "flame_shield",
-    ultimate: "phoenix_blessing",
-    passive1: "fire_attunement",
-    passive2: "eternal_warmth"
+    active1: "ember_heal",
+    active2: "flame_shield",
+    passive: "fire_attunement",
+    ultimate: "phoenix_blessing"
   },
   
-  // Legendary DPS Melee
+  // Legendary DPS Melee - Variante: 3 Actifs + 1 Ultime
   "saryel": {
     heroId: "saryel",
     name: "Saryel",
     element: "Fire",
     role: "DPS Melee",
     rarity: "Legendary",
-    spell1: "blazing_slash",
-    spell2: "fire_dance",
-    ultimate: "infernal_storm",
-    passive1: "flame_mastery",
-    passive2: "burn_amplification"
+    active1: "blazing_slash",
+    active2: "fire_dance",
+    active3: "crimson_strike",
+    ultimate: "infernal_storm"
   },
   
   // ============================================
   // WIND HEROES (7 total)
   // ============================================
   
-  // Common DPS Ranged
+  // Common DPS Ranged - 1 Actif
   "braknor": {
     heroId: "braknor",
     name: "Braknor",
     element: "Wind",
     role: "DPS Ranged",
     rarity: "Common",
-    spell1: "wind_arrow",
-    ultimate: ""
+    active1: "wind_arrow"
   },
   
-  // Common Tank
+  // Common Tank - 1 Actif
   "halvar": {
     heroId: "halvar",
     name: "Halvar",
     element: "Wind",
     role: "Tank",
     rarity: "Common",
-    spell1: "wind_guard",
-    ultimate: ""
+    active1: "wind_guard"
   },
   
-  // Rare DPS Ranged
+  // Rare DPS Ranged - Variante: 2 Actifs + 1 Ultime
   "sylvara": {
     heroId: "sylvara",
     name: "Sylvara",
     element: "Wind",
     role: "DPS Ranged",
     rarity: "Rare",
-    spell1: "javelin_throw",
-    ultimate: "",
-    passive1: "harpy_grace"
+    active1: "javelin_throw",
+    active2: "wind_gust",
+    ultimate: "storm_javelin"
   },
   
-  // Rare Support
+  // Rare Support - Variante: 1 Actif + 1 Passif + 1 Ultime
   "elyndra": {
     heroId: "elyndra",
     name: "Elyndra",
     element: "Wind",
     role: "Support",
     rarity: "Rare",
-    spell1: "wind_song",
-    ultimate: "",
-    passive1: "bard_inspiration"
+    active1: "wind_song",
+    passive: "bard_inspiration",
+    ultimate: "symphony_of_storms"
   },
   
-  // Rare DPS Melee
+  // Rare DPS Melee - Variante: 2 Actifs + 1 Ultime
   "kaelen": {
     heroId: "kaelen",
     name: "Kaelen",
     element: "Wind",
     role: "DPS Melee",
     rarity: "Rare",
-    spell1: "dual_slash",
-    ultimate: "",
-    passive1: "swift_strikes"
+    active1: "dual_slash",
+    active2: "swift_cut",
+    ultimate: "blade_storm"
   },
   
-  // Epic DPS Ranged
+  // Epic DPS Ranged - Variante: 3 Actifs + 1 Ultime
   "zephyra": {
     heroId: "zephyra",
     name: "Zephyra",
     element: "Wind",
     role: "DPS Ranged",
     rarity: "Epic",
-    spell1: "wind_arrow",
-    spell2: "cyclone_shot",
-    ultimate: "",
-    passive1: "wind_mastery"
+    active1: "wind_arrow",
+    active2: "cyclone_shot",
+    active3: "piercing_gale",
+    ultimate: "tempest_volley"
   },
   
-  // Legendary DPS Melee
+  // Legendary DPS Melee - Variante: 2 Actifs + 1 Passif + 1 Ultime
   "veyron": {
     heroId: "veyron",
     name: "Veyron",
     element: "Wind",
     role: "DPS Melee",
     rarity: "Legendary",
-    spell1: "wind_slash",
-    spell2: "gale_dash",
-    ultimate: "storm_fury",
-    passive1: "wind_walker",
-    passive2: "tempest_edge"
+    active1: "wind_slash",
+    active2: "gale_dash",
+    passive: "wind_walker",
+    ultimate: "storm_fury"
   },
   
   // ============================================
   // ELECTRIC HEROES (7 total)
   // ============================================
   
-  // Common Support
+  // Common Support - 1 Actif
   "tynira": {
     heroId: "tynira",
     name: "Tynira",
     element: "Electric",
     role: "Support",
     rarity: "Common",
-    spell1: "spark_buff",
-    ultimate: ""
+    active1: "spark_buff"
   },
   
-  // Common DPS Melee
+  // Common DPS Melee - 1 Actif
   "zeyra": {
     heroId: "zeyra",
     name: "Zeyra",
     element: "Electric",
     role: "DPS Melee",
     rarity: "Common",
-    spell1: "lightning_strike",
-    ultimate: ""
+    active1: "lightning_strike"
   },
   
-  // Epic DPS Melee
+  // Epic DPS Melee - Variante: 2 Actifs + 1 Passif + 1 Ultime
   "raiken": {
     heroId: "raiken",
     name: "Raiken",
     element: "Electric",
     role: "DPS Melee",
     rarity: "Epic",
-    spell1: "volt_punch",
-    spell2: "thunder_combo",
-    ultimate: "",
-    passive1: "static_charge"
+    active1: "volt_punch",
+    active2: "thunder_combo",
+    passive: "static_charge",
+    ultimate: "lightning_burst"
   },
   
-  // Epic Support
+  // Epic Support - Variante: 2 Actifs + 1 Passif + 1 Ultime
   "milia": {
     heroId: "milia",
     name: "Milia",
     element: "Electric",
     role: "Support",
     rarity: "Epic",
-    spell1: "thunder_hammer",
-    spell2: "volt_shield",
-    ultimate: "",
-    passive1: "armored_conductor"
+    active1: "thunder_hammer",
+    active2: "volt_shield",
+    passive: "armored_conductor",
+    ultimate: "electromagnetic_pulse"
   },
   
-  // Epic Tank
+  // Epic Tank - Variante: 3 Actifs + 1 Ultime
   "thalrik": {
     heroId: "thalrik",
     name: "Thalrik",
     element: "Electric",
     role: "Tank",
     rarity: "Epic",
-    spell1: "thunder_slam",
-    spell2: "shock_wave",
-    ultimate: "",
-    passive1: "conductive_armor"
+    active1: "thunder_slam",
+    active2: "shock_wave",
+    active3: "volt_barrier",
+    ultimate: "storm_bastion"
   },
   
-  // Legendary DPS Ranged
+  // Legendary DPS Ranged - Variante: 3 Actifs + 1 Ultime
   "voltrion": {
     heroId: "voltrion",
     name: "Voltrion",
     element: "Electric",
     role: "DPS Ranged",
     rarity: "Legendary",
-    spell1: "lightning_bolt",
-    spell2: "chain_lightning",
-    ultimate: "thunderstorm",
-    passive1: "electric_mastery",
-    passive2: "overcharge"
+    active1: "lightning_bolt",
+    active2: "chain_lightning",
+    active3: "arc_discharge",
+    ultimate: "thunderstorm"
   },
   
-  // Legendary Tank
+  // Legendary Tank - Variante: 2 Actifs + 1 Passif + 1 Ultime
   "voltragar": {
     heroId: "voltragar",
     name: "Voltragar",
     element: "Electric",
     role: "Tank",
     rarity: "Legendary",
-    spell1: "volt_shield",
-    spell2: "electric_taunt",
-    ultimate: "tesla_fortress",
-    passive1: "steel_conductor",
-    passive2: "energy_absorption"
+    active1: "volt_shield",
+    active2: "electric_taunt",
+    passive: "steel_conductor",
+    ultimate: "tesla_fortress"
   },
   
   // ============================================
   // LIGHT HEROES (6 total)
   // ============================================
   
-  // Common DPS Melee
+  // Common DPS Melee - 1 Actif
   "goahn": {
     heroId: "goahn",
     name: "Goahn",
     element: "Light",
     role: "DPS Melee",
     rarity: "Common",
-    spell1: "holy_strike",
-    ultimate: ""
+    active1: "holy_strike"
   },
   
-  // Rare Tank
+  // Rare Tank - Variante: 2 Actifs + 1 Ultime
   "elyos": {
     heroId: "elyos",
     name: "Elyos",
     element: "Light",
     role: "Tank",
     rarity: "Rare",
-    spell1: "light_shield",
-    ultimate: "",
-    passive1: "divine_protection"
+    active1: "light_shield",
+    active2: "radiant_taunt",
+    ultimate: "divine_fortress"
   },
   
-  // Rare DPS Ranged
+  // Rare DPS Ranged - Variante: 2 Actifs + 1 Ultime
   "liora": {
     heroId: "liora",
     name: "Liora",
     element: "Light",
     role: "DPS Ranged",
     rarity: "Rare",
-    spell1: "light_arrow",
-    ultimate: "",
-    passive1: "precision_aim"
+    active1: "light_arrow",
+    active2: "radiant_shot",
+    ultimate: "holy_barrage"
   },
   
-  // Rare Support
+  // Rare Support - Variante: 1 Actif + 1 Passif + 1 Ultime
   "lyaria": {
     heroId: "lyaria",
     name: "Lyaria",
     element: "Light",
     role: "Support",
     rarity: "Rare",
-    spell1: "heal",
-    ultimate: "",
-    passive1: "light_aura"
+    active1: "heal",
+    passive: "light_aura",
+    ultimate: "mass_resurrection"
   },
   
-  // Legendary Tank
+  // Legendary Tank - Variante: 2 Actifs + 1 Passif + 1 Ultime
   "aureon": {
     heroId: "aureon",
     name: "Aureon",
     element: "Light",
     role: "Tank",
     rarity: "Legendary",
-    spell1: "solar_slam",
-    spell2: "radiant_taunt",
-    ultimate: "sun_fortress",
-    passive1: "solar_armor",
-    passive2: "divine_aura"
+    active1: "solar_slam",
+    active2: "radiant_taunt",
+    passive: "solar_armor",
+    ultimate: "sun_fortress"
   },
   
-  // Legendary DPS Ranged
+  // Legendary DPS Ranged - Variante: 3 Actifs + 1 Ultime
   "solayne": {
     heroId: "solayne",
     name: "Solayne",
     element: "Light",
     role: "DPS Ranged",
     rarity: "Legendary",
-    spell1: "solar_beam",
-    spell2: "radiant_orb",
-    ultimate: "supernova",
-    passive1: "desert_wisdom",
-    passive2: "solar_mastery"
+    active1: "solar_beam",
+    active2: "radiant_orb",
+    active3: "dawn_strike",
+    ultimate: "supernova"
   },
   
   // ============================================
   // DARK/SHADOW HEROES (6 total)
   // ============================================
   
-  // Epic DPS Melee
+  // Epic DPS Melee - Variante: 3 Actifs + 1 Ultime
   "abomys": {
     heroId: "abomys",
     name: "Abomys",
     element: "Dark",
     role: "DPS Melee",
     rarity: "Epic",
-    spell1: "shadow_strike",
-    spell2: "void_dash",
-    ultimate: "",
-    passive1: "assassin_fury"
+    active1: "shadow_strike",
+    active2: "void_dash",
+    active3: "dark_blade",
+    ultimate: "shadow_rampage"
   },
   
-  // Epic Support
+  // Epic Support - Variante: 2 Actifs + 1 Passif + 1 Ultime
   "chorath": {
     heroId: "chorath",
     name: "Chorath",
     element: "Dark",
     role: "Support",
     rarity: "Epic",
-    spell1: "toll_bell",
-    spell2: "shadow_aura",
-    ultimate: "",
-    passive1: "fear_aura"
+    active1: "toll_bell",
+    active2: "shadow_aura",
+    passive: "fear_aura",
+    ultimate: "death_knell"
   },
   
-  // Epic DPS Ranged
+  // Epic DPS Ranged - Variante: 2 Actifs + 1 Passif + 1 Ultime
   "seliora": {
     heroId: "seliora",
     name: "Seliora",
     element: "Dark",
     role: "DPS Ranged",
     rarity: "Epic",
-    spell1: "shadow_dagger",
-    spell2: "dark_curse",
-    ultimate: "",
-    passive1: "shadow_weaver"
+    active1: "shadow_dagger",
+    active2: "dark_curse",
+    passive: "shadow_weaver",
+    ultimate: "void_cascade"
   },
   
-  // Epic Tank
+  // Epic Tank - Variante: 2 Actifs + 1 Passif + 1 Ultime
   "drogath": {
     heroId: "drogath",
     name: "Drogath",
     element: "Dark",
     role: "Tank",
     rarity: "Epic",
-    spell1: "bone_slam",
-    spell2: "life_drain",
-    ultimate: "",
-    passive1: "undead_resilience"
+    active1: "bone_slam",
+    active2: "life_drain",
+    passive: "undead_resilience",
+    ultimate: "unholy_resurrection"
   },
   
-  // Legendary Support
+  // Legendary Support - Variante: 2 Actifs + 1 Passif + 1 Ultime
   "nyxara": {
     heroId: "nyxara",
     name: "Nyxara",
     element: "Dark",
     role: "Support",
     rarity: "Legendary",
-    spell1: "summon_shade",
-    spell2: "dark_blessing",
-    ultimate: "shadow_legion",
-    passive1: "summoner_mastery",
-    passive2: "void_bond"
+    active1: "summon_shade",
+    active2: "dark_blessing",
+    passive: "summoner_mastery",
+    ultimate: "shadow_legion"
   },
   
-  // Legendary DPS Ranged
+  // Legendary DPS Ranged - Variante: 3 Actifs + 1 Ultime
   "aleyra": {
     heroId: "aleyra",
     name: "Aleyra",
     element: "Dark",
     role: "DPS Ranged",
     rarity: "Legendary",
-    spell1: "void_bolt",
-    spell2: "shadow_pierce",
-    ultimate: "eclipse",
-    passive1: "dark_mastery",
-    passive2: "void_amplification"
+    active1: "void_bolt",
+    active2: "shadow_pierce",
+    active3: "dark_nova",
+    ultimate: "eclipse"
   },
   
   // ============================================
   // MYTHIC HEROES (2 total)
   // ============================================
   
-  // Mythic DPS Melee (Shadow Form)
+  // Mythic DPS Melee (Shadow Form) - Variante: 2 Actifs + 1 Passif + 1 Ultime
   "kaorim_lunar": {
     heroId: "kaorim_lunar",
     name: "Kaorim (Lunar Form)",
     element: "Dark",
     role: "DPS Melee",
     rarity: "Mythic",
-    spell1: "lunar_strike",
-    spell2: "shadow_dance",
-    ultimate: "eclipse_fury",
-    passive1: "lunar_blessing",
-    passive2: "night_warrior",
-    passive3: "celestial_duality"
+    active1: "lunar_strike",
+    active2: "shadow_dance",
+    passive: "celestial_duality",
+    ultimate: "eclipse_fury"
   },
   
-  // Mythic Support (Light Form)
+  // Mythic Support (Light Form) - Variante: 2 Actifs + 1 Passif + 1 Ultime
   "kaorim_solar": {
     heroId: "kaorim_solar",
     name: "Kaorim (Solar Form)",
     element: "Light",
     role: "Support",
     rarity: "Mythic",
-    spell1: "solar_heal",
-    spell2: "radiant_blessing",
-    ultimate: "dawn_resurrection",
-    passive1: "solar_grace",
-    passive2: "day_protector",
-    passive3: "celestial_duality"
+    active1: "solar_heal",
+    active2: "radiant_blessing",
+    passive: "celestial_duality",
+    ultimate: "dawn_resurrection"
   }
 };
 
@@ -595,94 +577,93 @@ export function getHeroSpellDefinition(heroId: string): HeroSpellDefinition | nu
 }
 
 /**
- * Vérifier quels slots de sorts doivent être débloqués selon la rareté
+ * Vérifier quels slots de sorts doivent être débloqués selon la rareté et la définition du héros
  */
-export function getSlotsForRarity(rarity: string): {
-  spell1: boolean;
-  spell2: boolean;
+export function getSlotsForRarity(heroId: string, rarity: string): {
+  active1: boolean;
+  active2: boolean;
+  active3: boolean;
   ultimate: boolean;
-  passive1: boolean;
-  passive2: boolean;
-  passive3: boolean;
+  passive: boolean;
 } {
+  const definition = getHeroSpellDefinition(heroId);
+  
   const slots = {
-    spell1: true,     // Toujours débloqué (Common+)
-    spell2: false,
+    active1: false,
+    active2: false,
+    active3: false,
     ultimate: false,
-    passive1: false,
-    passive2: false,
-    passive3: false
+    passive: false
   };
   
-  // Rare+ : passive1
-  if (["Rare", "Epic", "Legendary", "Mythic"].includes(rarity)) {
-    slots.passive1 = true;
+  if (!definition) {
+    console.warn(`⚠️ Pas de définition trouvée pour ${heroId}, utilisation des slots par défaut`);
+    // Fallback selon rareté
+    if (rarity === "Common") {
+      slots.active1 = true;
+    } else if (rarity === "Rare") {
+      slots.active1 = true;
+      slots.active2 = true;
+      slots.ultimate = true;
+    } else {
+      slots.active1 = true;
+      slots.active2 = true;
+      slots.ultimate = true;
+      slots.passive = true;
+    }
+    return slots;
   }
   
-  // Epic+ : spell2
-  if (["Epic", "Legendary", "Mythic"].includes(rarity)) {
-    slots.spell2 = true;
-  }
-  
-  // Legendary+ uniquement
-  if (["Legendary", "Mythic"].includes(rarity)) {
-    slots.ultimate = true;
-  }
-  
-  // Legendary+
-  if (["Legendary", "Mythic"].includes(rarity)) {
-    slots.passive2 = true;
-  }
-  
-  // Mythic only
-  if (rarity === "Mythic") {
-    slots.passive3 = true;
-  }
+  // Utiliser la définition du héros pour déterminer les slots
+  if (definition.active1) slots.active1 = true;
+  if (definition.active2) slots.active2 = true;
+  if (definition.active3) slots.active3 = true;
+  if (definition.ultimate) slots.ultimate = true;
+  if (definition.passive) slots.passive = true;
   
   return slots;
 }
 
 /**
- * Obtenir les sorts initiaux d'un héros selon sa rareté
+ * Obtenir les sorts initiaux d'un héros selon sa rareté et sa définition
  */
 export function getInitialSpells(heroId: string, rarity: string): {
-  spell1?: { id: string; level: number };
-  spell2?: { id: string; level: number };
+  active1?: { id: string; level: number };
+  active2?: { id: string; level: number };
+  active3?: { id: string; level: number };
   ultimate?: { id: string; level: number };
-  passive1?: { id: string; level: number };
-  passive2?: { id: string; level: number };
-  passive3?: { id: string; level: number };
+  passive?: { id: string; level: number };
 } {
   const definition = getHeroSpellDefinition(heroId);
   if (!definition) {
     throw new Error(`No spell definition found for hero: ${heroId}`);
   }
   
-  const slots = getSlotsForRarity(rarity);
   const spells: any = {};
   
-  if (slots.spell1 && definition.spell1) {
-    spells.spell1 = { id: definition.spell1, level: 1 };
+  // Active 1 - toujours présent
+  if (definition.active1) {
+    spells.active1 = { id: definition.active1, level: 1 };
   }
   
-  if (slots.spell2 && definition.spell2) {
-    spells.spell2 = { id: definition.spell2, level: 1 };
+  // Active 2 - si défini dans la définition
+  if (definition.active2) {
+    spells.active2 = { id: definition.active2, level: 1 };
   }
   
-  if (slots.ultimate && definition.ultimate) {
+  // Active 3 - si défini dans la définition
+  if (definition.active3) {
+    spells.active3 = { id: definition.active3, level: 1 };
+  }
+  
+  // Ultimate - si défini dans la définition
+  if (definition.ultimate) {
     spells.ultimate = { id: definition.ultimate, level: 1 };
   }
   
-  if (slots.passive1 && definition.passive1) {
-    spells.passive1 = { id: definition.passive1, level: 1 };
-  }
-  
-  if (slots.passive2 && definition.passive2) {
-    spells.passive2 = { id: definition.passive2, level: 1 };
-  }
-  
-  if (slots.passive3 && definition.passive3) {
-    spells.passive3 = { id: definition.passive3, level: 1 };
+  // Passive - si défini dans la définition
+  if (definition.passive) {
+    spells.passive = { id: definition.passive, level: 1 };
   }
   
   return spells;
