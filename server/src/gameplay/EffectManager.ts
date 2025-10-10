@@ -1,7 +1,10 @@
+// server/src/gameplay/EffectManager.ts
 import { IBattleParticipant } from "../models/Battle";
+import { BaseEffect, EffectResult } from "./effects/base/BaseEffect";
+import { AutoEffectLoader } from "./effects/AutoEffectLoader";
 
-// Réexport des interfaces depuis burn.ts pour compatibilité
-export { IEffect, EffectResult } from "./effects/burn";
+// Réexport des interfaces pour compatibilité
+export { IEffect, EffectResult } from "./effects/base/BaseEffect";
 
 // Interface pour les effets actifs sur un participant
 interface ActiveEffect {
@@ -9,63 +12,57 @@ interface ActiveEffect {
   stacks: number;
   duration: number;
   appliedBy: IBattleParticipant;
+  metadata?: any; // Données additionnelles (ex: Shield HP restants)
 }
 
 // === GESTIONNAIRE CENTRAL DES EFFETS ===
 export class EffectManager {
-  private static effects: Map<string, any> = new Map(); // any = IEffect mais évite les imports circulaires
+  private static effects: Map<string, BaseEffect> = new Map();
   private static initialized: boolean = false;
   
-  // Initialiser tous les effets disponibles
-  static initialize() {
+  // Initialiser tous les effets disponibles avec auto-découverte
+  static async initialize() {
     if (this.initialized) return;
     
-    console.log("✨ Initialisation du gestionnaire d'effets...");
+    console.log("✨ Initialisation du gestionnaire d'effets avec auto-découverte...");
     
-    // Charger automatiquement tous les effets disponibles
-    this.loadEffects();
+    // Auto-découverte et chargement de tous les effets
+    await AutoEffectLoader.autoLoadEffects();
+    
+    // Copier les effets auto-chargés dans notre registre
+    const autoLoadedEffects = AutoEffectLoader.getAllEffects();
+    for (const effect of autoLoadedEffects) {
+      this.effects.set(effect.id, effect);
+    }
     
     this.initialized = true;
-    console.log(`✅ ${this.effects.size} effets chargés`);
-  }
-  
-  // Charger tous les modules d'effets disponibles
-  private static loadEffects() {
-    try {
-      // Import du module burn.ts
-      const burnModule = require("./effects/burn");
-      
-      // Récupérer les effets exportés (BurnEffect, etc.)
-      if (burnModule.BurnEffect) {
-        const burnEffect = new burnModule.BurnEffect();
-        this.registerEffect(burnEffect);
-      }
-      
-      // TODO: Ajouter d'autres imports automatiques quand ils existent
-      // const poisonModule = require("./effects/poison");
-      // const stunModule = require("./effects/stun");
-      // etc...
-      
-    } catch (error) {
-      console.warn("⚠️ Erreur lors du chargement des effets:", error);
+    console.log(`✅ ${this.effects.size} effets auto-chargés + gestionnaire initialisé`);
+    
+    // Validation en développement
+    if (process.env.NODE_ENV === 'development') {
+      AutoEffectLoader.validateLoadedEffects();
+    }
+    
+    // Vérifier qu'au moins un effet a été chargé
+    if (this.effects.size === 0) {
+      console.warn("⚠️ ATTENTION: Aucun effet n'a pu être chargé par l'AutoEffectLoader !");
     }
   }
   
-  // Enregistrer un effet
-  private static registerEffect(effect: any) {
-    this.effects.set(effect.id, effect);
-    console.log(`🎭 Effet enregistré: ${effect.name} (${effect.id})`);
-  }
-  
   // Récupérer un effet par son ID
-  static getEffect(effectId: string): any | undefined {
-    if (!this.initialized) this.initialize();
+  static getEffect(effectId: string): BaseEffect | undefined {
+    if (!this.initialized) {
+      console.warn("⚠️ EffectManager non initialisé - initialisation synchrone limitée");
+      this.initialized = true;
+    }
     return this.effects.get(effectId);
   }
   
   // Récupérer tous les effets disponibles
-  static getAllEffects(): any[] {
-    if (!this.initialized) this.initialize();
+  static getAllEffects(): BaseEffect[] {
+    if (!this.initialized) {
+      console.warn("⚠️ EffectManager non initialisé");
+    }
     return Array.from(this.effects.values());
   }
   
@@ -76,11 +73,18 @@ export class EffectManager {
     appliedBy: IBattleParticipant,
     duration?: number,
     stacks: number = 1
-  ): any | null {
+  ): EffectResult | null {
     const effect = this.getEffect(effectId);
     if (!effect) {
       console.warn(`⚠️ Effet inconnu: ${effectId}`);
       return null;
+    }
+
+    // Vérifier si l'effet peut être appliqué (immunités, résistances)
+    if (effect.canApplyTo && !effect.canApplyTo(target, appliedBy)) {
+      return {
+        message: `🛡️ ${target.name} résiste à ${effect.name}`
+      };
     }
 
     // Vérifier si l'effet existe déjà sur la cible
@@ -101,7 +105,8 @@ export class EffectManager {
         id: effectId,
         stacks: stacks,
         duration: duration || effect.baseDuration,
-        appliedBy: appliedBy
+        appliedBy: appliedBy,
+        metadata: {} // Initialiser metadata vide
       };
       
       // Ajouter aux effets actifs du target
@@ -124,10 +129,10 @@ export class EffectManager {
   }
   
   // Traiter tous les effets actifs d'une cible (appelé chaque tour)
-  static processEffects(target: IBattleParticipant): any[] {
+  static processEffects(target: IBattleParticipant): EffectResult[] {
     if (!(target as any).activeEffects) return [];
     
-    const results: any[] = [];
+    const results: EffectResult[] = [];
     const activeEffects = (target as any).activeEffects as ActiveEffect[];
     
     // Traiter chaque effet
@@ -202,17 +207,95 @@ export class EffectManager {
     return this.getTargetEffect(target, effectId) !== undefined;
   }
   
+  // Obtenir le nombre de stacks d'un effet
+  static getEffectStacks(target: IBattleParticipant, effectId: string): number {
+    const effect = this.getTargetEffect(target, effectId);
+    return effect ? effect.stacks : 0;
+  }
+  
+  // Obtenir les données d'un effet actif (incluant metadata)
+  static getEffectData(target: IBattleParticipant, effectId: string): ActiveEffect | undefined {
+    return this.getTargetEffect(target, effectId);
+  }
+  
   // Obtenir des statistiques sur les effets
   static getStats(): any {
-    return {
+    const baseStats = {
       totalEffects: this.effects.size,
-      availableEffects: Array.from(this.effects.keys())
+      effectsByCategory: this.getEffectsByCategory()
     };
+
+    // Ajouter les stats de l'auto-loader si disponible
+    try {
+      return {
+        ...baseStats,
+        autoLoaderStats: AutoEffectLoader.getStats()
+      };
+    } catch {
+      return baseStats;
+    }
+  }
+  
+  private static getEffectsByCategory(): { [key: string]: number } {
+    const categories: { [key: string]: number } = {};
+    
+    for (const effect of this.effects.values()) {
+      categories[effect.type] = (categories[effect.type] || 0) + 1;
+    }
+    
+    return categories;
   }
   
   // Reset pour les tests
   static reset() {
     this.effects.clear();
     this.initialized = false;
+  }
+  
+  // === NOUVELLES MÉTHODES AVEC AUTO-LOADER ===
+  
+  // Rechargement à chaud des effets (développement)
+  static async hotReload() {
+    if (!this.initialized) return;
+    
+    try {
+      console.log("🔄 Rechargement à chaud du système d'effets...");
+      await AutoEffectLoader.hotReload();
+      
+      // Recharger dans notre registre
+      this.effects.clear();
+      const reloadedEffects = AutoEffectLoader.getAllEffects();
+      for (const effect of reloadedEffects) {
+        this.effects.set(effect.id, effect);
+      }
+      
+      console.log(`🔥 ${this.effects.size} effets rechargés à chaud`);
+    } catch (error) {
+      console.error("❌ Erreur lors du rechargement à chaud:", error);
+    }
+  }
+  
+  // Obtenir effets par catégorie via auto-loader
+  static getEffectsFromCategory(category: 'dot' | 'control' | 'debuff' | 'buff' | 'special'): BaseEffect[] {
+    try {
+      return AutoEffectLoader.getEffectsByCategory(category);
+    } catch {
+      // Fallback si auto-loader pas disponible
+      return Array.from(this.effects.values()).filter(effect => effect.type === category);
+    }
+  }
+  
+  // Diagnostic du système d'effets
+  static diagnose(): void {
+    console.log("🔍 === DIAGNOSTIC SYSTÈME D'EFFETS ===");
+    console.log(`📊 Effets chargés: ${this.effects.size}`);
+    
+    try {
+      const stats = AutoEffectLoader.getStats();
+      console.log("🎭 Répartition par catégorie:", stats.categories);
+      console.log("✅ Validation:", AutoEffectLoader.validateLoadedEffects() ? "OK" : "ERREUR");
+    } catch {
+      console.log("📚 Mode manuel - auto-loader indisponible");
+    }
   }
 }
