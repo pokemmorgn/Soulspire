@@ -495,10 +495,11 @@ heroSchema.pre("save", function (next) {
 
   // Initialiser les sorts selon heroSpellDefinitions
   const heroId = this.name.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '');
-  
+  console.log(`🔍 Pre-save hook for: ${this.name}, heroId: ${heroId}`);  // ✅ AJOUTER
+
   try {
     const spellDefinition = getHeroSpellDefinition(heroId);
-    
+    console.log(`🔍 Spell definition found:`, spellDefinition);  // ✅ AJOUTER
     if (spellDefinition) {
       const initialSpells = getInitialSpells(heroId, this.rarity);
       
@@ -542,6 +543,7 @@ heroSchema.pre("save", function (next) {
 });
 
 export default mongoose.model<IHeroDocument>("Hero", heroSchema);
+
 
 
 
