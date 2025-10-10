@@ -322,34 +322,77 @@ constructor(
     console.log(`📊 État équipe sauvegardé (vague ${waveNumber})`);
   }
 
-  private processTurn(): void {
-    SpellManager.reduceCooldowns();
+private processTurn(): void {
+  SpellManager.reduceCooldowns();
+  
+  const aliveParticipants = this.getAllAliveParticipants()
+    .sort((a, b) => {
+      const speedA = a.stats.speed + Math.random() * 10;
+      const speedB = b.stats.speed + Math.random() * 10;
+      return speedB - speedA;
+    });
+  
+  for (const participant of aliveParticipants) {
+    if (!participant.status.alive) continue;
     
-    const aliveParticipants = this.getAllAliveParticipants()
-      .sort((a, b) => {
-        const speedA = a.stats.speed + Math.random() * 10;
-        const speedB = b.stats.speed + Math.random() * 10;
-        return speedB - speedA;
-      });
+    this.generateEnergy(participant);
+    this.processParticipantEffects(participant);
     
-    for (const participant of aliveParticipants) {
-      if (!participant.status.alive) continue;
-      
-      this.generateEnergy(participant);
-      this.processParticipantEffects(participant);
-      
-      if (!participant.status.alive) continue;
-      
-      const action = this.determineActionWithMode(participant);
-      if (action) {
-        this.executeAction(action);
-      }
-      
-      if (this.isBattleOver()) break;
+    if (!participant.status.alive) continue;
+    
+    // ✅ NOUVEAU : Vérifier si le participant est sous contrôle
+    if (this.isControlled(participant)) {
+      console.log(`⛔ ${participant.name} est contrôlé, skip son tour`);
+      continue; // Skip ce participant
     }
     
-    console.log(`🔄 Tour ${this.currentTurn} terminé`);
+    const action = this.determineActionWithMode(participant);
+    if (action) {
+      this.executeAction(action);
+    }
+    
+    if (this.isBattleOver()) break;
   }
+  
+  console.log(`🔄 Tour ${this.currentTurn} terminé`);
+}
+
+  /**
+ * Vérifier si un participant est sous contrôle (stun, freeze, sleep)
+ */
+private isControlled(participant: IBattleParticipant): boolean {
+  // Vérifier Stun
+  if (participant.status.debuffs.includes("stunned")) {
+    console.log(`⛔ ${participant.name} est étourdi - skip action`);
+    return true;
+  }
+  
+  // Vérifier Freeze
+  if (participant.status.debuffs.includes("frozen")) {
+    console.log(`❄️ ${participant.name} est gelé - skip action`);
+    return true;
+  }
+  
+  // Vérifier Sleep (si implémenté plus tard)
+  if (participant.status.debuffs.includes("sleeping")) {
+    console.log(`😴 ${participant.name} dort - skip action`);
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Vérifier si un participant peut lancer des sorts (pas silenced)
+ */
+private canCastSpells(participant: IBattleParticipant): boolean {
+  if (participant.status.debuffs.includes("silenced")) {
+    console.log(`🤐 ${participant.name} est silencé - pas de sorts possibles`);
+    return false;
+  }
+  
+  return true;
+}
   
   private determineActionWithMode(participant: IBattleParticipant): IBattleAction | null {
     const isPlayerTeam = this.playerTeam.includes(participant);
@@ -446,51 +489,56 @@ constructor(
 private determineAction(participant: IBattleParticipant, skipUltimate: boolean = false): IBattleAction | null {
   const isPlayerTeam = this.playerTeam.includes(participant);
   
-  // ✅ NOUVEAU : Utiliser getAvailableTargets pour respecter la protection du back-line
   const allEnemies = isPlayerTeam ? this.getAliveEnemies() : this.getAlivePlayers();
   const targets = this.getAvailableTargets(participant, allEnemies);
   
   const allies = isPlayerTeam ? this.getAlivePlayers() : this.getAliveEnemies();
     
-    const heroSpells = isPlayerTeam ? 
-      this.playerSpells.get(participant.heroId) : 
-      this.enemySpells.get(participant.heroId);
-    
-    if (!heroSpells) {
-      return this.createAttackAction(participant, targets);
-    }
-    
-    const battleContext = {
-      currentTurn: this.currentTurn,
-      allPlayers: this.getAlivePlayers(),
-      allEnemies: this.getAliveEnemies()
-    };
-    
-    const bestSpell = SpellManager.determineBestSpell(
-      participant,
-      heroSpells,
-      allies,
-      targets,
-      battleContext
-    );
-    
-    if (bestSpell && (!skipUltimate || bestSpell.spellId !== heroSpells.ultimate?.id)) {
-      try {
-        return SpellManager.castSpell(
-          bestSpell.spellId,
-          participant,
-          targets,
-          bestSpell.spellLevel,
-          battleContext
-        );
-      } catch (error) {
-        console.warn(`⚠️ Erreur lors du cast de ${bestSpell.spellId}: ${error}`);
-        return this.createAttackAction(participant, targets);
-      }
-    }
-    
+  const heroSpells = isPlayerTeam ? 
+    this.playerSpells.get(participant.heroId) : 
+    this.enemySpells.get(participant.heroId);
+  
+  // ✅ NOUVEAU : Si silencé, forcer l'attaque basique (pas de sorts)
+  if (!this.canCastSpells(participant)) {
+    console.log(`🤐 ${participant.name} est silencé - attaque basique uniquement`);
     return this.createAttackAction(participant, targets);
   }
+  
+  if (!heroSpells) {
+    return this.createAttackAction(participant, targets);
+  }
+  
+  const battleContext = {
+    currentTurn: this.currentTurn,
+    allPlayers: this.getAlivePlayers(),
+    allEnemies: this.getAliveEnemies()
+  };
+  
+  const bestSpell = SpellManager.determineBestSpell(
+    participant,
+    heroSpells,
+    allies,
+    targets,
+    battleContext
+  );
+  
+  if (bestSpell && (!skipUltimate || bestSpell.spellId !== heroSpells.ultimate?.id)) {
+    try {
+      return SpellManager.castSpell(
+        bestSpell.spellId,
+        participant,
+        targets,
+        bestSpell.spellLevel,
+        battleContext
+      );
+    } catch (error) {
+      console.warn(`⚠️ Erreur lors du cast de ${bestSpell.spellId}: ${error}`);
+      return this.createAttackAction(participant, targets);
+    }
+  }
+  
+  return this.createAttackAction(participant, targets);
+}
 
   private createAttackAction(actor: IBattleParticipant, possibleTargets: IBattleParticipant[]): IBattleAction {
     const target = this.selectTarget(actor, possibleTargets);
