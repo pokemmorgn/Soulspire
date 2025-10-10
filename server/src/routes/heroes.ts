@@ -89,7 +89,7 @@ const starUpgradeSchema = Joi.object({
 
 const skillUpgradeSchema = Joi.object({
   heroInstanceId: Joi.string().required(),
-  skillSlot: Joi.string().valid("spell1", "spell2", "spell3", "ultimate", "passive").required(),
+  skillSlot: Joi.string().valid("active1", "active2", "active3", "ultimate", "passive").required(),
 });
 
 const evolutionSchema = Joi.object({
@@ -123,7 +123,7 @@ const unequipItemSchema = Joi.object({
 
 const upgradeSpellSchema = Joi.object({
   heroInstanceId: Joi.string().required(),
-  spellSlot: Joi.string().valid("spell1", "spell2", "ultimate", "passive1", "passive2", "passive3").required()
+  spellSlot: Joi.string().valid("active1", "active2", "active3", "ultimate", "passive").required()
 });
 
 const autoUpgradeSpellsSchema = Joi.object({
@@ -1392,7 +1392,7 @@ router.get("/spells/:heroInstanceId/:spellSlot", authMiddleware, async (req: Req
     const { heroInstanceId, spellSlot } = req.params;
 
     // Validation du slot
-    const validSlots = ['spell1', 'spell2', 'ultimate', 'passive1', 'passive2', 'passive3'];
+    const validSlots = ['active1', 'active2', 'active3', 'ultimate', 'passive'];
     if (!validSlots.includes(spellSlot)) {
       res.status(400).json({ 
         error: "Invalid spell slot", 
@@ -1432,4 +1432,5 @@ router.get("/spells/:heroInstanceId/:spellSlot", authMiddleware, async (req: Req
   }
 });
 export default router;
+
 
