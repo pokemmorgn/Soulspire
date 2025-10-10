@@ -648,10 +648,13 @@ private calculateDamage(
   
   damage = Math.floor(damage);
   
-  // ✅ NOUVEAU : Appliquer Incandescent Guard (réduction de dégâts)
+  // ✅ Appliquer Incandescent Guard (réduction de dégâts 20%)
   damage = BuffManager.applyIncandescentGuard(defender, damage);
   
-  // ✅ NOUVEAU : Vérifier Shield (absorption de dégâts) - TOUT DERNIER
+  // ✅ NOUVEAU : Appliquer Ash Rampart (réduction de dégâts 25%)
+  damage = BuffManager.applyAshRampart(defender, damage);
+  
+  // ✅ Vérifier Shield (absorption de dégâts) - TOUT DERNIER
   if (BuffManager.hasShield(defender)) {
     const result = BuffManager.applyShieldAbsorption(defender, damage);
     damage = result.damageTaken;
