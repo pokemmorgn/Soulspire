@@ -883,7 +883,6 @@ private executeAction(action: IBattleAction): void {
       }
     }
   }
-}
   
   // ✅ Vérifier Bleed après qu'un participant attaque
   if (action.actionType === "attack" || action.actionType === "skill" || action.actionType === "ultimate") {
