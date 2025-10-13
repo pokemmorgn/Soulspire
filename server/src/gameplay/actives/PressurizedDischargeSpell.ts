@@ -116,7 +116,7 @@ class PressurizedDischargeSpell extends BaseSpell {
   
   // ----- Détails de calcul -----
   
-/**
+  /**
    * Calculer les soins
    * Override de BaseSpell.calculateHealing pour utiliser % HP max
    */
@@ -135,14 +135,8 @@ class PressurizedDischargeSpell extends BaseSpell {
     const intBonus = Math.floor((casterStats.intelligence || 70) * 0.2);
     totalHealing += intBonus;
     
-    // Multiplicateur de rareté (inline car méthode privée dans BaseSpell)
-    const rarityMultipliers: { [key: string]: number } = {
-      Common: 1.0,
-      Rare: 1.15,
-      Epic: 1.35,
-      Legendary: 1.7
-    };
-    totalHealing *= (rarityMultipliers[caster.rarity] || 1.0);
+    // Multiplicateur de rareté
+    totalHealing *= this.getRarityMultiplier(caster.rarity);
     
     // Variation aléatoire réduite
     totalHealing *= (0.95 + Math.random() * 0.1);
@@ -164,19 +158,6 @@ class PressurizedDischargeSpell extends BaseSpell {
   private getKnockbackDuration(spellLevel: number): number {
     // Base 2 tours, +1 tous les 5 niveaux
     return Math.min(4, 2 + Math.floor((spellLevel - 1) / 5));
-  }
-  
-  /**
-   * Multiplicateur de rareté (copié de BaseSpell)
-   */
-  private getRarityMultiplier(rarity: string): number {
-    const multipliers: { [key: string]: number } = {
-      Common: 1.0,
-      Rare: 1.15,
-      Epic: 1.35,
-      Legendary: 1.7
-    };
-    return multipliers[rarity] || 1.0;
   }
   
   /**
