@@ -3,6 +3,7 @@ import { IBattleParticipant } from "../models/Battle";
 import { ShieldEffect } from "./effects/buffs/shield";
 import { IncandescentGuardEffect } from "./effects/buffs/incandescent_guard";
 import { AshRampartEffect } from "./effects/buffs/ash_rampart";
+import { InternalBrazierBuffEffect } from "./effects/buffs/internal_brazier_buff";
 
 /**
  * Gestionnaire centralisé pour tous les effets secondaires des Buffs
@@ -45,20 +46,6 @@ export class BuffManager {
   }
   
   /**
-   * Appliquer la réduction de dégâts du Rempart de Cendres
-   * @param target - Cible qui reçoit les dégâts
-   * @param baseDamage - Dégâts de base
-   * @returns Dégâts après réduction
-   */
-  static applyAshRampart(target: IBattleParticipant, baseDamage: number): number {
-    if (!AshRampartEffect.hasAshRampart(target)) {
-      return baseDamage;
-    }
-    
-    return AshRampartEffect.applyDamageReduction(target, baseDamage);
-  }
-  
-  /**
    * Déclencher la contre-attaque de la Garde Incandescente
    * @param defender - Défenseur avec Garde Incandescente
    * @param attacker - Attaquant mêlée
@@ -75,6 +62,20 @@ export class BuffManager {
     }
     
     return IncandescentGuardEffect.getCounterAttackData(defender);
+  }
+  
+  /**
+   * Appliquer la réduction de dégâts du Rempart de Cendres
+   * @param target - Cible qui reçoit les dégâts
+   * @param baseDamage - Dégâts de base
+   * @returns Dégâts après réduction
+   */
+  static applyAshRampart(target: IBattleParticipant, baseDamage: number): number {
+    if (!AshRampartEffect.hasAshRampart(target)) {
+      return baseDamage;
+    }
+    
+    return AshRampartEffect.applyDamageReduction(target, baseDamage);
   }
   
   /**
@@ -112,10 +113,15 @@ export class BuffManager {
   ): boolean {
     const currentShieldHp = ShieldEffect.getShieldHp(target);
     
+    // Si pas de bouclier ou nouveau bouclier plus grand
     if (currentShieldHp === 0 || shieldHp > currentShieldHp) {
+      // Retirer l'ancien bouclier si existe
       if (currentShieldHp > 0) {
         this.removeShield(target);
       }
+      
+      // Le sort doit appeler EffectManager.applyEffect() puis définir metadata
+      // On retourne true pour signaler que l'application doit se faire
       return true;
     } else {
       console.log(`🛡️ Bouclier existant plus grand (${currentShieldHp} > ${shieldHp}), conservé`);
@@ -180,21 +186,25 @@ export class BuffManager {
     
     const parts: string[] = [];
     
+    // Shield
     if (activeBuffs.includes("shield")) {
       const shieldHp = this.getShieldHp(target);
       parts.push(`🛡️ Bouclier (${shieldHp} HP)`);
     }
     
+    // Incandescent Guard
     if (activeBuffs.includes("incandescent_guard")) {
       const reduction = IncandescentGuardEffect.getDamageReduction(target);
       parts.push(`🔥🛡️ Garde Incandescente (-${reduction}% dégâts)`);
     }
     
+    // Ash Rampart
     if (activeBuffs.includes("ash_rampart")) {
       const reduction = AshRampartEffect.getDamageReduction(target);
       parts.push(`🔥🛡️ Rempart de Cendres (-${reduction}% dégâts)`);
     }
     
+    // Autres buffs (à implémenter)
     if (activeBuffs.includes("haste")) {
       parts.push("⚡ Célérité");
     }
@@ -213,6 +223,9 @@ export class BuffManager {
   
   /**
    * Calculer l'impact total des buffs sur les stats d'une cible
+   * Utile pour l'UI ou les estimations
+   * @param target - Cible à analyser
+   * @returns Objet avec les modifications de stats
    */
   static calculateBuffImpact(target: IBattleParticipant): {
     shieldHp: number;
@@ -222,22 +235,21 @@ export class BuffManager {
     speedBonus: number;
     healingPerTurn: number;
   } {
-    const incandescentReduction = IncandescentGuardEffect.getDamageReduction(target);
-    const ashRampartReduction = AshRampartEffect.getDamageReduction(target);
-    const totalReduction = Math.max(incandescentReduction, ashRampartReduction);
-    
     return {
       shieldHp: this.getShieldHp(target),
-      damageReduction: totalReduction,
-      atkBonus: 0,
-      defBonus: 0,
-      speedBonus: 0,
-      healingPerTurn: 0
+      damageReduction: IncandescentGuardEffect.getDamageReduction(target),
+      atkBonus: 0, // TODO: Rage, autres buffs d'attaque
+      defBonus: 0, // TODO: Fortify
+      speedBonus: 0, // TODO: Haste
+      healingPerTurn: 0 // TODO: Regeneration
     };
   }
   
   /**
    * Vérifier si une cible est fortement buffée (3+ buffs actifs)
+   * Utile pour des achievements ou mécaniques spéciales
+   * @param target - Cible à vérifier
+   * @returns true si 3+ buffs actifs
    */
   static isHeavilyBuffed(target: IBattleParticipant): boolean {
     return this.getActiveBuffs(target).length >= 3;
@@ -245,6 +257,9 @@ export class BuffManager {
   
   /**
    * Obtenir le pourcentage de bouclier restant
+   * @param target - Cible
+   * @param maxShieldHp - HP max du bouclier initial
+   * @returns Pourcentage (0-100)
    */
   static getShieldPercentage(target: IBattleParticipant, maxShieldHp: number): number {
     return ShieldEffect.getShieldPercentage(target, maxShieldHp);
@@ -252,6 +267,9 @@ export class BuffManager {
   
   /**
    * Appliquer les effets de tous les buffs sur le calcul des stats
+   * À utiliser dans BattleEngine pour modifier les stats temporairement
+   * @param participant - Participant dont on calcule les stats
+   * @returns Stats modifiées
    */
   static applyBuffModifiers(participant: IBattleParticipant): {
     atk: number;
@@ -264,6 +282,11 @@ export class BuffManager {
       def: baseStats.def,
       speed: (baseStats as any).vitesse || 80
     };
+    
+    // TODO: Appliquer les modificateurs des buffs actifs
+    // Exemple : Si Rage actif → atk × 1.3
+    // Exemple : Si Fortify actif → def × 1.2
+    // Exemple : Si Haste actif → speed × 1.25
     
     return modifiedStats;
   }
