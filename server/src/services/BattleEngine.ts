@@ -828,19 +828,28 @@ private executeAction(action: IBattleAction): void {
         
         // Appliquer dégâts aux HP
         if (finalDamage > 0) {
+          const hpBeforeDamage = target.currentHp; // ← NOUVEAU LOG
           target.currentHp = Math.max(0, target.currentHp - finalDamage);
+          
+          console.log(`🩺 ${target.name}: ${hpBeforeDamage} → ${target.currentHp} HP (${Math.floor((target.currentHp / target.stats.maxHp) * 100)}%)`); // ← NOUVEAU LOG
           
           // Vérifier réveil de Sleep
           this.checkSleepWakeUp(target, finalDamage);
         }
         
-        // Vérifier mort
+        // ✅ DÉPLACÉ ICI : Vérifier déclenchement des passifs sur seuil HP (AVANT la vérification de mort)
+        if (target.status.alive && finalDamage > 0) {
+          console.log(`🔍 Vérification passif pour ${target.name} (Vivant: ${target.status.alive}, HP: ${target.currentHp}/${target.stats.maxHp})`); // ← NOUVEAU LOG
+          this.checkHpThresholdPassives(target);
+        }
+        
+        // Vérifier mort (APRÈS la vérification des passifs)
         if (target.currentHp === 0) {
           target.status.alive = false;
           console.log(`💀 ${target.name} est KO !`);
         }
         
-// ✅ NOUVEAU : Vérifier contre-attaque Garde Incandescente
+        // ✅ NOUVEAU : Vérifier contre-attaque Garde Incandescente
         if (target.status.alive && actor) {
           const isMeleeAttack = action.actionType === "attack" || 
                                 (actor.role === "DPS Melee" || actor.role === "Tank");
@@ -876,11 +885,6 @@ private executeAction(action: IBattleAction): void {
             finalDamage,
             isMeleeAttack
           );
-        }
-        
-        // ✅ NOUVEAU : Vérifier déclenchement des passifs sur seuil HP
-        if (target.status.alive && finalDamage > 0) {
-          this.checkHpThresholdPassives(target);
         }
       }
     }
