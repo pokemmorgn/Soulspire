@@ -95,6 +95,7 @@ constructor(
       }
     this.initializeBattleState();
     SpellManager.initialize();
+    PassiveManager.initialize();
     
     console.log(`🎮 Combat démarré en mode ${this.battleOptions.mode} (vitesse x${this.battleOptions.speed})`);
     console.log(`👥 Formation joueur: ${this.getFormationSummary(this.playerTeam, this.playerPositions)}`);
@@ -651,8 +652,11 @@ private calculateDamage(
   // ✅ Appliquer Incandescent Guard (réduction de dégâts 20%)
   damage = BuffManager.applyIncandescentGuard(defender, damage);
   
-  // ✅ NOUVEAU : Appliquer Ash Rampart (réduction de dégâts 25%)
+  // ✅ Appliquer Ash Rampart (réduction de dégâts 25%)
   damage = BuffManager.applyAshRampart(defender, damage);
+  
+  // ✅ Appliquer Internal Brazier (réduction de dégâts 15%)
+  damage = BuffManager.applyInternalBrazier(defender, damage);
   
   // ✅ Vérifier Shield (absorption de dégâts) - TOUT DERNIER
   if (BuffManager.hasShield(defender)) {
@@ -834,7 +838,7 @@ private executeAction(action: IBattleAction): void {
           console.log(`💀 ${target.name} est KO !`);
         }
         
-        // ✅ NOUVEAU : Vérifier contre-attaque Garde Incandescente
+// ✅ NOUVEAU : Vérifier contre-attaque Garde Incandescente
         if (target.status.alive && actor) {
           const isMeleeAttack = action.actionType === "attack" || 
                                 (actor.role === "DPS Melee" || actor.role === "Tank");
@@ -858,9 +862,28 @@ private executeAction(action: IBattleAction): void {
             console.log(`🔥⚔️ ${actor.name} est brûlé par la Garde Incandescente de ${target.name} !`);
           }
         }
+        
+        // ✅ NOUVEAU : Vérifier reflect damage du Brasier Intérieur
+        if (target.status.alive && actor && actor.status.alive && finalDamage > 0) {
+          const isMeleeAttack = action.actionType === "attack" || 
+                                (actor.role === "DPS Melee" || actor.role === "Tank");
+          
+          BuffManager.triggerInternalBrazierReflect(
+            target,
+            actor,
+            finalDamage,
+            isMeleeAttack
+          );
+        }
+        
+        // ✅ NOUVEAU : Vérifier déclenchement des passifs sur seuil HP
+        if (target.status.alive && finalDamage > 0) {
+          this.checkHpThresholdPassives(target);
+        }
       }
     }
   }
+}
   
   // ✅ Vérifier Bleed après qu'un participant attaque
   if (action.actionType === "attack" || action.actionType === "skill" || action.actionType === "ultimate") {
@@ -1144,5 +1167,73 @@ public getWaveData(): IWaveData | undefined {
   
 public isMultiWaveBattle(): boolean {
     return this.isWaveBattle;
+  }
+/**
+   * Vérifier et déclencher les passifs basés sur seuil HP
+   */
+  private checkHpThresholdPassives(participant: IBattleParticipant): void {
+    const isPlayerTeam = this.playerTeam.includes(participant);
+    const heroSpells = isPlayerTeam ? 
+      this.playerSpells.get(participant.heroId) : 
+      this.enemySpells.get(participant.heroId);
+    
+    // Vérifier si le héros a un passif
+    if (!heroSpells || !heroSpells.passive) return;
+    
+    const passiveId = heroSpells.passive.id;
+    const passiveLevel = heroSpells.passive.level;
+    
+    // Créer le contexte pour le passif
+    const context = {
+      currentTurn: this.currentTurn,
+      actor: participant,
+      allAllies: isPlayerTeam ? this.getAlivePlayers() : this.getAliveEnemies(),
+      allEnemies: isPlayerTeam ? this.getAliveEnemies() : this.getAlivePlayers()
+    };
+    
+    // Vérifier et déclencher le passif
+    const result = PassiveManager.checkPassiveForTriggerType(
+      participant,
+      passiveId,
+      passiveLevel,
+      "on_hp_threshold",
+      context
+    );
+    
+    if (result && result.triggered) {
+      console.log(`⚡ Passif déclenché: ${result.message}`);
+      
+      // Appliquer les effets du passif
+      if (result.effects && result.effects.length > 0) {
+        for (const effect of result.effects) {
+          const target = this.findParticipant(effect.targetId);
+          if (target && target.status.alive) {
+            const effectResult = EffectManager.applyEffect(
+              effect.effectId,
+              target,
+              participant,
+              effect.duration,
+              effect.stacks || 1
+            );
+            
+            // Stocker les metadata si nécessaire (pour Internal Brazier)
+            const activeEffect = (target as any).activeEffects?.find(
+              (e: any) => e.id === effect.effectId
+            );
+            
+            if (activeEffect && result.statModifiers) {
+              activeEffect.metadata = {
+                damageReduction: result.statModifiers.damageReduction || 0,
+                reflectPercent: result.statModifiers.reflectDamage || 0
+              };
+            }
+            
+            if (effectResult && effectResult.message) {
+              console.log(effectResult.message);
+            }
+          }
+        }
+      }
+    }
   }
 }
