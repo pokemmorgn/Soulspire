@@ -99,16 +99,21 @@ canTrigger(context: IPassiveTriggerContext, passiveLevel: number): boolean {
       return false;
     }
     
-    // Vérifier le cooldown interne
+    // Vérifier le cooldown interne SEULEMENT si déjà déclenché au moins une fois
     if (this.config.internalCooldown > 0) {
-      const lastTrigger = this.lastTriggerTurn.get(owner.heroId) || 0;
-      const turnsSinceLastTrigger = context.currentTurn - lastTrigger;
-      
-      console.log(`🔎 ${this.config.name}: Cooldown check - Last trigger: tour ${lastTrigger}, Current: tour ${context.currentTurn}, Turns since: ${turnsSinceLastTrigger}/${this.config.internalCooldown}`);
-      
-      if (turnsSinceLastTrigger < this.config.internalCooldown) {
-        console.log(`⏰ ${this.config.name}: En cooldown (${this.config.internalCooldown - turnsSinceLastTrigger} tours restants)`);
-        return false; // Encore en cooldown
+      // ✅ FIX : Vérifier si le passif a déjà été utilisé
+      if (this.lastTriggerTurn.has(owner.heroId)) {
+        const lastTrigger = this.lastTriggerTurn.get(owner.heroId)!;
+        const turnsSinceLastTrigger = context.currentTurn - lastTrigger;
+        
+        console.log(`🔎 ${this.config.name}: Cooldown check - Last trigger: tour ${lastTrigger}, Current: tour ${context.currentTurn}, Turns since: ${turnsSinceLastTrigger}/${this.config.internalCooldown}`);
+        
+        if (turnsSinceLastTrigger < this.config.internalCooldown) {
+          console.log(`⏰ ${this.config.name}: En cooldown (${this.config.internalCooldown - turnsSinceLastTrigger} tours restants)`);
+          return false; // Encore en cooldown
+        }
+      } else {
+        console.log(`✨ ${this.config.name}: Première utilisation possible (pas de cooldown)`);
       }
     }
     
