@@ -4,6 +4,8 @@ import { EffectManager } from "../gameplay/EffectManager";
 import { DotManager } from "../gameplay/DotManager";
 import { DebuffManager } from "../gameplay/DebuffManager";
 import { BuffManager } from "../gameplay/BuffManager";
+import { PassiveManager } from "../gameplay/PassiveManager";
+
 export interface IBattleOptions {
   mode: "auto" | "manual";
   speed: 1 | 2 | 3;
