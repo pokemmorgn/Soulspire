@@ -90,18 +90,24 @@ export abstract class BasePassive {
    * @param passiveLevel - Niveau du passif
    * @returns true si les conditions sont remplies
    */
-  canTrigger(context: IPassiveTriggerContext, passiveLevel: number): boolean {
+canTrigger(context: IPassiveTriggerContext, passiveLevel: number): boolean {
     const owner = context.actor;
     
     // Vérifier si le possesseur est vivant
-    if (!owner.status.alive) return false;
+    if (!owner.status.alive) {
+      console.log(`❌ ${this.config.name}: ${owner.name} n'est pas vivant`);
+      return false;
+    }
     
     // Vérifier le cooldown interne
     if (this.config.internalCooldown > 0) {
       const lastTrigger = this.lastTriggerTurn.get(owner.heroId) || 0;
       const turnsSinceLastTrigger = context.currentTurn - lastTrigger;
       
+      console.log(`🔎 ${this.config.name}: Cooldown check - Last trigger: tour ${lastTrigger}, Current: tour ${context.currentTurn}, Turns since: ${turnsSinceLastTrigger}/${this.config.internalCooldown}`);
+      
       if (turnsSinceLastTrigger < this.config.internalCooldown) {
+        console.log(`⏰ ${this.config.name}: En cooldown (${this.config.internalCooldown - turnsSinceLastTrigger} tours restants)`);
         return false; // Encore en cooldown
       }
     }
@@ -109,7 +115,9 @@ export abstract class BasePassive {
     // Vérifier les conditions selon le type de déclenchement
     switch (this.config.triggerType) {
       case "on_hp_threshold":
-        return this.checkHpThreshold(owner);
+        const canTriggerHp = this.checkHpThreshold(owner);
+        console.log(`🔎 ${this.config.name}: HP threshold result = ${canTriggerHp}`);
+        return canTriggerHp;
         
       case "on_damaged":
         return this.checkDamaged(context);
@@ -146,11 +154,11 @@ export abstract class BasePassive {
     const threshold = this.config.triggerConditions?.hpThresholdPercent || 50;
     const currentHpPercent = (owner.currentHp / owner.stats.maxHp) * 100;
     
-    // Ne se déclenche que si on passe SOUS le seuil
-    // On vérifie qu'on n'a pas déjà déclenché à ce seuil
-    const alreadyTriggered = this.lastTriggerTurn.has(owner.heroId);
+    console.log(`🔎 HP Threshold check: ${owner.name} at ${currentHpPercent.toFixed(1)}% HP, threshold: ${threshold}%`);
     
-    return currentHpPercent < threshold && !alreadyTriggered;
+    // ✅ FIX : Vérifier simplement si sous le seuil
+    // Le cooldown est déjà géré dans canTrigger() AVANT d'appeler cette méthode
+    return currentHpPercent < threshold;
   }
   
   /**
