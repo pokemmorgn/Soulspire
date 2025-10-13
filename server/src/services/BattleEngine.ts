@@ -493,30 +493,17 @@ private processParticipantEffects(participant: IBattleParticipant): void {
     }
     
     // ✅ NOUVEAU : Vérifier explosion Lava Core
-      if (result.message?.includes("Cœur de Lave") && result.damage) {
-        this.triggerLavaCoreExplosion(participant, result.damage);
-      }
-      
-      if (result.healing && result.healing > 0) {
-        participant.currentHp = Math.min(participant.stats.maxHp, participant.currentHp + result.healing);
-      }
-      
-      if (result.message) {
-        console.log(result.message);
-      }
-      if (effect.id === "magma_skin") {
-    effect.duration--;
-    
-    if (effect.duration <= 0) {
-      // Retirer le buff
-      const buffIndex = participant.status.buffs.indexOf("magma_skin");
-      if (buffIndex > -1) {
-        participant.status.buffs.splice(buffIndex, 1);
-      }
-      activeEffects.splice(i, 1);
-      console.log(`🌋 Peau de Magma de ${participant.name} s'éteint`);
+    if (result.message?.includes("Cœur de Lave") && result.damage) {
+      this.triggerLavaCoreExplosion(participant, result.damage);
     }
-  }
+    
+    if (result.healing && result.healing > 0) {
+      participant.currentHp = Math.min(participant.stats.maxHp, participant.currentHp + result.healing);
+    }
+    
+    if (result.message) {
+      console.log(result.message);
+    }
   }
 }
 private triggerLavaCoreExplosion(caster: IBattleParticipant, explosionDamage: number): void {
@@ -700,9 +687,8 @@ private calculateDamage(
   // ✅ Appliquer Internal Brazier (réduction de dégâts 15%)
   damage = BuffManager.applyInternalBrazier(defender, damage);
   
-  // ✅ NOUVEAU : Appliquer Peau de Magma (réduction 30%)
-  damage = MagmaSkinSpell.applyDamageReduction(defender, damage);
-  
+// ✅ Appliquer Internal Brazier (réduction de dégâts 15%)
+damage = BuffManager.applyInternalBrazier(defender, damage);
 
 // ✅ NOUVEAU : Appliquer résistance de la Tourelle Thermique (10%)
 const shieldData = EffectManager.getEffectData(defender, "shield");
@@ -940,26 +926,6 @@ private executeAction(action: IBattleAction): void {
             finalDamage,
             isMeleeAttack
           );
-        }
-        // ✅ NOUVEAU : Vérifier reflect damage de Peau de Magma
-        if (target.status.alive && actor && actor.status.alive && finalDamage > 0) {
-          const isMeleeAttack = action.actionType === "attack" || 
-                                (actor.role === "DPS Melee" || actor.role === "Tank");
-          
-          const reflectDamage = MagmaSkinSpell.calculateReflectDamage(
-            target,
-            finalDamage,
-            isMeleeAttack
-          );
-          
-          if (reflectDamage > 0) {
-            actor.currentHp = Math.max(0, actor.currentHp - reflectDamage);
-            
-            if (actor.currentHp === 0) {
-              actor.status.alive = false;
-              console.log(`💀 ${actor.name} meurt des dégâts de reflect de Peau de Magma !`);
-            }
-          }
         }
       }
     }
