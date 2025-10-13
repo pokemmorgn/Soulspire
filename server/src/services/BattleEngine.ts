@@ -6,6 +6,7 @@ import { DebuffManager } from "../gameplay/DebuffManager";
 import { BuffManager } from "../gameplay/BuffManager";
 import { PassiveManager } from "../gameplay/PassiveManager";
 
+import { OverchargedReactorSpell } from "../gameplay/ultimates/OverchargedReactorSpell";
 export interface IBattleOptions {
   mode: "auto" | "manual";
   speed: 1 | 2 | 3;
