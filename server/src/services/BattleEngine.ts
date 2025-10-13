@@ -937,21 +937,32 @@ private executeAction(action: IBattleAction): void {
     }
   }
   
-  if (action.healing && action.healing > 0) {
-    for (const targetId of action.targetIds) {
-      const target = this.findParticipant(targetId);
-      if (target && target.status.alive) {
-        // ✅ Appliquer réduction Poison via DotManager
-        const finalHealing = DotManager.applyHealingReduction(target, action.healing);
-        
-        target.currentHp = Math.min(target.stats.maxHp, target.currentHp + finalHealing);
-        
-        if (finalHealing > 0) {
-          console.log(`💚 ${target.name} récupère ${finalHealing} HP`);
-        }
+if (action.healing && action.healing > 0) {
+  for (const targetId of action.targetIds) {
+    const target = this.findParticipant(targetId);
+    if (target && target.status.alive) {
+      let finalHealing = action.healing;
+      
+      // ✅ Appliquer réduction Poison via DotManager
+      finalHealing = DotManager.applyHealingReduction(target, finalHealing);
+      
+      // ✅ NOUVEAU : Appliquer bonus Réacteur Surchauffé si le caster est Albert
+      const actor = this.findParticipant(action.actorId);
+      if (actor && OverchargedReactorSpell.isOvercharged(actor)) {
+        const healingBonus = OverchargedReactorSpell.getHealingBonus(actor);
+        const bonusHealing = Math.floor(finalHealing * (healingBonus / 100));
+        finalHealing += bonusHealing;
+        console.log(`🔧⚡ Réacteur Surchauffé : +${healingBonus}% soins (+${bonusHealing} HP)`);
+      }
+      
+      target.currentHp = Math.min(target.stats.maxHp, target.currentHp + finalHealing);
+      
+      if (finalHealing > 0) {
+        console.log(`💚 ${target.name} récupère ${finalHealing} HP`);
       }
     }
   }
+}
   
   if (action.buffsApplied && action.buffsApplied.length > 0) {
     for (const targetId of action.targetIds) {
