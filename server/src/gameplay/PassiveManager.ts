@@ -1,32 +1,51 @@
 // server/src/gameplay/PassiveManager.ts
 import { BasePassive, IPassiveTriggerContext, IPassiveResult } from "./base/BasePassive";
 import { IBattleParticipant } from "../models/Battle";
+import { AutoPassiveLoader } from "./AutoPassiveLoader";
 
 /**
  * Gestionnaire centralisé pour tous les passifs
  * Gère l'enregistrement, le déclenchement et le cooldown des passifs
+ * ✨ NOUVEAU : Utilise AutoPassiveLoader pour l'auto-découverte
  */
 export class PassiveManager {
   private static passives: Map<string, BasePassive> = new Map();
   private static initialized: boolean = false;
   
   /**
-   * Initialiser le gestionnaire de passifs
+   * Initialiser le gestionnaire de passifs avec auto-découverte
    */
   static async initialize(): Promise<void> {
     if (this.initialized) return;
     
-    console.log("✨ Initialisation du PassiveManager...");
+    console.log("✨ Initialisation du PassiveManager avec auto-découverte...");
     
-    // TODO: Auto-découverte des passifs (similaire à AutoSpellLoader)
-    // Pour l'instant, les passifs seront enregistrés manuellement
+    // ✨ NOUVEAU : Auto-découverte et chargement de tous les passifs
+    await AutoPassiveLoader.autoLoadPassives();
+    
+    // Copier les passifs auto-chargés dans notre registre
+    const autoLoadedPassives = AutoPassiveLoader.getAllPassives();
+    for (const passive of autoLoadedPassives) {
+      this.passives.set(passive.config.id, passive);
+    }
     
     this.initialized = true;
-    console.log(`✅ PassiveManager initialisé`);
+    console.log(`✅ PassiveManager initialisé - ${this.passives.size} passif(s) chargé(s)`);
+    
+    // Validation en développement
+    if (process.env.NODE_ENV === 'development') {
+      AutoPassiveLoader.validateLoadedPassives();
+    }
+    
+    // Vérifier qu'au moins un passif a été chargé
+    if (this.passives.size === 0) {
+      console.warn("⚠️ ATTENTION: Aucun passif n'a pu être chargé par l'AutoPassiveLoader !");
+    }
   }
   
   /**
-   * Enregistrer un passif manuellement
+   * Enregistrer un passif manuellement (pour les cas spéciaux)
+   * ⚠️ À éviter : préférer l'auto-découverte via AutoPassiveLoader
    */
   static registerPassive(passive: BasePassive): void {
     if (this.passives.has(passive.config.id)) {
@@ -34,13 +53,17 @@ export class PassiveManager {
     }
     
     this.passives.set(passive.config.id, passive);
-    console.log(`📜 Passif enregistré: ${passive.config.name} (${passive.config.id})`);
+    console.log(`📜 Passif enregistré manuellement: ${passive.config.name} (${passive.config.id})`);
   }
   
   /**
    * Récupérer un passif par son ID
    */
   static getPassive(passiveId: string): BasePassive | undefined {
+    if (!this.initialized) {
+      console.warn("⚠️ PassiveManager non initialisé - initialisation synchrone limitée");
+      this.initialized = true;
+    }
     return this.passives.get(passiveId);
   }
   
@@ -202,20 +225,42 @@ export class PassiveManager {
     passivesByTriggerType: { [key: string]: number };
     passivesList: { [key: string]: string };
   } {
+    const baseStats = {
+      totalPassives: this.passives.size,
+      passivesByTriggerType: this.getPassivesByTriggerType(),
+      passivesList: this.getPassivesList()
+    };
+
+    // Ajouter les stats de l'auto-loader si disponible
+    try {
+      return {
+        ...baseStats,
+        autoLoaderStats: AutoPassiveLoader.getStats()
+      } as any;
+    } catch {
+      return baseStats;
+    }
+  }
+  
+  private static getPassivesByTriggerType(): { [key: string]: number } {
     const passivesByTriggerType: { [key: string]: number } = {};
+    
+    for (const passive of this.passives.values()) {
+      const triggerType = passive.config.triggerType;
+      passivesByTriggerType[triggerType] = (passivesByTriggerType[triggerType] || 0) + 1;
+    }
+    
+    return passivesByTriggerType;
+  }
+  
+  private static getPassivesList(): { [key: string]: string } {
     const passivesList: { [key: string]: string } = {};
     
     for (const [id, passive] of this.passives.entries()) {
-      const triggerType = passive.config.triggerType;
-      passivesByTriggerType[triggerType] = (passivesByTriggerType[triggerType] || 0) + 1;
       passivesList[id] = passive.config.name;
     }
     
-    return {
-      totalPassives: this.passives.size,
-      passivesByTriggerType,
-      passivesList
-    };
+    return passivesList;
   }
   
   /**
@@ -225,9 +270,17 @@ export class PassiveManager {
     console.log("🔍 === DIAGNOSTIC SYSTÈME DE PASSIFS ===");
     console.log(`📊 Passifs enregistrés: ${this.passives.size}`);
     
-    const stats = this.getStats();
-    console.log("⚡ Répartition par type de déclenchement:", stats.passivesByTriggerType);
-    console.log("📜 Liste des passifs:", stats.passivesList);
+    try {
+      const stats = AutoPassiveLoader.getDetailedStats();
+      console.log("⚡ Répartition par type de déclenchement:", stats.byTriggerType);
+      console.log("⏱️ Répartition par cooldown:", stats.byCooldown);
+      console.log("🔮 Répartition par élément:", stats.byElement);
+      console.log(`📊 Cooldown moyen: ${stats.averageCooldown} tours`);
+      console.log("✅ Validation:", AutoPassiveLoader.validateLoadedPassives() ? "OK" : "ERREUR");
+    } catch {
+      console.log("📚 Mode manuel - auto-loader indisponible");
+      console.log("📜 Liste des passifs:", this.getPassivesList());
+    }
   }
   
   /**
@@ -236,5 +289,44 @@ export class PassiveManager {
   static reset(): void {
     this.passives.clear();
     this.initialized = false;
+  }
+  
+  // === NOUVELLES MÉTHODES AVEC AUTO-LOADER ===
+  
+  /**
+   * Rechargement à chaud des passifs (développement)
+   */
+  static async hotReload(): Promise<void> {
+    if (!this.initialized) return;
+    
+    try {
+      console.log("🔄 Rechargement à chaud du système de passifs...");
+      await AutoPassiveLoader.hotReload();
+      
+      // Recharger dans notre registre
+      this.passives.clear();
+      const reloadedPassives = AutoPassiveLoader.getAllPassives();
+      for (const passive of reloadedPassives) {
+        this.passives.set(passive.config.id, passive);
+      }
+      
+      console.log(`🔥 ${this.passives.size} passif(s) rechargé(s) à chaud`);
+    } catch (error) {
+      console.error("❌ Erreur lors du rechargement à chaud:", error);
+    }
+  }
+  
+  /**
+   * Obtenir passifs par type de déclenchement via auto-loader
+   */
+  static getPassivesFromTriggerType(triggerType: string): BasePassive[] {
+    try {
+      return AutoPassiveLoader.getPassivesByTriggerType(triggerType);
+    } catch {
+      // Fallback si auto-loader pas disponible
+      return Array.from(this.passives.values()).filter(
+        passive => passive.config.triggerType === triggerType
+      );
+    }
   }
 }
