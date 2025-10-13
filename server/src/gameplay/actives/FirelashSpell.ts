@@ -76,7 +76,7 @@ class FirelashSpell extends BaseSpell {
     action.critical = isCritical;
     action.energyCost = this.getEnergyCost(spellLevel);
     action.energyGain = 10; // Bon gain pour single target puissant
-    action.elementalAdvantage = this.getElementalAdvantage(caster.element, target.element);
+    action.elementalAdvantage = 1.0; // Déjà calculé dans calculateDamage
     action.debuffsApplied = [];
     
     // Vérifier si la cible est déjà brûlée
