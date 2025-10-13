@@ -1176,69 +1176,87 @@ public isMultiWaveBattle(): boolean {
 /**
    * Vérifier et déclencher les passifs basés sur seuil HP
    */
-  private checkHpThresholdPassives(participant: IBattleParticipant): void {
-    const isPlayerTeam = this.playerTeam.includes(participant);
-    const heroSpells = isPlayerTeam ? 
-      this.playerSpells.get(participant.heroId) : 
-      this.enemySpells.get(participant.heroId);
+/**
+ * Vérifier et déclencher les passifs basés sur seuil HP
+ */
+private checkHpThresholdPassives(participant: IBattleParticipant): void {
+  console.log(`🔎 checkHpThresholdPassives appelé pour ${participant.name}`); // ← NOUVEAU LOG
+  
+  const isPlayerTeam = this.playerTeam.includes(participant);
+  const heroSpells = isPlayerTeam ? 
+    this.playerSpells.get(participant.heroId) : 
+    this.enemySpells.get(participant.heroId);
+  
+  console.log(`🔎 heroSpells trouvé:`, heroSpells ? 'OUI' : 'NON'); // ← NOUVEAU LOG
+  
+  // Vérifier si le héros a un passif
+  if (!heroSpells || !heroSpells.passive) {
+    console.log(`❌ Pas de passif configuré pour ${participant.name}`); // ← NOUVEAU LOG
+    return;
+  }
+  
+  const passiveId = heroSpells.passive.id;
+  const passiveLevel = heroSpells.passive.level;
+  
+  console.log(`🔎 Passif trouvé: ${passiveId} (niveau ${passiveLevel})`); // ← NOUVEAU LOG
+  
+  // Créer le contexte pour le passif
+  const context = {
+    currentTurn: this.currentTurn,
+    actor: participant,
+    allAllies: isPlayerTeam ? this.getAlivePlayers() : this.getAliveEnemies(),
+    allEnemies: isPlayerTeam ? this.getAliveEnemies() : this.getAlivePlayers()
+  };
+  
+  console.log(`🔎 Vérification du passif ${passiveId} pour trigger type: on_hp_threshold`); // ← NOUVEAU LOG
+  
+  // Vérifier et déclencher le passif
+  const result = PassiveManager.checkPassiveForTriggerType(
+    participant,
+    passiveId,
+    passiveLevel,
+    "on_hp_threshold",
+    context
+  );
+  
+  console.log(`🔎 Résultat checkPassiveForTriggerType:`, result ? 'DÉCLENCHÉ' : 'PAS DÉCLENCHÉ'); // ← NOUVEAU LOG
+  
+  if (result && result.triggered) {
+    console.log(`⚡ Passif déclenché: ${result.message}`);
     
-    // Vérifier si le héros a un passif
-    if (!heroSpells || !heroSpells.passive) return;
-    
-    const passiveId = heroSpells.passive.id;
-    const passiveLevel = heroSpells.passive.level;
-    
-    // Créer le contexte pour le passif
-    const context = {
-      currentTurn: this.currentTurn,
-      actor: participant,
-      allAllies: isPlayerTeam ? this.getAlivePlayers() : this.getAliveEnemies(),
-      allEnemies: isPlayerTeam ? this.getAliveEnemies() : this.getAlivePlayers()
-    };
-    
-    // Vérifier et déclencher le passif
-    const result = PassiveManager.checkPassiveForTriggerType(
-      participant,
-      passiveId,
-      passiveLevel,
-      "on_hp_threshold",
-      context
-    );
-    
-    if (result && result.triggered) {
-      console.log(`⚡ Passif déclenché: ${result.message}`);
-      
-      // Appliquer les effets du passif
-      if (result.effects && result.effects.length > 0) {
-        for (const effect of result.effects) {
-          const target = this.findParticipant(effect.targetId);
-          if (target && target.status.alive) {
-            const effectResult = EffectManager.applyEffect(
-              effect.effectId,
-              target,
-              participant,
-              effect.duration,
-              effect.stacks || 1
-            );
-            
-            // Stocker les metadata si nécessaire (pour Internal Brazier)
-            const activeEffect = (target as any).activeEffects?.find(
-              (e: any) => e.id === effect.effectId
-            );
-            
-            if (activeEffect && result.statModifiers) {
-              activeEffect.metadata = {
-                damageReduction: result.statModifiers.damageReduction || 0,
-                reflectPercent: result.statModifiers.reflectDamage || 0
-              };
-            }
-            
-            if (effectResult && effectResult.message) {
-              console.log(effectResult.message);
-            }
+    // Appliquer les effets du passif
+    if (result.effects && result.effects.length > 0) {
+      for (const effect of result.effects) {
+        const target = this.findParticipant(effect.targetId);
+        if (target && target.status.alive) {
+          const effectResult = EffectManager.applyEffect(
+            effect.effectId,
+            target,
+            participant,
+            effect.duration,
+            effect.stacks || 1
+          );
+          
+          // Stocker les metadata si nécessaire (pour Internal Brazier)
+          const activeEffect = (target as any).activeEffects?.find(
+            (e: any) => e.id === effect.effectId
+          );
+          
+          if (activeEffect && result.statModifiers) {
+            activeEffect.metadata = {
+              damageReduction: result.statModifiers.damageReduction || 0,
+              reflectPercent: result.statModifiers.reflectDamage || 0
+            };
+          }
+          
+          if (effectResult && effectResult.message) {
+            console.log(effectResult.message);
           }
         }
       }
     }
+  } else {
+    console.log(`❌ Le passif ${passiveId} ne s'est pas déclenché`); // ← NOUVEAU LOG
   }
+}
 }
