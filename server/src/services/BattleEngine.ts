@@ -4,6 +4,7 @@ import { EffectManager } from "../gameplay/EffectManager";
 import { DotManager } from "../gameplay/DotManager";
 import { DebuffManager } from "../gameplay/DebuffManager";
 import { BuffManager } from "../gameplay/BuffManager";
+import { PassiveManager } from "../gameplay/PassiveManager";
 export interface IBattleOptions {
   mode: "auto" | "manual";
   speed: 1 | 2 | 3;
@@ -95,7 +96,8 @@ constructor(
       }
     this.initializeBattleState();
     SpellManager.initialize();
-    
+    PassiveManager.initialize();
+  
     console.log(`🎮 Combat démarré en mode ${this.battleOptions.mode} (vitesse x${this.battleOptions.speed})`);
     console.log(`👥 Formation joueur: ${this.getFormationSummary(this.playerTeam, this.playerPositions)}`);
     console.log(`👹 Formation ennemie: ${this.getFormationSummary(this.enemyTeam, this.enemyPositions)}`);
@@ -654,6 +656,9 @@ private calculateDamage(
   // ✅ NOUVEAU : Appliquer Ash Rampart (réduction de dégâts 25%)
   damage = BuffManager.applyAshRampart(defender, damage);
   
+  // ✅ NOUVEAU : Appliquer Internal Brazier (réduction de dégâts 15%)
+  damage = BuffManager.applyInternalBrazier(defender, damage);
+  
   // ✅ Vérifier Shield (absorption de dégâts) - TOUT DERNIER
   if (BuffManager.hasShield(defender)) {
     const result = BuffManager.applyShieldAbsorption(defender, damage);
@@ -820,7 +825,7 @@ private executeAction(action: IBattleAction): void {
           }
         }
         
-        // Appliquer dégâts aux HP
+    // Appliquer dégâts aux HP
         if (finalDamage > 0) {
           target.currentHp = Math.max(0, target.currentHp - finalDamage);
           
@@ -834,7 +839,12 @@ private executeAction(action: IBattleAction): void {
           console.log(`💀 ${target.name} est KO !`);
         }
         
-        // ✅ NOUVEAU : Vérifier contre-attaque Garde Incandescente
+        // ✅ NOUVEAU : Vérifier déclenchement des passifs sur seuil HP
+        if (target.status.alive && finalDamage > 0) {
+          this.checkHpThresholdPassives(target);
+        }
+        
+        // ✅ Vérifier contre-attaque Garde Incandescente
         if (target.status.alive && actor) {
           const isMeleeAttack = action.actionType === "attack" || 
                                 (actor.role === "DPS Melee" || actor.role === "Tank");
@@ -844,6 +854,33 @@ private executeAction(action: IBattleAction): void {
             actor, 
             isMeleeAttack
           );
+          
+          if (counterData) {
+            // Appliquer brûlure à l'attaquant
+            EffectManager.applyEffect(
+              "burn", 
+              actor, 
+              target, 
+              counterData.burnDuration, 
+              counterData.burnStacks
+            );
+            
+            console.log(`🔥⚔️ ${actor.name} est brûlé par la Garde Incandescente de ${target.name} !`);
+          }
+        }
+        
+        // ✅ NOUVEAU : Vérifier reflect damage du Brasier Intérieur
+        if (target.status.alive && actor && actor.status.alive && finalDamage > 0) {
+          const isMeleeAttack = action.actionType === "attack" || 
+                                (actor.role === "DPS Melee" || actor.role === "Tank");
+          
+          BuffManager.triggerInternalBrazierReflect(
+            target,
+            actor,
+            finalDamage,
+            isMeleeAttack
+          );
+        }
           
           if (counterData) {
             // Appliquer brûlure à l'attaquant
