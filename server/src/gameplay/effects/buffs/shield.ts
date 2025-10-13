@@ -41,7 +41,6 @@ export class ShieldEffect extends BaseEffect {
   }
   
 onRemove(target: IBattleParticipant): EffectResult {
-  // Vérifier si c'est un bouclier Lava Core (Cœur de Lave)
   const activeEffects = (target as any).activeEffects as any[];
   if (!activeEffects) {
     return { message: `💔 Le bouclier de ${target.name} se brise` };
@@ -53,6 +52,14 @@ onRemove(target: IBattleParticipant): EffectResult {
   if (shieldEffect?.metadata?.isLavaCore && shieldEffect.metadata.explosionDamage) {
     return {
       message: `💥🌋 Le Cœur de Lave de ${target.name} explose !`,
+      damage: shieldEffect.metadata.explosionDamage
+    };
+  }
+  
+  // ✅ NOUVEAU : Si c'est une Tourelle Thermique, déclencher l'explosion
+  if (shieldEffect?.metadata?.isThermalTurret && shieldEffect.metadata.explosionDamage) {
+    return {
+      message: `💥🔧 La Tourelle de ${target.name} explose !`,
       damage: shieldEffect.metadata.explosionDamage
     };
   }
