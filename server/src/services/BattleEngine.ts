@@ -686,16 +686,30 @@ private calculateDamage(
   // ✅ Appliquer Internal Brazier (réduction de dégâts 15%)
   damage = BuffManager.applyInternalBrazier(defender, damage);
   
-  // ✅ Vérifier Shield (absorption de dégâts) - TOUT DERNIER
-  if (BuffManager.hasShield(defender)) {
-    const result = BuffManager.applyShieldAbsorption(defender, damage);
-    damage = result.damageTaken;
-    
-    // Log pour debug
-    if (result.damageBlocked > 0) {
-      console.log(`🛡️ Bouclier de ${defender.name} absorbe ${result.damageBlocked} dégâts`);
-    }
+// ✅ Appliquer Internal Brazier (réduction de dégâts 15%)
+damage = BuffManager.applyInternalBrazier(defender, damage);
+
+// ✅ NOUVEAU : Appliquer résistance de la Tourelle Thermique (10%)
+const shieldData = EffectManager.getEffectData(defender, "shield");
+if (shieldData?.metadata?.damageResistance) {
+  const resistance = shieldData.metadata.damageResistance;
+  const reducedDamage = Math.floor(damage * (1 - resistance / 100));
+  console.log(`🔧🛡️ Résistance Tourelle Thermique: -${resistance}% (${damage} → ${reducedDamage})`);
+  damage = reducedDamage;
+}
+
+damage = Math.max(1, damage);
+
+// ✅ Vérifier Shield (absorption de dégâts) - TOUT DERNIER
+if (BuffManager.hasShield(defender)) {
+  const result = BuffManager.applyShieldAbsorption(defender, damage);
+  damage = result.damageTaken;
+  
+  // Log pour debug
+  if (result.damageBlocked > 0) {
+    console.log(`🛡️ Bouclier de ${defender.name} absorbe ${result.damageBlocked} dégâts`);
   }
+}
   
   return Math.max(1, damage);
 }
