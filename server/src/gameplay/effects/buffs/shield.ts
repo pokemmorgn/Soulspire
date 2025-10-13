@@ -40,11 +40,28 @@ export class ShieldEffect extends BaseEffect {
     };
   }
   
-  onRemove(target: IBattleParticipant): EffectResult {
+onRemove(target: IBattleParticipant): EffectResult {
+  // Vérifier si c'est un bouclier Lava Core (Cœur de Lave)
+  const activeEffects = (target as any).activeEffects as any[];
+  if (!activeEffects) {
+    return { message: `💔 Le bouclier de ${target.name} se brise` };
+  }
+  
+  const shieldEffect = activeEffects.find((e: any) => e.id === "shield");
+  
+  // Si c'est un bouclier Lava Core, déclencher l'explosion
+  if (shieldEffect?.metadata?.isLavaCore && shieldEffect.metadata.explosionDamage) {
     return {
-      message: `💔 Le bouclier de ${target.name} se brise`
+      message: `💥🌋 Le Cœur de Lave de ${target.name} explose !`,
+      damage: shieldEffect.metadata.explosionDamage
     };
   }
+  
+  // Sinon, message normal
+  return {
+    message: `💔 Le bouclier de ${target.name} se brise`
+  };
+}
   
   canApplyTo(target: IBattleParticipant, appliedBy: IBattleParticipant): boolean {
     return true;
