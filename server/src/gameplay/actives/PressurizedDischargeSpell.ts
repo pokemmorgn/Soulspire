@@ -135,8 +135,14 @@ class PressurizedDischargeSpell extends BaseSpell {
     const intBonus = Math.floor((casterStats.intelligence || 70) * 0.2);
     totalHealing += intBonus;
     
-    // Multiplicateur de rareté
-    totalHealing *= this.getRarityMultiplier(caster.rarity);
+    // Multiplicateur de rareté (inline car méthode privée dans BaseSpell)
+    const rarityMultipliers: { [key: string]: number } = {
+      Common: 1.0,
+      Rare: 1.15,
+      Epic: 1.35,
+      Legendary: 1.7
+    };
+    totalHealing *= (rarityMultipliers[caster.rarity] || 1.0);
     
     // Variation aléatoire réduite
     totalHealing *= (0.95 + Math.random() * 0.1);
