@@ -477,29 +477,55 @@ private canCastSpells(participant: IBattleParticipant): boolean {
     participant.energy = Math.min(100, participant.energy + energyGain);
   }
 
-  private processParticipantEffects(participant: IBattleParticipant): void {
-    const effectResults = EffectManager.processEffects(participant);
-    
-    for (const result of effectResults) {
-      if (result.damage && result.damage > 0) {
-        participant.currentHp = Math.max(0, participant.currentHp - result.damage);
-        
-        if (participant.currentHp === 0) {
-          participant.status.alive = false;
-          console.log(`💀 ${participant.name} succombe aux effets !`);
-        }
-      }
+private processParticipantEffects(participant: IBattleParticipant): void {
+  const effectResults = EffectManager.processEffects(participant);
+  
+  for (const result of effectResults) {
+    // Appliquer dégâts/soins normaux
+    if (result.damage && result.damage > 0) {
+      participant.currentHp = Math.max(0, participant.currentHp - result.damage);
       
-      if (result.healing && result.healing > 0) {
-        participant.currentHp = Math.min(participant.stats.maxHp, participant.currentHp + result.healing);
-      }
-      
-      if (result.message) {
-        console.log(result.message);
+      if (participant.currentHp === 0) {
+        participant.status.alive = false;
+        console.log(`💀 ${participant.name} succombe aux effets !`);
       }
     }
+    
+    // ✅ NOUVEAU : Vérifier explosion Lava Core
+    if (result.message?.includes("Cœur de Lave") && result.damage) {
+      this.triggerLavaCoreExplosion(participant, result.damage);
+    }
+    
+    if (result.healing && result.healing > 0) {
+      participant.currentHp = Math.min(participant.stats.maxHp, participant.currentHp + result.healing);
+    }
+    
+    if (result.message) {
+      console.log(result.message);
+    }
   }
-
+}
+private triggerLavaCoreExplosion(caster: IBattleParticipant, explosionDamage: number): void {
+  const isPlayerTeam = this.playerTeam.includes(caster);
+  const enemies = isPlayerTeam ? this.getAliveEnemies() : this.getAlivePlayers();
+  
+  console.log(`💥🌋 Explosion du Cœur de Lave ! ${explosionDamage} dégâts AoE`);
+  
+  for (const enemy of enemies) {
+    if (!enemy.status.alive) continue;
+    
+    const damage = this.calculateDamage(caster, enemy, "ultimate");
+    const finalDamage = Math.floor(damage * 0.5); // Modéré = 50% des dégâts ultimate
+    
+    enemy.currentHp = Math.max(0, enemy.currentHp - finalDamage);
+    console.log(`🔥 ${enemy.name} subit ${finalDamage} dégâts de l'explosion`);
+    
+    if (enemy.currentHp === 0) {
+      enemy.status.alive = false;
+      console.log(`💀 ${enemy.name} est vaincu par l'explosion !`);
+    }
+  }
+}
 private determineAction(participant: IBattleParticipant, skipUltimate: boolean = false): IBattleAction | null {
   const isPlayerTeam = this.playerTeam.includes(participant);
   
