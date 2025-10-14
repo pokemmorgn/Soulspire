@@ -14,6 +14,8 @@ export interface IPlayerHero {
   ascensionLevel: number;
   awakenLevel: number;
   acquisitionDate: Date;
+  ascensionTier: number;      // 0-4 (0=non ascensionné, 1=palier 40, 2=palier 80, 3=palier 120, 4=palier 150)
+  unlockedSpells: string[];   // ["level1", "level11", "level41", etc.]
 }
 
 interface IFormationSlot {
@@ -174,7 +176,9 @@ const playerHeroSchema = new Schema<IPlayerHero>({
   experience: { type: Number, default: 0, min: 0 },
   ascensionLevel: { type: Number, default: 0, min: 0, max: 8 },
   awakenLevel: { type: Number, default: 0, min: 0, max: 5 },
-  acquisitionDate: { type: Date, default: Date.now }
+  acquisitionDate: { type: Date, default: Date.now },
+  ascensionTier: { type: Number, default: 0, min: 0, max: 4 },
+  unlockedSpells: [{ type: String }]
 }, { _id: true });
 
 const formationSchema = new Schema<IFormation>({
@@ -377,7 +381,10 @@ playerSchema.methods.addHero = function(heroId: string, level: number = 1, stars
     experience: 0,
     ascensionLevel: 0,
     awakenLevel: 0,
-    acquisitionDate: new Date()
+    acquisitionDate: new Date(),
+    ascensionTier: 0,
+    unlockedSpells: ["level1"]  // Au niveau 1, seul le premier sort est débloqué
+    
   });
   
   this.totalHeroesCollected = this.heroes.length;
@@ -771,6 +778,7 @@ playerSchema.methods.addHeroXP = function(amount: number) {
   return this.save();
 };
 export default mongoose.model<IPlayerDocument>("Player", playerSchema);
+
 
 
 
