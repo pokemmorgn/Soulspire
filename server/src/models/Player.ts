@@ -77,6 +77,7 @@ export interface IPlayer {
   gems: number;
   paidGems: number;
   tickets: number;
+  heroXP: number;
   elementalTickets: {
     fire: number;
     water: number;
@@ -158,6 +159,9 @@ export interface IPlayerDocument extends Document, IPlayer {
   getPlayerStats(): any;
   needsDailyReset(): boolean;
   performDailyReset(): Promise<IPlayerDocument>;
+  canAffordHeroLevelUp(cost: { gold: number, heroXP: number }): boolean;
+  spendHeroLevelUpResources(cost: { gold: number, heroXP: number }): Promise<IPlayerDocument>;
+  addHeroXP(amount: number): Promise<IPlayerDocument>;
 }
 
 // ----- Schémas des sous-documents -----
@@ -239,6 +243,7 @@ const playerSchema = new Schema<IPlayerDocument>({
   gems: { type: Number, default: 100, min: 0 },
   paidGems: { type: Number, default: 0, min: 0 },
   tickets: { type: Number, default: 5, min: 0 },
+  heroXP: { type: Number, default: 0, min: 0 },
   elementalTickets: {
     fire: { type: Number, default: 0, min: 0 },
     water: { type: Number, default: 0, min: 0 },
@@ -741,6 +746,31 @@ playerSchema.post('save', function(doc) {
     });
   }
 });
+// Vérifier si le joueur peut payer un level up
+playerSchema.methods.canAffordHeroLevelUp = function(cost: { gold: number, heroXP: number }): boolean {
+  if (this.gold < cost.gold) return false;
+  if (this.heroXP < cost.heroXP) return false;
+  return true;
+};
+
+// Dépenser les ressources pour level up
+playerSchema.methods.spendHeroLevelUpResources = function(cost: { gold: number, heroXP: number }) {
+  if (!this.canAffordHeroLevelUp(cost)) {
+    throw new Error("Insufficient resources for hero level up");
+  }
+  
+  this.gold -= cost.gold;
+  this.heroXP -= cost.heroXP;
+  
+  return this.save();
+};
+
+// Ajouter de l'Hero XP
+playerSchema.methods.addHeroXP = function(amount: number) {
+  this.heroXP += amount;
+  return this.save();
+};
 export default mongoose.model<IPlayerDocument>("Player", playerSchema);
+
 
 
