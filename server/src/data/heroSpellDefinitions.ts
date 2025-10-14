@@ -1,8 +1,15 @@
 // server/src/data/heroSpellDefinitions.ts
 
 /**
- * Définitions des sorts par héros - NOUVEAU FORMAT SIMPLIFIÉ
- * Chaque héros a des sorts définis par niveau de déblocage
+ * NOUVEAU SYSTÈME SIMPLIFIÉ
+ * 
+ * Chaque héros définit ses sorts par niveau de déblocage :
+ * - level1 : Sort débloqué au niveau 1 (tous les héros)
+ * - level11 : Sort débloqué au niveau 11 (Rare+)
+ * - level41 : Sort débloqué au niveau 41 (Epic+)
+ * - level81 : Sort débloqué au niveau 81 (Epic+ qui peuvent l'atteindre)
+ * - level121 : Structure vide pour l'instant (Legendary+)
+ * - level151 : Structure vide pour l'instant (Mythic only)
  */
 
 export interface HeroSpellDefinition {
@@ -12,14 +19,13 @@ export interface HeroSpellDefinition {
   role: "Tank" | "DPS Melee" | "DPS Ranged" | "Support";
   rarity: "Common" | "Rare" | "Epic" | "Legendary" | "Mythic";
   
-  // ✅ Sorts par niveau de déblocage (simplifié)
   spells: {
-    level1?: string;          // Sort débloqué au niveau 1 (obligatoire)
-    level11?: string;         // Sort débloqué au niveau 11 (Rare+)
-    level41?: string;         // Sort débloqué au niveau 41 (Epic+)
-    level81?: string;         // Sort débloqué au niveau 81 (Epic+ capable d'atteindre 81)
-    level121?: string | null; // Structure vide pour l'instant (Legendary+)
-    level151?: string | null; // Structure vide pour l'instant (Mythic only)
+    level1?: string;
+    level11?: string;
+    level41?: string;
+    level81?: string;
+    level121?: string | null;
+    level151?: string | null;
   };
 }
 
@@ -44,7 +50,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
   // WATER HEROES (7 total)
   // ============================================
   
-  // Common Tank - 1 sort (max niveau 40)
   "nerya": {
     heroId: "nerya",
     name: "Nerya",
@@ -56,7 +61,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Common Support - 1 sort (max niveau 40)
   "thalwen": {
     heroId: "thalwen",
     name: "Thalwen",
@@ -68,7 +72,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Common DPS Ranged - 1 sort (max niveau 40)
   "nora": {
     heroId: "nora",
     name: "Nora",
@@ -80,7 +83,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Common DPS Melee - 1 sort (max niveau 40)
   "narud": {
     heroId: "narud",
     name: "Narud",
@@ -92,7 +94,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Rare Support - 2 sorts (max niveau 80)
   "nereida": {
     heroId: "nereida",
     name: "Nereida",
@@ -101,11 +102,10 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     rarity: "Rare",
     spells: {
       level1: "healing_tide",
-      level11: "flowing_mana"  // Passif au lieu d'active2
+      level11: "flowing_mana"
     }
   },
   
-  // Epic DPS Melee - 4 sorts (max niveau 120)
   "vayna": {
     heroId: "vayna",
     name: "Vayna",
@@ -120,7 +120,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Legendary DPS Melee - 4 sorts + structure 121 (max niveau 150)
   "kaelis": {
     heroId: "kaelis",
     name: "Kaelis",
@@ -140,7 +139,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
   // FIRE HEROES (7 total)
   // ============================================
   
-  // Common Tank - 1 sort (max niveau 40)
   "brakka": {
     heroId: "brakka",
     name: "Brakka",
@@ -152,7 +150,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Rare Tank - 2 sorts + ultime impossible (max niveau 80)
   "korran": {
     heroId: "korran",
     name: "Korran",
@@ -165,7 +162,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Rare DPS Ranged - 2 sorts (max niveau 80)
   "ignara": {
     heroId: "ignara",
     name: "Ignara",
@@ -178,7 +174,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Rare Support - 1 actif + 1 passif (max niveau 80)
   "albert": {
     heroId: "albert",
     name: "Albert",
@@ -187,11 +182,10 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     rarity: "Rare",
     spells: {
       level1: "flame_turret",
-      level11: "engineer_mind"  // Passif
+      level11: "engineer_mind"
     }
   },
   
-  // Epic Tank - 4 sorts (max niveau 120)
   "grathul": {
     heroId: "grathul",
     name: "Grathul",
@@ -206,7 +200,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Legendary Support - 4 sorts + structure 121 (max niveau 150)
   "pyra": {
     heroId: "pyra",
     name: "Pyra",
@@ -222,7 +215,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Legendary DPS Melee - 4 sorts (max niveau 150)
   "saryel": {
     heroId: "saryel",
     name: "Saryel",
@@ -242,7 +234,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
   // WIND HEROES (7 total)
   // ============================================
   
-  // Common DPS Ranged - 1 sort (max niveau 40)
   "braknor": {
     heroId: "braknor",
     name: "Braknor",
@@ -254,7 +245,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Common Tank - 1 sort (max niveau 40)
   "halvar": {
     heroId: "halvar",
     name: "Halvar",
@@ -266,7 +256,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Rare DPS Ranged - 2 sorts (max niveau 80)
   "sylvara": {
     heroId: "sylvara",
     name: "Sylvara",
@@ -279,7 +268,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Rare Support - 1 actif + 1 passif (max niveau 80)
   "elyndra": {
     heroId: "elyndra",
     name: "Elyndra",
@@ -288,11 +276,10 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     rarity: "Rare",
     spells: {
       level1: "wind_song",
-      level11: "bard_inspiration"  // Passif
+      level11: "bard_inspiration"
     }
   },
   
-  // Rare DPS Melee - 2 sorts (max niveau 80)
   "kaelen": {
     heroId: "kaelen",
     name: "Kaelen",
@@ -305,7 +292,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Epic DPS Ranged - 4 sorts (max niveau 120)
   "zephyra": {
     heroId: "zephyra",
     name: "Zephyra",
@@ -320,7 +306,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Legendary DPS Melee - 4 sorts + structure 121 (max niveau 150)
   "veyron": {
     heroId: "veyron",
     name: "Veyron",
@@ -340,7 +325,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
   // ELECTRIC HEROES (7 total)
   // ============================================
   
-  // Common Support - 1 sort (max niveau 40)
   "tynira": {
     heroId: "tynira",
     name: "Tynira",
@@ -352,7 +336,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Common DPS Melee - 1 sort (max niveau 40)
   "zeyra": {
     heroId: "zeyra",
     name: "Zeyra",
@@ -364,7 +347,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Epic DPS Melee - 4 sorts (max niveau 120)
   "raiken": {
     heroId: "raiken",
     name: "Raiken",
@@ -379,7 +361,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Epic Support - 4 sorts (max niveau 120)
   "milia": {
     heroId: "milia",
     name: "Milia",
@@ -394,7 +375,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Epic Tank - 4 sorts (max niveau 120)
   "thalrik": {
     heroId: "thalrik",
     name: "Thalrik",
@@ -409,7 +389,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Legendary DPS Ranged - 4 sorts + structure 121 (max niveau 150)
   "voltrion": {
     heroId: "voltrion",
     name: "Voltrion",
@@ -425,7 +404,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Legendary Tank - 4 sorts + structure 121 (max niveau 150)
   "voltragar": {
     heroId: "voltragar",
     name: "Voltragar",
@@ -445,7 +423,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
   // LIGHT HEROES (6 total)
   // ============================================
   
-  // Common DPS Melee - 1 sort (max niveau 40)
   "goahn": {
     heroId: "goahn",
     name: "Goahn",
@@ -457,7 +434,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Rare Tank - 2 sorts (max niveau 80)
   "elyos": {
     heroId: "elyos",
     name: "Elyos",
@@ -470,7 +446,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Rare DPS Ranged - 2 sorts (max niveau 80)
   "liora": {
     heroId: "liora",
     name: "Liora",
@@ -483,7 +458,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Rare Support - 1 actif + 1 passif (max niveau 80)
   "lyaria": {
     heroId: "lyaria",
     name: "Lyaria",
@@ -492,11 +466,10 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     rarity: "Rare",
     spells: {
       level1: "heal",
-      level11: "light_aura"  // Passif
+      level11: "light_aura"
     }
   },
   
-  // Legendary Tank - 4 sorts + structure 121 (max niveau 150)
   "aureon": {
     heroId: "aureon",
     name: "Aureon",
@@ -512,7 +485,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Legendary DPS Ranged - 4 sorts + structure 121 (max niveau 150)
   "solayne": {
     heroId: "solayne",
     name: "Solayne",
@@ -532,7 +504,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
   // DARK/SHADOW HEROES (6 total)
   // ============================================
   
-  // Epic DPS Melee - 4 sorts (max niveau 120)
   "abomys": {
     heroId: "abomys",
     name: "Abomys",
@@ -547,7 +518,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Epic Support - 4 sorts (max niveau 120)
   "chorath": {
     heroId: "chorath",
     name: "Chorath",
@@ -562,7 +532,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Epic DPS Ranged - 4 sorts (max niveau 120)
   "seliora": {
     heroId: "seliora",
     name: "Seliora",
@@ -577,7 +546,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Epic Tank - 4 sorts (max niveau 120)
   "drogath": {
     heroId: "drogath",
     name: "Drogath",
@@ -592,7 +560,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Legendary Support - 4 sorts + structure 121 (max niveau 150)
   "nyxara": {
     heroId: "nyxara",
     name: "Nyxara",
@@ -608,7 +575,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Legendary DPS Ranged - 4 sorts + structure 121 (max niveau 150)
   "aleyra": {
     heroId: "aleyra",
     name: "Aleyra",
@@ -628,7 +594,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
   // MYTHIC HEROES (2 total)
   // ============================================
   
-  // Mythic DPS Melee - 4 sorts + structures 121 et 151 (max niveau 170)
   "kaorim_lunar": {
     heroId: "kaorim_lunar",
     name: "Kaorim (Lunar Form)",
@@ -645,7 +610,6 @@ export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
     }
   },
   
-  // Mythic Support - 4 sorts + structures 121 et 151 (max niveau 170)
   "kaorim_solar": {
     heroId: "kaorim_solar",
     name: "Kaorim (Solar Form)",
@@ -674,7 +638,7 @@ export function getHeroSpellDefinition(heroId: string): HeroSpellDefinition | nu
  * Obtenir le niveau de déblocage d'un slot de sort
  */
 export function getSpellUnlockLevel(spellSlot: string): number {
-  return SPELL_UNLOCK_LEVELS[spellSlot] || 999;
+  return SPELL_UNLOCK_LEVELS[spellSlot] || 1;
 }
 
 /**
@@ -686,72 +650,126 @@ export function getSpellsUnlockedAtLevel(heroId: string, level: number): string[
   
   const unlockedSlots: string[] = [];
   
-  // Vérifier chaque slot de sort
-  for (const [slotName, unlockLevel] of Object.entries(SPELL_UNLOCK_LEVELS)) {
-    if (level >= unlockLevel) {
-      const spellId = definition.spells[slotName as keyof typeof definition.spells];
-      if (spellId && spellId !== null) {
-        unlockedSlots.push(slotName);
-      }
-    }
-  }
+  if (level >= 1 && definition.spells.level1) unlockedSlots.push("level1");
+  if (level >= 11 && definition.spells.level11) unlockedSlots.push("level11");
+  if (level >= 41 && definition.spells.level41) unlockedSlots.push("level41");
+  if (level >= 81 && definition.spells.level81) unlockedSlots.push("level81");
+  if (level >= 121 && definition.spells.level121) unlockedSlots.push("level121");
+  if (level >= 151 && definition.spells.level151) unlockedSlots.push("level151");
   
   return unlockedSlots;
 }
 
 /**
- * Vérifier si un héros peut débloquer un sort à un niveau donné
+ * Obtenir les sorts initiaux d'un héros (niveau 1)
  */
-export function canUnlockSpellAtLevel(heroId: string, spellSlot: string, heroLevel: number): boolean {
+export function getInitialSpells(heroId: string): {
+  level1?: { id: string; level: number };
+  level11?: { id: string; level: number };
+  level41?: { id: string; level: number };
+  level81?: { id: string; level: number };
+  level121?: { id: string; level: number };
+  level151?: { id: string; level: number };
+} {
   const definition = getHeroSpellDefinition(heroId);
-  if (!definition) return false;
-  
-  const unlockLevel = SPELL_UNLOCK_LEVELS[spellSlot];
-  if (!unlockLevel) return false;
-  
-  const spellId = definition.spells[spellSlot as keyof typeof definition.spells];
-  if (!spellId || spellId === null) return false;
-  
-  return heroLevel >= unlockLevel;
-}
-
-/**
- * Obtenir le prochain sort à débloquer pour un héros
- */
-export function getNextSpellUnlock(heroId: string, currentLevel: number): { level: number; spellSlot: string; spellId: string } | null {
-  const definition = getHeroSpellDefinition(heroId);
-  if (!definition) return null;
-  
-  // Chercher le prochain slot de sort non débloqué
-  const sortedSlots = Object.entries(SPELL_UNLOCK_LEVELS)
-    .sort((a, b) => a[1] - b[1]); // Trier par niveau croissant
-  
-  for (const [slotName, unlockLevel] of sortedSlots) {
-    if (unlockLevel > currentLevel) {
-      const spellId = definition.spells[slotName as keyof typeof definition.spells];
-      if (spellId && spellId !== null) {
-        return {
-          level: unlockLevel,
-          spellSlot: slotName,
-          spellId: spellId as string
-        };
-      }
-    }
-  }
-  
-  return null;
-}
-
-/**
- * Obtenir les sorts initiaux d'un héros (uniquement level1)
- */
-export function getInitialSpells(heroId: string): { [key: string]: { id: string; level: number } } {
-  const definition = getHeroSpellDefinition(heroId);
-  if (!definition || !definition.spells.level1) {
+  if (!definition) {
     throw new Error(`No spell definition found for hero: ${heroId}`);
   }
   
+  const spells: any = {};
+  
+  if (definition.spells.level1) {
+    spells.level1 = { id: definition.spells.level1, level: 1 };
+  }
+  
+  if (definition.spells.level11) {
+    spells.level11 = { id: definition.spells.level11, level: 1 };
+  }
+  
+  if (definition.spells.level41) {
+    spells.level41 = { id: definition.spells.level41, level: 1 };
+  }
+  
+  if (definition.spells.level81) {
+    spells.level81 = { id: definition.spells.level81, level: 1 };
+  }
+  
+  if (definition.spells.level121) {
+    spells.level121 = { id: definition.spells.level121, level: 1 };
+  }
+  
+  if (definition.spells.level151) {
+    spells.level151 = { id: definition.spells.level151, level: 1 };
+  }
+  
+  return spells;
+}
+
+/**
+ * Obtenir les stats d'un sort à un niveau donné
+ */
+export function getSpellStats(spellId: string, level: number, rarity: string): {
+  damage: number;
+  healing: number;
+  cooldown: number;
+  duration: number;
+  energyCost: number;
+  effect: string;
+  additionalEffects: Record<string, any>;
+} {
+  const heroWithSpell = Object.values(HERO_SPELL_DEFINITIONS).find(hero => 
+    Object.values(hero.spells).includes(spellId)
+  );
+
+  if (!heroWithSpell) {
+    console.warn(`⚠️ Sort ${spellId} non trouvé dans les définitions`);
+    return {
+      damage: 0,
+      healing: 0,
+      cooldown: 3,
+      duration: 0,
+      energyCost: 20,
+      effect: spellId,
+      additionalEffects: {}
+    };
+  }
+
+  const rarityMultipliers: Record<string, number> = {
+    Common: 1.0,
+    Rare: 1.25,
+    Epic: 1.5,
+    Legendary: 2.0,
+    Mythic: 2.5
+  };
+
+  const rarityMult = rarityMultipliers[rarity] || 1.0;
+  const element = heroWithSpell.element;
+  const role = heroWithSpell.role;
+
+  let baseDamage = 0;
+  let baseHealing = 0;
+  let baseCooldown = 3;
+  let baseEnergyCost = 20;
+  let duration = 2;
+
+  baseDamage = role === "DPS Melee" ? 100 : 
+               role === "DPS Ranged" ? 80 : 
+               role === "Tank" ? 50 : 30;
+  baseHealing = role === "Support" ? 60 : 0;
+
+  const levelScaling = 1 + (level - 1) * 0.15;
+
   return {
-    level1: { id: definition.spells.level1, level: 1 }
+    damage: Math.floor(baseDamage * rarityMult * levelScaling),
+    healing: Math.floor(baseHealing * rarityMult * levelScaling),
+    cooldown: Math.max(1, baseCooldown - Math.floor(level / 3)),
+    duration: duration,
+    energyCost: Math.max(10, baseEnergyCost - Math.floor(level / 2)),
+    effect: spellId,
+    additionalEffects: {
+      element: element,
+      role: role,
+      type: "active"
+    }
   };
 }
