@@ -174,7 +174,9 @@ async function assignHeroToPlayer(options: HeroAssignmentOptions): Promise<void>
         experience: 0,
         ascensionLevel: 0,
         awakenLevel: 0,
-        acquisitionDate: new Date()
+        acquisitionDate: new Date(),
+        ascensionTier: 0,              // ✅ AJOUTER
+        unlockedSpells: ["level1"]     // ✅ AJOUTER
       };
 
       player.heroes.push(newHero);
@@ -287,17 +289,19 @@ async function givePlayerLegendaryTeam(accountId?: string, serverId?: string): P
       );
 
       if (!existing) {
-        player.heroes.push({
-          heroId: hero._id?.toString() || "",
-          level: 25,
-          stars: 3,
-          equipped: false,
-          slot: null,
-          experience: 0,
-          ascensionLevel: 0,
-          awakenLevel: 0,
-          acquisitionDate: new Date()
-        });
+      player.heroes.push({
+        heroId: hero._id?.toString() || "",
+        level: 25,
+        stars: 3,
+        equipped: false,
+        slot: null,
+        experience: 0,
+        ascensionLevel: 0,
+        awakenLevel: 0,
+        acquisitionDate: new Date(),
+        ascensionTier: 0,              // ✅ AJOUTER
+        unlockedSpells: ["level1"]     // ✅ AJOUTER
+      });
 
         console.log(`   ✅ Ajouté: ${hero.name} (${hero.role} - ${hero.element})`);
       } else {
