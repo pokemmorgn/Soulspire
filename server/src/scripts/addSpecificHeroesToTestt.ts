@@ -109,7 +109,9 @@ async function main() {
         experience: 0,
         ascensionLevel: 0,
         awakenLevel: 0,
-        acquisitionDate: new Date()
+        acquisitionDate: new Date(),
+        ascensionTier: 0,   
+        unlockedSpells: ["level1"]    
       };
 
       player.heroes.push(newHero);
