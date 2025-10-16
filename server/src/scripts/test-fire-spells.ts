@@ -246,7 +246,7 @@ async function runAllTests() {
       console.log(`✅ ArdenAura processAuraTick: ${result.damage} dégâts, ${result.enemiesAffected} ennemis`);
     }
   } catch (error) {
-    console.log("⚠️ Test ArdenAura processAuraTick ignoré:", error.message);
+    console.log("⚠️ Test ArdenAura processAuraTick ignoré:", error instanceof Error ? error.message : String(error));
   }
   
   // Test IncandescentRush bonus énergie
@@ -256,7 +256,7 @@ async function runAllTests() {
     const canCastFree = IncandescentRushSpell.canCastForFree(saryel, "blade_dance");
     console.log(`✅ IncandescentRush énergie gratuite: ${hasFree}, peut lancer gratuitement: ${canCastFree}`);
   } catch (error) {
-    console.log("⚠️ Test IncandescentRush bonus ignoré:", error.message);
+    console.log("⚠️ Test IncandescentRush bonus ignoré:", error instanceof Error ? error.message : String(error));
   }
   
   console.log("\n🔥 === FIN DES TESTS ===");
