@@ -581,28 +581,43 @@ private determineAction(participant: IBattleParticipant, skipUltimate: boolean =
   return this.createAttackAction(participant, targets);
 }
 
-  private createAttackAction(actor: IBattleParticipant, possibleTargets: IBattleParticipant[]): IBattleAction {
-    const target = this.selectTarget(actor, possibleTargets);
-    
-    const damage = this.calculateDamage(actor, target, "attack");
-    const isCritical = this.rollCritical(actor);
-    const finalDamage = isCritical ? Math.floor(damage * 1.75) : damage;
-    
-    return {
-      turn: this.currentTurn,
-      actionType: "attack",
-      actorId: actor.heroId,
-      actorName: actor.name,
-      targetIds: [target.heroId],
-      damage: finalDamage,
-      energyGain: Math.floor(12 + Math.random() * 8),
-      critical: isCritical,
-      elementalAdvantage: this.getElementalAdvantage(actor.element, target.element),
-      buffsApplied: [],
-      debuffsApplied: [],
-      participantsAfter: {}
-    };
+private createAttackAction(actor: IBattleParticipant, possibleTargets: IBattleParticipant[]): IBattleAction {
+  // ✅ NOUVEAU : Vérifier si les attaques doivent être AoE (Brasier Déchaîné)
+  const shouldBeAoE = EffectManager.shouldAttackBeAoE(actor);
+  
+  let targets: IBattleParticipant[];
+  let damageMultiplier = 1.0;
+  
+  if (shouldBeAoE) {
+    // Attaque AoE : tous les ennemis vivants
+    targets = possibleTargets;
+    damageMultiplier = 0.7; // Réduction pour AoE
+    console.log(`🔥⚔️ ${actor.name} attaque en AoE (Brasier Déchaîné) !`);
+  } else {
+    // Attaque simple : une seule cible
+    targets = [this.selectTarget(actor, possibleTargets)];
   }
+  
+  const baseDamage = this.calculateDamage(actor, targets[0], "attack");
+  const finalDamage = Math.floor(baseDamage * damageMultiplier);
+  const isCritical = this.rollCritical(actor);
+  const totalDamage = isCritical ? Math.floor(finalDamage * 1.75) : finalDamage;
+  
+  return {
+    turn: this.currentTurn,
+    actionType: "attack",
+    actorId: actor.heroId,
+    actorName: actor.name,
+    targetIds: targets.map(t => t.heroId),
+    damage: totalDamage,
+    energyGain: Math.floor(12 + Math.random() * 8),
+    critical: isCritical,
+    elementalAdvantage: this.getElementalAdvantage(actor.element, targets[0].element),
+    buffsApplied: [],
+    debuffsApplied: [],
+    participantsAfter: {}
+  };
+}
 
   private createUltimateAction(actor: IBattleParticipant, possibleTargets: IBattleParticipant[]): IBattleAction {
     const baseUltimateDamage = actor.stats.atk * 3.5 * this.getRarityMultiplier(actor.rarity);
@@ -678,6 +693,7 @@ private calculateDamage(
   
   damage = Math.floor(damage);
   
+  damage = EffectManager.applyGlobalProtection(defender, damage);
   // ✅ Appliquer Incandescent Guard (réduction de dégâts 20%)
   damage = BuffManager.applyIncandescentGuard(defender, damage);
   
@@ -869,10 +885,15 @@ private executeAction(action: IBattleAction): void {
         
         // Appliquer dégâts aux HP
         if (finalDamage > 0) {
-          const hpBeforeDamage = target.currentHp; // ← NOUVEAU LOG
+          const hpBeforeDamage = target.currentHp;
           target.currentHp = Math.max(0, target.currentHp - finalDamage);
           
-          console.log(`🩺 ${target.name}: ${hpBeforeDamage} → ${target.currentHp} HP (${Math.floor((target.currentHp / target.stats.maxHp) * 100)}%)`); // ← NOUVEAU LOG
+          console.log(`🩺 ${target.name}: ${hpBeforeDamage} → ${target.currentHp} HP`);
+          
+          // ✅ NOUVEAU : Appliquer vol de vie et autres effets post-dégâts
+          if (actor) {
+            EffectManager.applyPostDamageEffects(actor, finalDamage);
+          }
           
           // Vérifier réveil de Sleep
           this.checkSleepWakeUp(target, finalDamage);
