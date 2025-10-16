@@ -1,14 +1,15 @@
 // server/src/models/Hero.ts
 import mongoose, { Document, Schema } from "mongoose";
-import { getHeroSpellDefinition, getInitialSpells } from '../data/heroSpellDefinitions';
+import { getHeroSpellDefinition, getInitialSpells, getUnlockedSpells, isSpellUnlocked, getSpellStats } from '../data/heroSpellDefinitions';
 
-// Interface pour les sorts équipés - NOUVELLE STRUCTURE
+// Interface pour les sorts équipés - NOUVEAU SYSTÈME PAR NIVEAU
 interface IHeroSpells {
-  active1?: { id: string; level: number };
-  active2?: { id: string; level: number };
-  active3?: { id: string; level: number };
-  ultimate?: { id: string; level: number };
-  passive?: { id: string; level: number };
+  level1?: { id: string; level: number };   // Sort niveau 1 (obligatoire)
+  level11?: { id: string; level: number };  // Sort niveau 11 (optionnel)
+  level41?: { id: string; level: number };  // Sort niveau 41 (optionnel)
+  level81?: { id: string; level: number };  // Sort niveau 81 (optionnel)
+  level121?: { id: string; level: number }; // Sort niveau 121 (futur)
+  level151?: { id: string; level: number }; // Sort niveau 151 (futur)
 }
 
 // Interface pour l'équipement
@@ -37,7 +38,7 @@ export interface IHeroDocument extends Document {
   spells: IHeroSpells;
   equipment: IHeroEquipment;
 
-  // Méthodes
+  // Méthodes existantes
   getStatsAtLevel(level: number, stars?: number, includeEquipment?: boolean): any;
   getEquipmentStats(playerId?: string): Promise<any>;
   getTotalStats(level: number, stars: number, playerId: string): Promise<any>;
@@ -46,6 +47,19 @@ export interface IHeroDocument extends Document {
   getElementAdvantage(targetElement: string): number;
   getEffectiveCooldown(baseCooldown: number): number;
   getEnergyGeneration(): number;
+  
+  // NOUVELLES MÉTHODES POUR LE SYSTÈME PAR NIVEAU
+  getAllSpellsByLevel(): Array<{ slot: string; id: string; level: number; unlockLevel: number }>;
+  getSpellByLevel(spellLevel: number): { id: string; level: number } | null;
+  setSpellByLevel(spellLevel: number, spellId: string, level?: number): void;
+  upgradeSpellByLevel(spellLevel: number, newLevel: number): boolean;
+  getUnlockedSpellsForHeroLevel(heroLevel: number): Array<{ slot: string; id: string; level: number; unlockLevel: number }>;
+  getNextSpellUnlockForHeroLevel(heroLevel: number): { nextLevel: number; spellId: string; levelsRemaining: number } | null;
+  isSpellUnlockedForHeroLevel(heroLevel: number, spellLevel: number): boolean;
+  calculateSpellStatsByLevel(spellLevel: number, spellLevelValue: number): any;
+  getSpellProgressSummary(heroLevel: number): any;
+  
+  // MÉTHODES DE COMPATIBILITÉ ANCIEN SYSTÈME (deprecated)
   getAllSpells(): Array<{ slot: string; id: string; level: number }>;
   getSpell(spellSlot: string): { id: string; level: number } | null;
   setSpell(spellSlot: string, spellId: string, level?: number): void;
@@ -102,13 +116,14 @@ const heroSchema = new Schema<IHeroDocument>({
     energyRegen:  { type: Number, required: true, min: 0, default: 10 },
   },
 
-  // Sorts - NOUVELLE STRUCTURE
+  // Sorts - NOUVEAU SYSTÈME PAR NIVEAU
   spells: {
-    active1:  { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
-    active2:  { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
-    active3:  { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
-    ultimate: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 10 } },
-    passive:  { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
+    level1:  { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
+    level11: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
+    level41: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 12 } },
+    level81: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 10 } },
+    level121: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 10 } },
+    level151: { id: { type: String }, level: { type: Number, default: 1, min: 1, max: 10 } },
   },
 
   // Équipement
@@ -122,15 +137,16 @@ const heroSchema = new Schema<IHeroDocument>({
   }
 }, { timestamps: true, collection: "heroes" });
 
-// Index - MISE À JOUR
+// Index - MISE À JOUR POUR NOUVEAU SYSTÈME
 heroSchema.index({ rarity: 1 });
 heroSchema.index({ role: 1 });
 heroSchema.index({ element: 1 });
-heroSchema.index({ "spells.active1.id": 1 });
-heroSchema.index({ "spells.active2.id": 1 });
-heroSchema.index({ "spells.active3.id": 1 });
-heroSchema.index({ "spells.ultimate.id": 1 });
-heroSchema.index({ "spells.passive.id": 1 });
+heroSchema.index({ "spells.level1.id": 1 });
+heroSchema.index({ "spells.level11.id": 1 });
+heroSchema.index({ "spells.level41.id": 1 });
+heroSchema.index({ "spells.level81.id": 1 });
+heroSchema.index({ "spells.level121.id": 1 });
+heroSchema.index({ "spells.level151.id": 1 });
 heroSchema.index({ "equipment.weapon": 1 });
 heroSchema.index({ "equipment.helmet": 1 });
 heroSchema.index({ "equipment.armor": 1 });
@@ -139,7 +155,7 @@ heroSchema.index({ "equipment.armor": 1 });
 function cap(n: number, min: number, max: number) { return Math.max(min, Math.min(max, n)); }
 function scalePercent(base: number, factor: number, capMax = 100) { return cap(base * factor, 0, capMax); }
 
-// Méthode getStatsAtLevel
+// Méthode getStatsAtLevel (inchangée)
 heroSchema.methods.getStatsAtLevel = function (level: number, stars: number = 1, includeEquipment: boolean = false) {
   const levelMul = 1 + (level - 1) * 0.08;
   const starMul  = 1 + (stars - 1) * 0.15;
@@ -175,7 +191,7 @@ heroSchema.methods.getStatsAtLevel = function (level: number, stars: number = 1,
   return baseStats;
 };
 
-// Méthode getEquipmentStats
+// Méthodes d'équipement (inchangées)
 heroSchema.methods.getEquipmentStats = async function (playerId?: string): Promise<any> {
   try {
     if (!playerId) {
@@ -234,7 +250,6 @@ heroSchema.methods.getEquipmentStats = async function (playerId?: string): Promi
   }
 };
 
-// Méthode getTotalStats
 heroSchema.methods.getTotalStats = async function (level: number, stars: number, playerId: string): Promise<any> {
   try {
     const heroStats = this.getStatsAtLevel(level, stars, false);
@@ -275,7 +290,6 @@ heroSchema.methods.getTotalStats = async function (level: number, stars: number,
   }
 };
 
-// Méthode getSetBonuses
 heroSchema.methods.getSetBonuses = async function (playerId: string): Promise<any> {
   try {
     const Inventory = mongoose.model('Inventory');
@@ -328,7 +342,7 @@ heroSchema.methods.getSetBonuses = async function (playerId: string): Promise<an
   }
 };
 
-// Méthodes utilitaires
+// Méthodes utilitaires (inchangées)
 heroSchema.methods.getEmptyStats = function () {
   return {
     hp: 0, atk: 0, def: 0,
@@ -378,7 +392,7 @@ heroSchema.methods.calculatePower = function (stats: any): number {
   );
 };
 
-// Méthodes existantes
+// Méthodes existantes (inchangées)
 heroSchema.methods.getRarityMultiplier = function () {
   return ({ 
     Common: 1, 
@@ -408,40 +422,109 @@ heroSchema.methods.getEnergyGeneration = function () {
   return Math.floor(10 + (this.baseStats.moral / 10) + (this.baseStats.energyRegen || 0));
 };
 
-// MÉTHODES DE SORTS - MISE À JOUR
-heroSchema.methods.getAllSpells = function () {
-  const out: Array<{ slot: string; id: string; level: number }> = [];
+// ===============================================
+// NOUVELLES MÉTHODES POUR LE SYSTÈME PAR NIVEAU
+// ===============================================
+
+/**
+ * Obtient tous les sorts du héros avec leurs niveaux de déblocage
+ */
+heroSchema.methods.getAllSpellsByLevel = function () {
+  const out: Array<{ slot: string; id: string; level: number; unlockLevel: number }> = [];
   const s = this.spells;
-  if (s.active1?.id) out.push({ slot: "active1", id: s.active1.id, level: s.active1.level });
-  if (s.active2?.id) out.push({ slot: "active2", id: s.active2.id, level: s.active2.level });
-  if (s.active3?.id) out.push({ slot: "active3", id: s.active3.id, level: s.active3.level });
-  if (s.ultimate?.id) out.push({ slot: "ultimate", id: s.ultimate.id, level: s.ultimate.level });
-  if (s.passive?.id) out.push({ slot: "passive", id: s.passive.id, level: s.passive.level });
+  
+  if (s.level1?.id) out.push({ slot: "level1", id: s.level1.id, level: s.level1.level, unlockLevel: 1 });
+  if (s.level11?.id) out.push({ slot: "level11", id: s.level11.id, level: s.level11.level, unlockLevel: 11 });
+  if (s.level41?.id) out.push({ slot: "level41", id: s.level41.id, level: s.level41.level, unlockLevel: 41 });
+  if (s.level81?.id) out.push({ slot: "level81", id: s.level81.id, level: s.level81.level, unlockLevel: 81 });
+  if (s.level121?.id) out.push({ slot: "level121", id: s.level121.id, level: s.level121.level, unlockLevel: 121 });
+  if (s.level151?.id) out.push({ slot: "level151", id: s.level151.id, level: s.level151.level, unlockLevel: 151 });
+  
   return out;
 };
 
-heroSchema.methods.getSpell = function (slot: string) {
-  const s: any = this.spells[slot as keyof IHeroSpells];
+/**
+ * Obtient un sort spécifique par niveau de déblocage
+ */
+heroSchema.methods.getSpellByLevel = function (spellLevel: number) {
+  const slotName = `level${spellLevel}` as keyof IHeroSpells;
+  const s: any = this.spells[slotName];
   return s?.id ? { id: s.id, level: s.level } : null;
 };
 
-heroSchema.methods.setSpell = function (slot: string, id: string, level = 1) {
-  const s: any = this.spells[slot as keyof IHeroSpells];
-  if (!s) (this.spells as any)[slot] = { id, level };
+/**
+ * Définit un sort à un niveau de déblocage spécifique
+ */
+heroSchema.methods.setSpellByLevel = function (spellLevel: number, id: string, level = 1) {
+  const slotName = `level${spellLevel}` as keyof IHeroSpells;
+  const s: any = this.spells[slotName];
+  if (!s) (this.spells as any)[slotName] = { id, level };
   else { s.id = id; s.level = level; }
 };
 
-heroSchema.methods.upgradeSpell = function (slot: string, newLevel: number) {
-  const s: any = this.spells[slot as keyof IHeroSpells];
+/**
+ * Améliore un sort à un niveau de déblocage spécifique
+ */
+heroSchema.methods.upgradeSpellByLevel = function (spellLevel: number, newLevel: number) {
+  const slotName = `level${spellLevel}` as keyof IHeroSpells;
+  const s: any = this.spells[slotName];
   if (!s?.id) return false;
-  const max = (slot === "ultimate") ? 10 : 12;
+  
+  const max = (spellLevel >= 81) ? 10 : 12; // Sorts ultimes max niveau 10, autres max 12
   if (newLevel > max || newLevel <= s.level) return false;
+  
   s.level = newLevel; 
   return true;
 };
-// Méthode calculateSpellStats
-heroSchema.methods.calculateSpellStats = function (spellSlot: string, level: number) {
-  const spell = this.getSpell(spellSlot);
+
+/**
+ * Obtient les sorts débloqués selon le niveau du héros
+ */
+heroSchema.methods.getUnlockedSpellsForHeroLevel = function (heroLevel: number) {
+  const heroId = this.name.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '');
+  const unlockedSpells = getUnlockedSpells(heroId, heroLevel);
+  
+  // Ajouter les niveaux actuels des sorts depuis la base
+  return unlockedSpells.map(spell => {
+    const currentSpell = this.getSpellByLevel(spell.level);
+    return {
+      slot: spell.slot,
+      id: spell.spellId,
+      level: currentSpell?.level || 1,
+      unlockLevel: spell.level
+    };
+  });
+};
+
+/**
+ * Obtient le prochain sort à débloquer selon le niveau du héros
+ */
+heroSchema.methods.getNextSpellUnlockForHeroLevel = function (heroLevel: number) {
+  const heroId = this.name.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '');
+  
+  try {
+    const { getNextSpellUnlock } = require('../data/heroSpellDefinitions');
+    return getNextSpellUnlock(heroId, heroLevel);
+  } catch (error) {
+    console.error(`❌ Erreur getNextSpellUnlockForHeroLevel pour ${heroId}:`, error);
+    return null;
+  }
+};
+
+/**
+ * Vérifie si un sort est débloqué selon le niveau du héros
+ */
+heroSchema.methods.isSpellUnlockedForHeroLevel = function (heroLevel: number, spellLevel: number) {
+  const heroId = this.name.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '');
+  const slotName = `level${spellLevel}`;
+  return isSpellUnlocked(heroId, heroLevel, slotName);
+};
+
+/**
+ * Calcule les stats d'un sort par niveau de déblocage
+ */
+heroSchema.methods.calculateSpellStatsByLevel = function (spellLevel: number, spellLevelValue: number) {
+  const spell = this.getSpellByLevel(spellLevel);
   
   if (!spell || !spell.id) {
     return {
@@ -456,25 +539,19 @@ heroSchema.methods.calculateSpellStats = function (spellSlot: string, level: num
   }
 
   try {
-    // Importer la fonction depuis heroSpellDefinitions
-    const { getSpellStats } = require('../data/heroSpellDefinitions');
-    
-    // Obtenir les stats du sort
-    const spellStats = getSpellStats(spell.id, level, this.rarity);
-    
-    return spellStats;
+    return getSpellStats(spell.id, spellLevelValue, this.rarity);
   } catch (error) {
-    console.error(`❌ Erreur calculateSpellStats pour ${spell.id}:`, error);
+    console.error(`❌ Erreur calculateSpellStatsByLevel pour ${spell.id}:`, error);
     
     // Fallback avec des valeurs génériques
-    const levelScaling = 1 + (level - 1) * 0.1;
+    const levelScaling = 1 + (spellLevelValue - 1) * 0.1;
     
     return {
       damage: Math.floor(50 * levelScaling),
       healing: Math.floor(40 * levelScaling),
-      cooldown: Math.max(1, 5 - Math.floor(level / 3)),
+      cooldown: Math.max(1, 5 - Math.floor(spellLevelValue / 3)),
       duration: 2,
-      energyCost: Math.max(10, 20 - level),
+      energyCost: Math.max(10, 20 - spellLevelValue),
       effect: spell.id,
       additionalEffects: {
         note: "Using fallback stats"
@@ -483,8 +560,158 @@ heroSchema.methods.calculateSpellStats = function (spellSlot: string, level: num
   }
 };
 
-// Pré-save hook - MISE À JOUR
-// Pré-save hook - MISE À JOUR
+/**
+ * Obtient un résumé complet de la progression des sorts
+ */
+heroSchema.methods.getSpellProgressSummary = function (heroLevel: number) {
+  const heroId = this.name.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '');
+  
+  try {
+    const { getHeroSpellSummary } = require('../data/heroSpellDefinitions');
+    const summary = getHeroSpellSummary(heroId, heroLevel);
+    
+    if (!summary) {
+      return {
+        heroInfo: {
+          heroId,
+          name: this.name,
+          element: this.element,
+          role: this.role,
+          rarity: this.rarity
+        },
+        spellProgress: {
+          currentLevel: heroLevel,
+          unlockedSpells: [],
+          nextUnlock: null,
+          missingSpells: [],
+          progressPercentage: 0,
+          totalSpells: 0,
+          unlockedCount: 0
+        }
+      };
+    }
+    
+    return summary;
+  } catch (error) {
+    console.error(`❌ Erreur getSpellProgressSummary pour ${heroId}:`, error);
+    return null;
+  }
+};
+
+// ===============================================
+// MÉTHODES DE COMPATIBILITÉ ANCIEN SYSTÈME (deprecated)
+// ===============================================
+
+/**
+ * @deprecated - Utilisez getAllSpellsByLevel() à la place
+ */
+heroSchema.methods.getAllSpells = function () {
+  console.warn("⚠️ getAllSpells() est deprecated, utilisez getAllSpellsByLevel()");
+  return this.getAllSpellsByLevel().map((spell: any) => ({
+    slot: spell.slot,
+    id: spell.id,
+    level: spell.level
+  }));
+};
+
+/**
+ * @deprecated - Utilisez getSpellByLevel() à la place
+ */
+heroSchema.methods.getSpell = function (spellSlot: string) {
+  console.warn("⚠️ getSpell() est deprecated, utilisez getSpellByLevel()");
+  
+  // Conversion des anciens slots vers les nouveaux
+  const slotMapping: Record<string, number> = {
+    "active1": 1,
+    "active2": 11,
+    "active3": 41,
+    "ultimate": 81,
+    "passive": 41
+  };
+  
+  const spellLevel = slotMapping[spellSlot];
+  if (!spellLevel) return null;
+  
+  return this.getSpellByLevel(spellLevel);
+};
+
+/**
+ * @deprecated - Utilisez setSpellByLevel() à la place
+ */
+heroSchema.methods.setSpell = function (spellSlot: string, id: string, level = 1) {
+  console.warn("⚠️ setSpell() est deprecated, utilisez setSpellByLevel()");
+  
+  // Conversion des anciens slots vers les nouveaux
+  const slotMapping: Record<string, number> = {
+    "active1": 1,
+    "active2": 11,
+    "active3": 41,
+    "ultimate": 81,
+    "passive": 41
+  };
+  
+  const spellLevel = slotMapping[spellSlot];
+  if (!spellLevel) return;
+  
+  this.setSpellByLevel(spellLevel, id, level);
+};
+
+/**
+ * @deprecated - Utilisez upgradeSpellByLevel() à la place
+ */
+heroSchema.methods.upgradeSpell = function (spellSlot: string, newLevel: number) {
+  console.warn("⚠️ upgradeSpell() est deprecated, utilisez upgradeSpellByLevel()");
+  
+  // Conversion des anciens slots vers les nouveaux
+  const slotMapping: Record<string, number> = {
+    "active1": 1,
+    "active2": 11,
+    "active3": 41,
+    "ultimate": 81,
+    "passive": 41
+  };
+  
+  const spellLevel = slotMapping[spellSlot];
+  if (!spellLevel) return false;
+  
+  return this.upgradeSpellByLevel(spellLevel, newLevel);
+};
+
+/**
+ * @deprecated - Utilisez calculateSpellStatsByLevel() à la place
+ */
+heroSchema.methods.calculateSpellStats = function (spellSlot: string, level: number) {
+  console.warn("⚠️ calculateSpellStats() est deprecated, utilisez calculateSpellStatsByLevel()");
+  
+  // Conversion des anciens slots vers les nouveaux
+  const slotMapping: Record<string, number> = {
+    "active1": 1,
+    "active2": 11,
+    "active3": 41,
+    "ultimate": 81,
+    "passive": 41
+  };
+  
+  const spellLevel = slotMapping[spellSlot];
+  if (!spellLevel) {
+    return {
+      damage: 0,
+      healing: 0,
+      cooldown: 3,
+      duration: 0,
+      energyCost: 20,
+      effect: "",
+      additionalEffects: {}
+    };
+  }
+  
+  return this.calculateSpellStatsByLevel(spellLevel, level);
+};
+
+// ===============================================
+// PRÉ-SAVE HOOK - MISE À JOUR NOUVEAU SYSTÈME
+// ===============================================
+
 heroSchema.pre("save", function (next) {
   // Clamp des stats
   this.baseStats.reductionCooldown = cap(this.baseStats.reductionCooldown, 0, 50);
@@ -494,7 +721,7 @@ heroSchema.pre("save", function (next) {
   this.baseStats.accuracy    = cap(this.baseStats.accuracy, 0, 100);
   this.baseStats.healthleech = cap(this.baseStats.healthleech, 0, 100);
 
-  // Initialiser les sorts selon heroSpellDefinitions
+  // Initialiser les sorts selon heroSpellDefinitions - NOUVEAU SYSTÈME
   const heroId = this.name.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '');
   
   console.log(`🔍 Pre-save hook for: ${this.name}, heroId: ${heroId}`);
@@ -509,34 +736,40 @@ heroSchema.pre("save", function (next) {
       
       console.log(`🔍 Initial spells:`, JSON.stringify(initialSpells));
       
-      // Active1 - toujours remplacer
-      if (initialSpells.active1) {
-        this.spells.active1 = initialSpells.active1;
-        console.log(`✅ Set active1:`, initialSpells.active1);
+      // Level 1 - toujours présent
+      if (initialSpells.level1) {
+        this.spells.level1 = initialSpells.level1;
+        console.log(`✅ Set level1:`, initialSpells.level1);
       }
       
-      // Active2 - toujours remplacer
-      if (initialSpells.active2) {
-        this.spells.active2 = initialSpells.active2;
-        console.log(`✅ Set active2:`, initialSpells.active2);
+      // Level 11 - si défini
+      if (initialSpells.level11) {
+        this.spells.level11 = initialSpells.level11;
+        console.log(`✅ Set level11:`, initialSpells.level11);
       }
       
-      // Active3 - toujours remplacer
-      if (initialSpells.active3) {
-        this.spells.active3 = initialSpells.active3;
-        console.log(`✅ Set active3:`, initialSpells.active3);
+      // Level 41 - si défini
+      if (initialSpells.level41) {
+        this.spells.level41 = initialSpells.level41;
+        console.log(`✅ Set level41:`, initialSpells.level41);
       }
       
-      // Ultimate - toujours remplacer
-      if (initialSpells.ultimate) {
-        this.spells.ultimate = initialSpells.ultimate;
-        console.log(`✅ Set ultimate:`, initialSpells.ultimate);
+      // Level 81 - si défini
+      if (initialSpells.level81) {
+        this.spells.level81 = initialSpells.level81;
+        console.log(`✅ Set level81:`, initialSpells.level81);
       }
       
-      // Passive - toujours remplacer
-      if (initialSpells.passive) {
-        this.spells.passive = initialSpells.passive;
-        console.log(`✅ Set passive:`, initialSpells.passive);
+      // Level 121 - si défini
+      if (initialSpells.level121) {
+        this.spells.level121 = initialSpells.level121;
+        console.log(`✅ Set level121:`, initialSpells.level121);
+      }
+      
+      // Level 151 - si défini
+      if (initialSpells.level151) {
+        this.spells.level151 = initialSpells.level151;
+        console.log(`✅ Set level151:`, initialSpells.level151);
       }
     } else {
       console.warn(`⚠️ Aucune définition de sorts pour: ${this.name} (${heroId})`);
@@ -554,8 +787,3 @@ heroSchema.pre("save", function (next) {
 });
 
 export default mongoose.model<IHeroDocument>("Hero", heroSchema);
-
-
-
-
-
