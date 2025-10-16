@@ -1616,7 +1616,52 @@ router.post("/spells/upgrade", authMiddleware, requireFeature("hero_upgrade"), a
     res.status(500).json({ error: "Internal server error", code: "UPGRADE_SPELL_FAILED" });
   }
 });
+
+// À ajouter dans server/src/routes/heroes.ts
+// Juste APRÈS la route POST /spells/upgrade que vous venez d'ajouter
+
+const autoUpgradeSpellsNewSchema = Joi.object({
+  heroInstanceId: Joi.string().required(),
+  maxGoldToSpend: Joi.number().min(0).optional()
+});
+
+/**
+ * POST /api/heroes/spells/auto-upgrade
+ * Test: Auto-upgrader tous les sorts d'un héros avec budget
+ */
+router.post("/spells/auto-upgrade", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const identifiers = getPlayerIdentifiers(req);
+
+    const { error } = autoUpgradeSpellsNewSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const { heroInstanceId, maxGoldToSpend } = req.body;
+
+    const result = await HeroSpellUpgradeService.autoUpgradeAllSpells(
+      identifiers.accountId || identifiers.playerId!,
+      identifiers.serverId,
+      heroInstanceId,
+      maxGoldToSpend
+    );
+
+    res.json({
+      message: "Spells auto-upgraded successfully",
+      serverId: identifiers.serverId,
+      ...result
+    });
+
+  } catch (err) {
+    console.error("Auto-upgrade spells error:", err);
+    res.status(500).json({ error: "Internal server error", code: "AUTO_UPGRADE_SPELLS_FAILED" });
+  }
+});
+
 export default router;
+
 
 
 
