@@ -218,8 +218,8 @@ class BladeDanceSpell extends BaseSpell {
     const baseChance = 0.12; // 12% au lieu de 8%
     const vitesseBonus = ((caster.stats as any).vitesse || 80) / 1000;
     
-    // Utiliser la méthode héritée pour éviter le conflit
-    const rarityBonus = this.getElementalAdvantage("Fire", "Wind") * 0.02;
+    // Bonus fixe pour les héros Légendaires
+    const rarityBonus = caster.rarity === "Legendary" ? 0.03 : 0.01;
     
     const totalChance = Math.min(0.4, baseChance + vitesseBonus + rarityBonus);
     return Math.random() < totalChance;
