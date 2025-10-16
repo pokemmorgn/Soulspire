@@ -1545,7 +1545,35 @@ router.get("/spells/:heroInstanceId/:spellSlot", authMiddleware, async (req: Req
     });
   }
 });
+/**
+ * GET /api/heroes/spells/:heroInstanceId
+ * Test: Obtenir les informations de spell upgrade d'un héros
+ */
+router.get("/spells/:heroInstanceId", authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const identifiers = getPlayerIdentifiers(req);
+    const { heroInstanceId } = req.params;
+
+    const result = await HeroSpellUpgradeService.getHeroSpellUpgradeInfo(
+      identifiers.accountId || identifiers.playerId!,
+      identifiers.serverId,
+      heroInstanceId
+    );
+
+    res.json({
+      message: "Hero spell upgrade info retrieved successfully",
+      serverId: identifiers.serverId,
+      ...result
+    });
+
+  } catch (err) {
+    console.error("Get spell upgrade info error:", err);
+    res.status(500).json({ error: "Internal server error", code: "GET_SPELL_INFO_FAILED" });
+  }
+});
+
 export default router;
+
 
 
 
