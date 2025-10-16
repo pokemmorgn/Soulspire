@@ -3,6 +3,10 @@ import { IBattleParticipant } from "../models/Battle";
 import { BaseEffect, EffectResult } from "./effects/base/BaseEffect";
 import { AutoEffectLoader } from "./effects/AutoEffectLoader";
 
+// Import des nouveaux ultimates pour les hooks
+import { UnleashedBrazierSpell } from "./ultimates/UnleashedBrazierSpell";
+import { VolcanicEruptionSpell } from "./ultimates/VolcanicEruptionSpell";
+
 // Réexport des interfaces pour compatibilité
 export { IEffect, EffectResult } from "./effects/base/BaseEffect";
 
@@ -128,8 +132,8 @@ export class EffectManager {
     }
   }
   
-  // Traiter tous les effets actifs d'une cible (appelé chaque tour)
-  static processEffects(target: IBattleParticipant): EffectResult[] {
+  // ✨ NOUVEAU : Traiter tous les effets actifs d'une cible avec hooks ultimates
+  static processEffects(target: IBattleParticipant, battleContext?: any): EffectResult[] {
     if (!(target as any).activeEffects) return [];
     
     const results: EffectResult[] = [];
@@ -146,7 +150,13 @@ export class EffectManager {
         continue;
       }
       
-      // Appliquer l'effet
+      // ✨ NOUVEAU : Hooks spéciaux pour ultimates avant onTick
+      if (activeEffect.id === "volcanic_eruption" && battleContext) {
+        const geyserResult = this.processVolcanicEruption(target, battleContext);
+        if (geyserResult) results.push(geyserResult);
+      }
+      
+      // Appliquer l'effet standard
       const result = effect.onTick(target, activeEffect.stacks, activeEffect.appliedBy);
       if (result.message || result.damage || result.healing) {
         results.push(result);
@@ -157,6 +167,13 @@ export class EffectManager {
       
       // Retirer l'effet si expiré
       if (activeEffect.duration <= 0 || result.removeEffect) {
+        
+        // ✨ NOUVEAU : Hooks spéciaux pour ultimates avant onRemove
+        if (activeEffect.id === "unleashed_brazier" && battleContext) {
+          const explosionResult = this.processUnleashedBrazierExpiration(target, activeEffect, battleContext);
+          if (explosionResult) results.push(explosionResult);
+        }
+        
         if (effect.onRemove) {
           const removeResult = effect.onRemove(target);
           if (removeResult.message) results.push(removeResult);
@@ -166,6 +183,50 @@ export class EffectManager {
     }
     
     return results;
+  }
+  
+  // ✨ NOUVEAU : Traitement spécial Éruption Primordiale
+  private static processVolcanicEruption(target: IBattleParticipant, battleContext: any): EffectResult | null {
+    if (!VolcanicEruptionSpell.isErupting(target) || !battleContext.allEnemies) return null;
+    
+    try {
+      const { damage, healing } = VolcanicEruptionSpell.triggerGeyserTick(target, battleContext.allEnemies);
+      
+      if (damage > 0 || healing > 0) {
+        return {
+          damage: 0, // Les dégâts sont déjà appliqués dans triggerGeyserTick
+          healing: 0, // Les soins sont déjà appliqués dans triggerGeyserTick
+          message: `🌋💥 Geysers volcanique : ${damage} dégâts AoE, ${healing} HP récupérés`
+        };
+      }
+    } catch (error) {
+      console.error("❌ Erreur processVolcanicEruption:", error);
+    }
+    
+    return null;
+  }
+  
+  // ✨ NOUVEAU : Traitement spécial explosion Brasier Déchaîné
+  private static processUnleashedBrazierExpiration(
+    target: IBattleParticipant, 
+    activeEffect: ActiveEffect, 
+    battleContext: any
+  ): EffectResult | null {
+    if (!battleContext.allEnemies) return null;
+    
+    try {
+      UnleashedBrazierSpell.triggerFinalExplosion(target, battleContext.allEnemies);
+      
+      const explosionDamage = activeEffect.metadata?.explosionDamage || 0;
+      return {
+        damage: 0, // Les dégâts sont déjà appliqués dans triggerFinalExplosion
+        message: `🔥💥 EXPLOSION FINALE ! ${target.name} libère ${explosionDamage} dégâts massifs !`
+      };
+    } catch (error) {
+      console.error("❌ Erreur processUnleashedBrazierExpiration:", error);
+    }
+    
+    return null;
   }
   
   // Récupérer un effet actif spécifique d'une cible
@@ -216,6 +277,42 @@ export class EffectManager {
   // Obtenir les données d'un effet actif (incluant metadata)
   static getEffectData(target: IBattleParticipant, effectId: string): ActiveEffect | undefined {
     return this.getTargetEffect(target, effectId);
+  }
+  
+  // ✨ NOUVEAU : Hooks pour intégration BattleEngine
+  
+  /**
+   * Vérifier protection Éruption Primordiale sur dégâts reçus
+   */
+  static applyVolcanicProtection(defender: IBattleParticipant, incomingDamage: number): number {
+    return VolcanicEruptionSpell.applyVolcanicProtection(defender, incomingDamage);
+  }
+  
+  /**
+   * Vérifier et appliquer vol de vie Brasier Déchaîné
+   */
+  static applyUnleashedBrazierLifeSteal(attacker: IBattleParticipant, damageDealt: number): number {
+    return UnleashedBrazierSpell.applyLifeSteal(attacker, damageDealt);
+  }
+  
+  /**
+   * Vérifier si les attaques doivent être AoE (Brasier Déchaîné)
+   */
+  static shouldAttackBeAoE(attacker: IBattleParticipant): boolean {
+    return UnleashedBrazierSpell.hasAoEAttacks(attacker);
+  }
+  
+  /**
+   * Vérifier immunité contrôles (Éruption Primordiale + autres)
+   */
+  static hasControlImmunity(participant: IBattleParticipant): boolean {
+    // Vérifier Éruption Primordiale
+    if (VolcanicEruptionSpell.hasControlImmunity(participant)) return true;
+    
+    // Vérifier autres sources d'immunité
+    if (participant.status.buffs.includes("cc_immunity")) return true;
+    
+    return false;
   }
   
   // Obtenir des statistiques sur les effets
