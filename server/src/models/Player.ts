@@ -142,29 +142,71 @@ export interface IPlayerDocument extends Document, IPlayer {
   upgradeHero(heroId: string, newLevel: number, newStars?: number): Promise<IPlayerDocument>;
   getEquippedHeroes(): IPlayerHero[];
   setFormation(formationId: string, slots: { slot: number, heroId: string }[]): Promise<IPlayerDocument>;
-  canAfford(cost: { gold?: number, gems?: number, paidGems?: number, tickets?: number }): boolean;
-  spendCurrency(cost: { gold?: number, gems?: number, paidGems?: number, tickets?: number }): Promise<IPlayerDocument>;
-  addCurrency(currency: { gold?: number, gems?: number, paidGems?: number, tickets?: number }): Promise<IPlayerDocument>;
+  
+  // Méthodes de monnaie étendues (avec ascensionEssence)
+  canAfford(cost: { 
+    gold?: number; 
+    gems?: number; 
+    paidGems?: number; 
+    tickets?: number;
+    heroXP?: number;
+    ascensionEssence?: number;
+  }): boolean;
+  
+  spendCurrency(cost: { 
+    gold?: number; 
+    gems?: number; 
+    paidGems?: number; 
+    tickets?: number;
+    heroXP?: number;
+    ascensionEssence?: number;
+  }): Promise<IPlayerDocument>;
+  
+  addCurrency(currency: { 
+    gold?: number; 
+    gems?: number; 
+    paidGems?: number; 
+    tickets?: number;
+    heroXP?: number;
+    ascensionEssence?: number;
+  }): Promise<IPlayerDocument>;
+  
+  // Méthodes elemental tickets
   addElementalTicket(element: string, quantity?: number): Promise<IPlayerDocument>;
   spendElementalTickets(element: string, quantity: number): Promise<IPlayerDocument>;
   hasElementalTickets(element: string, quantity: number): boolean;
-  // ✅ NOUVEAU : Méthodes pour pulls gratuits
+  
+  // Méthodes pour pulls gratuits
   getFreePullTracker(bannerId: string): IFreePullTracker | undefined;
   initializeFreePulls(bannerId: string, pullsAvailable: number, nextResetAt: Date): Promise<void>;
   useFreePull(bannerId: string, count?: number): Promise<boolean>;
   resetFreePulls(bannerId: string, pullsAvailable: number, nextResetAt: Date): Promise<void>;
   checkAndResetFreePulls(bannerId: string): Promise<boolean>;
+  
+  // Méthodes VIP et achats
   addVipExp(amount: number, source?: string, cost?: number): Promise<{ newLevel: number; leveledUp: boolean }>;
   addServerPurchase(purchase: IServerPurchase): Promise<IPlayerDocument>;
+  
+  // Méthodes de progression
   updateProgress(type: string, value: number): Promise<IPlayerDocument>;
   isEligibleForEvent(eventType: string): boolean;
   calculatePowerScore(): number;
   getPlayerStats(): any;
   needsDailyReset(): boolean;
   performDailyReset(): Promise<IPlayerDocument>;
+  
+  // Méthodes Hero XP et level up
   canAffordHeroLevelUp(cost: { gold: number, heroXP: number }): boolean;
   spendHeroLevelUpResources(cost: { gold: number, heroXP: number }): Promise<IPlayerDocument>;
   addHeroXP(amount: number): Promise<IPlayerDocument>;
+  
+  // ✅ NOUVELLES MÉTHODES D'ASCENSION
+  canAffordAscension(cost: { gold: number; heroXP: number; ascensionEssence: number }): boolean;
+  spendAscensionResources(cost: { gold: number; heroXP: number; ascensionEssence: number }): Promise<IPlayerDocument>;
+  addAscensionEssences(amount: number): Promise<IPlayerDocument>;
+  spendAscensionEssences(amount: number): Promise<IPlayerDocument>;
+  hasAscensionEssences(amount: number): boolean;
+  getProgressionResources(): any;
 }
 
 // ----- Schémas des sous-documents -----
@@ -175,7 +217,6 @@ const playerHeroSchema = new Schema<IPlayerHero>({
   equipped: { type: Boolean, default: false },
   slot: { type: Number, min: 1, max: 9, default: null },
   experience: { type: Number, default: 0, min: 0 },
-  ascensionEssences: { type: Number, default: 0, min: 0 },
   ascensionLevel: { type: Number, default: 0, min: 0, max: 8 },
   awakenLevel: { type: Number, default: 0, min: 0, max: 5 },
   acquisitionDate: { type: Date, default: Date.now },
@@ -889,6 +930,7 @@ playerSchema.methods.getProgressionResources = function() {
 };
 
 export default mongoose.model<IPlayerDocument>("Player", playerSchema);
+
 
 
 
