@@ -1,14 +1,35 @@
 // server/src/data/heroSpellDefinitions.ts
 
 /**
- * Définitions des sorts par héros
- * Structure selon la rareté:
- * - Common: 1 Actif
- * - Rare: 2 Actifs + 1 Ultime OU 1 Actif + 1 Passif + 1 Ultime
- * - Epic: 2 Actifs + 1 Passif + 1 Ultime OU 3 Actifs + 1 Ultime
- * - Legendary: 2 Actifs + 1 Passif + 1 Ultime OU 3 Actifs + 1 Ultime
- * - Mythic: 2 Actifs + 1 Passif + 1 Ultime OU 3 Actifs + 1 Ultime (avec sorts combinés)
+ * NOUVEAU SYSTÈME DE PROGRESSION DES SORTS - VERSION SIMPLIFIÉE
+ * 
+ * Déblocage progressif par niveau :
+ * - Niveau 1: Premier sort (tous les héros)
+ * - Niveau 11: Deuxième sort (si défini)
+ * - Niveau 41: Troisième sort ou passif (si défini) 
+ * - Niveau 81: Sort ultime (si défini)
+ * - Niveau 121: Structure vide pour Legendary+
+ * - Niveau 151: Structure vide pour Mythic only
  */
+
+// ===============================================
+// CONSTANTES DE DÉBLOCAGE DES SORTS
+// ===============================================
+
+export const SPELL_UNLOCK_LEVELS = {
+  LEVEL_1: 1,    // Premier sort (tous les héros)
+  LEVEL_11: 11,  // Deuxième sort (si défini)
+  LEVEL_41: 41,  // Troisième sort ou passif (si défini)
+  LEVEL_81: 81,  // Sort ultime (si défini)
+  LEVEL_121: 121, // Structure vide pour Legendary+
+  LEVEL_151: 151  // Structure vide pour Mythic only
+} as const;
+
+export type SpellUnlockLevel = keyof typeof SPELL_UNLOCK_LEVELS;
+
+// ===============================================
+// INTERFACE DE DÉFINITION DES SORTS
+// ===============================================
 
 export interface HeroSpellDefinition {
   heroId: string;
@@ -17,557 +38,561 @@ export interface HeroSpellDefinition {
   role: "Tank" | "DPS Melee" | "DPS Ranged" | "Support";
   rarity: "Common" | "Rare" | "Epic" | "Legendary" | "Mythic";
   
-  // Sorts actifs (1-3 selon rareté)
-  active1: string;           // Toutes raretés
-  active2?: string;          // Rare+
-  active3?: string;          // Epic+ (variante 3 actifs)
-  
-  // Sort ultime (Rare+)
-  ultimate?: string;
-  
-  // Sort passif (Rare+ selon variante, Epic+ toujours pour variante 2 actifs)
-  passive?: string;
+  // Sorts par niveau de déblocage (nouveau système simplifié)
+  level1: string;        // Niveau 1 - Obligatoire pour tous
+  level11?: string;      // Niveau 11 - Optionnel selon rareté
+  level41?: string;      // Niveau 41 - Optionnel selon rareté  
+  level81?: string;      // Niveau 81 - Optionnel selon rareté
+  level121?: string;     // Niveau 121 - Futur (Legendary+)
+  level151?: string;     // Niveau 151 - Futur (Mythic only)
 }
 
-/**
- * Base de données des sorts par héros
- */
+// ===============================================
+// BASE DE DONNÉES DES SORTS PAR HÉROS
+// ===============================================
+
 export const HERO_SPELL_DEFINITIONS: Record<string, HeroSpellDefinition> = {
   
   // ============================================
   // WATER HEROES (7 total)
   // ============================================
   
-  // Common Tank - 1 Actif
+  // Common Tank - 1 Sort
   "nerya": {
     heroId: "nerya",
     name: "Nerya",
     element: "Water",
     role: "Tank",
     rarity: "Common",
-    active1: "water_barrier"
+    level1: "water_barrier"
   },
   
-  // Common Support - 1 Actif
+  // Common Support - 1 Sort
   "thalwen": {
     heroId: "thalwen",
     name: "Thalwen",
     element: "Water",
-    role: "Support",
+    role: "Support", 
     rarity: "Common",
-    active1: "curse_of_the_deep"
+    level1: "curse_of_the_deep"
   },
   
-  // Common DPS Ranged - 1 Actif
+  // Common DPS Ranged - 1 Sort
   "nora": {
     heroId: "nora",
     name: "Nora",
     element: "Water",
     role: "DPS Ranged",
     rarity: "Common",
-    active1: "water_bolt"
+    level1: "water_bolt"
   },
   
-  // Common DPS Melee - 1 Actif
+  // Common DPS Melee - 1 Sort
   "narud": {
     heroId: "narud",
     name: "Narud",
     element: "Water",
     role: "DPS Melee",
     rarity: "Common",
-    active1: "tidal_slash"
+    level1: "tidal_slash"
   },
   
-  // Rare Support - Variante: 1 Actif + 1 Passif + 1 Ultime
+  // Rare Support - 3 Sorts (niveau 1, 11, 81)
   "nereida": {
     heroId: "nereida",
     name: "Nereida",
     element: "Water",
     role: "Support",
     rarity: "Rare",
-    active1: "healing_tide",
-    passive: "flowing_mana",
-    ultimate: "tidal_blessing"
+    level1: "healing_tide",
+    level11: "flowing_mana",      // Passif converti en sort niveau 11
+    level81: "tidal_blessing"
   },
   
-  // Epic DPS Melee - Variante: 2 Actifs + 1 Passif + 1 Ultime
+  // Epic DPS Melee - 4 Sorts (niveau 1, 11, 41, 81)
   "vayna": {
-    heroId: "vayna",
+    heroId: "vayna", 
     name: "Vayna",
     element: "Water",
     role: "DPS Melee",
     rarity: "Epic",
-    active1: "abyssal_strike",
-    active2: "pirate_dance",
-    passive: "tidal_lifesteal",
-    ultimate: "maelstrom_fury"
+    level1: "abyssal_strike",
+    level11: "pirate_dance",
+    level41: "tidal_lifesteal",   // Passif converti en sort niveau 41
+    level81: "maelstrom_fury"
   },
   
-  // Legendary DPS Melee - Variante: 2 Actifs + 1 Passif + 1 Ultime
+  // Legendary DPS Melee - 4 Sorts (niveau 1, 11, 41, 81)
   "kaelis": {
     heroId: "kaelis",
-    name: "Kaelis",
+    name: "Kaelis", 
     element: "Water",
     role: "DPS Melee",
     rarity: "Legendary",
-    active1: "feline_slash",
-    active2: "hydro_dash",
-    passive: "fluid_movement",
-    ultimate: "tsunami_fury"
+    level1: "feline_slash",
+    level11: "hydro_dash",
+    level41: "fluid_movement",    // Passif converti en sort niveau 41
+    level81: "tsunami_fury"
   },
   
   // ============================================
   // FIRE HEROES (7 total)
   // ============================================
   
-  // Common Tank - 1 Actif
+  // Common Tank - 1 Sort
   "brakka": {
     heroId: "brakka",
     name: "Brakka",
-    element: "Fire",
+    element: "Fire", 
     role: "Tank",
     rarity: "Common",
-    active1: "furnace_strike"
+    level1: "furnace_strike"
   },
   
-  // Rare Tank - Variante: 2 Actifs + 1 Ultime
+  // Rare Tank - 3 Sorts (niveau 1, 11, 81)
   "korran": {
     heroId: "korran",
     name: "Korran",
     element: "Fire",
-    role: "Tank",
+    role: "Tank", 
     rarity: "Rare",
-    active1: "ember_bash",
-    active2: "flame_shield",
-    ultimate: "molten_fortress"
+    level1: "ember_bash",
+    level11: "flame_shield", 
+    level81: "molten_fortress"
   },
   
-  // Rare DPS Ranged - Variante: 2 Actifs + 1 Ultime
+  // Rare DPS Ranged - 3 Sorts (niveau 1, 11, 81)
   "ignara": {
     heroId: "ignara",
     name: "Ignara",
     element: "Fire",
     role: "DPS Ranged",
-    rarity: "Rare",
-    active1: "blazing_surge",
-    active2: "fire_blast",
-    ultimate: "inferno_rain"
+    rarity: "Rare", 
+    level1: "blazing_surge",
+    level11: "fire_blast",
+    level81: "inferno_rain"
   },
   
-  // Rare Support - Variante: 1 Actif + 1 Passif + 1 Ultime
+  // Rare Support - 3 Sorts (niveau 1, 41, 81) - Passif au niveau 41
   "albert": {
     heroId: "albert",
     name: "Albert",
     element: "Fire",
     role: "Support",
     rarity: "Rare",
-    active1: "flame_turret",
-    passive: "engineer_mind",
-    ultimate: "overclock_turret"
+    level1: "flame_turret",
+    level41: "engineer_mind",     // Passif converti en sort niveau 41
+    level81: "overclock_turret"
   },
   
-  // Epic Tank - Variante: 2 Actifs + 1 Passif + 1 Ultime
+  // Epic Tank - 4 Sorts (niveau 1, 11, 41, 81)
   "grathul": {
     heroId: "grathul",
     name: "Grathul",
     element: "Fire",
     role: "Tank",
     rarity: "Epic",
-    active1: "chain_slam",
-    active2: "molten_bind",
-    passive: "burning_aura",
-    ultimate: "infernal_chains"
+    level1: "chain_slam",
+    level11: "molten_bind",
+    level41: "burning_aura",      // Passif converti en sort niveau 41
+    level81: "infernal_chains"
   },
   
-  // Legendary Support - Variante: 2 Actifs + 1 Passif + 1 Ultime
+  // Legendary Support - 4 Sorts (niveau 1, 11, 41, 81)
   "pyra": {
     heroId: "pyra",
-    name: "Pyra",
+    name: "Pyra", 
     element: "Fire",
     role: "Support",
     rarity: "Legendary",
-    active1: "ember_heal",
-    active2: "flame_shield",
-    passive: "fire_attunement",
-    ultimate: "phoenix_blessing"
+    level1: "ember_heal",
+    level11: "flame_shield",
+    level41: "fire_attunement",   // Passif converti en sort niveau 41
+    level81: "phoenix_blessing"
   },
   
-  // Legendary DPS Melee - Variante: 3 Actifs + 1 Ultime
+  // Legendary DPS Melee - 4 Sorts (niveau 1, 11, 41, 81)
   "saryel": {
     heroId: "saryel",
     name: "Saryel",
     element: "Fire",
-    role: "DPS Melee",
+    role: "DPS Melee", 
     rarity: "Legendary",
-    active1: "blazing_slash",
-    active2: "fire_dance",
-    active3: "crimson_strike",
-    ultimate: "infernal_storm"
+    level1: "blazing_slash",
+    level11: "fire_dance",
+    level41: "crimson_strike",
+    level81: "infernal_storm"
   },
   
   // ============================================
   // WIND HEROES (7 total)
   // ============================================
   
-  // Common DPS Ranged - 1 Actif
+  // Common DPS Ranged - 1 Sort
   "braknor": {
     heroId: "braknor",
     name: "Braknor",
     element: "Wind",
     role: "DPS Ranged",
-    rarity: "Common",
-    active1: "wind_arrow"
+    rarity: "Common", 
+    level1: "wind_arrow"
   },
   
-  // Common Tank - 1 Actif
+  // Common Tank - 1 Sort
   "halvar": {
     heroId: "halvar",
-    name: "Halvar",
+    name: "Halvar", 
     element: "Wind",
     role: "Tank",
     rarity: "Common",
-    active1: "wind_guard"
+    level1: "wind_guard"
   },
   
-  // Rare DPS Ranged - Variante: 2 Actifs + 1 Ultime
+  // Rare DPS Ranged - 3 Sorts (niveau 1, 11, 81)
   "sylvara": {
     heroId: "sylvara",
     name: "Sylvara",
     element: "Wind",
     role: "DPS Ranged",
     rarity: "Rare",
-    active1: "javelin_throw",
-    active2: "wind_gust",
-    ultimate: "storm_javelin"
+    level1: "javelin_throw",
+    level11: "wind_gust", 
+    level81: "storm_javelin"
   },
   
-  // Rare Support - Variante: 1 Actif + 1 Passif + 1 Ultime
+  // Rare Support - 3 Sorts (niveau 1, 41, 81) - Passif au niveau 41
   "elyndra": {
     heroId: "elyndra",
     name: "Elyndra",
     element: "Wind",
     role: "Support",
     rarity: "Rare",
-    active1: "wind_song",
-    passive: "bard_inspiration",
-    ultimate: "symphony_of_storms"
+    level1: "wind_song",
+    level41: "bard_inspiration",  // Passif converti en sort niveau 41
+    level81: "symphony_of_storms"
   },
   
-  // Rare DPS Melee - Variante: 2 Actifs + 1 Ultime
+  // Rare DPS Melee - 3 Sorts (niveau 1, 11, 81)
   "kaelen": {
     heroId: "kaelen",
     name: "Kaelen",
-    element: "Wind",
+    element: "Wind", 
     role: "DPS Melee",
     rarity: "Rare",
-    active1: "dual_slash",
-    active2: "swift_cut",
-    ultimate: "blade_storm"
+    level1: "dual_slash",
+    level11: "swift_cut",
+    level81: "blade_storm"
   },
   
-  // Epic DPS Ranged - Variante: 3 Actifs + 1 Ultime
+  // Epic DPS Ranged - 4 Sorts (niveau 1, 11, 41, 81)
   "zephyra": {
-    heroId: "zephyra",
+    heroId: "zephyra", 
     name: "Zephyra",
     element: "Wind",
     role: "DPS Ranged",
     rarity: "Epic",
-    active1: "wind_arrow",
-    active2: "cyclone_shot",
-    active3: "piercing_gale",
-    ultimate: "tempest_volley"
+    level1: "wind_arrow",
+    level11: "cyclone_shot",
+    level41: "piercing_gale",
+    level81: "tempest_volley"
   },
   
-  // Legendary DPS Melee - Variante: 2 Actifs + 1 Passif + 1 Ultime
+  // Legendary DPS Melee - 4 Sorts (niveau 1, 11, 41, 81)
   "veyron": {
     heroId: "veyron",
     name: "Veyron",
     element: "Wind",
     role: "DPS Melee",
-    rarity: "Legendary",
-    active1: "wind_slash",
-    active2: "gale_dash",
-    passive: "wind_walker",
-    ultimate: "storm_fury"
+    rarity: "Legendary", 
+    level1: "wind_slash",
+    level11: "gale_dash",
+    level41: "wind_walker",       // Passif converti en sort niveau 41
+    level81: "storm_fury"
   },
   
   // ============================================
   // ELECTRIC HEROES (7 total)
   // ============================================
   
-  // Common Support - 1 Actif
+  // Common Support - 1 Sort
   "tynira": {
     heroId: "tynira",
-    name: "Tynira",
+    name: "Tynira", 
     element: "Electric",
     role: "Support",
     rarity: "Common",
-    active1: "spark_buff"
+    level1: "spark_buff"
   },
   
-  // Common DPS Melee - 1 Actif
+  // Common DPS Melee - 1 Sort
   "zeyra": {
     heroId: "zeyra",
     name: "Zeyra",
     element: "Electric",
     role: "DPS Melee",
     rarity: "Common",
-    active1: "lightning_strike"
+    level1: "lightning_strike"
   },
   
-  // Epic DPS Melee - Variante: 2 Actifs + 1 Passif + 1 Ultime
+  // Epic DPS Melee - 4 Sorts (niveau 1, 11, 41, 81)
   "raiken": {
     heroId: "raiken",
     name: "Raiken",
     element: "Electric",
     role: "DPS Melee",
     rarity: "Epic",
-    active1: "volt_punch",
-    active2: "thunder_combo",
-    passive: "static_charge",
-    ultimate: "lightning_burst"
+    level1: "volt_punch",
+    level11: "thunder_combo", 
+    level41: "static_charge",     // Passif converti en sort niveau 41
+    level81: "lightning_burst"
   },
   
-  // Epic Support - Variante: 2 Actifs + 1 Passif + 1 Ultime
+  // Epic Support - 4 Sorts (niveau 1, 11, 41, 81)
   "milia": {
     heroId: "milia",
     name: "Milia",
     element: "Electric",
     role: "Support",
     rarity: "Epic",
-    active1: "thunder_hammer",
-    active2: "volt_shield",
-    passive: "armored_conductor",
-    ultimate: "electromagnetic_pulse"
+    level1: "thunder_hammer",
+    level11: "volt_shield",
+    level41: "armored_conductor", // Passif converti en sort niveau 41
+    level81: "electromagnetic_pulse"
   },
   
-  // Epic Tank - Variante: 3 Actifs + 1 Ultime
+  // Epic Tank - 4 Sorts (niveau 1, 11, 41, 81)
   "thalrik": {
     heroId: "thalrik",
-    name: "Thalrik",
+    name: "Thalrik", 
     element: "Electric",
     role: "Tank",
     rarity: "Epic",
-    active1: "thunder_slam",
-    active2: "shock_wave",
-    active3: "volt_barrier",
-    ultimate: "storm_bastion"
+    level1: "thunder_slam",
+    level11: "shock_wave",
+    level41: "volt_barrier",
+    level81: "storm_bastion"
   },
   
-  // Legendary DPS Ranged - Variante: 3 Actifs + 1 Ultime
+  // Legendary DPS Ranged - 4 Sorts (niveau 1, 11, 41, 81)
   "voltrion": {
     heroId: "voltrion",
     name: "Voltrion",
     element: "Electric",
     role: "DPS Ranged",
     rarity: "Legendary",
-    active1: "lightning_bolt",
-    active2: "chain_lightning",
-    active3: "arc_discharge",
-    ultimate: "thunderstorm"
+    level1: "lightning_bolt",
+    level11: "chain_lightning",
+    level41: "arc_discharge", 
+    level81: "thunderstorm"
   },
   
-  // Legendary Tank - Variante: 2 Actifs + 1 Passif + 1 Ultime
+  // Legendary Tank - 4 Sorts (niveau 1, 11, 41, 81)
   "voltragar": {
     heroId: "voltragar",
     name: "Voltragar",
     element: "Electric",
     role: "Tank",
     rarity: "Legendary",
-    active1: "volt_shield",
-    active2: "electric_taunt",
-    passive: "steel_conductor",
-    ultimate: "tesla_fortress"
+    level1: "volt_shield",
+    level11: "electric_taunt",
+    level41: "steel_conductor",   // Passif converti en sort niveau 41
+    level81: "tesla_fortress"
   },
   
   // ============================================
   // LIGHT HEROES (6 total)
   // ============================================
   
-  // Common DPS Melee - 1 Actif
+  // Common DPS Melee - 1 Sort
   "goahn": {
     heroId: "goahn",
     name: "Goahn",
     element: "Light",
     role: "DPS Melee",
     rarity: "Common",
-    active1: "holy_strike"
+    level1: "holy_strike"
   },
   
-  // Rare Tank - Variante: 2 Actifs + 1 Ultime
+  // Rare Tank - 3 Sorts (niveau 1, 11, 81)
   "elyos": {
     heroId: "elyos",
     name: "Elyos",
     element: "Light",
     role: "Tank",
     rarity: "Rare",
-    active1: "light_shield",
-    active2: "radiant_taunt",
-    ultimate: "divine_fortress"
+    level1: "light_shield",
+    level11: "radiant_taunt",
+    level81: "divine_fortress"
   },
   
-  // Rare DPS Ranged - Variante: 2 Actifs + 1 Ultime
+  // Rare DPS Ranged - 3 Sorts (niveau 1, 11, 81)
   "liora": {
     heroId: "liora",
     name: "Liora",
     element: "Light",
-    role: "DPS Ranged",
+    role: "DPS Ranged", 
     rarity: "Rare",
-    active1: "light_arrow",
-    active2: "radiant_shot",
-    ultimate: "holy_barrage"
+    level1: "light_arrow",
+    level11: "radiant_shot",
+    level81: "holy_barrage"
   },
   
-  // Rare Support - Variante: 1 Actif + 1 Passif + 1 Ultime
+  // Rare Support - 3 Sorts (niveau 1, 41, 81) - Passif au niveau 41
   "lyaria": {
     heroId: "lyaria",
     name: "Lyaria",
     element: "Light",
     role: "Support",
     rarity: "Rare",
-    active1: "heal",
-    passive: "light_aura",
-    ultimate: "mass_resurrection"
+    level1: "heal",
+    level41: "light_aura",        // Passif converti en sort niveau 41
+    level81: "mass_resurrection"
   },
   
-  // Legendary Tank - Variante: 2 Actifs + 1 Passif + 1 Ultime
+  // Legendary Tank - 4 Sorts (niveau 1, 11, 41, 81)
   "aureon": {
     heroId: "aureon",
     name: "Aureon",
     element: "Light",
     role: "Tank",
     rarity: "Legendary",
-    active1: "solar_slam",
-    active2: "radiant_taunt",
-    passive: "solar_armor",
-    ultimate: "sun_fortress"
+    level1: "solar_slam", 
+    level11: "radiant_taunt",
+    level41: "solar_armor",       // Passif converti en sort niveau 41
+    level81: "sun_fortress"
   },
   
-  // Legendary DPS Ranged - Variante: 3 Actifs + 1 Ultime
+  // Legendary DPS Ranged - 4 Sorts (niveau 1, 11, 41, 81)
   "solayne": {
     heroId: "solayne",
     name: "Solayne",
     element: "Light",
     role: "DPS Ranged",
     rarity: "Legendary",
-    active1: "solar_beam",
-    active2: "radiant_orb",
-    active3: "dawn_strike",
-    ultimate: "supernova"
+    level1: "solar_beam",
+    level11: "radiant_orb",
+    level41: "dawn_strike",
+    level81: "supernova"
   },
   
   // ============================================
-  // DARK/SHADOW HEROES (6 total)
+  // DARK/SHADOW HEROES (6 total)  
   // ============================================
   
-  // Epic DPS Melee - Variante: 3 Actifs + 1 Ultime
+  // Epic DPS Melee - 4 Sorts (niveau 1, 11, 41, 81)
   "abomys": {
     heroId: "abomys",
     name: "Abomys",
     element: "Dark",
     role: "DPS Melee",
     rarity: "Epic",
-    active1: "shadow_strike",
-    active2: "void_dash",
-    active3: "dark_blade",
-    ultimate: "shadow_rampage"
+    level1: "shadow_strike",
+    level11: "void_dash",
+    level41: "dark_blade",
+    level81: "shadow_rampage"
   },
   
-  // Epic Support - Variante: 2 Actifs + 1 Passif + 1 Ultime
+  // Epic Support - 4 Sorts (niveau 1, 11, 41, 81)
   "chorath": {
     heroId: "chorath",
     name: "Chorath",
     element: "Dark",
     role: "Support",
     rarity: "Epic",
-    active1: "toll_bell",
-    active2: "shadow_aura",
-    passive: "fear_aura",
-    ultimate: "death_knell"
+    level1: "toll_bell",
+    level11: "shadow_aura",
+    level41: "fear_aura",         // Passif converti en sort niveau 41
+    level81: "death_knell"
   },
   
-  // Epic DPS Ranged - Variante: 2 Actifs + 1 Passif + 1 Ultime
+  // Epic DPS Ranged - 4 Sorts (niveau 1, 11, 41, 81)
   "seliora": {
     heroId: "seliora",
-    name: "Seliora",
+    name: "Seliora", 
     element: "Dark",
     role: "DPS Ranged",
     rarity: "Epic",
-    active1: "shadow_dagger",
-    active2: "dark_curse",
-    passive: "shadow_weaver",
-    ultimate: "void_cascade"
+    level1: "shadow_dagger",
+    level11: "dark_curse",
+    level41: "shadow_weaver",     // Passif converti en sort niveau 41
+    level81: "void_cascade"
   },
   
-  // Epic Tank - Variante: 2 Actifs + 1 Passif + 1 Ultime
+  // Epic Tank - 4 Sorts (niveau 1, 11, 41, 81)
   "drogath": {
     heroId: "drogath",
     name: "Drogath",
     element: "Dark",
     role: "Tank",
     rarity: "Epic",
-    active1: "bone_slam",
-    active2: "life_drain",
-    passive: "undead_resilience",
-    ultimate: "unholy_resurrection"
+    level1: "bone_slam",
+    level11: "life_drain",
+    level41: "undead_resilience", // Passif converti en sort niveau 41
+    level81: "unholy_resurrection"
   },
   
-  // Legendary Support - Variante: 2 Actifs + 1 Passif + 1 Ultime
+  // Legendary Support - 4 Sorts (niveau 1, 11, 41, 81)
   "nyxara": {
     heroId: "nyxara",
     name: "Nyxara",
-    element: "Dark",
+    element: "Dark", 
     role: "Support",
     rarity: "Legendary",
-    active1: "summon_shade",
-    active2: "dark_blessing",
-    passive: "summoner_mastery",
-    ultimate: "shadow_legion"
+    level1: "summon_shade",
+    level11: "dark_blessing",
+    level41: "summoner_mastery",  // Passif converti en sort niveau 41
+    level81: "shadow_legion"
   },
   
-  // Legendary DPS Ranged - Variante: 3 Actifs + 1 Ultime
+  // Legendary DPS Ranged - 4 Sorts (niveau 1, 11, 41, 81)
   "aleyra": {
     heroId: "aleyra",
     name: "Aleyra",
     element: "Dark",
     role: "DPS Ranged",
     rarity: "Legendary",
-    active1: "void_bolt",
-    active2: "shadow_pierce",
-    active3: "dark_nova",
-    ultimate: "eclipse"
+    level1: "void_bolt",
+    level11: "shadow_pierce",
+    level41: "dark_nova",
+    level81: "eclipse"
   },
   
   // ============================================
   // MYTHIC HEROES (2 total)
   // ============================================
   
-  // Mythic DPS Melee (Shadow Form) - Variante: 2 Actifs + 1 Passif + 1 Ultime
+  // Mythic DPS Melee (Lunar Form) - 4 Sorts + futurs
   "kaorim_lunar": {
     heroId: "kaorim_lunar",
     name: "Kaorim (Lunar Form)",
     element: "Dark",
     role: "DPS Melee",
     rarity: "Mythic",
-    active1: "lunar_strike",
-    active2: "shadow_dance",
-    passive: "celestial_duality",
-    ultimate: "eclipse_fury"
+    level1: "lunar_strike",
+    level11: "shadow_dance",
+    level41: "celestial_duality", // Passif converti en sort niveau 41
+    level81: "eclipse_fury",
+    level151: "void_dominion"     // Sort exclusif Mythic
   },
   
-  // Mythic Support (Light Form) - Variante: 2 Actifs + 1 Passif + 1 Ultime
+  // Mythic Support (Solar Form) - 4 Sorts + futurs
   "kaorim_solar": {
     heroId: "kaorim_solar",
     name: "Kaorim (Solar Form)",
     element: "Light",
-    role: "Support",
+    role: "Support", 
     rarity: "Mythic",
-    active1: "solar_heal",
-    active2: "radiant_blessing",
-    passive: "celestial_duality",
-    ultimate: "dawn_resurrection"
+    level1: "solar_heal",
+    level11: "radiant_blessing",
+    level41: "celestial_duality", // Passif converti en sort niveau 41
+    level81: "dawn_resurrection",
+    level151: "solar_dominion"    // Sort exclusif Mythic
   }
 };
+
+// ===============================================
+// FONCTIONS UTILITAIRES DE BASE
+// ===============================================
 
 /**
  * Récupérer la définition des sorts d'un héros
@@ -576,10 +601,448 @@ export function getHeroSpellDefinition(heroId: string): HeroSpellDefinition | nu
   return HERO_SPELL_DEFINITIONS[heroId] || null;
 }
 
+// ===============================================
+// FONCTIONS HELPER POUR LA GESTION DES SORTS
+// ===============================================
+
 /**
- * Vérifier quels slots de sorts doivent être débloqués selon la rareté et la définition du héros
+ * Récupère tous les sorts débloqués selon le niveau du héros
+ * @param heroId - ID du héros
+ * @param heroLevel - Niveau actuel du héros
+ * @returns Array des sorts débloqués avec leur niveau de déblocage
  */
-export function getSlotsForRarity(heroId: string, rarity: string): {
+export function getUnlockedSpells(heroId: string, heroLevel: number): Array<{
+  level: number;
+  spellId: string;
+  slot: string;
+}> {
+  const definition = getHeroSpellDefinition(heroId);
+  if (!definition) {
+    console.warn(`⚠️ Aucune définition trouvée pour le héros: ${heroId}`);
+    return [];
+  }
+
+  const unlockedSpells: Array<{ level: number; spellId: string; slot: string }> = [];
+
+  // Niveau 1 - Premier sort (toujours présent)
+  if (heroLevel >= SPELL_UNLOCK_LEVELS.LEVEL_1 && definition.level1) {
+    unlockedSpells.push({
+      level: SPELL_UNLOCK_LEVELS.LEVEL_1,
+      spellId: definition.level1,
+      slot: "level1"
+    });
+  }
+
+  // Niveau 11 - Deuxième sort (si défini)
+  if (heroLevel >= SPELL_UNLOCK_LEVELS.LEVEL_11 && definition.level11) {
+    unlockedSpells.push({
+      level: SPELL_UNLOCK_LEVELS.LEVEL_11,
+      spellId: definition.level11,
+      slot: "level11"
+    });
+  }
+
+  // Niveau 41 - Troisième sort ou passif (si défini)
+  if (heroLevel >= SPELL_UNLOCK_LEVELS.LEVEL_41 && definition.level41) {
+    unlockedSpells.push({
+      level: SPELL_UNLOCK_LEVELS.LEVEL_41,
+      spellId: definition.level41,
+      slot: "level41"
+    });
+  }
+
+  // Niveau 81 - Sort ultime (si défini)
+  if (heroLevel >= SPELL_UNLOCK_LEVELS.LEVEL_81 && definition.level81) {
+    unlockedSpells.push({
+      level: SPELL_UNLOCK_LEVELS.LEVEL_81,
+      spellId: definition.level81,
+      slot: "level81"
+    });
+  }
+
+  // Niveau 121 - Futur (Legendary+)
+  if (heroLevel >= SPELL_UNLOCK_LEVELS.LEVEL_121 && definition.level121) {
+    unlockedSpells.push({
+      level: SPELL_UNLOCK_LEVELS.LEVEL_121,
+      spellId: definition.level121,
+      slot: "level121"
+    });
+  }
+
+  // Niveau 151 - Futur (Mythic only)
+  if (heroLevel >= SPELL_UNLOCK_LEVELS.LEVEL_151 && definition.level151) {
+    unlockedSpells.push({
+      level: SPELL_UNLOCK_LEVELS.LEVEL_151,
+      spellId: definition.level151,
+      slot: "level151"
+    });
+  }
+
+  return unlockedSpells;
+}
+
+/**
+ * Obtient le prochain niveau de déblocage de sort pour un héros
+ * @param heroId - ID du héros
+ * @param currentLevel - Niveau actuel du héros
+ * @returns Informations sur le prochain déblocage ou null si aucun
+ */
+export function getNextSpellUnlock(heroId: string, currentLevel: number): {
+  nextLevel: number;
+  spellId: string;
+  slot: string;
+  levelsRemaining: number;
+} | null {
+  const definition = getHeroSpellDefinition(heroId);
+  if (!definition) {
+    return null;
+  }
+
+  // Vérifier chaque niveau de déblocage dans l'ordre
+  const unlockLevels = [
+    { level: SPELL_UNLOCK_LEVELS.LEVEL_1, spellId: definition.level1, slot: "level1" },
+    { level: SPELL_UNLOCK_LEVELS.LEVEL_11, spellId: definition.level11, slot: "level11" },
+    { level: SPELL_UNLOCK_LEVELS.LEVEL_41, spellId: definition.level41, slot: "level41" },
+    { level: SPELL_UNLOCK_LEVELS.LEVEL_81, spellId: definition.level81, slot: "level81" },
+    { level: SPELL_UNLOCK_LEVELS.LEVEL_121, spellId: definition.level121, slot: "level121" },
+    { level: SPELL_UNLOCK_LEVELS.LEVEL_151, spellId: definition.level151, slot: "level151" }
+  ];
+
+  for (const unlock of unlockLevels) {
+    // Si le sort existe et que le héros n'a pas encore atteint ce niveau
+    if (unlock.spellId && currentLevel < unlock.level) {
+      return {
+        nextLevel: unlock.level,
+        spellId: unlock.spellId,
+        slot: unlock.slot,
+        levelsRemaining: unlock.level - currentLevel
+      };
+    }
+  }
+
+  return null; // Aucun sort à débloquer
+}
+
+/**
+ * Vérifie si un sort spécifique est débloqué à un niveau donné
+ * @param heroId - ID du héros
+ * @param heroLevel - Niveau du héros
+ * @param spellSlot - Slot du sort à vérifier ("level1", "level11", etc.)
+ * @returns true si le sort est débloqué, false sinon
+ */
+export function isSpellUnlocked(heroId: string, heroLevel: number, spellSlot: string): boolean {
+  const definition = getHeroSpellDefinition(heroId);
+  if (!definition) {
+    return false;
+  }
+
+  // Mapping des slots aux niveaux requis
+  const slotToLevel: Record<string, number> = {
+    "level1": SPELL_UNLOCK_LEVELS.LEVEL_1,
+    "level11": SPELL_UNLOCK_LEVELS.LEVEL_11,
+    "level41": SPELL_UNLOCK_LEVELS.LEVEL_41,
+    "level81": SPELL_UNLOCK_LEVELS.LEVEL_81,
+    "level121": SPELL_UNLOCK_LEVELS.LEVEL_121,
+    "level151": SPELL_UNLOCK_LEVELS.LEVEL_151
+  };
+
+  const requiredLevel = slotToLevel[spellSlot];
+  if (requiredLevel === undefined) {
+    console.warn(`⚠️ Slot de sort invalide: ${spellSlot}`);
+    return false;
+  }
+
+  // Vérifier si le héros a le niveau requis ET si le sort existe dans la définition
+  const spellId = (definition as any)[spellSlot];
+  return heroLevel >= requiredLevel && !!spellId;
+}
+
+/**
+ * Obtient tous les niveaux de déblocage disponibles pour un héros
+ * @param heroId - ID du héros
+ * @returns Array des niveaux où des sorts sont définis
+ */
+export function getAvailableSpellLevels(heroId: string): Array<{
+  level: number;
+  slot: string;
+  spellId: string;
+}> {
+  const definition = getHeroSpellDefinition(heroId);
+  if (!definition) {
+    return [];
+  }
+
+  const availableLevels: Array<{ level: number; slot: string; spellId: string }> = [];
+
+  // Vérifier chaque niveau possible
+  const levelMappings = [
+    { level: SPELL_UNLOCK_LEVELS.LEVEL_1, slot: "level1", spellId: definition.level1 },
+    { level: SPELL_UNLOCK_LEVELS.LEVEL_11, slot: "level11", spellId: definition.level11 },
+    { level: SPELL_UNLOCK_LEVELS.LEVEL_41, slot: "level41", spellId: definition.level41 },
+    { level: SPELL_UNLOCK_LEVELS.LEVEL_81, slot: "level81", spellId: definition.level81 },
+    { level: SPELL_UNLOCK_LEVELS.LEVEL_121, slot: "level121", spellId: definition.level121 },
+    { level: SPELL_UNLOCK_LEVELS.LEVEL_151, slot: "level151", spellId: definition.level151 }
+  ];
+
+  for (const mapping of levelMappings) {
+    if (mapping.spellId) {
+      availableLevels.push({
+        level: mapping.level,
+        slot: mapping.slot,
+        spellId: mapping.spellId
+      });
+    }
+  }
+
+  return availableLevels;
+}
+
+/**
+ * Calcule le nombre total de sorts qu'un héros peut débloquer
+ * @param heroId - ID du héros
+ * @returns Nombre total de sorts disponibles
+ */
+export function getTotalSpellsCount(heroId: string): number {
+  const availableLevels = getAvailableSpellLevels(heroId);
+  return availableLevels.length;
+}
+
+/**
+ * Obtient le pourcentage de sorts débloqués pour un héros
+ * @param heroId - ID du héros
+ * @param heroLevel - Niveau actuel du héros
+ * @returns Pourcentage de sorts débloqués (0-100)
+ */
+export function getSpellUnlockProgress(heroId: string, heroLevel: number): number {
+  const totalSpells = getTotalSpellsCount(heroId);
+  const unlockedSpells = getUnlockedSpells(heroId, heroLevel);
+  
+  if (totalSpells === 0) return 0;
+  
+  return Math.round((unlockedSpells.length / totalSpells) * 100);
+}
+
+/**
+ * Obtient la liste de tous les sorts manquants pour un héros
+ * @param heroId - ID du héros
+ * @param heroLevel - Niveau actuel du héros
+ * @returns Array des sorts non encore débloqués
+ */
+export function getMissingSpells(heroId: string, heroLevel: number): Array<{
+  level: number;
+  spellId: string;
+  slot: string;
+  levelsRemaining: number;
+}> {
+  const definition = getHeroSpellDefinition(heroId);
+  if (!definition) {
+    return [];
+  }
+
+  const missingSpells: Array<{ level: number; spellId: string; slot: string; levelsRemaining: number }> = [];
+
+  const unlockLevels = [
+    { level: SPELL_UNLOCK_LEVELS.LEVEL_1, spellId: definition.level1, slot: "level1" },
+    { level: SPELL_UNLOCK_LEVELS.LEVEL_11, spellId: definition.level11, slot: "level11" },
+    { level: SPELL_UNLOCK_LEVELS.LEVEL_41, spellId: definition.level41, slot: "level41" },
+    { level: SPELL_UNLOCK_LEVELS.LEVEL_81, spellId: definition.level81, slot: "level81" },
+    { level: SPELL_UNLOCK_LEVELS.LEVEL_121, spellId: definition.level121, slot: "level121" },
+    { level: SPELL_UNLOCK_LEVELS.LEVEL_151, spellId: definition.level151, slot: "level151" }
+  ];
+
+  for (const unlock of unlockLevels) {
+    // Si le sort existe et que le héros n'a pas encore atteint ce niveau
+    if (unlock.spellId && heroLevel < unlock.level) {
+      missingSpells.push({
+        level: unlock.level,
+        spellId: unlock.spellId,
+        slot: unlock.slot,
+        levelsRemaining: unlock.level - heroLevel
+      });
+    }
+  }
+
+  return missingSpells;
+}
+
+/**
+ * Vérifie si un héros peut apprendre de nouveaux sorts
+ * @param heroId - ID du héros
+ * @param heroLevel - Niveau actuel du héros
+ * @returns true si des sorts restent à débloquer
+ */
+export function canLearnMoreSpells(heroId: string, heroLevel: number): boolean {
+  const nextUnlock = getNextSpellUnlock(heroId, heroLevel);
+  return nextUnlock !== null;
+}
+
+/**
+ * Obtient un résumé complet des sorts pour un héros
+ * @param heroId - ID du héros
+ * @param heroLevel - Niveau actuel du héros
+ * @returns Résumé complet avec sorts débloqués, manquants, etc.
+ */
+export function getHeroSpellSummary(heroId: string, heroLevel: number): {
+  heroInfo: {
+    heroId: string;
+    name: string;
+    element: string;
+    role: string;
+    rarity: string;
+  };
+  spellProgress: {
+    currentLevel: number;
+    unlockedSpells: Array<{ level: number; spellId: string; slot: string }>;
+    nextUnlock: { nextLevel: number; spellId: string; slot: string; levelsRemaining: number } | null;
+    missingSpells: Array<{ level: number; spellId: string; slot: string; levelsRemaining: number }>;
+    progressPercentage: number;
+    totalSpells: number;
+    unlockedCount: number;
+  };
+} | null {
+  const definition = getHeroSpellDefinition(heroId);
+  if (!definition) {
+    return null;
+  }
+
+  const unlockedSpells = getUnlockedSpells(heroId, heroLevel);
+  const nextUnlock = getNextSpellUnlock(heroId, heroLevel);
+  const missingSpells = getMissingSpells(heroId, heroLevel);
+  const progressPercentage = getSpellUnlockProgress(heroId, heroLevel);
+  const totalSpells = getTotalSpellsCount(heroId);
+
+  return {
+    heroInfo: {
+      heroId: definition.heroId,
+      name: definition.name,
+      element: definition.element,
+      role: definition.role,
+      rarity: definition.rarity
+    },
+    spellProgress: {
+      currentLevel: heroLevel,
+      unlockedSpells,
+      nextUnlock,
+      missingSpells,
+      progressPercentage,
+      totalSpells,
+      unlockedCount: unlockedSpells.length
+    }
+  };
+}
+
+// ===============================================
+// FONCTIONS DE VALIDATION ET UTILITAIRES
+// ===============================================
+
+/**
+ * Valide si un héros existe dans les définitions
+ * @param heroId - ID du héros à valider
+ * @returns true si le héros existe
+ */
+export function heroExists(heroId: string): boolean {
+  return HERO_SPELL_DEFINITIONS.hasOwnProperty(heroId);
+}
+
+/**
+ * Obtient la liste de tous les héros par élément
+ * @param element - Élément à filtrer
+ * @returns Array des héros de cet élément
+ */
+export function getHeroesByElement(element: string): HeroSpellDefinition[] {
+  return Object.values(HERO_SPELL_DEFINITIONS).filter(
+    hero => hero.element.toLowerCase() === element.toLowerCase()
+  );
+}
+
+/**
+ * Obtient la liste de tous les héros par rareté
+ * @param rarity - Rareté à filtrer
+ * @returns Array des héros de cette rareté
+ */
+export function getHeroesByRarity(rarity: string): HeroSpellDefinition[] {
+  return Object.values(HERO_SPELL_DEFINITIONS).filter(
+    hero => hero.rarity.toLowerCase() === rarity.toLowerCase()
+  );
+}
+
+/**
+ * Obtient la liste de tous les héros par rôle
+ * @param role - Rôle à filtrer
+ * @returns Array des héros de ce rôle
+ */
+export function getHeroesByRole(role: string): HeroSpellDefinition[] {
+  return Object.values(HERO_SPELL_DEFINITIONS).filter(
+    hero => hero.role.toLowerCase() === role.toLowerCase()
+  );
+}
+
+/**
+ * Obtient les statistiques globales des héros
+ * @returns Statistiques de répartition
+ */
+export function getHeroStats(): {
+  totalHeroes: number;
+  byElement: Record<string, number>;
+  byRarity: Record<string, number>;
+  byRole: Record<string, number>;
+  averageSpellsPerHero: number;
+} {
+  const heroes = Object.values(HERO_SPELL_DEFINITIONS);
+  
+  const byElement: Record<string, number> = {};
+  const byRarity: Record<string, number> = {};
+  const byRole: Record<string, number> = {};
+  let totalSpells = 0;
+
+  heroes.forEach(hero => {
+    // Compter par élément
+    byElement[hero.element] = (byElement[hero.element] || 0) + 1;
+    
+    // Compter par rareté
+    byRarity[hero.rarity] = (byRarity[hero.rarity] || 0) + 1;
+    
+    // Compter par rôle
+    byRole[hero.role] = (byRole[hero.role] || 0) + 1;
+    
+    // Compter les sorts
+    totalSpells += getTotalSpellsCount(hero.heroId);
+  });
+
+  return {
+    totalHeroes: heroes.length,
+    byElement,
+    byRarity,
+    byRole,
+    averageSpellsPerHero: Math.round((totalSpells / heroes.length) * 100) / 100
+  };
+}
+
+// ===============================================
+// FONCTIONS POUR COMPATIBILITY ANCIEN SYSTÈME
+// ===============================================
+
+/**
+ * Convertit un slot de l'ancien système vers le nouveau
+ * @deprecated - Pour compatibilité avec l'ancien système
+ */
+export function convertOldSlotToNew(oldSlot: string): string | null {
+  const mapping: Record<string, string> = {
+    "active1": "level1",
+    "active2": "level11", 
+    "active3": "level41",
+    "ultimate": "level81",
+    "passive": "level41" // Les passifs sont maintenant au niveau 41
+  };
+  
+  return mapping[oldSlot] || null;
+}
+
+/**
+ * Obtient les sorts selon l'ancien système pour compatibilité
+ * @deprecated - Utilisez getUnlockedSpells() à la place
+ */
+export function getLegacySpellSlots(heroId: string, rarity: string): {
   active1: boolean;
   active2: boolean;
   active3: boolean;
@@ -588,46 +1051,32 @@ export function getSlotsForRarity(heroId: string, rarity: string): {
 } {
   const definition = getHeroSpellDefinition(heroId);
   
-  const slots = {
-    active1: false,
-    active2: false,
-    active3: false,
-    ultimate: false,
-    passive: false
-  };
-  
   if (!definition) {
     console.warn(`⚠️ Pas de définition trouvée pour ${heroId}, utilisation des slots par défaut`);
     // Fallback selon rareté
     if (rarity === "Common") {
-      slots.active1 = true;
+      return { active1: true, active2: false, active3: false, ultimate: false, passive: false };
     } else if (rarity === "Rare") {
-      slots.active1 = true;
-      slots.active2 = true;
-      slots.ultimate = true;
+      return { active1: true, active2: true, active3: false, ultimate: true, passive: false };
     } else {
-      slots.active1 = true;
-      slots.active2 = true;
-      slots.ultimate = true;
-      slots.passive = true;
+      return { active1: true, active2: true, active3: true, ultimate: true, passive: true };
     }
-    return slots;
   }
   
-  // Utiliser la définition du héros pour déterminer les slots
-  if (definition.active1) slots.active1 = true;
-  if (definition.active2) slots.active2 = true;
-  if (definition.active3) slots.active3 = true;
-  if (definition.ultimate) slots.ultimate = true;
-  if (definition.passive) slots.passive = true;
-  
-  return slots;
+  return {
+    active1: !!definition.level1,
+    active2: !!definition.level11,
+    active3: !!definition.level41,
+    ultimate: !!definition.level81,
+    passive: !!definition.level41 // Les passifs sont au niveau 41
+  };
 }
 
 /**
- * Obtenir les sorts initiaux d'un héros selon sa rareté et sa définition
+ * Obtient les sorts initiaux selon l'ancien système pour compatibilité
+ * @deprecated - Le nouveau système n'utilise plus cette approche
  */
-export function getInitialSpells(heroId: string, rarity: string): {
+export function getLegacyInitialSpells(heroId: string, rarity: string): {
   active1?: { id: string; level: number };
   active2?: { id: string; level: number };
   active3?: { id: string; level: number };
@@ -641,35 +1090,44 @@ export function getInitialSpells(heroId: string, rarity: string): {
   
   const spells: any = {};
   
-  // Active 1 - toujours présent
-  if (definition.active1) {
-    spells.active1 = { id: definition.active1, level: 1 };
+  // Active 1 -> level1
+  if (definition.level1) {
+    spells.active1 = { id: definition.level1, level: 1 };
   }
   
-  // Active 2 - si défini dans la définition
-  if (definition.active2) {
-    spells.active2 = { id: definition.active2, level: 1 };
+  // Active 2 -> level11
+  if (definition.level11) {
+    spells.active2 = { id: definition.level11, level: 1 };
   }
   
-  // Active 3 - si défini dans la définition
-  if (definition.active3) {
-    spells.active3 = { id: definition.active3, level: 1 };
+  // Active 3 -> level41
+  if (definition.level41) {
+    spells.active3 = { id: definition.level41, level: 1 };
   }
   
-  // Ultimate - si défini dans la définition
-  if (definition.ultimate) {
-    spells.ultimate = { id: definition.ultimate, level: 1 };
+  // Ultimate -> level81
+  if (definition.level81) {
+    spells.ultimate = { id: definition.level81, level: 1 };
   }
   
-  // Passive - si défini dans la définition
-  if (definition.passive) {
-    spells.passive = { id: definition.passive, level: 1 };
+  // Passive -> level41 (même que active3)
+  if (definition.level41) {
+    spells.passive = { id: definition.level41, level: 1 };
   }
   
   return spells;
 }
+
+// ===============================================
+// FONCTIONS POUR STATS DES SORTS
+// ===============================================
+
 /**
- * Obtenir les stats d'un sort à un niveau donné
+ * Obtient les stats d'un sort à un niveau donné
+ * @param spellId - ID du sort
+ * @param level - Niveau du sort
+ * @param rarity - Rareté du héros
+ * @returns Stats calculées du sort
  */
 export function getSpellStats(spellId: string, level: number, rarity: string): {
   damage: number;
@@ -682,11 +1140,12 @@ export function getSpellStats(spellId: string, level: number, rarity: string): {
 } {
   // Trouver le héros qui possède ce sort
   const heroWithSpell = Object.values(HERO_SPELL_DEFINITIONS).find(hero => 
-    hero.active1 === spellId || 
-    hero.active2 === spellId || 
-    hero.active3 === spellId || 
-    hero.ultimate === spellId || 
-    hero.passive === spellId
+    hero.level1 === spellId || 
+    hero.level11 === spellId || 
+    hero.level41 === spellId || 
+    hero.level81 === spellId || 
+    hero.level121 === spellId || 
+    hero.level151 === spellId
   );
 
   if (!heroWithSpell) {
@@ -702,9 +1161,29 @@ export function getSpellStats(spellId: string, level: number, rarity: string): {
     };
   }
 
-  // Déterminer le type de sort
-  const isUltimate = heroWithSpell.ultimate === spellId;
-  const isPassive = heroWithSpell.passive === spellId;
+  // Déterminer le type de sort selon le niveau de déblocage
+  let isUltimate = false;
+  let isPassive = false;
+  let spellTier = 1; // 1=basic, 2=advanced, 3=expert, 4=ultimate
+
+  if (heroWithSpell.level81 === spellId || heroWithSpell.level121 === spellId || heroWithSpell.level151 === spellId) {
+    isUltimate = true;
+    spellTier = 4;
+  } else if (heroWithSpell.level41 === spellId) {
+    spellTier = 3;
+    // Les sorts niveau 41 peuvent être des passifs selon leur nom
+    if (spellId.includes('aura') || spellId.includes('mastery') || spellId.includes('duality') || 
+        spellId.includes('armor') || spellId.includes('conductor') || spellId.includes('resilience') ||
+        spellId.includes('weaver') || spellId.includes('lifesteal') || spellId.includes('movement') ||
+        spellId.includes('attunement') || spellId.includes('walker') || spellId.includes('charge') ||
+        spellId.includes('inspiration') || spellId.includes('mind')) {
+      isPassive = true;
+    }
+  } else if (heroWithSpell.level11 === spellId) {
+    spellTier = 2;
+  } else {
+    spellTier = 1;
+  }
 
   // Multiplicateurs de base selon la rareté
   const rarityMultipliers: Record<string, number> = {
@@ -719,7 +1198,7 @@ export function getSpellStats(spellId: string, level: number, rarity: string): {
   const element = heroWithSpell.element;
   const role = heroWithSpell.role;
 
-  // Les passifs n'ont pas de stats de combat
+  // Les passifs n'ont pas de stats de combat directs
   if (isPassive) {
     return {
       damage: 0,
@@ -730,17 +1209,21 @@ export function getSpellStats(spellId: string, level: number, rarity: string): {
       effect: spellId,
       additionalEffects: {
         type: "passive",
-        description: `Passive effect: ${spellId}`
+        description: `Passive effect: ${spellId}`,
+        tier: spellTier
       }
     };
   }
 
-  // Base stats selon le rôle
+  // Base stats selon le rôle et le tier
   let baseDamage = 0;
   let baseHealing = 0;
   let baseCooldown = 3;
   let baseEnergyCost = 20;
   let duration = 0;
+
+  // Ajustement selon le tier du sort
+  const tierMultiplier = [1.0, 1.0, 1.5, 2.0, 3.0][spellTier] || 1.0;
 
   if (isUltimate) {
     baseDamage = role === "DPS Melee" ? 300 : 
@@ -755,10 +1238,14 @@ export function getSpellStats(spellId: string, level: number, rarity: string): {
                  role === "DPS Ranged" ? 80 : 
                  role === "Tank" ? 50 : 30;
     baseHealing = role === "Support" ? 60 : 0;
-    baseCooldown = 3;
-    baseEnergyCost = 20;
-    duration = 2;
+    baseCooldown = Math.max(2, 4 - spellTier);
+    baseEnergyCost = 15 + (spellTier * 5);
+    duration = spellTier;
   }
+
+  // Application des multiplicateurs
+  baseDamage *= tierMultiplier;
+  baseHealing *= tierMultiplier;
 
   // Scaling par niveau
   const levelScaling = 1 + (level - 1) * 0.15;
@@ -773,7 +1260,14 @@ export function getSpellStats(spellId: string, level: number, rarity: string): {
     additionalEffects: {
       element: element,
       role: role,
-      type: isUltimate ? "ultimate" : "active"
+      type: isUltimate ? "ultimate" : "active",
+      tier: spellTier,
+      unlockLevel: heroWithSpell.level1 === spellId ? 1 :
+                   heroWithSpell.level11 === spellId ? 11 :
+                   heroWithSpell.level41 === spellId ? 41 :
+                   heroWithSpell.level81 === spellId ? 81 :
+                   heroWithSpell.level121 === spellId ? 121 :
+                   heroWithSpell.level151 === spellId ? 151 : 1
     }
   };
 }
