@@ -250,6 +250,7 @@ const playerSchema = new Schema<IPlayerDocument>({
   paidGems: { type: Number, default: 0, min: 0 },
   tickets: { type: Number, default: 5, min: 0 },
   heroXP: { type: Number, default: 0, min: 0 },
+  ascensionEssences: { type: Number, default: 0, min: 0 },
   elementalTickets: {
     fire: { type: Number, default: 0, min: 0 },
     water: { type: Number, default: 0, min: 0 },
@@ -888,6 +889,7 @@ playerSchema.methods.getProgressionResources = function() {
 };
 
 export default mongoose.model<IPlayerDocument>("Player", playerSchema);
+
 
 
 
