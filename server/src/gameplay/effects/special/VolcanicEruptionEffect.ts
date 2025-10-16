@@ -21,7 +21,6 @@ export class VolcanicEruptionEffect extends BaseEffect {
       stackable: false,
       maxStacks: 1,
       baseDuration: 5,
-      dispellable: false, // Ne peut pas être purgé
       isPositive: true
     });
   }
