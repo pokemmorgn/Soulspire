@@ -18,6 +18,7 @@ export class UnleashedBrazierEffect extends BaseEffect {
       name: "Brasier Déchaîné",
       description: "Transformation ardente : attaques AoE + buffs + explosion finale",
       type: "special",
+      category: "special_mechanic",
       stackable: false,
       maxStacks: 1,
       baseDuration: 6
