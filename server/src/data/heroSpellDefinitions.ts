@@ -1019,6 +1019,64 @@ export function getHeroStats(): {
 }
 
 // ===============================================
+// FONCTION POUR INITIALISATION DES SORTS
+// ===============================================
+
+/**
+ * Obtient les sorts initiaux d'un héros selon le nouveau système
+ * @param heroId - ID du héros
+ * @param rarity - Rareté du héros (non utilisée dans le nouveau système)
+ * @returns Sorts initiaux avec leur niveau de déblocage
+ */
+export function getInitialSpells(heroId: string, rarity: string): {
+  level1?: { id: string; level: number };
+  level11?: { id: string; level: number };
+  level41?: { id: string; level: number };
+  level81?: { id: string; level: number };
+  level121?: { id: string; level: number };
+  level151?: { id: string; level: number };
+} {
+  const definition = getHeroSpellDefinition(heroId);
+  if (!definition) {
+    throw new Error(`No spell definition found for hero: ${heroId}`);
+  }
+  
+  const spells: any = {};
+  
+  // Niveau 1 - toujours présent
+  if (definition.level1) {
+    spells.level1 = { id: definition.level1, level: 1 };
+  }
+  
+  // Niveau 11 - si défini
+  if (definition.level11) {
+    spells.level11 = { id: definition.level11, level: 1 };
+  }
+  
+  // Niveau 41 - si défini
+  if (definition.level41) {
+    spells.level41 = { id: definition.level41, level: 1 };
+  }
+  
+  // Niveau 81 - si défini
+  if (definition.level81) {
+    spells.level81 = { id: definition.level81, level: 1 };
+  }
+  
+  // Niveau 121 - si défini
+  if (definition.level121) {
+    spells.level121 = { id: definition.level121, level: 1 };
+  }
+  
+  // Niveau 151 - si défini
+  if (definition.level151) {
+    spells.level151 = { id: definition.level151, level: 1 };
+  }
+  
+  return spells;
+}
+
+// ===============================================
 // FONCTIONS POUR COMPATIBILITY ANCIEN SYSTÈME
 // ===============================================
 
