@@ -80,6 +80,7 @@ export interface IPlayer {
   paidGems: number;
   tickets: number;
   heroXP: number;
+  ascensionEssences: number;
   elementalTickets: {
     fire: number;
     water: number;
@@ -174,6 +175,7 @@ const playerHeroSchema = new Schema<IPlayerHero>({
   equipped: { type: Boolean, default: false },
   slot: { type: Number, min: 1, max: 9, default: null },
   experience: { type: Number, default: 0, min: 0 },
+  ascensionEssences: { type: Number, default: 0, min: 0 },
   ascensionLevel: { type: Number, default: 0, min: 0, max: 8 },
   awakenLevel: { type: Number, default: 0, min: 0, max: 5 },
   acquisitionDate: { type: Date, default: Date.now },
@@ -429,15 +431,31 @@ playerSchema.methods.setFormation = function(formationId: string, slots: { slot:
   return this.save();
 };
 
-playerSchema.methods.canAfford = function(cost: { gold?: number, gems?: number, paidGems?: number, tickets?: number }) {
+playerSchema.methods.canAfford = function(cost: { 
+  gold?: number; 
+  gems?: number; 
+  paidGems?: number; 
+  tickets?: number;
+  heroXP?: number;
+  ascensionEssence?: number;
+}) {
   if (cost.gold && this.gold < cost.gold) return false;
   if (cost.gems && this.gems < cost.gems) return false;
   if (cost.paidGems && this.paidGems < cost.paidGems) return false;
   if (cost.tickets && this.tickets < cost.tickets) return false;
+  if (cost.heroXP && this.heroXP < cost.heroXP) return false;
+  if (cost.ascensionEssence && this.ascensionEssences < cost.ascensionEssence) return false;
   return true;
 };
 
-playerSchema.methods.spendCurrency = function(cost: { gold?: number, gems?: number, paidGems?: number, tickets?: number }) {
+playerSchema.methods.spendCurrency = function(cost: { 
+  gold?: number; 
+  gems?: number; 
+  paidGems?: number; 
+  tickets?: number;
+  heroXP?: number;
+  ascensionEssence?: number;
+}) {
   if (!this.canAfford(cost)) {
     throw new Error("Insufficient currency");
   }
@@ -446,15 +464,26 @@ playerSchema.methods.spendCurrency = function(cost: { gold?: number, gems?: numb
   if (cost.gems) this.gems -= cost.gems;
   if (cost.paidGems) this.paidGems -= cost.paidGems;
   if (cost.tickets) this.tickets -= cost.tickets;
+  if (cost.heroXP) this.heroXP -= cost.heroXP;
+  if (cost.ascensionEssence) this.ascensionEssences -= cost.ascensionEssence;
   
   return this.save();
 };
 
-playerSchema.methods.addCurrency = function(currency: { gold?: number, gems?: number, paidGems?: number, tickets?: number }) {
+playerSchema.methods.addCurrency = function(currency: { 
+  gold?: number; 
+  gems?: number; 
+  paidGems?: number; 
+  tickets?: number;
+  heroXP?: number;
+  ascensionEssence?: number;
+}) {
   if (currency.gold) this.gold += currency.gold;
   if (currency.gems) this.gems += currency.gems;
   if (currency.paidGems) this.paidGems += currency.paidGems;
   if (currency.tickets) this.tickets += currency.tickets;
+  if (currency.heroXP) this.heroXP += currency.heroXP;
+  if (currency.ascensionEssence) this.ascensionEssences += currency.ascensionEssence;
   
   return this.save();
 };
@@ -708,6 +737,8 @@ playerSchema.methods.getPlayerStats = function() {
       gems: this.gems,
       paidGems: this.paidGems,
       tickets: this.tickets,
+      heroXP: this.heroXP,
+      ascensionEssences: this.ascensionEssences,
       totalSpentUSD: this.totalSpentUSDOnServer
     },
     activity: {
@@ -777,7 +808,87 @@ playerSchema.methods.addHeroXP = function(amount: number) {
   this.heroXP += amount;
   return this.save();
 };
+
+/**
+ * Vérifier si le joueur peut payer un coût d'ascension
+ */
+playerSchema.methods.canAffordAscension = function(cost: { 
+  gold: number; 
+  heroXP: number; 
+  ascensionEssence: number 
+}): boolean {
+  if (this.gold < cost.gold) return false;
+  if (this.heroXP < cost.heroXP) return false;
+  if (this.ascensionEssences < cost.ascensionEssence) return false;
+  return true;
+};
+
+/**
+ * Dépenser les ressources pour une ascension
+ */
+playerSchema.methods.spendAscensionResources = function(cost: { 
+  gold: number; 
+  heroXP: number; 
+  ascensionEssence: number 
+}) {
+  if (!this.canAffordAscension(cost)) {
+    throw new Error("Insufficient resources for ascension");
+  }
+  
+  this.gold -= cost.gold;
+  this.heroXP -= cost.heroXP;
+  this.ascensionEssences -= cost.ascensionEssence;
+  
+  return this.save();
+};
+
+/**
+ * Ajouter des essences d'ascension
+ */
+playerSchema.methods.addAscensionEssences = function(amount: number) {
+  this.ascensionEssences += amount;
+  console.log(`✅ Player ${this.displayName} gained ${amount} ascension essence(s). Total: ${this.ascensionEssences}`);
+  return this.save();
+};
+
+/**
+ * Dépenser des essences d'ascension
+ */
+playerSchema.methods.spendAscensionEssences = function(amount: number) {
+  if (this.ascensionEssences < amount) {
+    throw new Error(`Insufficient ascension essences. Required: ${amount}, Available: ${this.ascensionEssences}`);
+  }
+  
+  this.ascensionEssences -= amount;
+  console.log(`💎 Player ${this.displayName} spent ${amount} ascension essence(s). Remaining: ${this.ascensionEssences}`);
+  
+  return this.save();
+};
+
+/**
+ * Vérifier si le joueur a assez d'essences
+ */
+playerSchema.methods.hasAscensionEssences = function(amount: number): boolean {
+  return this.ascensionEssences >= amount;
+};
+
+/**
+ * Obtenir un résumé des ressources de progression
+ */
+playerSchema.methods.getProgressionResources = function() {
+  return {
+    gold: this.gold,
+    heroXP: this.heroXP,
+    ascensionEssences: this.ascensionEssences,
+    totalValue: {
+      gold: this.gold,
+      gems: this.heroXP * 0.1 + this.ascensionEssences * 2 // Valeur approximative en gems
+    }
+  };
+};
+
 export default mongoose.model<IPlayerDocument>("Player", playerSchema);
+
 
 
 
