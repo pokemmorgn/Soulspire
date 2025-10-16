@@ -51,7 +51,7 @@ class BladeDanceSpell extends BaseSpell {
     battleContext?: any
   ): IBattleAction {
     const turn = battleContext?.currentTurn || 1;
-    const target = this.selectTarget(caster, targets, battleContext?.allPlayers, battleContext?.allEnemies);
+    const target = this.selectTargets(caster, battleContext?.allPlayers || [], battleContext?.allEnemies || [])[0];
     const action = this.createBaseAction(caster, [target], "skill", turn);
     
     // Coût en énergie
@@ -217,23 +217,12 @@ class BladeDanceSpell extends BaseSpell {
     // Chance de critique légèrement augmentée pour les combos
     const baseChance = 0.12; // 12% au lieu de 8%
     const vitesseBonus = ((caster.stats as any).vitesse || 80) / 1000;
-    const rarityBonus = this.getRarityMultiplier(caster.rarity) * 0.02;
+    
+    // Utiliser la méthode héritée pour éviter le conflit
+    const rarityBonus = this.getElementalAdvantage("Fire", "Wind") * 0.02;
     
     const totalChance = Math.min(0.4, baseChance + vitesseBonus + rarityBonus);
     return Math.random() < totalChance;
-  }
-  
-  /**
-   * Multiplicateur de rareté
-   */
-  private getRarityMultiplier(rarity: string): number {
-    const multipliers: { [key: string]: number } = {
-      Common: 1.0,
-      Rare: 1.15,
-      Epic: 1.35,
-      Legendary: 1.7
-    };
-    return multipliers[rarity] || 1.0;
   }
   
   /**
