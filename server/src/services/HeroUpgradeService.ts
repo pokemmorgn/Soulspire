@@ -1,25 +1,80 @@
+// server/src/services/HeroUpgradeService.ts
 import Player from "../models/Player";
 import Hero from "../models/Hero";
 import { EventService } from "./EventService";
 import { MissionService } from "./MissionService";
 import { IPlayerHero } from "../types/index";
 import { achievementEmitter, AchievementEvent } from '../utils/AchievementEmitter';
+import {
+  getAscensionCostForLevel,
+  isAscensionLevel,
+  getAscensionTier,
+  canHeroAscendToLevel,
+  getTotalCostToLevel,
+  getAscensionUIInfo,
+  getLevelUpCost,
+  getMaxLevelForRarity,
+  getAscensionReward,
+  ASCENSION_COSTS
+} from '../config/ascensionCosts';
+
+// ===============================================
+// INTERFACES DE RÉSULTATS
+// ===============================================
 
 export interface HeroUpgradeResult {
   success: boolean;
-  hero?: any;
+  hero?: {
+    instanceId: string;
+    heroData: {
+      name: string;
+      rarity: string;
+      element: string;
+      role: string;
+    };
+    level: number;
+    stars: number;
+    ascensionTier: number;
+    unlockedSpells: string[];
+  };
   newLevel?: number;
   newStars?: number;
+  newAscensionTier?: number;
   statsGained?: any;
+  spellsUnlocked?: Array<{ level: number; spellId: string; slot: string }>;
   cost?: {
     gold?: number;
+    heroXP?: number;
     fragments?: number;
+    ascensionEssence?: number;
     materials?: Record<string, number>;
   };
   playerResources?: {
     gold: number;
+    heroXP: number;
+    ascensionEssences: number;
     fragments: Record<string, number>;
     materials: Record<string, number>;
+  };
+  error?: string;
+  code?: string;
+}
+
+export interface AscensionResult {
+  success: boolean;
+  hero?: any;
+  newLevel?: number;
+  newAscensionTier?: number;
+  statsBonus?: any;
+  spellsUnlocked?: Array<{ level: number; spellId: string; slot: string }>;
+  rewards?: {
+    gold?: number;
+    gems?: number;
+  };
+  cost?: {
+    gold: number;
+    heroXP: number;
+    ascensionEssence: number;
   };
   error?: string;
   code?: string;
@@ -28,447 +83,480 @@ export interface HeroUpgradeResult {
 export interface SkillUpgradeResult {
   success: boolean;
   skill?: {
-    skillId: string;
+    spellLevel: number;
+    spellId: string;
     oldLevel: number;
     newLevel: number;
-    newDescription?: string;
+    newStats?: any;
   };
   cost?: Record<string, number>;
   error?: string;
+  code?: string;
 }
 
-export interface EvolutionResult {
-  success: boolean;
-  hero?: any;
-  newRarity?: string;
-  statsBonus?: any;
-  unlockedSkills?: string[];
-  cost?: {
-    fragments: number;
-    materials: Record<string, number>;
-  };
-  error?: string;
-}
+// ===============================================
+// SERVICE PRINCIPAL
+// ===============================================
 
 export class HeroUpgradeService {
 
-public static async levelUpHero(
-  accountId: string,
-  serverId: string,
-  heroInstanceId: string,
-  targetLevel?: number
-): Promise<HeroUpgradeResult> {
-  try {
-    const player = await Player.findOne({ accountId, serverId });
-    if (!player) {
-      return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
-    }
+  // ===============================================
+  // LEVEL UP NORMAL (sans ascension)
+  // ===============================================
 
-    const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
-    if (!heroInstance) {
-      return { success: false, error: "Hero not found", code: "HERO_NOT_FOUND" };
-    }
-
-    const heroData = await Hero.findById(heroInstance.heroId);
-    if (!heroData) {
-      return { success: false, error: "Hero data not found", code: "HERO_DATA_NOT_FOUND" };
-    }
-
-    const currentLevel = heroInstance.level;
-    const maxLevel = this.getMaxLevel(heroInstance.stars, player.level);
-    const finalTargetLevel = targetLevel ? Math.min(targetLevel, maxLevel) : currentLevel + 1;
-
-    if (currentLevel >= maxLevel) {
-      return { success: false, error: "Hero is at maximum level", code: "MAX_LEVEL_REACHED" };
-    }
-
-    if (finalTargetLevel <= currentLevel) {
-      return { success: false, error: "Invalid target level", code: "INVALID_TARGET_LEVEL" };
-    }
-
-    const totalCost = this.calculateLevelUpCost(currentLevel, finalTargetLevel, heroData.rarity);
-
-    if (player.gold < totalCost.gold) {
-      return { 
-        success: false, 
-        error: `Insufficient gold. Required: ${totalCost.gold}, Available: ${player.gold}`, 
-        code: "INSUFFICIENT_GOLD" 
-      };
-    }
-
-    const oldStats = this.calculateHeroStats(heroData, currentLevel, heroInstance.stars);
-    
-    player.gold -= totalCost.gold;
-    heroInstance.level = finalTargetLevel;
-
-    const newStats = this.calculateHeroStats(heroData, finalTargetLevel, heroInstance.stars);
-    const statsGained = {
-      hp: newStats.hp - oldStats.hp,
-      atk: newStats.atk - oldStats.atk,
-      def: newStats.def - oldStats.def,
-      vitesse: newStats.vitesse - oldStats.vitesse,
-      moral: newStats.moral - oldStats.moral
-    };
-
-    await player.save();
-    
-    // ========================================
-    // 🏆 ACHIEVEMENTS - Événements de level up
-    // ========================================
-    
-    // Événement de level atteint pour le héros
-    achievementEmitter.emit(AchievementEvent.HERO_LEVEL_REACHED, {
-      playerId: accountId,
-      serverId,
-      value: finalTargetLevel,
-      metadata: {
-        heroId: (heroData._id as any).toString(),
-        heroName: heroData.name,
-        rarity: heroData.rarity,
-        element: heroData.element,
-        role: heroData.role,
-        previousLevel: currentLevel,
-        levelsGained: finalTargetLevel - currentLevel
-      }
-    });
-
-    // Événement d'or dépensé
-    achievementEmitter.emit(AchievementEvent.GOLD_SPENT, {
-      playerId: accountId,
-      serverId,
-      value: totalCost.gold,
-      metadata: {
-        spentOn: 'hero_level_up',
-        heroId: (heroData._id as any).toString(),
-        heroName: heroData.name,
-        newLevel: finalTargetLevel
-      }
-    });
-    
-    await this.updateProgressTracking(accountId, serverId, "level_up", finalTargetLevel - currentLevel);
-
-    return {
-      success: true,
-      hero: {
-        instanceId: heroInstanceId,
-        heroData: {
-          name: heroData.name,
-          rarity: heroData.rarity,
-          element: heroData.element,
-          role: heroData.role
-        },
-        level: heroInstance.level,
-        stars: heroInstance.stars
-      },
-      newLevel: finalTargetLevel,
-      statsGained,
-      cost: totalCost,
-      playerResources: {
-        gold: player.gold,
-        fragments: Object.fromEntries(player.fragments.entries()),
-        materials: Object.fromEntries(player.materials.entries())
-      }
-    };
-
-  } catch (error: any) {
-    return { success: false, error: error.message, code: "LEVEL_UP_FAILED" };
-  }
-}
-
-public static async upgradeHeroStars(
-  accountId: string,
-  serverId: string,
-  heroInstanceId: string
-): Promise<HeroUpgradeResult> {
-  try {
-    const player = await Player.findOne({ accountId, serverId });
-    if (!player) {
-      return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
-    }
-
-    const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
-    if (!heroInstance) {
-      return { success: false, error: "Hero not found", code: "HERO_NOT_FOUND" };
-    }
-
-    const heroData = await Hero.findById(heroInstance.heroId);
-    if (!heroData) {
-      return { success: false, error: "Hero data not found", code: "HERO_DATA_NOT_FOUND" };
-    }
-
-    const currentStars = heroInstance.stars;
-    const maxStars = this.getMaxStars(heroData.rarity);
-
-    if (currentStars >= maxStars) {
-      return { success: false, error: "Hero is at maximum stars", code: "MAX_STARS_REACHED" };
-    }
-
-    const requiredFragments = this.getStarUpgradeFragmentCost(currentStars, heroData.rarity);
-    const currentFragments = player.fragments.get(heroInstance.heroId.toString()) || 0;
-
-    if (currentFragments < requiredFragments) {
-      return { 
-        success: false, 
-        error: `Insufficient fragments. Required: ${requiredFragments}, Available: ${currentFragments}`, 
-        code: "INSUFFICIENT_FRAGMENTS" 
-      };
-    }
-
-    const oldStats = this.calculateHeroStats(heroData, heroInstance.level, currentStars);
-    
-    player.fragments.set(heroInstance.heroId.toString(), currentFragments - requiredFragments);
-    heroInstance.stars = currentStars + 1;
-
-    const newStats = this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars);
-    const statsGained = {
-      hp: newStats.hp - oldStats.hp,
-      atk: newStats.atk - oldStats.atk,
-      def: newStats.def - oldStats.def,
-      vitesse: newStats.vitesse - oldStats.vitesse,
-      moral: newStats.moral - oldStats.moral
-    };
-
-    await player.save();
-    
-    // ========================================
-    // 🏆 ACHIEVEMENTS - Événements de star upgrade
-    // ========================================
-    
-    // Événement d'étoiles atteintes
-    achievementEmitter.emit(AchievementEvent.HERO_STARS_REACHED, {
-      playerId: accountId,
-      serverId,
-      value: heroInstance.stars,
-      metadata: {
-        heroId: (heroData._id as any).toString(),
-        heroName: heroData.name,
-        rarity: heroData.rarity,
-        element: heroData.element,
-        role: heroData.role,
-        previousStars: currentStars,
-        fragmentsUsed: requiredFragments
-      }
-    });
-    
-    await this.updateProgressTracking(accountId, serverId, "star_upgrade", 1);
-
-    return {
-      success: true,
-      hero: {
-        instanceId: heroInstanceId,
-        heroData: {
-          name: heroData.name,
-          rarity: heroData.rarity,
-          element: heroData.element,
-          role: heroData.role
-        },
-        level: heroInstance.level,
-        stars: heroInstance.stars
-      },
-      newStars: heroInstance.stars,
-      statsGained,
-      cost: { fragments: requiredFragments },
-      playerResources: {
-        gold: player.gold,
-        fragments: Object.fromEntries(player.fragments.entries()),
-        materials: Object.fromEntries(player.materials.entries())
-      }
-    };
-
-  } catch (error: any) {
-    return { success: false, error: error.message, code: "STAR_UPGRADE_FAILED" };
-  }
-}
-
-  public static async upgradeHeroSkill(
+  public static async levelUpHero(
     accountId: string,
     serverId: string,
     heroInstanceId: string,
-    skillSlot: "spell1" | "spell2" | "spell3" | "ultimate" | "passive"
-  ): Promise<SkillUpgradeResult> {
+    targetLevel?: number
+  ): Promise<HeroUpgradeResult> {
     try {
       const player = await Player.findOne({ accountId, serverId });
       if (!player) {
-        return { success: false, error: "Player not found" };
+        return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
       }
 
       const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
       if (!heroInstance) {
-        return { success: false, error: "Hero not found" };
+        return { success: false, error: "Hero not found", code: "HERO_NOT_FOUND" };
       }
 
       const heroData = await Hero.findById(heroInstance.heroId);
       if (!heroData) {
-        return { success: false, error: "Hero data not found" };
+        return { success: false, error: "Hero data not found", code: "HERO_DATA_NOT_FOUND" };
       }
 
-      if (!(heroInstance as any).skills) {
-        (heroInstance as any).skills = {
-          spell1: { level: 1 },
-          spell2: { level: 1 },
-          spell3: { level: 1 },
-          ultimate: { level: 1 },
-          passive: { level: 1 }
-        };
+      const currentLevel = heroInstance.level;
+      const maxLevelForRarity = getMaxLevelForRarity(heroData.rarity);
+      const finalTargetLevel = targetLevel ? Math.min(targetLevel, maxLevelForRarity) : currentLevel + 1;
+
+      // Vérifier si on peut atteindre ce niveau
+      if (currentLevel >= maxLevelForRarity) {
+        return { success: false, error: "Hero is at maximum level for its rarity", code: "MAX_LEVEL_REACHED" };
       }
 
-      const currentSkillLevel = (heroInstance as any).skills[skillSlot]?.level || 1;
-      const maxSkillLevel = this.getMaxSkillLevel(heroInstance.level);
-
-      if (currentSkillLevel >= maxSkillLevel) {
-        return { success: false, error: "Skill is at maximum level" };
+      if (finalTargetLevel <= currentLevel) {
+        return { success: false, error: "Invalid target level", code: "INVALID_TARGET_LEVEL" };
       }
 
-      const skillCost = this.calculateSkillUpgradeCost(currentSkillLevel, heroData.rarity);
-
-      if (player.gold < skillCost.gold) {
-        return { success: false, error: `Insufficient gold. Required: ${skillCost.gold}` };
+      // Vérifier s'il faut passer par des paliers d'ascension
+      const ascensionCheck = canHeroAscendToLevel(heroData.rarity, currentLevel, finalTargetLevel);
+      if (!ascensionCheck.canAscend) {
+        return { success: false, error: ascensionCheck.reason, code: "ASCENSION_REQUIRED" };
       }
 
-      const requiredMaterial = `skill_essence_${heroData.element.toLowerCase()}`;
-      const currentMaterial = player.materials.get(requiredMaterial) || 0;
-
-      if (currentMaterial < skillCost.materials) {
+      if (ascensionCheck.requiredAscensions.length > 0) {
         return { 
           success: false, 
-          error: `Insufficient ${requiredMaterial}. Required: ${skillCost.materials}` 
+          error: `Cannot level up directly. Must ascend at level(s): ${ascensionCheck.requiredAscensions.map(a => a.level).join(', ')}`, 
+          code: "ASCENSION_REQUIRED" 
         };
       }
 
-      player.gold -= skillCost.gold;
-      player.materials.set(requiredMaterial, currentMaterial - skillCost.materials);
+      // Calculer le coût du level up normal
+      const levelUpCost = getLevelUpCost(currentLevel, finalTargetLevel, heroData.rarity);
+
+      if (!player.canAffordHeroLevelUp(levelUpCost)) {
+        return { 
+          success: false, 
+          error: `Insufficient resources. Required: ${levelUpCost.gold} gold, ${levelUpCost.heroXP} heroXP`, 
+          code: "INSUFFICIENT_RESOURCES" 
+        };
+      }
+
+      // Calculer les stats avant/après
+      const oldStats = this.calculateHeroStats(heroData, currentLevel, heroInstance.stars, heroInstance.ascensionTier);
       
-      (heroInstance as any).skills[skillSlot].level = currentSkillLevel + 1;
+      // Effectuer le level up
+      await player.spendHeroLevelUpResources(levelUpCost);
+      heroInstance.level = finalTargetLevel;
+
+      // Mettre à jour les sorts débloqués
+      const newUnlockedSpells = this.updateUnlockedSpells(heroInstance, heroData, finalTargetLevel);
+
+      const newStats = this.calculateHeroStats(heroData, finalTargetLevel, heroInstance.stars, heroInstance.ascensionTier);
+      const statsGained = {
+        hp: newStats.hp - oldStats.hp,
+        atk: newStats.atk - oldStats.atk,
+        def: newStats.def - oldStats.def,
+        vitesse: newStats.vitesse - oldStats.vitesse,
+        moral: newStats.moral - oldStats.moral
+      };
 
       await player.save();
+      
+      // Événements d'achievements
+      this.emitLevelUpAchievements(accountId, serverId, heroData, currentLevel, finalTargetLevel);
+      
+      await this.updateProgressTracking(accountId, serverId, "level_up", finalTargetLevel - currentLevel);
 
       return {
         success: true,
-        skill: {
-          skillId: skillSlot,
-          oldLevel: currentSkillLevel,
-          newLevel: currentSkillLevel + 1
+        hero: {
+          instanceId: heroInstanceId,
+          heroData: {
+            name: heroData.name,
+            rarity: heroData.rarity,
+            element: heroData.element,
+            role: heroData.role
+          },
+          level: heroInstance.level,
+          stars: heroInstance.stars,
+          ascensionTier: heroInstance.ascensionTier,
+          unlockedSpells: heroInstance.unlockedSpells
         },
+        newLevel: finalTargetLevel,
+        statsGained,
+        spellsUnlocked: newUnlockedSpells,
         cost: {
-          gold: skillCost.gold,
-          [requiredMaterial]: skillCost.materials
+          gold: levelUpCost.gold,
+          heroXP: levelUpCost.heroXP
+        },
+        playerResources: {
+          gold: player.gold,
+          heroXP: player.heroXP,
+          ascensionEssences: player.ascensionEssences,
+          fragments: Object.fromEntries(player.fragments.entries()),
+          materials: Object.fromEntries(player.materials.entries())
         }
       };
 
     } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: false, error: error.message, code: "LEVEL_UP_FAILED" };
     }
   }
 
-public static async evolveHero(
-  accountId: string,
-  serverId: string,
-  heroInstanceId: string
-): Promise<EvolutionResult> {
-  try {
-    const player = await Player.findOne({ accountId, serverId });
-    if (!player) {
-      return { success: false, error: "Player not found" };
-    }
+  // ===============================================
+  // ASCENSION DE HÉROS
+  // ===============================================
 
-    const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
-    if (!heroInstance) {
-      return { success: false, error: "Hero not found" };
-    }
+  public static async ascendHero(
+    accountId: string,
+    serverId: string,
+    heroInstanceId: string
+  ): Promise<AscensionResult> {
+    try {
+      const player = await Player.findOne({ accountId, serverId });
+      if (!player) {
+        return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
+      }
 
-    const heroData = await Hero.findById(heroInstance.heroId);
-    if (!heroData) {
-      return { success: false, error: "Hero data not found" };
-    }
+      const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
+      if (!heroInstance) {
+        return { success: false, error: "Hero not found", code: "HERO_NOT_FOUND" };
+      }
 
-    if (!this.canEvolveHero(heroInstance, heroData)) {
-      return { success: false, error: "Hero cannot be evolved yet" };
-    }
+      const heroData = await Hero.findById(heroInstance.heroId);
+      if (!heroData) {
+        return { success: false, error: "Hero data not found", code: "HERO_DATA_NOT_FOUND" };
+      }
 
-    const evolutionCost = this.calculateEvolutionCost(heroData.rarity);
-    
-    const currentFragments = player.fragments.get(heroInstance.heroId.toString()) || 0;
-    if (currentFragments < evolutionCost.fragments) {
-      return { 
-        success: false, 
-        error: `Insufficient fragments. Required: ${evolutionCost.fragments}` 
-      };
-    }
+      const currentLevel = heroInstance.level;
+      const targetLevel = currentLevel + 1;
 
-    const evolutionMaterials = this.getEvolutionMaterials(heroData.rarity);
-    for (const [materialId, quantity] of Object.entries(evolutionMaterials)) {
-      const currentQuantity = player.materials.get(materialId) || 0;
-      if (currentQuantity < quantity) {
+      // Vérifier si c'est un niveau d'ascension
+      if (!isAscensionLevel(targetLevel)) {
         return { 
           success: false, 
-          error: `Insufficient ${materialId}. Required: ${quantity}` 
+          error: `Level ${targetLevel} is not an ascension level. Ascension levels are: 41, 81, 121, 151`, 
+          code: "NOT_ASCENSION_LEVEL" 
         };
       }
-    }
 
-    const newRarity = this.getNextRarity(heroData.rarity);
-    if (!newRarity) {
-      return { success: false, error: "Cannot evolve further" };
-    }
-
-    player.fragments.set(heroInstance.heroId.toString(), currentFragments - evolutionCost.fragments);
-    
-    for (const [materialId, quantity] of Object.entries(evolutionMaterials)) {
-      const currentQuantity = player.materials.get(materialId) || 0;
-      player.materials.set(materialId, currentQuantity - quantity);
-    }
-
-    const oldRarity = heroData.rarity;
-    (heroData as any).rarity = newRarity;
-    
-    const evolutionBonus = this.calculateEvolutionStatsBonus(oldRarity, newRarity);
-    heroData.baseStats.hp = Math.floor(heroData.baseStats.hp * evolutionBonus.hpMultiplier);
-    heroData.baseStats.atk = Math.floor(heroData.baseStats.atk * evolutionBonus.atkMultiplier);
-    heroData.baseStats.def = Math.floor(heroData.baseStats.def * evolutionBonus.defMultiplier);
-
-    await Promise.all([
-      player.save(),
-      heroData.save()
-    ]);
-
-    // ========================================
-    // 🏆 ACHIEVEMENTS - Événements d'évolution
-    // ========================================
-    
-    // Événement d'awakening/évolution (Ascension)
-    achievementEmitter.emit(AchievementEvent.HERO_AWAKENED, {
-      playerId: accountId,
-      serverId,
-      value: 1,
-      metadata: {
-        heroId: (heroData._id as any).toString(),
-        heroName: heroData.name,
-        oldRarity: oldRarity,
-        newRarity: newRarity,
-        element: heroData.element,
-        role: heroData.role,
-        level: heroInstance.level,
-        stars: heroInstance.stars
+      // Vérifier si le héros peut atteindre ce niveau de rareté
+      if (!canHeroAscendToLevel(heroData.rarity, currentLevel, targetLevel).canAscend) {
+        return { 
+          success: false, 
+          error: `${heroData.rarity} heroes cannot ascend to level ${targetLevel}`, 
+          code: "RARITY_LIMIT_REACHED" 
+        };
       }
-    });
-    
-    await this.updateProgressTracking(accountId, serverId, "hero_evolution", 1);
 
-    return {
-      success: true,
-      hero: heroInstance,
-      newRarity,
-      statsBonus: evolutionBonus,
-      cost: {
-        fragments: evolutionCost.fragments,
-        materials: evolutionMaterials
+      // Obtenir le coût d'ascension
+      const ascensionCost = getAscensionCostForLevel(targetLevel);
+      if (!ascensionCost) {
+        return { success: false, error: "Invalid ascension level", code: "INVALID_ASCENSION_LEVEL" };
       }
-    };
 
-  } catch (error: any) {
-    return { success: false, error: error.message };
+      // Vérifier les ressources
+      if (!player.canAffordAscension(ascensionCost)) {
+        return { 
+          success: false, 
+          error: `Insufficient resources. Required: ${ascensionCost.gold} gold, ${ascensionCost.heroXP} heroXP, ${ascensionCost.ascensionEssence} essences`, 
+          code: "INSUFFICIENT_RESOURCES" 
+        };
+      }
+
+      // Calculer les stats avant ascension
+      const oldStats = this.calculateHeroStats(heroData, currentLevel, heroInstance.stars, heroInstance.ascensionTier);
+      
+      // Effectuer l'ascension
+      await player.spendAscensionResources(ascensionCost);
+      heroInstance.level = targetLevel;
+      heroInstance.ascensionTier = getAscensionTier(targetLevel);
+
+      // Mettre à jour les sorts débloqués
+      const newUnlockedSpells = this.updateUnlockedSpells(heroInstance, heroData, targetLevel);
+
+      // Calculer les nouveaux stats avec le bonus d'ascension
+      const newStats = this.calculateHeroStats(heroData, targetLevel, heroInstance.stars, heroInstance.ascensionTier);
+      const statsBonus = {
+        hp: newStats.hp - oldStats.hp,
+        atk: newStats.atk - oldStats.atk,
+        def: newStats.def - oldStats.def,
+        vitesse: newStats.vitesse - oldStats.vitesse,
+        moral: newStats.moral - oldStats.moral
+      };
+
+      // Obtenir les récompenses d'ascension
+      const ascensionReward = getAscensionReward(heroInstance.ascensionTier);
+      let rewards = {};
+      if (ascensionReward?.other) {
+        if (ascensionReward.other.gold) {
+          player.gold += ascensionReward.other.gold;
+        }
+        if (ascensionReward.other.gems) {
+          player.gems += ascensionReward.other.gems;
+        }
+        rewards = ascensionReward.other;
+      }
+
+      await player.save();
+      
+      // Événements d'achievements
+      this.emitAscensionAchievements(accountId, serverId, heroData, heroInstance.ascensionTier);
+      
+      await this.updateProgressTracking(accountId, serverId, "hero_ascension", 1);
+
+      return {
+        success: true,
+        hero: {
+          instanceId: heroInstanceId,
+          heroData: {
+            name: heroData.name,
+            rarity: heroData.rarity,
+            element: heroData.element,
+            role: heroData.role
+          },
+          level: heroInstance.level,
+          stars: heroInstance.stars,
+          ascensionTier: heroInstance.ascensionTier,
+          unlockedSpells: heroInstance.unlockedSpells
+        },
+        newLevel: targetLevel,
+        newAscensionTier: heroInstance.ascensionTier,
+        statsBonus,
+        spellsUnlocked: newUnlockedSpells,
+        rewards,
+        cost: ascensionCost
+      };
+
+    } catch (error: any) {
+      return { success: false, error: error.message, code: "ASCENSION_FAILED" };
+    }
   }
-}
+
+  // ===============================================
+  // UPGRADE D'ÉTOILES
+  // ===============================================
+
+  public static async upgradeHeroStars(
+    accountId: string,
+    serverId: string,
+    heroInstanceId: string
+  ): Promise<HeroUpgradeResult> {
+    try {
+      const player = await Player.findOne({ accountId, serverId });
+      if (!player) {
+        return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
+      }
+
+      const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
+      if (!heroInstance) {
+        return { success: false, error: "Hero not found", code: "HERO_NOT_FOUND" };
+      }
+
+      const heroData = await Hero.findById(heroInstance.heroId);
+      if (!heroData) {
+        return { success: false, error: "Hero data not found", code: "HERO_DATA_NOT_FOUND" };
+      }
+
+      const currentStars = heroInstance.stars;
+      const maxStars = this.getMaxStars(heroData.rarity);
+
+      if (currentStars >= maxStars) {
+        return { success: false, error: "Hero is at maximum stars", code: "MAX_STARS_REACHED" };
+      }
+
+      const requiredFragments = this.getStarUpgradeFragmentCost(currentStars, heroData.rarity);
+      const currentFragments = player.fragments.get(heroInstance.heroId.toString()) || 0;
+
+      if (currentFragments < requiredFragments) {
+        return { 
+          success: false, 
+          error: `Insufficient fragments. Required: ${requiredFragments}, Available: ${currentFragments}`, 
+          code: "INSUFFICIENT_FRAGMENTS" 
+        };
+      }
+
+      const oldStats = this.calculateHeroStats(heroData, heroInstance.level, currentStars, heroInstance.ascensionTier);
+      
+      player.fragments.set(heroInstance.heroId.toString(), currentFragments - requiredFragments);
+      heroInstance.stars = currentStars + 1;
+
+      const newStats = this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars, heroInstance.ascensionTier);
+      const statsGained = {
+        hp: newStats.hp - oldStats.hp,
+        atk: newStats.atk - oldStats.atk,
+        def: newStats.def - oldStats.def,
+        vitesse: newStats.vitesse - oldStats.vitesse,
+        moral: newStats.moral - oldStats.moral
+      };
+
+      await player.save();
+      
+      // Événements d'achievements
+      this.emitStarUpgradeAchievements(accountId, serverId, heroData, heroInstance.stars);
+      
+      await this.updateProgressTracking(accountId, serverId, "star_upgrade", 1);
+
+      return {
+        success: true,
+        hero: {
+          instanceId: heroInstanceId,
+          heroData: {
+            name: heroData.name,
+            rarity: heroData.rarity,
+            element: heroData.element,
+            role: heroData.role
+          },
+          level: heroInstance.level,
+          stars: heroInstance.stars,
+          ascensionTier: heroInstance.ascensionTier,
+          unlockedSpells: heroInstance.unlockedSpells
+        },
+        newStars: heroInstance.stars,
+        statsGained,
+        cost: { fragments: requiredFragments },
+        playerResources: {
+          gold: player.gold,
+          heroXP: player.heroXP,
+          ascensionEssences: player.ascensionEssences,
+          fragments: Object.fromEntries(player.fragments.entries()),
+          materials: Object.fromEntries(player.materials.entries())
+        }
+      };
+
+    } catch (error: any) {
+      return { success: false, error: error.message, code: "STAR_UPGRADE_FAILED" };
+    }
+  }
+
+  // ===============================================
+  // UPGRADE DE SORTS
+  // ===============================================
+
+  public static async upgradeHeroSpell(
+    accountId: string,
+    serverId: string,
+    heroInstanceId: string,
+    spellLevel: number // 1, 11, 41, 81, 121, 151
+  ): Promise<SkillUpgradeResult> {
+    try {
+      const player = await Player.findOne({ accountId, serverId });
+      if (!player) {
+        return { success: false, error: "Player not found", code: "PLAYER_NOT_FOUND" };
+      }
+
+      const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
+      if (!heroInstance) {
+        return { success: false, error: "Hero not found", code: "HERO_NOT_FOUND" };
+      }
+
+      const heroData = await Hero.findById(heroInstance.heroId);
+      if (!heroData) {
+        return { success: false, error: "Hero data not found", code: "HERO_DATA_NOT_FOUND" };
+      }
+
+      // Vérifier si le sort est débloqué
+      const spellSlot = `level${spellLevel}`;
+      if (!heroInstance.unlockedSpells.includes(spellSlot)) {
+        return { 
+          success: false, 
+          error: `Spell at level ${spellLevel} is not unlocked yet`, 
+          code: "SPELL_NOT_UNLOCKED" 
+        };
+      }
+
+      // Obtenir le sort du héros
+      const heroSpell = heroData.getSpellByLevel(spellLevel);
+      if (!heroSpell) {
+        return { 
+          success: false, 
+          error: `No spell defined for level ${spellLevel}`, 
+          code: "SPELL_NOT_DEFINED" 
+        };
+      }
+
+      const currentSpellLevel = heroSpell.level;
+      const maxSpellLevel = (spellLevel >= 81) ? 10 : 12; // Sorts ultimes max niveau 10
+
+      if (currentSpellLevel >= maxSpellLevel) {
+        return { success: false, error: "Spell is at maximum level", code: "MAX_SPELL_LEVEL_REACHED" };
+      }
+
+      const spellCost = this.calculateSpellUpgradeCost(currentSpellLevel, heroData.rarity, spellLevel);
+
+      if (player.gold < spellCost.gold) {
+        return { success: false, error: `Insufficient gold. Required: ${spellCost.gold}`, code: "INSUFFICIENT_GOLD" };
+      }
+
+      const requiredMaterial = `spell_essence_${heroData.element.toLowerCase()}`;
+      const currentMaterial = player.materials.get(requiredMaterial) || 0;
+
+      if (currentMaterial < spellCost.materials) {
+        return { 
+          success: false, 
+          error: `Insufficient ${requiredMaterial}. Required: ${spellCost.materials}`, 
+          code: "INSUFFICIENT_MATERIALS"
+        };
+      }
+
+      // Effectuer l'upgrade
+      player.gold -= spellCost.gold;
+      player.materials.set(requiredMaterial, currentMaterial - spellCost.materials);
+      
+      const newSpellLevel = currentSpellLevel + 1;
+      heroData.upgradeSpellByLevel(spellLevel, newSpellLevel);
+
+      await Promise.all([player.save(), heroData.save()]);
+
+      // Calculer les nouvelles stats du sort
+      const newSpellStats = heroData.calculateSpellStatsByLevel(spellLevel, newSpellLevel);
+
+      return {
+        success: true,
+        skill: {
+          spellLevel,
+          spellId: heroSpell.id,
+          oldLevel: currentSpellLevel,
+          newLevel: newSpellLevel,
+          newStats: newSpellStats
+        },
+        cost: {
+          gold: spellCost.gold,
+          [requiredMaterial]: spellCost.materials
+        }
+      };
+
+    } catch (error: any) {
+      return { success: false, error: error.message, code: "SPELL_UPGRADE_FAILED" };
+    }
+  }
+
+  // ===============================================
+  // INFORMATIONS ET OVERVIEW
+  // ===============================================
 
   public static async getHeroUpgradeInfo(
     accountId: string,
@@ -491,37 +579,36 @@ public static async evolveHero(
         throw new Error("Hero data not found");
       }
 
-      const currentStats = this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars);
-      const maxLevel = this.getMaxLevel(heroInstance.stars, player.level);
+      const currentStats = this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars, heroInstance.ascensionTier);
+      const maxLevelForRarity = getMaxLevelForRarity(heroData.rarity);
       const maxStars = this.getMaxStars(heroData.rarity);
 
-      const levelUpInfo = heroInstance.level < maxLevel ? {
+      // Informations de level up
+      const levelUpInfo = heroInstance.level < maxLevelForRarity ? {
         available: true,
         currentLevel: heroInstance.level,
-        maxLevel,
-        nextLevelCost: this.calculateLevelUpCost(heroInstance.level, heroInstance.level + 1, heroData.rarity),
-        maxLevelCost: this.calculateLevelUpCost(heroInstance.level, maxLevel, heroData.rarity),
-        statsAtMaxLevel: this.calculateHeroStats(heroData, maxLevel, heroInstance.stars)
+        maxLevel: maxLevelForRarity,
+        nextLevelCost: this.getNextLevelCost(heroInstance, heroData),
+        blockedByAscension: this.isNextLevelAscension(heroInstance.level)
       } : { available: false, reason: "Maximum level reached" };
 
+      // Informations d'ascension
+      const ascensionInfo = this.getAscensionInfo(heroInstance, heroData);
+
+      // Informations d'étoiles
       const starUpgradeInfo = heroInstance.stars < maxStars ? {
         available: true,
         currentStars: heroInstance.stars,
         maxStars,
         nextStarCost: this.getStarUpgradeFragmentCost(heroInstance.stars, heroData.rarity),
-        currentFragments: player.fragments.get(heroInstance.heroId.toString()) || 0,
-        statsAtNextStar: this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars + 1)
+        currentFragments: player.fragments.get(heroInstance.heroId.toString()) || 0
       } : { available: false, reason: "Maximum stars reached" };
 
-      const evolutionInfo = this.canEvolveHero(heroInstance, heroData) ? {
-        available: true,
-        currentRarity: heroData.rarity,
-        nextRarity: this.getNextRarity(heroData.rarity),
-        cost: this.calculateEvolutionCost(heroData.rarity),
-        requirements: this.getEvolutionRequirements(heroData.rarity)
-      } : { available: false, reason: "Evolution requirements not met" };
+      // Informations des sorts
+      const spellsInfo = this.getSpellsUpgradeInfo(heroInstance, heroData, player);
 
-      const skillsInfo = this.getSkillsUpgradeInfo(heroInstance, heroData, player);
+      // Informations UI d'ascension
+      const uiInfo = getAscensionUIInfo(heroData.rarity, heroInstance.level);
 
       return {
         success: true,
@@ -533,16 +620,21 @@ public static async evolveHero(
           role: heroData.role,
           level: heroInstance.level,
           stars: heroInstance.stars,
-          currentStats
+          ascensionTier: heroInstance.ascensionTier,
+          currentStats,
+          unlockedSpells: heroInstance.unlockedSpells
         },
         upgrades: {
           levelUp: levelUpInfo,
+          ascension: ascensionInfo,
           starUpgrade: starUpgradeInfo,
-          evolution: evolutionInfo,
-          skills: skillsInfo
+          spells: spellsInfo
         },
+        ascensionUI: uiInfo,
         playerResources: {
           gold: player.gold,
+          heroXP: player.heroXP,
+          ascensionEssences: player.ascensionEssences,
           fragments: Object.fromEntries(player.fragments.entries()),
           materials: Object.fromEntries(player.materials.entries())
         }
@@ -553,6 +645,256 @@ public static async evolveHero(
     }
   }
 
+  // ===============================================
+  // MÉTHODES UTILITAIRES PRIVÉES
+  // ===============================================
+
+  private static calculateHeroStats(heroData: any, level: number, stars: number, ascensionTier: number = 0) {
+    const levelMultiplier = 1 + (level - 1) * 0.08;
+    const starMultiplier = 1 + (stars - 1) * 0.15;
+    
+    // Bonus d'ascension selon le tier
+    const ascensionMultipliers = [1.0, 1.15, 1.35, 1.60, 1.90];
+    const ascensionMultiplier = ascensionMultipliers[ascensionTier] || 1.0;
+    
+    const totalMultiplier = levelMultiplier * starMultiplier * ascensionMultiplier;
+
+    return {
+      hp: Math.floor(heroData.baseStats.hp * totalMultiplier),
+      atk: Math.floor(heroData.baseStats.atk * totalMultiplier),
+      def: Math.floor(heroData.baseStats.def * totalMultiplier),
+      vitesse: Math.floor((heroData.baseStats.vitesse || 80) * Math.min(2.0, totalMultiplier * 0.6 + 0.4)),
+      moral: Math.floor((heroData.baseStats.moral || 60) * totalMultiplier * 0.8 + 0.2)
+    };
+  }
+
+  private static updateUnlockedSpells(heroInstance: any, heroData: any, newLevel: number): Array<{ level: number; spellId: string; slot: string }> {
+    const spellLevels = [1, 11, 41, 81, 121, 151];
+    const newlyUnlocked: Array<{ level: number; spellId: string; slot: string }> = [];
+
+    for (const spellLevel of spellLevels) {
+      const spellSlot = `level${spellLevel}`;
+      
+      // Si le héros atteint ce niveau et que le sort n'est pas encore débloqué
+      if (newLevel >= spellLevel && !heroInstance.unlockedSpells.includes(spellSlot)) {
+        // Vérifier si le héros a un sort défini pour ce niveau
+        const spell = heroData.getSpellByLevel(spellLevel);
+        if (spell) {
+          heroInstance.unlockedSpells.push(spellSlot);
+          newlyUnlocked.push({
+            level: spellLevel,
+            spellId: spell.id,
+            slot: spellSlot
+          });
+        }
+      }
+    }
+
+    return newlyUnlocked;
+  }
+
+  private static getMaxStars(rarity: string): number {
+    const maxStars: Record<string, number> = {
+      "Common": 5,
+      "Rare": 6,
+      "Epic": 6,
+      "Legendary": 6,
+      "Mythic": 6
+    };
+    return maxStars[rarity] || 6;
+  }
+
+  private static getStarUpgradeFragmentCost(currentStars: number, rarity: string): number {
+    const baseCosts = [10, 20, 40, 80, 160];
+    const rarityMultiplier = this.getRarityMultiplier(rarity);
+    return Math.floor((baseCosts[currentStars - 1] || 200) * rarityMultiplier);
+  }
+
+  private static getRarityMultiplier(rarity: string): number {
+    const multipliers: Record<string, number> = {
+      "Common": 1.0,
+      "Rare": 1.5,
+      "Epic": 2.0,
+      "Legendary": 3.0,
+      "Mythic": 4.0
+    };
+    return multipliers[rarity] || 1.0;
+  }
+
+  private static calculateSpellUpgradeCost(currentLevel: number, rarity: string, spellLevel: number) {
+    const baseGold = 500 + (currentLevel * 200);
+    const baseMaterials = 2 + Math.floor(currentLevel / 2);
+    const rarityMultiplier = this.getRarityMultiplier(rarity);
+    
+    // Les sorts ultimes coûtent plus cher
+    const spellMultiplier = spellLevel >= 81 ? 1.5 : 1.0;
+
+    return {
+      gold: Math.floor(baseGold * rarityMultiplier * spellMultiplier),
+      materials: Math.floor(baseMaterials * rarityMultiplier * spellMultiplier)
+    };
+  }
+
+  private static getNextLevelCost(heroInstance: any, heroData: any) {
+    const currentLevel = heroInstance.level;
+    const nextLevel = currentLevel + 1;
+    
+    if (isAscensionLevel(nextLevel)) {
+      return getAscensionCostForLevel(nextLevel);
+    } else {
+      return getLevelUpCost(currentLevel, nextLevel, heroData.rarity);
+    }
+  }
+
+  private static isNextLevelAscension(currentLevel: number): boolean {
+    return isAscensionLevel(currentLevel + 1);
+  }
+
+  private static getAscensionInfo(heroInstance: any, heroData: any) {
+    const currentLevel = heroInstance.level;
+    const nextLevel = currentLevel + 1;
+    const maxLevel = getMaxLevelForRarity(heroData.rarity);
+    
+    if (nextLevel > maxLevel) {
+      return { available: false, reason: "Hero is at maximum level for its rarity" };
+    }
+    
+    if (!isAscensionLevel(nextLevel)) {
+      return { available: false, reason: "Next level is not an ascension level" };
+    }
+    
+    const ascensionCost = getAscensionCostForLevel(nextLevel);
+    const ascensionReward = getAscensionReward(getAscensionTier(nextLevel));
+    
+    return {
+      available: true,
+      currentLevel,
+      nextLevel,
+      currentTier: heroInstance.ascensionTier,
+      nextTier: getAscensionTier(nextLevel),
+      cost: ascensionCost,
+      rewards: ascensionReward
+    };
+  }
+
+  private static getSpellsUpgradeInfo(heroInstance: any, heroData: any, player: any) {
+    const spellLevels = [1, 11, 41, 81, 121, 151];
+    const spellsInfo: any = {};
+
+    for (const spellLevel of spellLevels) {
+      const spellSlot = `level${spellLevel}`;
+      
+      // Vérifier si le sort est débloqué
+      if (!heroInstance.unlockedSpells.includes(spellSlot)) {
+        spellsInfo[spellSlot] = {
+          available: false,
+          reason: heroInstance.level >= spellLevel ? "Hero level sufficient but spell not defined" : `Requires level ${spellLevel}`,
+          requiredLevel: spellLevel,
+          currentLevel: heroInstance.level
+        };
+        continue;
+      }
+
+      // Obtenir le sort
+      const spell = heroData.getSpellByLevel(spellLevel);
+      if (!spell) {
+        spellsInfo[spellSlot] = {
+          available: false,
+          reason: "No spell defined for this level"
+        };
+        continue;
+      }
+
+      const currentSpellLevel = spell.level;
+      const maxSpellLevel = (spellLevel >= 81) ? 10 : 12;
+      
+      if (currentSpellLevel >= maxSpellLevel) {
+        spellsInfo[spellSlot] = {
+          available: false,
+          currentLevel: currentSpellLevel,
+          maxLevel: maxSpellLevel,
+          reason: "Spell is at maximum level"
+        };
+        continue;
+      }
+
+      // Calculer le coût d'upgrade
+      const cost = this.calculateSpellUpgradeCost(currentSpellLevel, heroData.rarity, spellLevel);
+      const requiredMaterial = `spell_essence_${heroData.element.toLowerCase()}`;
+      const playerHasMaterial = (player.materials.get(requiredMaterial) || 0) >= cost.materials;
+
+      spellsInfo[spellSlot] = {
+        available: true,
+        spellId: spell.id,
+        currentLevel: currentSpellLevel,
+        maxLevel: maxSpellLevel,
+        cost,
+        requiredMaterial,
+        playerHasMaterial,
+        playerCanAfford: player.gold >= cost.gold && playerHasMaterial
+      };
+    }
+
+    return spellsInfo;
+  }
+
+  // ===============================================
+  // MÉTHODES D'ACHIEVEMENTS
+  // ===============================================
+
+  private static emitLevelUpAchievements(accountId: string, serverId: string, heroData: any, oldLevel: number, newLevel: number) {
+    achievementEmitter.emit(AchievementEvent.HERO_LEVEL_REACHED, {
+      playerId: accountId,
+      serverId,
+      value: newLevel,
+      metadata: {
+        heroId: (heroData._id as any).toString(),
+        heroName: heroData.name,
+        rarity: heroData.rarity,
+        element: heroData.element,
+        role: heroData.role,
+        previousLevel: oldLevel,
+        levelsGained: newLevel - oldLevel
+      }
+    });
+  }
+
+  private static emitAscensionAchievements(accountId: string, serverId: string, heroData: any, ascensionTier: number) {
+    achievementEmitter.emit(AchievementEvent.HERO_AWAKENED, {
+      playerId: accountId,
+      serverId,
+      value: ascensionTier,
+      metadata: {
+        heroId: (heroData._id as any).toString(),
+        heroName: heroData.name,
+        rarity: heroData.rarity,
+        element: heroData.element,
+        role: heroData.role,
+        ascensionTier
+      }
+    });
+  }
+
+  private static emitStarUpgradeAchievements(accountId: string, serverId: string, heroData: any, stars: number) {
+    achievementEmitter.emit(AchievementEvent.HERO_STARS_REACHED, {
+      playerId: accountId,
+      serverId,
+      value: stars,
+      metadata: {
+        heroId: (heroData._id as any).toString(),
+        heroName: heroData.name,
+        rarity: heroData.rarity,
+        element: heroData.element,
+        role: heroData.role,
+        stars
+      }
+    });
+  }
+
+  // ===============================================
+  // FONCTIONS AVANCÉES
+  // ===============================================
+
   public static async getPlayerHeroesUpgradeOverview(accountId: string, serverId: string) {
     try {
       const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
@@ -562,17 +904,23 @@ public static async evolveHero(
 
       const heroesOverview = await Promise.all(player.heroes.map(async (heroInstance: any) => {
         const heroData = heroInstance.heroId;
-        const currentStats = this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars);
+        const currentStats = this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars, heroInstance.ascensionTier);
         
-        const canLevelUp = heroInstance.level < this.getMaxLevel(heroInstance.stars, player.level);
+        const maxLevel = getMaxLevelForRarity(heroData.rarity);
+        const canLevelUp = heroInstance.level < maxLevel && !this.isNextLevelAscension(heroInstance.level);
+        const canAscend = this.isNextLevelAscension(heroInstance.level) && heroInstance.level < maxLevel;
         const canUpgradeStars = heroInstance.stars < this.getMaxStars(heroData.rarity);
-        const canEvolve = this.canEvolveHero(heroInstance, heroData);
 
         const nextLevelCost = canLevelUp ? 
-          this.calculateLevelUpCost(heroInstance.level, heroInstance.level + 1, heroData.rarity) : null;
+          getLevelUpCost(heroInstance.level, heroInstance.level + 1, heroData.rarity) : null;
+        
+        const nextAscensionCost = canAscend ?
+          getAscensionCostForLevel(heroInstance.level + 1) : null;
         
         const nextStarCost = canUpgradeStars ? 
           this.getStarUpgradeFragmentCost(heroInstance.stars, heroData.rarity) : null;
+
+        const uiInfo = getAscensionUIInfo(heroData.rarity, heroInstance.level);
 
         return {
           instanceId: heroInstance._id?.toString() || "",
@@ -583,27 +931,40 @@ public static async evolveHero(
           role: heroData.role,
           level: heroInstance.level,
           stars: heroInstance.stars,
+          ascensionTier: heroInstance.ascensionTier,
           equipped: heroInstance.equipped,
           currentStats,
           power: this.calculateHeroPower(currentStats),
+          unlockedSpells: heroInstance.unlockedSpells,
           upgradePossibilities: {
             canLevelUp,
+            canAscend,
             canUpgradeStars,
-            canEvolve,
             nextLevelCost,
+            nextAscensionCost,
             nextStarCost,
             hasFragments: canUpgradeStars && nextStarCost !== null ? 
-              (player.fragments.get(heroData._id.toString()) || 0) >= nextStarCost : false
-          }
+              (player.fragments.get(heroData._id.toString()) || 0) >= nextStarCost : false,
+            hasAscensionResources: canAscend && nextAscensionCost ? 
+              player.canAffordAscension(nextAscensionCost) : false
+          },
+          ascensionUI: uiInfo
         };
       }));
 
       const upgradeStats = {
         totalHeroes: heroesOverview.length,
         canLevelUp: heroesOverview.filter(h => h.upgradePossibilities.canLevelUp).length,
+        canAscend: heroesOverview.filter(h => h.upgradePossibilities.canAscend).length,
         canUpgradeStars: heroesOverview.filter(h => h.upgradePossibilities.canUpgradeStars).length,
-        canEvolve: heroesOverview.filter(h => h.upgradePossibilities.canEvolve).length,
-        totalPower: heroesOverview.reduce((sum, h) => sum + h.power, 0)
+        totalPower: heroesOverview.reduce((sum, h) => sum + h.power, 0),
+        byAscensionTier: {
+          tier0: heroesOverview.filter(h => h.ascensionTier === 0).length,
+          tier1: heroesOverview.filter(h => h.ascensionTier === 1).length,
+          tier2: heroesOverview.filter(h => h.ascensionTier === 2).length,
+          tier3: heroesOverview.filter(h => h.ascensionTier === 3).length,
+          tier4: heroesOverview.filter(h => h.ascensionTier === 4).length
+        }
       };
 
       return {
@@ -612,6 +973,8 @@ public static async evolveHero(
         stats: upgradeStats,
         playerResources: {
           gold: player.gold,
+          heroXP: player.heroXP,
+          ascensionEssences: player.ascensionEssences,
           totalFragments: Array.from(player.fragments.values()).reduce((sum, f) => sum + f, 0),
           totalMaterials: Array.from(player.materials.values()).reduce((sum, m) => sum + m, 0)
         }
@@ -622,101 +985,13 @@ public static async evolveHero(
     }
   }
 
-  public static async bulkLevelUpHeroes(
-    accountId: string,
-    serverId: string,
-    heroInstanceIds: string[],
-    maxGoldToSpend?: number
-  ) {
-    try {
-      const player = await Player.findOne({ accountId, serverId });
-      if (!player) {
-        throw new Error("Player not found");
-      }
-
-      const results: any[] = [];
-      let totalGoldSpent = 0;
-      const availableGold = maxGoldToSpend || player.gold;
-
-      for (const heroInstanceId of heroInstanceIds) {
-        const heroInstance = player.heroes.find(h => (h as any)._id?.toString() === heroInstanceId);
-        if (!heroInstance) continue;
-
-        const heroData = await Hero.findById(heroInstance.heroId);
-        if (!heroData) continue;
-
-        const maxLevel = this.getMaxLevel(heroInstance.stars, player.level);
-        if (heroInstance.level >= maxLevel) {
-          results.push({
-            heroInstanceId,
-            success: false,
-            reason: "Already at maximum level"
-          });
-          continue;
-        }
-
-        let targetLevel = heroInstance.level;
-        let levelCost = 0;
-
-        while (targetLevel < maxLevel && totalGoldSpent + levelCost < availableGold) {
-          const nextLevelCost = this.calculateLevelUpCost(targetLevel, targetLevel + 1, heroData.rarity);
-          if (totalGoldSpent + levelCost + nextLevelCost.gold <= availableGold) {
-            levelCost += nextLevelCost.gold;
-            targetLevel++;
-          } else {
-            break;
-          }
-        }
-
-        if (targetLevel > heroInstance.level) {
-          const oldLevel = heroInstance.level;
-          heroInstance.level = targetLevel;
-          totalGoldSpent += levelCost;
-
-          results.push({
-            heroInstanceId,
-            heroName: heroData.name,
-            success: true,
-            oldLevel,
-            newLevel: targetLevel,
-            goldSpent: levelCost
-          });
-        } else {
-          results.push({
-            heroInstanceId,
-            success: false,
-            reason: "Insufficient gold"
-          });
-        }
-      }
-
-      player.gold -= totalGoldSpent;
-      await player.save();
-
-      const successfulUpgrades = results.filter(r => r.success).length;
-      await this.updateProgressTracking(accountId, serverId, "bulk_level_up", successfulUpgrades);
-
-      return {
-        success: true,
-        results,
-        summary: {
-          heroesUpgraded: successfulUpgrades,
-          totalGoldSpent,
-          remainingGold: player.gold
-        }
-      };
-
-    } catch (error: any) {
-      throw error;
-    }
-  }
-
-  public static async autoUpgradeHero(
+  public static async autoLevelUpHero(
     accountId: string,
     serverId: string,
     heroInstanceId: string,
     maxGoldToSpend?: number,
-    upgradeStars: boolean = false
+    maxHeroXPToSpend?: number,
+    includeAscensions: boolean = false
   ) {
     try {
       const player = await Player.findOne({ accountId, serverId });
@@ -735,97 +1010,88 @@ public static async evolveHero(
       }
 
       const upgrades: any[] = [];
-      let totalCost = { gold: 0, fragments: 0 };
+      let totalCost = { gold: 0, heroXP: 0, ascensionEssence: 0 };
       const availableGold = maxGoldToSpend || player.gold;
+      const availableHeroXP = maxHeroXPToSpend || player.heroXP;
+      const maxLevel = getMaxLevelForRarity(heroData.rarity);
 
-      const maxLevel = this.getMaxLevel(heroInstance.stars, player.level);
-      if (heroInstance.level < maxLevel) {
-        let targetLevel = heroInstance.level;
-        let levelCost = 0;
+      let currentLevel = heroInstance.level;
 
-        while (targetLevel < maxLevel && levelCost < availableGold) {
-          const nextLevelCost = this.calculateLevelUpCost(targetLevel, targetLevel + 1, heroData.rarity);
-          if (levelCost + nextLevelCost.gold <= availableGold) {
-            levelCost += nextLevelCost.gold;
-            targetLevel++;
-          } else {
-            break;
+      while (currentLevel < maxLevel && totalCost.gold < availableGold && totalCost.heroXP < availableHeroXP) {
+        const nextLevel = currentLevel + 1;
+        
+        if (isAscensionLevel(nextLevel)) {
+          if (!includeAscensions) {
+            break; // Arrêter si on ne veut pas inclure les ascensions
           }
-        }
-
-        if (targetLevel > heroInstance.level) {
-          const oldLevel = heroInstance.level;
-          heroInstance.level = targetLevel;
-          totalCost.gold += levelCost;
-
-          upgrades.push({
-            type: "level",
-            from: oldLevel,
-            to: targetLevel,
-            cost: { gold: levelCost }
-          });
-        }
-      }
-
-      if (upgradeStars) {
-        const maxStars = this.getMaxStars(heroData.rarity);
-        while (heroInstance.stars < maxStars) {
-          const fragmentCost = this.getStarUpgradeFragmentCost(heroInstance.stars, heroData.rarity);
-          const currentFragments = player.fragments.get(heroInstance.heroId.toString()) || 0;
-
-          if (currentFragments >= fragmentCost) {
-            const oldStars = heroInstance.stars;
-            heroInstance.stars++;
-            player.fragments.set(heroInstance.heroId.toString(), currentFragments - fragmentCost);
-            totalCost.fragments += fragmentCost;
-
+          
+          const ascensionCost = getAscensionCostForLevel(nextLevel);
+          if (!ascensionCost) break;
+          
+          // Vérifier si on peut payer l'ascension
+          if (totalCost.gold + ascensionCost.gold <= availableGold &&
+              totalCost.heroXP + ascensionCost.heroXP <= availableHeroXP &&
+              player.ascensionEssences >= ascensionCost.ascensionEssence) {
+            
+            totalCost.gold += ascensionCost.gold;
+            totalCost.heroXP += ascensionCost.heroXP;
+            totalCost.ascensionEssence += ascensionCost.ascensionEssence;
+            
             upgrades.push({
-              type: "stars",
-              from: oldStars,
-              to: heroInstance.stars,
-              cost: { fragments: fragmentCost }
+              type: "ascension",
+              fromLevel: currentLevel,
+              toLevel: nextLevel,
+              newTier: getAscensionTier(nextLevel),
+              cost: ascensionCost
             });
-
-            const newMaxLevel = this.getMaxLevel(heroInstance.stars, player.level);
-            if (heroInstance.level < newMaxLevel && totalCost.gold < availableGold) {
-              let additionalLevels = 0;
-              let additionalCost = 0;
-              let currentLevel = heroInstance.level;
-
-              while (currentLevel < newMaxLevel && totalCost.gold + additionalCost < availableGold) {
-                const nextCost = this.calculateLevelUpCost(currentLevel, currentLevel + 1, heroData.rarity);
-                if (totalCost.gold + additionalCost + nextCost.gold <= availableGold) {
-                  additionalCost += nextCost.gold;
-                  currentLevel++;
-                  additionalLevels++;
-                } else {
-                  break;
-                }
-              }
-
-              if (additionalLevels > 0) {
-                const oldLevel = heroInstance.level;
-                heroInstance.level = currentLevel;
-                totalCost.gold += additionalCost;
-
-                upgrades.push({
-                  type: "level_after_star",
-                  from: oldLevel,
-                  to: currentLevel,
-                  cost: { gold: additionalCost }
-                });
-              }
-            }
+            
+            currentLevel = nextLevel;
+            heroInstance.ascensionTier = getAscensionTier(nextLevel);
           } else {
-            break;
+            break; // Pas assez de ressources pour l'ascension
+          }
+        } else {
+          // Level up normal
+          const levelUpCost = getLevelUpCost(currentLevel, nextLevel, heroData.rarity);
+          
+          if (totalCost.gold + levelUpCost.gold <= availableGold &&
+              totalCost.heroXP + levelUpCost.heroXP <= availableHeroXP) {
+            
+            totalCost.gold += levelUpCost.gold;
+            totalCost.heroXP += levelUpCost.heroXP;
+            
+            upgrades.push({
+              type: "level_up",
+              fromLevel: currentLevel,
+              toLevel: nextLevel,
+              cost: levelUpCost
+            });
+            
+            currentLevel = nextLevel;
+          } else {
+            break; // Pas assez de ressources pour le level up
           }
         }
       }
 
-      player.gold -= totalCost.gold;
-      await player.save();
+      // Appliquer les changements si il y en a
+      if (upgrades.length > 0) {
+        heroInstance.level = currentLevel;
+        
+        // Dépenser les ressources
+        player.gold -= totalCost.gold;
+        player.heroXP -= totalCost.heroXP;
+        if (totalCost.ascensionEssence > 0) {
+          player.ascensionEssences -= totalCost.ascensionEssence;
+        }
+        
+        // Mettre à jour les sorts débloqués
+        this.updateUnlockedSpells(heroInstance, heroData, currentLevel);
+        
+        await player.save();
+      }
 
-      const finalStats = this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars);
+      const finalStats = this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars, heroInstance.ascensionTier);
 
       return {
         success: true,
@@ -834,78 +1100,20 @@ public static async evolveHero(
           name: heroData.name,
           finalLevel: heroInstance.level,
           finalStars: heroInstance.stars,
+          finalAscensionTier: heroInstance.ascensionTier,
           finalStats,
-          finalPower: this.calculateHeroPower(finalStats)
+          finalPower: this.calculateHeroPower(finalStats),
+          unlockedSpells: heroInstance.unlockedSpells
         },
         upgrades,
         totalCost,
+        levelsGained: currentLevel - (heroInstance.level - upgrades.length),
+        ascensionsPerformed: upgrades.filter(u => u.type === "ascension").length,
         playerResources: {
           gold: player.gold,
+          heroXP: player.heroXP,
+          ascensionEssences: player.ascensionEssences,
           fragments: Object.fromEntries(player.fragments.entries())
-        }
-      };
-
-    } catch (error: any) {
-      throw error;
-    }
-  }
-
-  public static async getUpgradeRecommendations(accountId: string, serverId: string) {
-    try {
-      const player = await Player.findOne({ accountId, serverId }).populate("heroes.heroId");
-      if (!player) {
-        throw new Error("Player not found");
-      }
-
-      const recommendations: any[] = [];
-      const equippedHeroes = player.heroes.filter((h: any) => h.equipped);
-      const unequippedHeroes = player.heroes.filter((h: any) => !h.equipped);
-
-      for (const heroInstance of equippedHeroes) {
-        const heroData = heroInstance.heroId as any;
-        const priority = this.calculateUpgradePriority(heroInstance, heroData, player, true);
-        
-        if (priority.score > 0) {
-          recommendations.push({
-            heroInstanceId: (heroInstance as any)._id?.toString() || "",
-            heroName: heroData.name,
-            priority: priority.score,
-            isEquipped: true,
-            recommendations: priority.recommendations,
-            estimatedCost: priority.estimatedCost
-          });
-        }
-      }
-
-      for (const heroInstance of unequippedHeroes.slice(0, 10)) {
-        const heroData = heroInstance.heroId as any;
-        const priority = this.calculateUpgradePriority(heroInstance, heroData, player, false);
-        
-        if (priority.score > 0) {
-          recommendations.push({
-            heroInstanceId: (heroInstance as any)._id?.toString() || "",
-            heroName: heroData.name,
-            priority: priority.score,
-            isEquipped: false,
-            recommendations: priority.recommendations,
-            estimatedCost: priority.estimatedCost
-          });
-        }
-      }
-
-      recommendations.sort((a, b) => b.priority - a.priority);
-
-      return {
-        success: true,
-        recommendations: recommendations.slice(0, 20),
-        playerBudget: {
-          gold: player.gold,
-          totalFragments: Array.from(player.fragments.values()).reduce((sum, f) => sum + f, 0)
-        },
-        summary: {
-          equippedHeroesCount: equippedHeroes.length,
-          totalRecommendations: recommendations.length,
-          highPriorityCount: recommendations.filter(r => r.priority >= 8).length
         }
       };
 
@@ -925,13 +1133,14 @@ public static async evolveHero(
         totalHeroes: player.heroes.length,
         averageLevel: 0,
         averageStars: 0,
-        rarityDistribution: { "Common": 0, "Rare": 0, "Epic": 0, "Legendary": 0 },
+        rarityDistribution: { "Common": 0, "Rare": 0, "Epic": 0, "Legendary": 0, "Mythic": 0 },
+        ascensionTierDistribution: { "0": 0, "1": 0, "2": 0, "3": 0, "4": 0 },
         maxLevelHeroes: 0,
         maxStarHeroes: 0,
         totalPower: 0,
         upgradeableHeroes: 0,
-        fragmentsAvailable: Array.from(player.fragments.values()).reduce((sum, f) => sum + f, 0),
-        goldAvailable: player.gold
+        heroesReadyForAscension: 0,
+        totalSpellsUnlocked: 0
       };
 
       for (const heroInstance of player.heroes) {
@@ -944,10 +1153,15 @@ public static async evolveHero(
           stats.rarityDistribution[rarityKey]++;
         }
         
-        const currentStats = this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars);
+        const tierKey = heroInstance.ascensionTier.toString() as keyof typeof stats.ascensionTierDistribution;
+        if (stats.ascensionTierDistribution[tierKey] !== undefined) {
+          stats.ascensionTierDistribution[tierKey]++;
+        }
+        
+        const currentStats = this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars, heroInstance.ascensionTier);
         stats.totalPower += this.calculateHeroPower(currentStats);
         
-        const maxLevel = this.getMaxLevel(heroInstance.stars, player.level);
+        const maxLevel = getMaxLevelForRarity(heroData.rarity);
         const maxStars = this.getMaxStars(heroData.rarity);
         
         if (heroInstance.level >= maxLevel && heroInstance.stars >= maxStars) {
@@ -957,6 +1171,12 @@ public static async evolveHero(
         if (heroInstance.level < maxLevel || heroInstance.stars < maxStars) {
           stats.upgradeableHeroes++;
         }
+        
+        if (this.isNextLevelAscension(heroInstance.level) && heroInstance.level < maxLevel) {
+          stats.heroesReadyForAscension++;
+        }
+        
+        stats.totalSpellsUnlocked += heroInstance.unlockedSpells.length;
       }
 
       stats.averageLevel = Math.round(stats.averageLevel / stats.totalHeroes * 10) / 10;
@@ -968,9 +1188,11 @@ public static async evolveHero(
         analysis: {
           upgradeProgress: Math.round((stats.maxLevelHeroes / stats.totalHeroes) * 100),
           powerPerHero: Math.round(stats.totalPower / stats.totalHeroes),
+          averageSpellsPerHero: Math.round(stats.totalSpellsUnlocked / stats.totalHeroes * 10) / 10,
           resourceSufficiency: {
-            gold: stats.goldAvailable > stats.upgradeableHeroes * 1000,
-            fragments: stats.fragmentsAvailable > stats.upgradeableHeroes * 20
+            gold: player.gold > stats.upgradeableHeroes * 1000,
+            heroXP: player.heroXP > stats.upgradeableHeroes * 500,
+            ascensionEssences: player.ascensionEssences > stats.heroesReadyForAscension * 5
           }
         }
       };
@@ -980,242 +1202,14 @@ public static async evolveHero(
     }
   }
 
-  private static calculateLevelUpCost(currentLevel: number, targetLevel: number, rarity: string) {
-    let totalGold = 0;
-    const rarityMultiplier = this.getRarityMultiplier(rarity);
-
-    for (let level = currentLevel; level < targetLevel; level++) {
-      const baseCost = 100 + (level * 15);
-      totalGold += Math.floor(baseCost * rarityMultiplier);
-    }
-
-    return { gold: totalGold };
-  }
-
-  private static getStarUpgradeFragmentCost(currentStars: number, rarity: string): number {
-    const baseCosts = [10, 20, 40, 80, 160];
-    const rarityMultiplier = this.getRarityMultiplier(rarity);
-    return Math.floor((baseCosts[currentStars - 1] || 200) * rarityMultiplier);
-  }
-
-  private static calculateSkillUpgradeCost(currentLevel: number, rarity: string) {
-    const baseGold = 500 + (currentLevel * 200);
-    const baseMaterials = 2 + Math.floor(currentLevel / 2);
-    const rarityMultiplier = this.getRarityMultiplier(rarity);
-
-    return {
-      gold: Math.floor(baseGold * rarityMultiplier),
-      materials: Math.floor(baseMaterials * rarityMultiplier)
-    };
-  }
-
-  private static calculateEvolutionCost(rarity: string) {
-    const costs: Record<string, number> = {
-      "Common": 100,
-      "Rare": 200,
-      "Epic": 400,
-      "Legendary": 800
-    };
-    return { fragments: costs[rarity] || 1000 };
-  }
-
-  private static getEvolutionMaterials(rarity: string): Record<string, number> {
-    const materials: Record<string, Record<string, number>> = {
-      "Common": { "evolution_crystal_basic": 5, "essence_pure": 10 },
-      "Rare": { "evolution_crystal_basic": 10, "evolution_crystal_advanced": 3, "essence_pure": 20 },
-      "Epic": { "evolution_crystal_advanced": 8, "evolution_crystal_superior": 2, "essence_pure": 50 },
-      "Legendary": { "evolution_crystal_superior": 5, "evolution_crystal_divine": 1, "essence_pure": 100 }
-    };
-    return materials[rarity] || {};
-  }
-
-  private static calculateHeroStats(heroData: any, level: number, stars: number) {
-    const levelMultiplier = 1 + (level - 1) * 0.08;
-    const starMultiplier = 1 + (stars - 1) * 0.15;
-    const totalMultiplier = levelMultiplier * starMultiplier;
-
-    return {
-      hp: Math.floor(heroData.baseStats.hp * totalMultiplier),
-      atk: Math.floor(heroData.baseStats.atk * totalMultiplier),
-      def: Math.floor(heroData.baseStats.def * totalMultiplier),
-      vitesse: Math.floor((heroData.baseStats.vitesse || 80) * Math.min(2.0, totalMultiplier * 0.6 + 0.4)),
-      moral: Math.floor((heroData.baseStats.moral || 60) * totalMultiplier * 0.8 + 0.2)
-    };
-  }
-
-  private static getMaxLevel(stars: number, playerLevel: number): number {
-    const starLevelCaps = [20, 30, 40, 60, 80, 100];
-    const starCap = starLevelCaps[stars - 1] || 100;
-    return Math.min(starCap, playerLevel + 20);
-  }
-
-  private static getMaxStars(rarity: string): number {
-    const maxStars: Record<string, number> = {
-      "Common": 5,
-      "Rare": 6,
-      "Epic": 6,
-      "Legendary": 6
-    };
-    return maxStars[rarity] || 6;
-  }
-
-  private static getMaxSkillLevel(heroLevel: number): number {
-    return Math.min(10, Math.floor(heroLevel / 10) + 1);
-  }
-
-  private static getRarityMultiplier(rarity: string): number {
-    const multipliers: Record<string, number> = {
-      "Common": 1.0,
-      "Rare": 1.5,
-      "Epic": 2.0,
-      "Legendary": 3.0
-    };
-    return multipliers[rarity] || 1.0;
-  }
-
-  private static canEvolveHero(heroInstance: any, heroData: any): boolean {
-    return heroInstance.level >= 50 && 
-           heroInstance.stars >= 5 && 
-           heroData.rarity !== "Legendary";
-  }
-
-  private static getNextRarity(currentRarity: string): string | null {
-    const progression: Record<string, string> = {
-      "Common": "Rare",
-      "Rare": "Epic",
-      "Epic": "Legendary"
-    };
-    return progression[currentRarity] || null;
-  }
-
-  private static calculateEvolutionStatsBonus(oldRarity: string, newRarity: string) {
-    return {
-      hpMultiplier: 1.3,
-      atkMultiplier: 1.25,
-      defMultiplier: 1.2,
-      speedBonus: 10,
-      skillLevelBonus: 1
-    };
-  }
-
-  private static getEvolutionRequirements(rarity: string) {
-    return {
-      minLevel: 50,
-      minStars: 5,
-      materials: this.getEvolutionMaterials(rarity)
-    };
-  }
-
-  private static calculateUpgradePriority(heroInstance: any, heroData: any, player: any, isEquipped: boolean) {
-    let score = 0;
-    const recommendations: string[] = [];
-    let estimatedCost = { gold: 0, fragments: 0 };
-
-    const basePriority = isEquipped ? 5 : 2;
-    const rarityValues: Record<string, number> = { "Common": 0, "Rare": 1, "Epic": 2, "Legendary": 3 };
-    const rarityBonus = rarityValues[heroData.rarity] || 0;
-    
-    score += basePriority + rarityBonus;
-
-    const maxLevel = this.getMaxLevel(heroInstance.stars, player.level);
-    if (heroInstance.level < maxLevel) {
-      const levelGap = maxLevel - heroInstance.level;
-      const levelPriority = Math.min(3, levelGap / 10);
-      score += levelPriority;
-      
-      if (levelGap >= 5) {
-        recommendations.push(`Level up ${levelGap} levels`);
-        estimatedCost.gold += this.calculateLevelUpCost(heroInstance.level, Math.min(heroInstance.level + 10, maxLevel), heroData.rarity).gold;
-      }
-    }
-
-    const maxStars = this.getMaxStars(heroData.rarity);
-    if (heroInstance.stars < maxStars) {
-      const fragmentCost = this.getStarUpgradeFragmentCost(heroInstance.stars, heroData.rarity);
-      const availableFragments = player.fragments.get(heroInstance.heroId.toString()) || 0;
-      
-      if (availableFragments >= fragmentCost) {
-        score += 2;
-        recommendations.push(`Upgrade to ${heroInstance.stars + 1} stars`);
-        estimatedCost.fragments += fragmentCost;
-      } else {
-        const fragmentsNeeded = fragmentCost - availableFragments;
-        if (fragmentsNeeded <= 50) {
-          score += 1;
-          recommendations.push(`Need ${fragmentsNeeded} more fragments for star upgrade`);
-        }
-      }
-    }
-
-    if (this.canEvolveHero(heroInstance, heroData)) {
-      const evolutionCost = this.calculateEvolutionCost(heroData.rarity);
-      const availableFragments = player.fragments.get(heroInstance.heroId.toString()) || 0;
-      
-      if (availableFragments >= evolutionCost.fragments) {
-        score += 4;
-        recommendations.push("Ready for evolution!");
-        estimatedCost.fragments += evolutionCost.fragments;
-      }
-    }
-
-    const currentPower = this.calculateHeroPower(this.calculateHeroStats(heroData, heroInstance.level, heroInstance.stars));
-    if (currentPower < player.level * 100) {
-      score += 1;
-      recommendations.push("Power below player level average");
-    }
-
-    return {
-      score: Math.round(score * 10) / 10,
-      recommendations,
-      estimatedCost
-    };
-  }
-
   private static calculateHeroPower(stats: any): number {
-    return Math.floor(stats.atk * 1.0 + stats.def * 2.0 + stats.hp / 10);
-  }
-
-  private static getSkillsUpgradeInfo(heroInstance: any, heroData: any, player: any) {
-    const skills = ["spell1", "spell2", "spell3", "ultimate", "passive"];
-    const skillsInfo: any = {};
-
-    if (!(heroInstance as any).skills) {
-      (heroInstance as any).skills = {
-        spell1: { level: 1 },
-        spell2: { level: 1 },
-        spell3: { level: 1 },
-        ultimate: { level: 1 },
-        passive: { level: 1 }
-      };
-    }
-
-    for (const skillSlot of skills) {
-      const currentLevel = (heroInstance as any).skills[skillSlot]?.level || 1;
-      const maxLevel = this.getMaxSkillLevel(heroInstance.level);
-      
-      if (currentLevel < maxLevel) {
-        const cost = this.calculateSkillUpgradeCost(currentLevel, heroData.rarity);
-        const requiredMaterial = `skill_essence_${heroData.element.toLowerCase()}`;
-        
-        skillsInfo[skillSlot] = {
-          available: true,
-          currentLevel,
-          maxLevel,
-          cost,
-          requiredMaterial,
-          playerHasMaterial: (player.materials.get(requiredMaterial) || 0) >= cost.materials
-        };
-      } else {
-        skillsInfo[skillSlot] = {
-          available: false,
-          currentLevel,
-          maxLevel,
-          reason: "Maximum level reached"
-        };
-      }
-    }
-
-    return skillsInfo;
+    return Math.floor(
+      stats.atk * 1.0 + 
+      stats.def * 1.5 + 
+      stats.hp / 10 + 
+      stats.vitesse * 0.5 + 
+      (stats.moral || 0) * 0.3
+    );
   }
 
   private static async updateProgressTracking(accountId: string, serverId: string, upgradeType: string, value: number) {
