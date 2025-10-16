@@ -1572,7 +1572,52 @@ router.get("/spells/:heroInstanceId", authMiddleware, async (req: Request, res: 
   }
 });
 
+const spellUpgradeNewSchema = Joi.object({
+  heroInstanceId: Joi.string().required(),
+  spellSlot: Joi.string().valid("active1", "active2", "active3", "ultimate", "passive").required(),
+});
+
+/**
+ * POST /api/heroes/spells/upgrade
+ * Test: Upgrader un sort spécifique avec HeroSpellUpgradeService
+ */
+router.post("/spells/upgrade", authMiddleware, requireFeature("hero_upgrade"), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const identifiers = getPlayerIdentifiers(req);
+
+    const { error } = spellUpgradeNewSchema.validate(req.body);
+    if (error) {
+      res.status(400).json({ error: error.details[0].message, code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const { heroInstanceId, spellSlot } = req.body;
+
+    const result = await HeroSpellUpgradeService.upgradeSpell(
+      identifiers.accountId || identifiers.playerId!,
+      identifiers.serverId,
+      heroInstanceId,
+      spellSlot as any
+    );
+
+    if (!result.success) {
+      res.status(400).json({ error: result.error, code: result.code });
+      return;
+    }
+
+    res.json({
+      message: "Spell upgraded successfully via HeroSpellUpgradeService",
+      serverId: identifiers.serverId,
+      ...result
+    });
+
+  } catch (err) {
+    console.error("Upgrade spell via HeroSpellUpgradeService error:", err);
+    res.status(500).json({ error: "Internal server error", code: "UPGRADE_SPELL_FAILED" });
+  }
+});
 export default router;
+
 
 
 
