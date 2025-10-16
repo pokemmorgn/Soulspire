@@ -1,81 +1,82 @@
-// server/src/gameplay/effects/special/VolcanicEruptionEffect.ts
+// server/src/gameplay/effects/special/UnleashedBrazierEffect.ts
 import { BaseEffect, EffectResult } from "../base/BaseEffect";
 import { IBattleParticipant } from "../../../models/Battle";
 
 /**
- * Effet Éruption Primordiale (Rhyzann)
+ * Effet Brasier Déchaîné (Saryel)
  * 
  * Fonctionnalités :
- * - Geysers de feu récurrents (dégâts AoE chaque tour)
- * - Soins selon le nombre d'ennemis touchés
- * - Réduction de dégâts + immunité contrôles
- * - Gestion via metadata : geyserDamage, healingPerEnemy, etc.
+ * - Transformation : attaques de base deviennent AoE
+ * - Bonus vitesse d'attaque et vol de vie
+ * - Explosion finale à l'expiration
+ * - Gestion via metadata : attackSpeedBonus, lifeStealBonus, explosionDamage, etc.
  */
-export class VolcanicEruptionEffect extends BaseEffect {
+export class UnleashedBrazierEffect extends BaseEffect {
   constructor() {
     super({
-      id: "volcanic_eruption",
-      name: "Éruption Primordiale",
-      description: "Zone volcanique : geysers récurrents + protection + immunité contrôles",
+      id: "unleashed_brazier",
+      name: "Brasier Déchaîné",
+      description: "Transformation ardente : attaques AoE + buffs + explosion finale",
       type: "special",
       stackable: false,
       maxStacks: 1,
-      baseDuration: 5,
-      isPositive: true
+      baseDuration: 6
     });
   }
 
   onApply(target: IBattleParticipant, appliedBy: IBattleParticipant): EffectResult {
     return {
-      message: `🌋 ${target.name} déclenche une Éruption Primordiale ! Le sol tremble de fureur volcanique...`
+      message: `🔥⚔️ ${target.name} s'embrase ! Un tourbillon de flammes l'entoure...`
     };
   }
 
   onTick(target: IBattleParticipant, stacks: number, appliedBy: IBattleParticipant): EffectResult {
-    // L'effet principal est géré par VolcanicEruptionSpell.triggerGeyserTick()
-    // Ici on ne fait que maintenir l'effet actif et les métadonnées
+    // L'effet principal (buffs de combat) est géré par UnleashedBrazierSpell
+    // Ici on maintient juste l'effet actif
     
-    // Récupérer les métadonnées
     const activeEffect = (target as any).activeEffects?.find(
-      (e: any) => e.id === "volcanic_eruption"
+      (e: any) => e.id === "unleashed_brazier"
     );
     
     if (!activeEffect || !activeEffect.metadata) {
-      return { message: "🌋 Éruption Primordiale sans métadonnées" };
+      return { message: "🔥⚔️ Brasier Déchaîné sans métadonnées" };
     }
     
-    // Incrémenter le compteur de tours
-    activeEffect.metadata.turnsActive = (activeEffect.metadata.turnsActive || 0) + 1;
+    const remainingTurns = activeEffect.duration;
+    const attackSpeedBonus = activeEffect.metadata.attackSpeedBonus || 20;
+    const lifeStealBonus = activeEffect.metadata.lifeStealBonus || 15;
     
     return {
-      message: `🌋 Zone volcanique active (Tour ${activeEffect.metadata.turnsActive})`
+      message: `🔥⚔️ ${target.name} brûle de puissance ! (+${attackSpeedBonus}% vitesse, +${lifeStealBonus}% vol de vie, ${remainingTurns} tours restants)`
     };
   }
 
   onRemove(target: IBattleParticipant): EffectResult {
-    // Retirer l'immunité aux contrôles
-    if (target.status.buffs.includes("cc_immunity")) {
-      const index = target.status.buffs.indexOf("cc_immunity");
-      target.status.buffs.splice(index, 1);
-    }
+    // Récupérer les données de l'explosion finale
+    const activeEffect = (target as any).activeEffects?.find(
+      (e: any) => e.id === "unleashed_brazier"
+    );
     
     // Retirer le buff principal
-    if (target.status.buffs.includes("volcanic_eruption")) {
-      const index = target.status.buffs.indexOf("volcanic_eruption");
+    if (target.status.buffs.includes("unleashed_brazier")) {
+      const index = target.status.buffs.indexOf("unleashed_brazier");
       target.status.buffs.splice(index, 1);
     }
     
+    // L'explosion finale sera gérée par UnleashedBrazierSpell.triggerFinalExplosion()
+    // dans BattleEngine quand l'effet expire
+    
     return {
-      message: `🌋 L'éruption volcanique de ${target.name} s'apaise. Le calme revient...`
+      message: `🔥💥 Le brasier de ${target.name} atteint son paroxysme ! EXPLOSION FINALE !`
     };
   }
 
   canApplyTo(target: IBattleParticipant, appliedBy: IBattleParticipant): boolean {
     // Vérifier que la cible n'a pas déjà cet effet
     const hasEffect = (target as any).activeEffects?.some(
-      (e: any) => e.id === "volcanic_eruption"
+      (e: any) => e.id === "unleashed_brazier"
     );
     
-    return !hasEffect && target.status.alive;
+    return !hasEffect && target.status.alive && target.role === "DPS Melee";
   }
 }
