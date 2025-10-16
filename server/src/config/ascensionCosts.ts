@@ -79,16 +79,17 @@ export const ASCENSION_COSTS: Record<string, AscensionCost> = {
 
 /**
  * Obtient le coût d'ascension pour un niveau spécifique
+ * ⚠️ CORRECTION : Passer le niveau cible, pas le niveau actuel
  */
-export function getAscensionCostForLevel(level: number): AscensionCost | null {
-  switch (level) {
-    case 40:
+export function getAscensionCostForLevel(targetLevel: number): AscensionCost | null {
+  switch (targetLevel) {
+    case 41:
       return ASCENSION_COSTS.tier1;
-    case 80:
+    case 81:
       return ASCENSION_COSTS.tier2;
-    case 120:
+    case 121:
       return ASCENSION_COSTS.tier3;
-    case 150:
+    case 151:
       return ASCENSION_COSTS.tier4;
     default:
       return null;
@@ -97,19 +98,20 @@ export function getAscensionCostForLevel(level: number): AscensionCost | null {
 
 /**
  * Vérifie si un niveau est un palier d'ascension
+ * ⚠️ CORRECTION : Vérifier le niveau cible, pas +1
  */
 export function isAscensionLevel(level: number): boolean {
-  return [40, 80, 120, 150].includes(level);
+  return [41, 81, 121, 151].includes(level);
 }
 
 /**
  * Obtient le palier d'ascension pour un niveau
  */
 export function getAscensionTier(level: number): number {
-  if (level >= 150) return 4;
-  if (level >= 120) return 3;
-  if (level >= 80) return 2;
-  if (level >= 40) return 1;
+  if (level >= 151) return 4;
+  if (level >= 121) return 3;
+  if (level >= 81) return 2;
+  if (level >= 41) return 1;
   return 0;
 }
 
@@ -139,6 +141,7 @@ export interface LevelUpCost {
 
 /**
  * Calcule le coût pour monter du niveau actuel au niveau cible (hors paliers)
+ * ⚠️ CORRECTION : Ne pas exclure les paliers, les inclure dans les coûts totaux
  */
 export function getLevelUpCost(currentLevel: number, targetLevel: number, rarity: string): LevelUpCost {
   // Multiplicateurs par rareté
@@ -155,11 +158,6 @@ export function getLevelUpCost(currentLevel: number, targetLevel: number, rarity
   let totalHeroXP = 0;
   
   for (let level = currentLevel; level < targetLevel; level++) {
-    // Ne pas inclure les paliers d'ascension dans le calcul normal
-    if (isAscensionLevel(level + 1)) {
-      continue;
-    }
-    
     // Coût de base qui augmente avec le niveau
     const baseGoldCost = 100 + (level * 25);
     const baseXPCost = 50 + (level * 15);
@@ -187,6 +185,7 @@ export function getSingleLevelCost(currentLevel: number, rarity: string): LevelU
 
 /**
  * Valide si un héros peut être ascensionné à un niveau donné
+ * ⚠️ CORRECTION : Logique d'ascension corrigée
  */
 export function canHeroAscendToLevel(heroRarity: string, currentLevel: number, targetLevel: number): {
   canAscend: boolean;
@@ -215,11 +214,14 @@ export function canHeroAscendToLevel(heroRarity: string, currentLevel: number, t
   }
   
   // Identifier les paliers d'ascension nécessaires
-  for (let level = currentLevel + 1; level <= targetLevel; level++) {
-    if (isAscensionLevel(level)) {
-      const cost = getAscensionCostForLevel(level - 1);
+  const ascensionLevels = [41, 81, 121, 151];
+  
+  for (const ascensionLevel of ascensionLevels) {
+    // Si le héros doit traverser ce palier
+    if (currentLevel < ascensionLevel && targetLevel >= ascensionLevel) {
+      const cost = getAscensionCostForLevel(ascensionLevel);
       if (cost) {
-        requiredAscensions.push({ level, cost });
+        requiredAscensions.push({ level: ascensionLevel, cost });
       }
     }
   }
@@ -390,6 +392,7 @@ export function getAscensionReward(ascensionTier: number): AscensionReward | nul
 
 /**
  * Obtient des informations formatées pour l'UI
+ * ⚠️ CORRECTION : Logique UI corrigée
  */
 export function getAscensionUIInfo(heroRarity: string, currentLevel: number): {
   currentTier: number;
@@ -413,7 +416,7 @@ export function getAscensionUIInfo(heroRarity: string, currentLevel: number): {
   for (const level of ascensionLevels) {
     if (level > currentLevel && level <= maxLevel) {
       nextAscensionLevel = level;
-      nextAscensionCost = getAscensionCostForLevel(level - 1);
+      nextAscensionCost = getAscensionCostForLevel(level);
       break;
     }
   }
@@ -422,8 +425,17 @@ export function getAscensionUIInfo(heroRarity: string, currentLevel: number): {
   let progressToNextAscension: { levelsNeeded: number; percentage: number } | null = null;
   if (nextAscensionLevel) {
     const levelsNeeded = nextAscensionLevel - currentLevel;
-    const totalLevelsInTier = nextAscensionLevel - (currentTier === 0 ? 1 : ascensionLevels[currentTier - 1] || 1);
-    const percentage = Math.max(0, Math.min(100, ((totalLevelsInTier - levelsNeeded) / totalLevelsInTier) * 100));
+    
+    // Calculer la base du tier actuel
+    let tierStartLevel = 1;
+    if (currentTier === 1) tierStartLevel = 41;
+    else if (currentTier === 2) tierStartLevel = 81;
+    else if (currentTier === 3) tierStartLevel = 121;
+    else if (currentTier === 4) tierStartLevel = 151;
+    
+    const totalLevelsInTier = nextAscensionLevel - tierStartLevel;
+    const currentProgressInTier = currentLevel - tierStartLevel;
+    const percentage = totalLevelsInTier > 0 ? Math.max(0, Math.min(100, (currentProgressInTier / totalLevelsInTier) * 100)) : 0;
     
     progressToNextAscension = {
       levelsNeeded,
