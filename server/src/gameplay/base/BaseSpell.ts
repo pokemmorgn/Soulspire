@@ -73,8 +73,13 @@ export abstract class BaseSpell {
   
   // Calculer le coût en énergie selon le niveau
   getEnergyCost(spellLevel: number): number {
-    const baseEnergy = this.config.energyCost;
-    return Math.floor(baseEnergy * (1 + (spellLevel - 1) * 0.1));
+    // ✅ FIX: Seuls les ultimates coûtent de l'énergie
+    if (this.config.type === "ultimate") {
+      return 100; // Toujours 100 pour les ultimates
+    }
+    
+    // Sorts actifs = 0 coût
+    return 0;
   }
   
   // Calculer le cooldown effectif
