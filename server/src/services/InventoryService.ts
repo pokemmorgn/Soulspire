@@ -38,96 +38,119 @@ export interface InventoryStats {
 export class InventoryService {
 
   // === RÉCUPÉRER L'INVENTAIRE COMPLET D'UN JOUEUR ===
-  public static async getPlayerInventory(playerId: string, serverId?: string) {
-    try {
-      console.log(`📦 Récupération inventaire pour ${playerId}`);
+public static async getPlayerInventory(playerId: string, serverId?: string) {
+  try {
+    console.log(`📦 Récupération inventaire pour ${playerId}`);
 
-      // ✅ CORRECTION: Utiliser _id au lieu de playerId
-      const [player, inventory] = await Promise.all([
-        Player.findById(playerId).select("gold gems paidGems tickets fragments materials serverId"),
-        Inventory.findOne({ playerId })
-      ]);
+    // ✅ NOUVEAU: Récupérer Player avec les nouvelles ressources
+    const [player, inventory] = await Promise.all([
+      Player.findById(playerId).select("gold gems paidGems tickets heroXP ascensionEssences fragments materials serverId"),
+      Inventory.findOne({ playerId })
+    ]);
 
-      if (!player) {
-        throw new Error("Player not found");
-      }
-
-      // ✅ VÉRIFICATION SERVEUR: S'assurer que le serveur correspond
-      if (serverId && player.serverId !== serverId) {
-        throw new Error("Player not found on this server");
-      }
-
-      // Créer l'inventaire s'il n'existe pas
-      let playerInventory = inventory;
-      if (!playerInventory) {
-        playerInventory = await (Inventory as any).createForPlayer(playerId);
-        
-        // ✅ SYNCHRONISER les monnaies depuis Player vers Inventory
-        if (playerInventory) {
-          playerInventory.gold = player.gold;
-          playerInventory.gems = player.gems;
-          playerInventory.paidGems = player.paidGems;
-          playerInventory.tickets = player.tickets;
-          await playerInventory.save();
-        }
-      }
-
-      // ✅ VÉRIFIER LA SYNCHRONISATION des monnaies
-      if (playerInventory) {
-        const needsSync = 
-          playerInventory.gold !== player.gold ||
-          playerInventory.gems !== player.gems ||
-          playerInventory.paidGems !== player.paidGems ||
-          playerInventory.tickets !== player.tickets;
-
-        if (needsSync) {
-          console.log("⚠️ Désynchronisation détectée, mise à jour...");
-          playerInventory.gold = player.gold;
-          playerInventory.gems = player.gems;
-          playerInventory.paidGems = player.paidGems;
-          playerInventory.tickets = player.tickets;
-          await playerInventory.save();
-        }
-      }
-
-      const safeInventory = playerInventory as NonNullable<typeof playerInventory>;
-
-      // Convertir les Maps en objets pour la réponse
-      const fragmentsObj = this.mapToObject(player.fragments);
-      const materialsObj = this.mapToObject(player.materials);
-
-      // Calculer les statistiques
-      const stats = safeInventory.getInventoryStats();
-      const enhancedStats = await this.calculateEnhancedStats(safeInventory);
-
-      return {
-        success: true,
-        inventory: {
-          currency: {
-            gold: player.gold,
-            gems: player.gems,
-            paidGems: player.paidGems,
-            tickets: player.tickets
-          },
-          fragments: fragmentsObj,
-          materials: materialsObj,
-          storage: safeInventory.storage,
-          specialCurrencies: this.mapToObject(safeInventory.storage.specialCurrencies)
-        },
-        stats: { ...stats, ...enhancedStats },
-        config: {
-          maxCapacity: safeInventory.maxCapacity,
-          autoSell: safeInventory.autoSell,
-          autoSellRarity: safeInventory.autoSellRarity,
-          lastCleanup: safeInventory.lastCleanup
-        }
-      };
-
-    } catch (error: any) {
-      console.error("❌ Erreur getPlayerInventory:", error);
-      throw error;
+    if (!player) {
+      throw new Error("Player not found");
     }
+
+    // ✅ VÉRIFICATION SERVEUR: S'assurer que le serveur correspond
+    if (serverId && player.serverId !== serverId) {
+      throw new Error("Player not found on this server");
+    }
+
+    // Créer l'inventaire s'il n'existe pas
+    let playerInventory = inventory;
+    if (!playerInventory) {
+      playerInventory = await (Inventory as any).createForPlayer(playerId);
+      
+      // ✅ SYNCHRONISER les monnaies depuis Player vers Inventory
+      if (playerInventory) {
+        playerInventory.gold = player.gold;
+        playerInventory.gems = player.gems;
+        playerInventory.paidGems = player.paidGems;
+        playerInventory.tickets = player.tickets;
+        await playerInventory.save();
+      }
+    }
+
+    // ✅ VÉRIFIER LA SYNCHRONISATION des monnaies
+    if (playerInventory) {
+      const needsSync = 
+        playerInventory.gold !== player.gold ||
+        playerInventory.gems !== player.gems ||
+        playerInventory.paidGems !== player.paidGems ||
+        playerInventory.tickets !== player.tickets;
+
+      if (needsSync) {
+        console.log("⚠️ Désynchronisation détectée, mise à jour...");
+        playerInventory.gold = player.gold;
+        playerInventory.gems = player.gems;
+        playerInventory.paidGems = player.paidGems;
+        playerInventory.tickets = player.tickets;
+        await playerInventory.save();
+      }
+    }
+
+    const safeInventory = playerInventory as NonNullable<typeof playerInventory>;
+
+    // Convertir les Maps en objets pour la réponse
+    const fragmentsObj = this.mapToObject(player.fragments);
+    const materialsObj = this.mapToObject(player.materials);
+
+    // Calculer les statistiques
+    const stats = safeInventory.getInventoryStats();
+    const enhancedStats = await this.calculateEnhancedStats(safeInventory);
+
+    // ✅ NOUVEAU: Calculer la valeur totale des monnaies player
+    const totalCurrencyValue = (
+      player.gold * 0.001 +           // 1000 gold = 1 point
+      player.gems * 1 +               // 1 gem = 1 point  
+      player.paidGems * 2 +           // 1 paid gem = 2 points
+      player.tickets * 5 +            // 1 ticket = 5 points
+      player.heroXP * 0.01 +          // 100 hero XP = 1 point
+      player.ascensionEssences * 10   // 1 essence = 10 points
+    );
+
+    return {
+      success: true,
+      
+      // ✅ NOUVEAU: Section ressources Player séparée
+      playerCurrencies: {
+        gold: player.gold,
+        gems: player.gems,
+        paidGems: player.paidGems,
+        tickets: player.tickets,
+        heroXP: player.heroXP,                    // ← NOUVEAU
+        ascensionEssences: player.ascensionEssences  // ← NOUVEAU
+      },
+      
+      // Section inventaire (existant mais renommé pour clarté)
+      inventory: {
+        fragments: fragmentsObj,
+        materials: materialsObj,
+        storage: safeInventory.storage,
+        specialCurrencies: this.mapToObject(safeInventory.storage.specialCurrencies)
+      },
+      
+      // ✅ STATISTIQUES AMÉLIORÉES
+      stats: { 
+        ...stats, 
+        ...enhancedStats,
+        totalCurrencyValue: Math.round(totalCurrencyValue)  // ← NOUVEAU
+      },
+      
+      config: {
+        maxCapacity: safeInventory.maxCapacity,
+        autoSell: safeInventory.autoSell,
+        autoSellRarity: safeInventory.autoSellRarity,
+        lastCleanup: safeInventory.lastCleanup
+      }
+    };
+
+  } catch (error: any) {
+    console.error("❌ Erreur getPlayerInventory:", error);
+    throw error;
   }
+}
 
   // === AJOUTER UN OBJET À L'INVENTAIRE ===
   public static async addItem(
