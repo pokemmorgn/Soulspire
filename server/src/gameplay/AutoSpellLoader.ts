@@ -1,13 +1,12 @@
+// server/src/gameplay/AutoSpellLoader.ts
 import * as fs from 'fs';
 import * as path from 'path';
 import { BaseSpell } from './base/BaseSpell';
 
-// Interface pour les modules de sorts auto-découverts
 interface SpellModule {
   [key: string]: any;
 }
 
-// Interface pour les informations d'un sort
 interface SpellInfo {
   id: string;
   name: string;
@@ -19,8 +18,18 @@ export class AutoSpellLoader {
   private static loadedSpells: Map<string, BaseSpell> = new Map();
   private static spellCategories: Map<string, string[]> = new Map();
   
+  // ✅ AJOUT : Protection contre le double chargement
+  private static initialized: boolean = false;
+  private static loadedFiles: Set<string> = new Set();
+  
   // Auto-découverte et chargement de tous les sorts
   static async autoLoadSpells(): Promise<void> {
+    // ✅ NOUVEAU : Éviter le rechargement multiple
+    if (this.initialized) {
+      console.log(`✅ Sorts déjà chargés (${this.loadedSpells.size}), skip reload`);
+      return;
+    }
+    
     console.log("🔍 Auto-découverte des sorts...");
     
     const spellDirectories = [
@@ -39,6 +48,9 @@ export class AutoSpellLoader {
     
     console.log(`✨ ${totalLoaded} sorts auto-chargés dans ${spellDirectories.length} catégories`);
     this.displayLoadedSpells();
+    
+    // ✅ NOUVEAU : Marquer comme initialisé
+    this.initialized = true;
   }
   
   // Charge tous les sorts d'un répertoire
@@ -64,8 +76,19 @@ export class AutoSpellLoader {
       );
       
       for (const file of spellFiles) {
-        const loaded = await this.loadSpellFromFile(path.join(fullPath, file), category);
-        if (loaded) loadedCount++;
+        const filePath = path.join(fullPath, file);
+        
+        // ✅ NOUVEAU : Éviter de charger le même fichier plusieurs fois
+        if (this.loadedFiles.has(filePath)) {
+          console.log(`📋 Fichier ${file} déjà chargé, skip`);
+          continue;
+        }
+        
+        const loaded = await this.loadSpellFromFile(filePath, category);
+        if (loaded) {
+          loadedCount++;
+          this.loadedFiles.add(filePath);
+        }
       }
       
     } catch (error) {
@@ -86,6 +109,9 @@ export class AutoSpellLoader {
       
       console.log(`🔍 Tentative de chargement: ${moduleImportPath}`);
       
+      // ✅ NOUVEAU : Gestion du cache pour éviter les conflits
+      delete require.cache[require.resolve(moduleImportPath)];
+      
       // Import dynamique du module
       const module: SpellModule = await import(moduleImportPath);
       
@@ -97,13 +123,20 @@ export class AutoSpellLoader {
         return false;
       }
       
-      // Enregistrer tous les sorts trouvés
+      // Enregistrer tous les sorts trouvés (avec déduplication)
+      let registeredCount = 0;
       for (const spell of spellInstances) {
-        this.registerSpell(spell, category);
+        if (this.registerSpell(spell, category)) {
+          registeredCount++;
+        }
       }
       
-      console.log(`📜 ${spellInstances.length} sort(s) chargé(s) depuis ${path.basename(filePath)}`);
-      return true;
+      if (registeredCount > 0) {
+        console.log(`📜 ${registeredCount} sort(s) chargé(s) depuis ${path.basename(filePath)}`);
+        return true;
+      }
+      
+      return false;
       
     } catch (error) {
       console.error(`❌ Erreur lors du chargement de ${path.basename(filePath)}:`, error);
@@ -114,22 +147,31 @@ export class AutoSpellLoader {
   // Extrait les sorts valides d'un module
   private static extractSpellsFromModule(module: SpellModule): BaseSpell[] {
     const spells: BaseSpell[] = [];
+    const processedIds = new Set<string>(); // ✅ NOUVEAU : Éviter les doublons dans le même fichier
     
     for (const [exportName, exportValue] of Object.entries(module)) {
+      let spellInstance: BaseSpell | null = null;
+      
       // Vérifier si c'est une instance de BaseSpell
       if (this.isValidSpellInstance(exportValue)) {
-        spells.push(exportValue as BaseSpell);
+        spellInstance = exportValue as BaseSpell;
       }
       // Vérifier si c'est une classe qui étend BaseSpell
       else if (this.isSpellClass(exportValue)) {
         try {
           const instance = new (exportValue as any)();
           if (this.isValidSpellInstance(instance)) {
-            spells.push(instance);
+            spellInstance = instance;
           }
         } catch (error) {
           console.warn(`⚠️ Impossible d'instancier ${exportName}:`, error);
         }
+      }
+      
+      // ✅ NOUVEAU : Ajouter l'effet si valide et pas encore traité
+      if (spellInstance && !processedIds.has(spellInstance.config.id)) {
+        spells.push(spellInstance);
+        processedIds.add(spellInstance.config.id);
       }
     }
     
@@ -153,13 +195,13 @@ export class AutoSpellLoader {
            typeof obj.prototype.execute === 'function';
   }
   
-  // Enregistre un sort
-  private static registerSpell(spell: BaseSpell, category: string): void {
+  // Enregistre un sort (✅ NOUVEAU : avec déduplication)
+  private static registerSpell(spell: BaseSpell, category: string): boolean {
     const spellId = spell.config.id;
     
     if (this.loadedSpells.has(spellId)) {
       console.warn(`⚠️ Sort dupliqué ignoré: ${spellId}`);
-      return;
+      return false;
     }
     
     this.loadedSpells.set(spellId, spell);
@@ -171,6 +213,7 @@ export class AutoSpellLoader {
     this.spellCategories.get(category)!.push(spellId);
     
     console.log(`✅ ${spell.config.name} (${spellId}) enregistré dans ${category}`);
+    return true;
   }
   
   // Affiche un résumé des sorts chargés
@@ -246,8 +289,15 @@ Les sorts dans ce répertoire sont automatiquement chargés par l'AutoSpellLoade
       ),
       spellsList: Object.fromEntries(
         Array.from(this.loadedSpells.entries()).map(([id, spell]) => [id, spell.config.name])
-      )
+      ),
+      filesLoaded: this.loadedFiles.size,
+      initialized: this.initialized
     };
+  }
+  
+  // ✅ NOUVEAU : Vérifier l'état d'initialisation
+  static isInitialized(): boolean {
+    return this.initialized;
   }
   
   // Rechargement à chaud (pour le développement)
@@ -255,6 +305,8 @@ Les sorts dans ce répertoire sont automatiquement chargés par l'AutoSpellLoade
     console.log("🔄 Rechargement à chaud des sorts...");
     this.loadedSpells.clear();
     this.spellCategories.clear();
+    this.loadedFiles.clear();
+    this.initialized = false;
     await this.autoLoadSpells();
   }
   
@@ -287,5 +339,28 @@ Les sorts dans ce répertoire sont automatiquement chargés par l'AutoSpellLoade
     if (typeof spell.canCast !== 'function') return false;
     
     return true;
+  }
+  
+  // ✅ NOUVEAU : Reset complet pour les tests
+  static reset(): void {
+    this.loadedSpells.clear();
+    this.spellCategories.clear();
+    this.loadedFiles.clear();
+    this.initialized = false;
+  }
+  
+  // ✅ NOUVEAU : Diagnostic détaillé
+  static diagnose(): void {
+    console.log("🔧 DIAGNOSTIC AUTOSPELLLOADER");
+    console.log(`Initialisé: ${this.initialized}`);
+    console.log(`Sorts chargés: ${this.loadedSpells.size}`);
+    console.log(`Fichiers traités: ${this.loadedFiles.size}`);
+    console.log(`Catégories: ${this.spellCategories.size}`);
+    
+    if (this.loadedSpells.size === 0) {
+      console.log("⚠️ ATTENTION: Aucun sort chargé !");
+    }
+    
+    this.validateLoadedSpells();
   }
 }
