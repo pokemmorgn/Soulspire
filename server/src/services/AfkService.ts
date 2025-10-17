@@ -636,51 +636,6 @@ static async generateEnhancedRewardsFromConfig(playerId: string, timeElapsedSeco
   }
 
   /**
-   * ✅ NOUVEAU : Générer Hero XP et Ascension Essences selon afkRewardsConfig
-   */
-  static async generateEnhancedRewardsFromConfig(playerId: string, state: HydratedDocument<IAfkState>): Promise<IPendingReward[]> {
-    try {
-      const player = await Player.findOne({ playerId: playerId }).select("world level vipLevel difficulty");
-      if (!player) return [];
-
-      const rewards: IPendingReward[] = [];
-      const timeElapsedMinutes = Math.max(0, state.accumulatedSinceClaimSec) / 60;
-
-      // ✅ HERO XP selon afkRewardsConfig
-      const heroXPCalc = calculateAfkRewardPerMinute("heroXP", player.world, player.level, player.vipLevel || 0, player.difficulty || "Normal");
-      if (heroXPCalc.isUnlocked && heroXPCalc.finalRate > 0) {
-        const heroXPGained = Math.floor(heroXPCalc.finalRate * timeElapsedMinutes);
-        if (heroXPGained > 0) {
-          rewards.push({
-            type: "currency",
-            currencyType: "heroXP",
-            quantity: heroXPGained
-          });
-        }
-      }
-
-      // ✅ ASCENSION ESSENCES selon afkRewardsConfig
-      const essencesCalc = calculateAfkRewardPerMinute("ascensionEssences", player.world, player.level, player.vipLevel || 0, player.difficulty || "Normal");
-      if (essencesCalc.isUnlocked && essencesCalc.finalRate > 0) {
-        const essencesGained = Math.floor(essencesCalc.finalRate * timeElapsedMinutes);
-        if (essencesGained > 0) {
-          rewards.push({
-            type: "currency",
-            currencyType: "ascensionEssences",
-            quantity: essencesGained
-          });
-        }
-      }
-
-      return rewards;
-
-    } catch (error) {
-      console.error("❌ Erreur generateEnhancedRewardsFromConfig:", error);
-      return [];
-    }
-  }
-
-  /**
    * ✅ NOUVEAU : Obtenir taux Hero XP depuis afkRewardsConfig
    */
   static getHeroXPRateFromConfig(world: number, level: number, vipLevel: number, difficulty: string): number {
