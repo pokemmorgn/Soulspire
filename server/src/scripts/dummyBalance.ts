@@ -93,7 +93,7 @@ const DUMMY_CONFIGS: Record<string, DummyConfig> = {
   }
 };
 
-const TEST_DURATION = 30; // 30 secondes par test
+const TEST_DURATION = 30; // PLUS UTILISÉ - calcul instantané
 const TEST_HERO_LEVEL = 50; // Niveau standard pour les tests
 
 // ===== UTILITAIRES =====
@@ -158,70 +158,111 @@ function applyElementalResistance(damage: number, spellElement: string, resistan
   return Math.floor(damage * multiplier);
 }
 
-// ===== SIMULATION =====
+// ===== SIMULATION DE COMBAT 1 MINUTE =====
 
-async function testSpellDps(
+function simulateOneMinuteCombat(
   spellId: string, 
   spellLevel: number, 
   dummyConfig: DummyConfig
-): Promise<number> {
+): number {
   const testHero = createTestHero();
   const dummy = createDummy(dummyConfig);
   
-  // Créer un combat de 30 secondes
-  const battleOptions: IBattleOptions = { mode: "auto", speed: 1 };
-  const battleEngine = new BattleEngine(
-    [testHero], 
-    [dummy], 
-    new Map([["test_hero_001", { active1: { id: spellId, level: spellLevel } }]]),
-    new Map(),
-    battleOptions
-  );
-  
-  let totalDamage = 0;
-  let actionCount = 0;
-  const startTime = Date.now();
-  
-  // Simuler pendant TEST_DURATION secondes
-  while ((Date.now() - startTime) < (TEST_DURATION * 1000)) {
-    // Forcer le héros à lancer le sort
-    try {
-      const action = SpellManager.castSpell(
-        spellId,
-        testHero,
-        [dummy],
-        spellLevel
-      );
-      
-      let damage = action.damage || 0;
-      
-      // Appliquer la résistance élémentaire du dummy
-      const spell = SpellManager.getSpell(spellId);
-      if (spell && spell.config.element) {
-        damage = applyElementalResistance(damage, spell.config.element, dummyConfig.resistances);
-      }
-      
-      totalDamage += damage;
-      actionCount++;
-      
-      // Régénérer l'énergie du héros
-      testHero.energy = 100;
-      
-      // Régénérer le dummy (il doit rester vivant)
-      dummy.currentHp = dummy.stats.maxHp;
-      
-    } catch (error) {
-      // Sort non disponible ou erreur, utiliser attaque de base
-      totalDamage += 50; // Dégâts d'attaque de base estimés
-      actionCount++;
+  try {
+    // Récupérer le sort
+    const spell = SpellManager.getSpell(spellId);
+    if (!spell) {
+      console.log(`⚠️ Sort ${spellId} non trouvé, utilisation attaque de base`);
+      return simulateBasicAttackCombat(testHero, dummy, dummyConfig);
     }
     
-    // Petit délai pour éviter une boucle trop intensive
-    await new Promise(resolve => setTimeout(resolve, 100));
+    const combatDuration = 60; // 60 secondes
+    const turnDuration = 2;    // 1 tour = 2 secondes environ
+    const totalTurns = combatDuration / turnDuration; // 30 tours
+    
+    let totalDamage = 0;
+    let spellCooldownRemaining = 0;
+    let heroEnergy = 0;
+    
+    // Simuler chaque tour
+    for (let turn = 1; turn <= totalTurns; turn++) {
+      // Génération d'énergie (10-15 par tour)
+      heroEnergy = Math.min(100, heroEnergy + 12);
+      
+      // Réduction du cooldown
+      if (spellCooldownRemaining > 0) {
+        spellCooldownRemaining--;
+      }
+      
+      let turnDamage = 0;
+      
+      // Essayer de lancer le sort si disponible
+      if (spellCooldownRemaining === 0 && heroEnergy >= (spell.config.energyCost || 0)) {
+        // Lancer le sort
+        const mockAction = SpellManager.castSpell(spellId, testHero, [dummy], spellLevel);
+        turnDamage = mockAction.damage || 0;
+        
+        // Appliquer résistances élémentaires
+        if (spell.config.element) {
+          turnDamage = applyElementalResistance(
+            turnDamage, 
+            spell.config.element, 
+            dummyConfig.resistances
+          );
+        }
+        
+        // Consommer énergie et appliquer cooldown
+        heroEnergy -= (spell.config.energyCost || 0);
+        spellCooldownRemaining = spell.config.baseCooldown || 3;
+        
+        // Gain d'énergie du sort
+        heroEnergy = Math.min(100, heroEnergy + (mockAction.energyGain || 5));
+        
+      } else {
+        // Attaque de base si sort pas disponible
+        turnDamage = calculateBasicAttackDamage(testHero, dummy, dummyConfig);
+        heroEnergy = Math.min(100, heroEnergy + 8); // Gain d'énergie attaque de base
+      }
+      
+      totalDamage += turnDamage;
+    }
+    
+    // DPS sur 60 secondes
+    const dps = totalDamage / combatDuration;
+    return Math.round(dps);
+    
+  } catch (error) {
+    console.log(`⚠️ Erreur avec ${spellId}: ${error}, utilisation attaque de base`);
+    return simulateBasicAttackCombat(testHero, dummy, dummyConfig);
   }
+}
+
+function simulateBasicAttackCombat(
+  hero: IBattleParticipant, 
+  dummy: IBattleParticipant, 
+  dummyConfig: DummyConfig
+): number {
+  const combatDuration = 60;
+  const turnDuration = 2;
+  const totalTurns = combatDuration / turnDuration;
   
-  const dps = totalDamage / TEST_DURATION;
-  return Math.round(dps);
+  const basicDamagePerTurn = calculateBasicAttackDamage(hero, dummy, dummyConfig);
+  const totalDamage = basicDamagePerTurn * totalTurns;
+  
+  return Math.round(totalDamage / combatDuration);
+}
+
+function calculateBasicAttackDamage(
+  hero: IBattleParticipant, 
+  dummy: IBattleParticipant, 
+  dummyConfig: DummyConfig
+): number {
+  // Calcul d'attaque de base simple
+  const baseAttack = hero.stats.atk;
+  const defense = dummy.stats.def;
+  const damage = Math.max(1, baseAttack - Math.floor(defense / 2));
+  
+  return damage;
 }
 
 // ===== ANALYSE =====
@@ -300,15 +341,14 @@ async function runDummyBalanceTest(): Promise<void> {
     
     const results: SpellDpsResult[] = [];
     
-    // Phase 2-4: Tester sur chaque dummy
+    // Phase 2-4: Tester sur chaque dummy (INSTANTANÉ)
     for (const dummyType of ["neutral", "resistant", "vulnerable"]) {
       console.log(`⚔️ Phase ${dummyType === "neutral" ? "2" : dummyType === "resistant" ? "3" : "4"}: Testing ${dummyType} dummy...`);
       
       const config = DUMMY_CONFIGS[dummyType];
-      let balancedCount = 0;
       
       for (const spell of testableSpells) {
-        const dps = await testSpellDps(spell.config.id, 5, config);
+        const dps = calculateTheoreticalDps(spell.config.id, 5, config);
         
         // Stocker ou mettre à jour le résultat
         let result = results.find(r => r.spellId === spell.config.id);
@@ -342,6 +382,8 @@ async function runDummyBalanceTest(): Promise<void> {
             Math.round((dps / result.neutralDps - 1) * 100) : 0;
         }
       }
+      
+      console.log(`   ✅ ${testableSpells.length} spells tested instantly`);
     }
     
     // Phase 5: Analyse
@@ -434,4 +476,4 @@ if (require.main === module) {
   runDummyBalanceTest().then(() => process.exit(0));
 }
 
-export { runDummyBalanceTest };
+export { runDummyBalanceTest, calculateTheoreticalDps };
