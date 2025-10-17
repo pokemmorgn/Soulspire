@@ -1,3 +1,4 @@
+// server/src/models/AfkState.ts
 import mongoose, { Document, Schema, Types } from "mongoose";
 
 /**
@@ -6,10 +7,10 @@ import mongoose, { Document, Schema, Types } from "mongoose";
  * AJOUTE le support multi-récompenses AFK Arena
  */
 
-// Nouveau type pour les récompenses multi-types
+// ✅ MODIFIÉ : Nouveau type pour les récompenses multi-types avec Hero XP et Ascension Essences
 export interface IPendingReward {
   type: "currency" | "material" | "fragment" | "item";
-  currencyType?: "gold" | "gems" | "tickets";
+  currencyType?: "gold" | "gems" | "tickets" | "heroXP" | "ascensionEssences"; // ✅ AJOUTÉ
   materialId?: string;
   fragmentId?: string;
   itemId?: string;
@@ -33,11 +34,13 @@ export interface IAfkState extends Document {
   // Récompenses multi-types (or, gems, matériaux, fragments)
   pendingRewards: IPendingReward[];
   
-  // Taux dynamiques selon progression
+  // ✅ MODIFIÉ : Taux dynamiques selon progression avec Hero XP et Ascension Essences
   enhancedRatesPerMinute: {
     gems: number;
     tickets: number;
     materials: number;
+    heroXP: number;          // ✅ AJOUTÉ
+    ascensionEssences: number; // ✅ AJOUTÉ
   };
   
   // Multiplicateurs VIP/progression/équipe
@@ -49,12 +52,14 @@ export interface IAfkState extends Document {
     lastUpdated: Date;
   };
   
-  // Suivi quotidien étendu
+  // ✅ MODIFIÉ : Suivi quotidien étendu avec Hero XP et Ascension Essences
   todayClaimedRewards: {
     gold: number;
     gems: number;
     materials: number;
     fragments: number;
+    heroXP: number;          // ✅ AJOUTÉ
+    ascensionEssences: number; // ✅ AJOUTÉ
   };
 
   // Mode de fonctionnement
@@ -83,7 +88,7 @@ const pendingRewardSchema = new Schema<IPendingReward>({
   },
   currencyType: {
     type: String,
-    enum: ["gold", "gems", "tickets"],
+    enum: ["gold", "gems", "tickets", "heroXP", "ascensionEssences"], // ✅ AJOUTÉ
     required: function() { return this.type === "currency"; }
   },
   materialId: {
@@ -129,10 +134,13 @@ playerId: {
     default: []
   },
   
+  // ✅ MODIFIÉ : enhancedRatesPerMinute avec Hero XP et Ascension Essences
   enhancedRatesPerMinute: {
     gems: { type: Number, default: 1, min: 0 },
     tickets: { type: Number, default: 0.1, min: 0 },
-    materials: { type: Number, default: 2, min: 0 }
+    materials: { type: Number, default: 2, min: 0 },
+    heroXP: { type: Number, default: 0, min: 0 },          // ✅ AJOUTÉ
+    ascensionEssences: { type: Number, default: 0, min: 0 } // ✅ AJOUTÉ
   },
   
   activeMultipliers: {
@@ -143,11 +151,14 @@ playerId: {
     lastUpdated: { type: Date, default: () => new Date() }
   },
   
+  // ✅ MODIFIÉ : todayClaimedRewards avec Hero XP et Ascension Essences
   todayClaimedRewards: {
     gold: { type: Number, default: 0, min: 0 },
     gems: { type: Number, default: 0, min: 0 },
     materials: { type: Number, default: 0, min: 0 },
-    fragments: { type: Number, default: 0, min: 0 }
+    fragments: { type: Number, default: 0, min: 0 },
+    heroXP: { type: Number, default: 0, min: 0 },          // ✅ AJOUTÉ
+    ascensionEssences: { type: Number, default: 0, min: 0 } // ✅ AJOUTÉ
   },
 
   useEnhancedRewards: { type: Boolean, default: false }
@@ -169,12 +180,14 @@ AfkStateSchema.methods._resetTodayIfNeeded = function(now: Date) {
   if (this.todayKey !== key) {
     this.todayKey = key;
     this.todayAccruedGold = 0;
-    // Reset aussi les nouvelles stats
+    // ✅ MODIFIÉ : Reset aussi les nouvelles stats
     this.todayClaimedRewards = {
       gold: 0,
       gems: 0,
       materials: 0,
-      fragments: 0
+      fragments: 0,
+      heroXP: 0,          // ✅ AJOUTÉ
+      ascensionEssences: 0 // ✅ AJOUTÉ
     };
   }
 };
@@ -265,11 +278,13 @@ AfkStateSchema.methods.updatePlayerProgression = async function(): Promise<void>
     // Mettre à jour baseGoldPerMinute (ancien système)
     this.baseGoldPerMinute = calculation.ratesPerMinute.gold;
     
-    // Mettre à jour les nouveaux taux
+    // ✅ MODIFIÉ : Mettre à jour les nouveaux taux avec Hero XP et Ascension Essences
     this.enhancedRatesPerMinute = {
       gems: calculation.ratesPerMinute.exp || 1,
       tickets: 0.5 * calculation.multipliers.vip,
-      materials: calculation.ratesPerMinute.materials || 2
+      materials: calculation.ratesPerMinute.materials || 2,
+      heroXP: calculation.ratesPerMinute.heroXP || 0,          // ✅ AJOUTÉ
+      ascensionEssences: calculation.ratesPerMinute.ascensionEssences || 0 // ✅ AJOUTÉ
     };
     
     // Mettre à jour les multiplicateurs
@@ -339,6 +354,26 @@ AfkStateSchema.methods.tickEnhanced = async function(now?: Date): Promise<{ rewa
     });
   }
 
+  // ✅ NOUVEAU : HERO XP
+  const heroXPGained = Math.floor(this.enhancedRatesPerMinute.heroXP * effectiveMin * this.activeMultipliers.total);
+  if (heroXPGained > 0) {
+    newRewards.push({
+      type: "currency",
+      currencyType: "heroXP",
+      quantity: heroXPGained
+    });
+  }
+
+  // ✅ NOUVEAU : ASCENSION ESSENCES
+  const ascensionEssencesGained = Math.floor(this.enhancedRatesPerMinute.ascensionEssences * effectiveMin * this.activeMultipliers.total);
+  if (ascensionEssencesGained > 0) {
+    newRewards.push({
+      type: "currency",
+      currencyType: "ascensionEssences",
+      quantity: ascensionEssencesGained
+    });
+  }
+
   // MATÉRIAUX
   const materialsGained = Math.floor(this.enhancedRatesPerMinute.materials * effectiveMin * this.activeMultipliers.total);
   if (materialsGained > 0) {
@@ -389,12 +424,16 @@ AfkStateSchema.methods.claimEnhanced = async function(): Promise<{ claimedReward
   const claimedRewards = [...this.pendingRewards];
   const totalValue = this.calculateTotalValue();
   
-  // Mettre à jour les stats quotidiennes
+  // ✅ MODIFIÉ : Mettre à jour les stats quotidiennes avec Hero XP et Ascension Essences
   claimedRewards.forEach((reward: IPendingReward) => {
     switch (reward.type) {
       case "currency":
         if (reward.currencyType === "gems") {
           this.todayClaimedRewards.gems += reward.quantity;
+        } else if (reward.currencyType === "heroXP") {
+          this.todayClaimedRewards.heroXP += reward.quantity;
+        } else if (reward.currencyType === "ascensionEssences") {
+          this.todayClaimedRewards.ascensionEssences += reward.quantity;
         }
         break;
       case "material":
@@ -415,7 +454,7 @@ AfkStateSchema.methods.claimEnhanced = async function(): Promise<{ claimedReward
   return { claimedRewards, goldClaimed, totalValue };
 };
 
-// Calculer valeur totale des récompenses
+// ✅ MODIFIÉ : Calculer valeur totale des récompenses avec Hero XP et Ascension Essences
 AfkStateSchema.methods.calculateTotalValue = function(): number {
   let totalValue = this.pendingGold * 0.001; // Or existant
   
@@ -426,6 +465,10 @@ AfkStateSchema.methods.calculateTotalValue = function(): number {
           totalValue += reward.quantity * 1;
         } else if (reward.currencyType === "tickets") {
           totalValue += reward.quantity * 5;
+        } else if (reward.currencyType === "heroXP") {
+          totalValue += reward.quantity * 0.1; // Hero XP moins précieux que gems
+        } else if (reward.currencyType === "ascensionEssences") {
+          totalValue += reward.quantity * 10; // Ascension Essences très précieux
         }
         break;
       case "material":
