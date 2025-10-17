@@ -439,6 +439,11 @@ async function runDummyBalanceTest(): Promise<void> {
     if (!fs.existsSync(debugDir)) {
       fs.mkdirSync(debugDir, { recursive: true });
       console.log(`📁 Created directory: ${debugDir}`);
+      
+      // Créer un .gitkeep pour que Git track le dossier
+      const gitkeepPath = path.join(debugDir, '.gitkeep');
+      fs.writeFileSync(gitkeepPath, '# This file ensures Git tracks the debugsequilibrage directory\n# Balance reports will be stored here\n');
+      console.log(`📝 Created .gitkeep file for Git tracking`);
     }
     
     const outputPath = path.join(debugDir, filename);
