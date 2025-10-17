@@ -313,7 +313,9 @@ const player = await Player.findOne({ playerId: playerId })
         ratesPerMinute: {
           gold: baseRates.goldPerMinute * multipliers.total,
           exp: baseRates.expPerMinute * multipliers.total,
-          materials: baseRates.materialsPerMinute * multipliers.total
+          materials: baseRates.materialsPerMinute * multipliers.total,
+          heroXP: 0,          // ✅ AJOUTÉ - AfkFarmingService ne gère pas encore Hero XP
+          ascensionEssences: 0 // ✅ AJOUTÉ - AfkFarmingService ne gère pas encore Ascension Essences
         },
         maxAccrualHours: this.calculateMaxAccrualHours(player.vipLevel)
       };
