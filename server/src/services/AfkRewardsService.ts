@@ -1,10 +1,15 @@
 import Player from "../models/Player";
 import { VipService } from "./VipService";
 import { AfkUnlockSystem } from "./AfkUnlockSystem";
+import { 
+  calculateAfkRewardPerMinute, 
+  getAfkRewardsUnlockSummary,
+  DEBUG_UNLOCK_ALL_AT_WORLD_1 
+} from "../config/afkRewardsConfig";
 
 export interface AfkReward {
   type: "currency" | "material" | "fragment" | "item";
-  currencyType?: "gold" | "gems" | "tickets";
+  currencyType?: "gold" | "gems" | "tickets" | "heroXP" | "ascensionEssences"; 
   materialId?: string;
   fragmentId?: string; // heroId for fragments
   itemId?: string;
@@ -332,78 +337,100 @@ export class AfkRewardsService {
   }
 
   // === GÉNÉRATION DE LA LISTE DES RÉCOMPENSES (ENHANCED AVEC PROGRESSIVE UNLOCKS) ===
-  private static generateRewardsList(
-    baseRates: any, 
-    multipliers: any, 
-    player: any
-  ): AfkReward[] {
-    const rewards: AfkReward[] = [];
+ private static generateRewardsList(
+  baseRates: any, 
+  multipliers: any, 
+  player: any
+): AfkReward[] {
+  const rewards: AfkReward[] = [];
 
-    // 1. OR (toujours présent si débloqué)
-    if (AfkUnlockSystem.isRewardUnlocked("gold", player.world, player.level)) {
-      const goldMultiplier = AfkUnlockSystem.getProgressionMultiplier("gold", player.world, player.level);
-      rewards.push({
-        type: "currency",
-        currencyType: "gold",
-        quantity: Math.floor(baseRates.goldPerMinute * multipliers.total * goldMultiplier),
-        baseQuantity: baseRates.goldPerMinute
-      });
-    }
-
-    // 2. EXP (si débloqué et niveau < 100)
-    if (player.level < 100 && AfkUnlockSystem.isRewardUnlocked("exp", player.world, player.level)) {
-      const expMultiplier = AfkUnlockSystem.getProgressionMultiplier("exp", player.world, player.level);
-      rewards.push({
-        type: "currency",
-        currencyType: "gems", // On utilise gems comme EXP pour simplifier
-        quantity: Math.floor(baseRates.expPerMinute * multipliers.total * 0.1 * expMultiplier),
-        baseQuantity: Math.floor(baseRates.expPerMinute * 0.1)
-      });
-    }
-
-    // 3. GEMS (si débloqué)
-    if (AfkUnlockSystem.isRewardUnlocked("gems", player.world, player.level)) {
-      const gemsRate = AfkUnlockSystem.getBaseRate("gems", player.world, player.level);
-      const gemsMultiplier = AfkUnlockSystem.getProgressionMultiplier("gems", player.world, player.level);
-      rewards.push({
-        type: "currency",
-        currencyType: "gems",
-        quantity: Math.floor(gemsRate * multipliers.total * gemsMultiplier),
-        baseQuantity: gemsRate
-      });
-    }
-
-    // 4. TICKETS (si débloqué et VIP 2+)
-    if (player.vipLevel >= 2 && AfkUnlockSystem.isRewardUnlocked("tickets", player.world, player.level)) {
-      const ticketsRate = AfkUnlockSystem.getBaseRate("tickets", player.world, player.level);
-      const ticketsMultiplier = AfkUnlockSystem.getProgressionMultiplier("tickets", player.world, player.level);
-      rewards.push({
-        type: "currency",
-        currencyType: "tickets",
-        quantity: Math.floor(ticketsRate * multipliers.vip * ticketsMultiplier),
-        baseQuantity: ticketsRate
-      });
-    }
-
-    // 5. MATÉRIAUX (selon déblocages progressifs)
-    const materialRewards = this.getMaterialsForWorldWithUnlocks(
-      player.world, 
-      player.level, 
-      baseRates.materialsPerMinute, 
-      multipliers.total
-    );
-    rewards.push(...materialRewards);
-
-    // 6. FRAGMENTS DE HÉROS (selon déblocages progressifs)
-    const fragmentRewards = this.getFragmentRewardsWithUnlocks(
-      player.world, 
-      player.level, 
-      multipliers.total
-    );
-    rewards.push(...fragmentRewards);
-
-    return rewards.filter(r => r.quantity > 0);
+  // 1. OR (toujours présent si débloqué)
+  if (AfkUnlockSystem.isRewardUnlocked("gold", player.world, player.level)) {
+    const goldMultiplier = AfkUnlockSystem.getProgressionMultiplier("gold", player.world, player.level);
+    rewards.push({
+      type: "currency",
+      currencyType: "gold",
+      quantity: Math.floor(baseRates.goldPerMinute * multipliers.total * goldMultiplier),
+      baseQuantity: baseRates.goldPerMinute
+    });
   }
+
+  // 2. EXP (si débloqué et niveau < 100)
+  if (player.level < 100 && AfkUnlockSystem.isRewardUnlocked("exp", player.world, player.level)) {
+    const expMultiplier = AfkUnlockSystem.getProgressionMultiplier("exp", player.world, player.level);
+    rewards.push({
+      type: "currency",
+      currencyType: "gems", // On utilise gems comme EXP pour simplifier
+      quantity: Math.floor(baseRates.expPerMinute * multipliers.total * 0.1 * expMultiplier),
+      baseQuantity: Math.floor(baseRates.expPerMinute * 0.1)
+    });
+  }
+
+  // 3. GEMS (si débloqué)
+  if (AfkUnlockSystem.isRewardUnlocked("gems", player.world, player.level)) {
+    const gemsRate = AfkUnlockSystem.getBaseRate("gems", player.world, player.level);
+    const gemsMultiplier = AfkUnlockSystem.getProgressionMultiplier("gems", player.world, player.level);
+    rewards.push({
+      type: "currency",
+      currencyType: "gems",
+      quantity: Math.floor(gemsRate * multipliers.total * gemsMultiplier),
+      baseQuantity: gemsRate
+    });
+  }
+
+  // ✅ 4. HERO XP (si débloqué) - NOUVEAU
+  const heroXPCalc = calculateAfkRewardPerMinute("heroXP", player.world, player.level, player.vipLevel || 0, player.difficulty || "Normal");
+  if (heroXPCalc.isUnlocked && heroXPCalc.finalRate > 0) {
+    rewards.push({
+      type: "currency",
+      currencyType: "heroXP",
+      quantity: heroXPCalc.finalRate,
+      baseQuantity: heroXPCalc.baseRate
+    });
+  }
+
+  // ✅ 5. ASCENSION ESSENCES (si débloqué) - NOUVEAU  
+  const essencesCalc = calculateAfkRewardPerMinute("ascensionEssences", player.world, player.level, player.vipLevel || 0, player.difficulty || "Normal");
+  if (essencesCalc.isUnlocked && essencesCalc.finalRate > 0) {
+    rewards.push({
+      type: "currency",
+      currencyType: "ascensionEssences", 
+      quantity: essencesCalc.finalRate,
+      baseQuantity: essencesCalc.baseRate
+    });
+  }
+
+  // 6. TICKETS (si débloqué et VIP 2+)
+  if (player.vipLevel >= 2 && AfkUnlockSystem.isRewardUnlocked("tickets", player.world, player.level)) {
+    const ticketsRate = AfkUnlockSystem.getBaseRate("tickets", player.world, player.level);
+    const ticketsMultiplier = AfkUnlockSystem.getProgressionMultiplier("tickets", player.world, player.level);
+    rewards.push({
+      type: "currency",
+      currencyType: "tickets",
+      quantity: Math.floor(ticketsRate * multipliers.vip * ticketsMultiplier),
+      baseQuantity: ticketsRate
+    });
+  }
+
+  // 7. MATÉRIAUX (selon déblocages progressifs)
+  const materialRewards = this.getMaterialsForWorldWithUnlocks(
+    player.world, 
+    player.level, 
+    baseRates.materialsPerMinute, 
+    multipliers.total
+  );
+  rewards.push(...materialRewards);
+
+  // 8. FRAGMENTS DE HÉROS (selon déblocages progressifs)
+  const fragmentRewards = this.getFragmentRewardsWithUnlocks(
+    player.world, 
+    player.level, 
+    multipliers.total
+  );
+  rewards.push(...fragmentRewards);
+
+  return rewards.filter(r => r.quantity > 0);
+}
 
   // === MATÉRIAUX AVEC DÉBLOCAGES PROGRESSIFS ===
   private static getMaterialsForWorldWithUnlocks(
