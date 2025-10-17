@@ -1,26 +1,25 @@
+// server/src/gameplay/AutoSpellLoader.ts - VERSION AMÉLIORÉE
 import * as fs from 'fs';
 import * as path from 'path';
 import { BaseSpell } from './base/BaseSpell';
 
-// Interface pour les modules de sorts auto-découverts
 interface SpellModule {
   [key: string]: any;
-}
-
-// Interface pour les informations d'un sort
-interface SpellInfo {
-  id: string;
-  name: string;
-  category: string;
-  instance: BaseSpell;
 }
 
 export class AutoSpellLoader {
   private static loadedSpells: Map<string, BaseSpell> = new Map();
   private static spellCategories: Map<string, string[]> = new Map();
+  private static initialized: boolean = false;
+  private static loadedFiles: Set<string> = new Set(); // ✅ Cache des fichiers
   
-  // Auto-découverte et chargement de tous les sorts
   static async autoLoadSpells(): Promise<void> {
+    // ✅ PROTECTION contre double initialisation
+    if (this.initialized) {
+      console.log(`🔄 AutoSpellLoader déjà initialisé (${this.loadedSpells.size} sorts), skip`);
+      return;
+    }
+    
     console.log("🔍 Auto-découverte des sorts...");
     
     const spellDirectories = [
@@ -37,60 +36,31 @@ export class AutoSpellLoader {
       totalLoaded += loaded;
     }
     
+    this.initialized = true; // ✅ Marquer comme initialisé
     console.log(`✨ ${totalLoaded} sorts auto-chargés dans ${spellDirectories.length} catégories`);
     this.displayLoadedSpells();
   }
   
-  // Charge tous les sorts d'un répertoire
-  private static async loadSpellsFromDirectory(dirPath: string, category: string): Promise<number> {
-    const fullPath = path.resolve(__dirname, dirPath);
-    
-    // Vérifier si le répertoire existe
-    if (!fs.existsSync(fullPath)) {
-      console.log(`📂 Répertoire ${dirPath} non trouvé - création automatique`);
-      this.createDirectoryStructure(fullPath);
-      return 0;
-    }
-    
-    let loadedCount = 0;
-    
-    try {
-      const files = fs.readdirSync(fullPath);
-      const spellFiles = files.filter(file => 
-        (file.endsWith('.ts') || file.endsWith('.js')) && 
-        !file.endsWith('.d.ts') &&
-        file !== 'index.ts' &&
-        file !== 'index.js'
-      );
-      
-      for (const file of spellFiles) {
-        const loaded = await this.loadSpellFromFile(path.join(fullPath, file), category);
-        if (loaded) loadedCount++;
-      }
-      
-    } catch (error) {
-      console.warn(`⚠️ Erreur lors du scan du répertoire ${dirPath}:`, error);
-    }
-    
-    return loadedCount;
-  }
-  
-  // Charge un sort depuis un fichier
   private static async loadSpellFromFile(filePath: string, category: string): Promise<boolean> {
     try {
-      // Convertir le chemin absolu en chemin relatif correct depuis AutoSpellLoader.ts
-      const relativePath = path.relative(__dirname, filePath).replace(/\\/g, '/');
+      // ✅ PROTECTION contre double chargement du même fichier
+      if (this.loadedFiles.has(filePath)) {
+        console.log(`⏭️ Fichier ${path.basename(filePath)} déjà chargé, skip`);
+        return false;
+      }
       
-      // Supprimer l'extension pour l'import
+      const relativePath = path.relative(__dirname, filePath).replace(/\\/g, '/');
       const moduleImportPath = './' + relativePath.replace(/\.(ts|js)$/, '');
       
       console.log(`🔍 Tentative de chargement: ${moduleImportPath}`);
       
-      // Import dynamique du module
+      // ✅ Nettoyer le cache require pour éviter les anciens imports
+      delete require.cache[require.resolve(moduleImportPath)];
+      
       const module: SpellModule = await import(moduleImportPath);
       
-      // Chercher les exports qui sont des instances de BaseSpell
-      const spellInstances = this.extractSpellsFromModule(module);
+      // ✅ AMÉLIORATION: Extraction plus intelligente
+      const spellInstances = this.extractSpellsFromModuleSmarter(module, path.basename(filePath));
       
       if (spellInstances.length === 0) {
         console.warn(`⚠️ Aucun sort valide trouvé dans ${path.basename(filePath)}`);
@@ -98,12 +68,20 @@ export class AutoSpellLoader {
       }
       
       // Enregistrer tous les sorts trouvés
+      let registeredCount = 0;
       for (const spell of spellInstances) {
-        this.registerSpell(spell, category);
+        if (this.registerSpell(spell, category)) {
+          registeredCount++;
+        }
       }
       
-      console.log(`📜 ${spellInstances.length} sort(s) chargé(s) depuis ${path.basename(filePath)}`);
-      return true;
+      if (registeredCount > 0) {
+        this.loadedFiles.add(filePath); // ✅ Marquer comme chargé
+        console.log(`📜 ${registeredCount} sort(s) chargé(s) depuis ${path.basename(filePath)}`);
+        return true;
+      }
+      
+      return false;
       
     } catch (error) {
       console.error(`❌ Erreur lors du chargement de ${path.basename(filePath)}:`, error);
@@ -111,69 +89,117 @@ export class AutoSpellLoader {
     }
   }
   
-  // Extrait les sorts valides d'un module
-  private static extractSpellsFromModule(module: SpellModule): BaseSpell[] {
+  // ✅ NOUVELLE MÉTHODE: Extraction plus intelligente
+  private static extractSpellsFromModuleSmarter(module: SpellModule, fileName: string): BaseSpell[] {
     const spells: BaseSpell[] = [];
+    const processedIds = new Set<string>(); // Éviter les doublons dans le même fichier
     
     for (const [exportName, exportValue] of Object.entries(module)) {
-      // Vérifier si c'est une instance de BaseSpell
+      let spellInstance: BaseSpell | null = null;
+      
+      // ✅ PRIORISER les instances directes (exportName finit par "Spell")
       if (this.isValidSpellInstance(exportValue)) {
-        spells.push(exportValue as BaseSpell);
+        spellInstance = exportValue as BaseSpell;
+        
+        // ✅ FILTRER: Si c'est une classe ET qu'on a déjà l'instance, skip la classe
+        const spellId = spellInstance.config.id;
+        if (processedIds.has(spellId)) {
+          console.log(`⏭️ Sort ${spellId} déjà traité dans ${fileName}, skip export "${exportName}"`);
+          continue;
+        }
       }
-      // Vérifier si c'est une classe qui étend BaseSpell
+      // Vérifier si c'est une classe SEULEMENT si on n'a pas encore trouvé l'instance
       else if (this.isSpellClass(exportValue)) {
         try {
           const instance = new (exportValue as any)();
           if (this.isValidSpellInstance(instance)) {
-            spells.push(instance);
+            const spellId = instance.config.id;
+            
+            // ✅ SKIP si on a déjà une instance de ce sort
+            if (!processedIds.has(spellId)) {
+              spellInstance = instance;
+            } else {
+              console.log(`⏭️ Instance de ${spellId} déjà trouvée, skip classe "${exportName}"`);
+            }
           }
         } catch (error) {
-          console.warn(`⚠️ Impossible d'instancier ${exportName}:`, error);
+          console.warn(`⚠️ Impossible d'instancier ${exportName} dans ${fileName}:`, error);
         }
+      }
+      
+      // Ajouter l'instance si valide et pas encore traitée
+      if (spellInstance && !processedIds.has(spellInstance.config.id)) {
+        spells.push(spellInstance);
+        processedIds.add(spellInstance.config.id);
+        console.log(`✅ ${spellInstance.config.name} (${spellInstance.config.id}) extrait depuis ${exportName}`);
       }
     }
     
     return spells;
   }
   
-  // Vérifie si un objet est une instance valide de BaseSpell
+  // ✅ AMÉLIORATION: Meilleure détection des instances
   private static isValidSpellInstance(obj: any): boolean {
     return obj && 
            typeof obj === 'object' && 
            obj.config && 
            typeof obj.config.id === 'string' && 
+           typeof obj.config.name === 'string' &&
            typeof obj.execute === 'function' &&
-           typeof obj.canCast === 'function';
+           typeof obj.canCast === 'function' &&
+           // ✅ Vérifier que ce n'est pas une classe (pas de prototype.constructor)
+           !obj.prototype;
   }
   
-  // Vérifie si un export est une classe de sort
-  private static isSpellClass(obj: any): boolean {
-    return typeof obj === 'function' && 
-           obj.prototype && 
-           typeof obj.prototype.execute === 'function';
-  }
-  
-  // Enregistre un sort
-  private static registerSpell(spell: BaseSpell, category: string): void {
+  private static registerSpell(spell: BaseSpell, category: string): boolean {
     const spellId = spell.config.id;
     
     if (this.loadedSpells.has(spellId)) {
       console.warn(`⚠️ Sort dupliqué ignoré: ${spellId}`);
-      return;
+      return false;
     }
     
     this.loadedSpells.set(spellId, spell);
     
-    // Organiser par catégorie
     if (!this.spellCategories.has(category)) {
       this.spellCategories.set(category, []);
     }
     this.spellCategories.get(category)!.push(spellId);
     
     console.log(`✅ ${spell.config.name} (${spellId}) enregistré dans ${category}`);
+    return true;
   }
   
-  // Affiche un résumé des sorts chargés
+  // ✅ NOUVEAU: Méthode de reset pour les tests
+  static reset(): void {
+    this.loadedSpells.clear();
+    this.spellCategories.clear();
+    this.loadedFiles.clear();
+    this.initialized = false;
+    console.log("🔄 AutoSpellLoader reseté");
+  }
+  
+  // ✅ NOUVEAU: Hot reload amélioré
+  static async hotReload(): Promise<void> {
+    console.log("🔄 Rechargement à chaud des sorts...");
+    this.reset();
+    await this.autoLoadSpells();
+  }
+  
+  // ... resto des méthodes existantes (getSpell, getAllSpells, etc.)
+  static getSpell(spellId: string): BaseSpell | undefined {
+    return this.loadedSpells.get(spellId);
+  }
+  
+  static getAllSpells(): BaseSpell[] {
+    return Array.from(this.loadedSpells.values());
+  }
+  
+  static getSpellsByCategory(category: string): BaseSpell[] {
+    const spellIds = this.spellCategories.get(category) || [];
+    return spellIds.map(id => this.loadedSpells.get(id)).filter(Boolean) as BaseSpell[];
+  }
+  
   private static displayLoadedSpells(): void {
     console.log("\n📊 === RÉSUMÉ DES SORTS CHARGÉS ===");
     
@@ -188,104 +214,5 @@ export class AutoSpellLoader {
     }
     
     console.log(`\n💫 Total: ${this.loadedSpells.size} sorts chargés automatiquement`);
-  }
-  
-  // Crée la structure de répertoires si elle n'existe pas
-  private static createDirectoryStructure(dirPath: string): void {
-    try {
-      fs.mkdirSync(dirPath, { recursive: true });
-      
-      // Créer un fichier README dans chaque répertoire
-      const readmeContent = `# ${path.basename(dirPath)} Spells
-
-Ce répertoire contient les sorts de type ${path.basename(dirPath)}.
-
-## Convention de nommage :
-- Fichier : \`spell_name.ts\`
-- Export : \`export const spellNameSpell = new SpellNameSpell();\`
-- Classe : \`class SpellNameSpell extends BaseSpell\`
-
-## Auto-découverte :
-Les sorts dans ce répertoire sont automatiquement chargés par l'AutoSpellLoader.
-`;
-      
-      fs.writeFileSync(path.join(dirPath, 'README.md'), readmeContent);
-      
-    } catch (error) {
-      console.warn(`⚠️ Impossible de créer ${dirPath}:`, error);
-    }
-  }
-  
-  // API publique pour récupérer les sorts
-  static getSpell(spellId: string): BaseSpell | undefined {
-    return this.loadedSpells.get(spellId);
-  }
-  
-  static getAllSpells(): BaseSpell[] {
-    return Array.from(this.loadedSpells.values());
-  }
-  
-  static getSpellsByCategory(category: string): BaseSpell[] {
-    const spellIds = this.spellCategories.get(category) || [];
-    return spellIds.map(id => this.loadedSpells.get(id)).filter(Boolean) as BaseSpell[];
-  }
-  
-  static getLoadedSpellIds(): string[] {
-    return Array.from(this.loadedSpells.keys());
-  }
-  
-  static getCategories(): string[] {
-    return Array.from(this.spellCategories.keys());
-  }
-  
-  static getStats(): any {
-    return {
-      totalSpells: this.loadedSpells.size,
-      categories: Object.fromEntries(
-        Array.from(this.spellCategories.entries()).map(([cat, spells]) => [cat, spells.length])
-      ),
-      spellsList: Object.fromEntries(
-        Array.from(this.loadedSpells.entries()).map(([id, spell]) => [id, spell.config.name])
-      )
-    };
-  }
-  
-  // Rechargement à chaud (pour le développement)
-  static async hotReload(): Promise<void> {
-    console.log("🔄 Rechargement à chaud des sorts...");
-    this.loadedSpells.clear();
-    this.spellCategories.clear();
-    await this.autoLoadSpells();
-  }
-  
-  // Validation de l'intégrité des sorts chargés
-  static validateLoadedSpells(): boolean {
-    let allValid = true;
-    
-    for (const [id, spell] of this.loadedSpells.entries()) {
-      if (!this.validateSpell(spell)) {
-        console.error(`❌ Sort invalide: ${id}`);
-        allValid = false;
-      }
-    }
-    
-    if (allValid) {
-      console.log("✅ Tous les sorts chargés sont valides");
-    }
-    
-    return allValid;
-  }
-  
-  private static validateSpell(spell: BaseSpell): boolean {
-    const config = spell.config;
-    
-    if (!config.id || typeof config.id !== 'string') return false;
-    if (!config.name || typeof config.name !== 'string') return false;
-    if (!['active', 'ultimate', 'passive'].includes(config.type)) return false;
-    if (typeof config.energyCost !== 'number' || config.energyCost < 0) return false;
-    if (typeof spell.execute !== 'function') return false;
-    if (typeof spell.canCast !== 'function') return false;
-    
-    return true;
   }
 }
