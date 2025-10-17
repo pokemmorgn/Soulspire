@@ -3,10 +3,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BasePassive } from './base/BasePassive';
 
+// Interface pour les modules de passifs auto-découverts
 interface PassiveModule {
   [key: string]: any;
 }
 
+// Interface pour les informations d'un passif
 interface PassiveInfo {
   id: string;
   name: string;
@@ -18,20 +20,10 @@ export class AutoPassiveLoader {
   private static loadedPassives: Map<string, BasePassive> = new Map();
   private static passivesByTrigger: Map<string, string[]> = new Map();
   
-  // ✅ AJOUT : Protection contre le double chargement
-  private static initialized: boolean = false;
-  private static loadedFiles: Set<string> = new Set();
-  
   /**
    * Auto-découverte et chargement de tous les passifs
    */
   static async autoLoadPassives(): Promise<void> {
-    // ✅ NOUVEAU : Éviter le rechargement multiple
-    if (this.initialized) {
-      console.log(`✅ Passifs déjà chargés (${this.loadedPassives.size}), skip reload`);
-      return;
-    }
-    
     console.log("🔍 Auto-découverte des passifs...");
     
     const passivesDirectory = './passives';
@@ -39,9 +31,6 @@ export class AutoPassiveLoader {
     
     console.log(`✨ ${loaded} passif(s) auto-chargé(s)`);
     this.displayLoadedPassives();
-    
-    // ✅ NOUVEAU : Marquer comme initialisé
-    this.initialized = true;
   }
   
   /**
@@ -70,19 +59,8 @@ export class AutoPassiveLoader {
       );
       
       for (const file of passiveFiles) {
-        const filePath = path.join(fullPath, file);
-        
-        // ✅ NOUVEAU : Éviter de charger le même fichier plusieurs fois
-        if (this.loadedFiles.has(filePath)) {
-          console.log(`📋 Fichier ${file} déjà chargé, skip`);
-          continue;
-        }
-        
-        const loaded = await this.loadPassiveFromFile(filePath);
-        if (loaded) {
-          loadedCount++;
-          this.loadedFiles.add(filePath);
-        }
+        const loaded = await this.loadPassiveFromFile(path.join(fullPath, file));
+        if (loaded) loadedCount++;
       }
       
     } catch (error) {
@@ -105,9 +83,6 @@ export class AutoPassiveLoader {
       
       console.log(`🔍 Tentative de chargement: ${moduleImportPath}`);
       
-      // ✅ NOUVEAU : Gestion du cache pour éviter les conflits
-      delete require.cache[require.resolve(moduleImportPath)];
-      
       // Import dynamique du module
       const module: PassiveModule = await import(moduleImportPath);
       
@@ -119,20 +94,13 @@ export class AutoPassiveLoader {
         return false;
       }
       
-      // Enregistrer tous les passifs trouvés (avec déduplication)
-      let registeredCount = 0;
+      // Enregistrer tous les passifs trouvés
       for (const passive of passiveInstances) {
-        if (this.registerPassive(passive)) {
-          registeredCount++;
-        }
+        this.registerPassive(passive);
       }
       
-      if (registeredCount > 0) {
-        console.log(`📜 ${registeredCount} passif(s) chargé(s) depuis ${path.basename(filePath)}`);
-        return true;
-      }
-      
-      return false;
+      console.log(`📜 ${passiveInstances.length} passif(s) chargé(s) depuis ${path.basename(filePath)}`);
+      return true;
       
     } catch (error) {
       console.error(`❌ Erreur lors du chargement de ${path.basename(filePath)}:`, error);
@@ -145,31 +113,22 @@ export class AutoPassiveLoader {
    */
   private static extractPassivesFromModule(module: PassiveModule): BasePassive[] {
     const passives: BasePassive[] = [];
-    const processedIds = new Set<string>(); // ✅ NOUVEAU : Éviter les doublons dans le même fichier
     
     for (const [exportName, exportValue] of Object.entries(module)) {
-      let passiveInstance: BasePassive | null = null;
-      
       // Vérifier si c'est une instance de BasePassive
       if (this.isValidPassiveInstance(exportValue)) {
-        passiveInstance = exportValue as BasePassive;
+        passives.push(exportValue as BasePassive);
       }
       // Vérifier si c'est une classe qui étend BasePassive
       else if (this.isPassiveClass(exportValue)) {
         try {
           const instance = new (exportValue as any)();
           if (this.isValidPassiveInstance(instance)) {
-            passiveInstance = instance;
+            passives.push(instance);
           }
         } catch (error) {
           console.warn(`⚠️ Impossible d'instancier ${exportName}:`, error);
         }
-      }
-      
-      // ✅ NOUVEAU : Ajouter le passif si valide et pas encore traité
-      if (passiveInstance && !processedIds.has(passiveInstance.config.id)) {
-        passives.push(passiveInstance);
-        processedIds.add(passiveInstance.config.id);
       }
     }
     
@@ -200,14 +159,14 @@ export class AutoPassiveLoader {
   }
   
   /**
-   * Enregistre un passif (✅ NOUVEAU : avec déduplication)
+   * Enregistre un passif
    */
-  private static registerPassive(passive: BasePassive): boolean {
+  private static registerPassive(passive: BasePassive): void {
     const passiveId = passive.config.id;
     
     if (this.loadedPassives.has(passiveId)) {
       console.warn(`⚠️ Passif dupliqué ignoré: ${passiveId}`);
-      return false;
+      return;
     }
     
     this.loadedPassives.set(passiveId, passive);
@@ -220,7 +179,6 @@ export class AutoPassiveLoader {
     this.passivesByTrigger.get(triggerType)!.push(passiveId);
     
     console.log(`✅ ${passive.config.name} (${passiveId}) enregistré - Trigger: ${triggerType}`);
-    return true;
   }
   
   /**
@@ -314,17 +272,8 @@ Les passifs dans ce répertoire sont automatiquement chargés par l'AutoPassiveL
       ),
       passivesList: Object.fromEntries(
         Array.from(this.loadedPassives.entries()).map(([id, passive]) => [id, passive.config.name])
-      ),
-      filesLoaded: this.loadedFiles.size,
-      initialized: this.initialized
+      )
     };
-  }
-  
-  /**
-   * ✅ NOUVEAU : Vérifier l'état d'initialisation
-   */
-  static isInitialized(): boolean {
-    return this.initialized;
   }
   
   /**
@@ -334,8 +283,6 @@ Les passifs dans ce répertoire sont automatiquement chargés par l'AutoPassiveL
     console.log("🔄 Rechargement à chaud des passifs...");
     this.loadedPassives.clear();
     this.passivesByTrigger.clear();
-    this.loadedFiles.clear();
-    this.initialized = false;
     await this.autoLoadPassives();
   }
   
@@ -344,26 +291,12 @@ Les passifs dans ce répertoire sont automatiquement chargés par l'AutoPassiveL
    */
   static validateLoadedPassives(): boolean {
     let allValid = true;
-    const duplicateIds = new Set<string>();
-    const seenIds = new Set<string>();
     
     for (const [id, passive] of this.loadedPassives.entries()) {
-      // Vérifier la validité du passif
       if (!this.validatePassive(passive)) {
         console.error(`❌ Passif invalide: ${id}`);
         allValid = false;
       }
-      
-      // Vérifier les doublons d'ID
-      if (seenIds.has(id)) {
-        duplicateIds.add(id);
-        allValid = false;
-      }
-      seenIds.add(id);
-    }
-    
-    if (duplicateIds.size > 0) {
-      console.error(`❌ IDs dupliqués détectés: ${Array.from(duplicateIds).join(', ')}`);
     }
     
     if (allValid) {
@@ -491,30 +424,4 @@ Les passifs dans ce répertoire sont automatiquement chargés par l'AutoPassiveL
     
     return stats;
   }
-  
-  /**
-   * ✅ NOUVEAU : Reset complet pour les tests
-   */
-  static reset(): void {
-    this.loadedPassives.clear();
-    this.passivesByTrigger.clear();
-    this.loadedFiles.clear();
-    this.initialized = false;
-  }
-  
-  /**
-   * ✅ NOUVEAU : Diagnostic détaillé
-   */
-  static diagnose(): void {
-    console.log("🔧 DIAGNOSTIC AUTOPASSIVELOADER");
-    console.log(`Initialisé: ${this.initialized}`);
-    console.log(`Passifs chargés: ${this.loadedPassives.size}`);
-    console.log(`Fichiers traités: ${this.loadedFiles.size}`);
-    console.log(`Types de trigger: ${this.passivesByTrigger.size}`);
-    
-    if (this.loadedPassives.size === 0) {
-      console.log("⚠️ ATTENTION: Aucun passif chargé !");
-    }
-    
-    this.validateLoadedPassives();
-  }
+}
