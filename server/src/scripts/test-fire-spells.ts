@@ -1,8 +1,8 @@
 // server/src/scripts/test-fire-spells.ts
 import { IBattleParticipant } from "../models/Battle";
 import { SpellManager } from "../gameplay/SpellManager";
-import { EffectManager } from "../gameplay/EffectManager";
 import { PassiveManager } from "../gameplay/PassiveManager";
+// ❌ RETIRÉ: import { EffectManager } from "../gameplay/EffectManager";
 
 // Import des sorts à tester
 import { ardenAuraSpell } from "../gameplay/actives/ArdenAuraSpell";
@@ -24,6 +24,10 @@ import { telluricFuryPassive } from "../gameplay/passives/TelluricFuryPassive";
 
 /**
  * Script de test pour tous les sorts Feu Légendaires
+ * 
+ * ✅ CORRIGÉ: Plus de double chargement !
+ * SpellManager.initialize() charge déjà EffectManager automatiquement
+ * 
  * Usage: npx ts-node server/src/scripts/test-fire-spells.ts
  */
 
@@ -66,11 +70,12 @@ async function initializeManagers() {
   console.log("🔥 === INITIALISATION DES MANAGERS ===");
   
   try {
+    // ✅ SpellManager charge automatiquement EffectManager
     await SpellManager.initialize();
-    console.log("✅ SpellManager initialisé");
+    console.log("✅ SpellManager initialisé (+ EffectManager automatique)");
     
-    await EffectManager.initialize();
-    console.log("✅ EffectManager initialisé");
+    // ❌ RETIRÉ: await EffectManager.initialize();
+    // ✅ Plus besoin - déjà fait par SpellManager !
     
     await PassiveManager.initialize();
     console.log("✅ PassiveManager initialisé");
@@ -143,6 +148,7 @@ function testPassiveExecution(passiveName: string, passive: any, caster: IBattle
 
 async function runAllTests() {
   console.log("🔥🔥🔥 === DÉBUT DES TESTS SORTS FEU ===");
+  console.log("✨ Version corrigée - Plus de double chargement !");
   
   // Initialisation
   const initialized = await initializeManagers();
@@ -259,7 +265,7 @@ async function runAllTests() {
     console.log("⚠️ Test IncandescentRush bonus ignoré:", error instanceof Error ? error.message : String(error));
   }
   
-  console.log("\n🔥 === FIN DES TESTS ===");
+  console.log("\n🔥 === FIN DES TESTS (VERSION OPTIMISÉE) ===");
 }
 
 // === EXÉCUTION ===
