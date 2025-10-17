@@ -242,41 +242,91 @@ export class AfkServiceEnhanced {
   /**
    * ✅ MODIFIÉ : tickEnhanced() - Version avec multi-récompenses incluant Hero XP et Ascension Essences
    */
-  static async tickEnhanced(
-    playerId: string,
-    now: Date = new Date()
-  ): Promise<{
-    state: HydratedDocument<IAfkState>;
-    goldGained: number;
-    enhancedRewards: IPendingReward[];
-    timeElapsed: number;
-  }> {
-    await this.settleOfflineIfNeeded(playerId);
-    const state = await this.ensureStateEnhanced(playerId);
-    
-    // ✅ NOUVEAU : Générer Hero XP et Ascension Essences selon afkRewardsConfig
-    const enhancedRewards = await this.generateEnhancedRewardsFromConfig(playerId, state);
-    
-    // Ajouter les nouvelles récompenses au state
-    enhancedRewards.forEach(reward => {
-      state.addPendingReward(reward);
-    });
-    
-    // Faire le tick traditionnel pour l'or
-    const result = await state.tickEnhanced(now);
-    await state.save();
-    
-    // Récupérer l'or gagné traditionnel
-    const goldGained = state.pendingGold;
-    
-    return {
-      state,
-      goldGained,
-      enhancedRewards: [...result.rewards, ...enhancedRewards],
-      timeElapsed: result.timeElapsed
-    };
-  }
+static async tickEnhanced(
+  playerId: string,
+  now: Date = new Date()
+): Promise<{
+  state: HydratedDocument<IAfkState>;
+  goldGained: number;
+  enhancedRewards: IPendingReward[];
+  timeElapsed: number;
+}> {
+  await this.settleOfflineIfNeeded(playerId);
+  const state = await this.ensureStateEnhanced(playerId);
+  
+  // ✅ CORRECTION : Faire le tick enhanced AVANT de générer nos propres récompenses
+  const result = await state.tickEnhanced(now);
+  
+  // ✅ NOUVEAU : Générer Hero XP et Ascension Essences selon afkRewardsConfig
+  // APRÈS le tick enhanced pour utiliser le bon timeElapsed
+  const configRewards = await this.generateEnhancedRewardsFromConfig(playerId, result.timeElapsed);
+  
+  // Ajouter les nouvelles récompenses au state
+  configRewards.forEach(reward => {
+    state.addPendingReward(reward);
+  });
+  
+  await state.save();
+  
+  // Récupérer l'or gagné traditionnel
+  const goldGained = state.pendingGold;
+  
+  return {
+    state,
+    goldGained,
+    enhancedRewards: [...result.rewards, ...configRewards],
+    timeElapsed: result.timeElapsed
+  };
+}
 
+/**
+ * ✅ NOUVEAU : Générer Hero XP et Ascension Essences selon afkRewardsConfig (version corrigée)
+ */
+static async generateEnhancedRewardsFromConfig(playerId: string, timeElapsedSeconds: number): Promise<IPendingReward[]> {
+  try {
+    const player = await Player.findOne({ playerId: playerId }).select("world level vipLevel difficulty");
+    if (!player) return [];
+
+    const rewards: IPendingReward[] = [];
+    const timeElapsedMinutes = timeElapsedSeconds / 60;
+
+    console.log(`⏱️ Génération enhanced rewards pour ${timeElapsedMinutes.toFixed(2)} minutes`);
+
+    // ✅ HERO XP selon afkRewardsConfig
+    const heroXPCalc = calculateAfkRewardPerMinute("heroXP", player.world, player.level, player.vipLevel || 0, player.difficulty || "Normal");
+    if (heroXPCalc.isUnlocked && heroXPCalc.finalRate > 0) {
+      const heroXPGained = Math.floor(heroXPCalc.finalRate * timeElapsedMinutes);
+      if (heroXPGained > 0) {
+        rewards.push({
+          type: "currency",
+          currencyType: "heroXP",
+          quantity: heroXPGained
+        });
+        console.log(`💪 Hero XP généré: ${heroXPGained} (${heroXPCalc.finalRate}/min × ${timeElapsedMinutes.toFixed(2)}min)`);
+      }
+    }
+
+    // ✅ ASCENSION ESSENCES selon afkRewardsConfig
+    const essencesCalc = calculateAfkRewardPerMinute("ascensionEssences", player.world, player.level, player.vipLevel || 0, player.difficulty || "Normal");
+    if (essencesCalc.isUnlocked && essencesCalc.finalRate > 0) {
+      const essencesGained = Math.floor(essencesCalc.finalRate * timeElapsedMinutes);
+      if (essencesGained > 0) {
+        rewards.push({
+          type: "currency",
+          currencyType: "ascensionEssences",
+          quantity: essencesGained
+        });
+        console.log(`🌟 Ascension Essences générées: ${essencesGained} (${essencesCalc.finalRate}/min × ${timeElapsedMinutes.toFixed(2)}min)`);
+      }
+    }
+
+    return rewards;
+
+  } catch (error) {
+    console.error("❌ Erreur generateEnhancedRewardsFromConfig:", error);
+    return [];
+  }
+}
   /**
    * ✅ MODIFIÉ : getSummaryEnhanced() - Inclut Hero XP et Ascension Essences
    */
