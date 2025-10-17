@@ -1,8 +1,16 @@
+// server/src/services/AfkService.ts
 import mongoose, { ClientSession, HydratedDocument } from "mongoose";
 import AfkState, { IAfkState, IPendingReward } from "../models/AfkState";
 import AfkSession, { IAfkSession } from "../models/AfkSession";
 import Player from "../models/Player";
 import { WebSocketService } from './WebSocketService';
+// ✅ NOUVEAU : Import de la config AFK Rewards
+import { 
+  getAfkRewardsUnlockSummary, 
+  isAfkRewardUnlocked,
+  calculateAfkRewardPerMinute,
+  DEBUG_UNLOCK_ALL_AT_WORLD_1 
+} from "../config/afkRewardsConfig";
 
 /**
  * Service AFK Enhanced - Extension du service existant
@@ -29,6 +37,8 @@ export interface AfkSummaryEnhanced extends AfkSummary {
     gems: number;
     tickets: number;
     materials: number;
+    heroXP: number;          // ✅ NOUVEAU
+    ascensionEssences: number; // ✅ NOUVEAU
   };
   activeMultipliers: {
     vip: number;
@@ -43,6 +53,19 @@ export interface AfkSummaryEnhanced extends AfkSummary {
     gems: number;
     materials: number;
     fragments: number;
+    heroXP: number;          // ✅ NOUVEAU
+    ascensionEssences: number; // ✅ NOUVEAU
+  };
+  // ✅ NOUVEAU : Infos sur les déblocages
+  unlockInfo: {
+    unlockedRewards: string[];
+    nextUnlocks: Array<{
+      type: string;
+      requirement: string;
+      worldsToGo: number;
+      levelsToGo: number;
+    }>;
+    progressPercentage: number;
   };
 }
 
@@ -60,6 +83,8 @@ export interface ClaimResultEnhanced {
     gold: number;
     gems: number;
     tickets: number;
+    heroXP: number;          // ✅ NOUVEAU
+    ascensionEssences: number; // ✅ NOUVEAU
     materialsAdded: Record<string, number>;
     fragmentsAdded: Record<string, number>;
   };
@@ -70,7 +95,7 @@ type SourceType = "idle" | "offline";
 const DEFAULTS = {
   HEARTBEAT_GRACE_SEC: 120,
   MAX_HEARTBEAT_DELTA_SEC: 300,
-  ENHANCED_UNLOCK_WORLD: 3, // Débloque le système enhanced au monde 3
+  // ✅ SUPPRIMÉ : ENHANCED_UNLOCK_WORLD (maintenant géré par afkRewardsConfig)
 };
 
 export class AfkServiceEnhanced {
@@ -199,23 +224,23 @@ export class AfkServiceEnhanced {
   // ==================================================================================
 
   /**
-   * ensureStateEnhanced() - Version améliorée avec auto-upgrade
+   * ✅ MODIFIÉ : ensureStateEnhanced() - Utilise afkRewardsConfig pour l'éligibilité
    */
   static async ensureStateEnhanced(playerId: string): Promise<HydratedDocument<IAfkState>> {
     let state = await this.ensureState(playerId);
     
-    // Vérifier si le joueur peut être upgradé au système enhanced
-    if (!state.useEnhancedRewards && await this.canUseEnhancedSystem(playerId)) {
+    // ✅ NOUVEAU : Vérifier éligibilité selon afkRewardsConfig au lieu de logique fixe
+    if (!state.useEnhancedRewards && await this.canUseEnhancedSystemFromConfig(playerId)) {
       await state.enableEnhancedMode();
       await state.save();
-      console.log(`🚀 Joueur ${playerId} migré vers le système AFK Enhanced`);
+      console.log(`🚀 Joueur ${playerId} migré vers le système AFK Enhanced (via afkRewardsConfig)`);
     }
     
     return state;
   }
 
   /**
-   * tickEnhanced() - Version avec multi-récompenses
+   * ✅ MODIFIÉ : tickEnhanced() - Version avec multi-récompenses incluant Hero XP et Ascension Essences
    */
   static async tickEnhanced(
     playerId: string,
@@ -229,7 +254,15 @@ export class AfkServiceEnhanced {
     await this.settleOfflineIfNeeded(playerId);
     const state = await this.ensureStateEnhanced(playerId);
     
-    // Faire le tick enhanced si activé
+    // ✅ NOUVEAU : Générer Hero XP et Ascension Essences selon afkRewardsConfig
+    const enhancedRewards = await this.generateEnhancedRewardsFromConfig(playerId, state);
+    
+    // Ajouter les nouvelles récompenses au state
+    enhancedRewards.forEach(reward => {
+      state.addPendingReward(reward);
+    });
+    
+    // Faire le tick traditionnel pour l'or
     const result = await state.tickEnhanced(now);
     await state.save();
     
@@ -239,13 +272,13 @@ export class AfkServiceEnhanced {
     return {
       state,
       goldGained,
-      enhancedRewards: result.rewards,
+      enhancedRewards: [...result.rewards, ...enhancedRewards],
       timeElapsed: result.timeElapsed
     };
   }
 
   /**
-   * getSummaryEnhanced() - Résumé complet avec nouvelles fonctionnalités
+   * ✅ MODIFIÉ : getSummaryEnhanced() - Inclut Hero XP et Ascension Essences
    */
   static async getSummaryEnhanced(
     playerId: string,
@@ -258,7 +291,21 @@ export class AfkServiceEnhanced {
       : { state: await this.ensureStateEnhanced(playerId), goldGained: 0, enhancedRewards: [], timeElapsed: 0 };
     
     const state = tickResult.state;
-    const canUpgrade = !state.useEnhancedRewards && await this.canUseEnhancedSystem(playerId);
+    
+    // ✅ NOUVEAU : Utiliser afkRewardsConfig pour vérifier l'éligibilité
+    const canUpgrade = !state.useEnhancedRewards && await this.canUseEnhancedSystemFromConfig(playerId);
+    
+    // ✅ NOUVEAU : Obtenir infos des déblocages depuis afkRewardsConfig
+    const player = await Player.findOne({ playerId: playerId }).select("world level");
+    const unlockInfo = player ? getAfkRewardsUnlockSummary(player.world, player.level) : {
+      unlocked: [],
+      upcoming: [],
+      totalAvailable: 0
+    };
+
+    // ✅ NOUVEAU : Calculer taux Hero XP et Ascension Essences
+    const heroXPRate = player ? this.getHeroXPRateFromConfig(player.world, player.level, player.vipLevel || 0, player.difficulty || "Normal") : 0;
+    const ascensionEssencesRate = player ? this.getAscensionEssencesRateFromConfig(player.world, player.level, player.vipLevel || 0, player.difficulty || "Normal") : 0;
 
     return {
       // Format original (compatibilité)
@@ -270,19 +317,35 @@ export class AfkServiceEnhanced {
       lastClaimAt: state.lastClaimAt,
       todayAccruedGold: state.todayAccruedGold,
       
-      // Nouvelles données
+      // Nouvelles données avec Hero XP et Ascension Essences
       pendingRewards: state.pendingRewards,
       totalValue: state.calculateTotalValue(),
-      enhancedRatesPerMinute: state.enhancedRatesPerMinute,
+      enhancedRatesPerMinute: {
+        ...state.enhancedRatesPerMinute,
+        heroXP: heroXPRate,
+        ascensionEssences: ascensionEssencesRate
+      },
       activeMultipliers: state.activeMultipliers,
       useEnhancedRewards: state.useEnhancedRewards,
       canUpgrade,
-      todayClaimedRewards: state.todayClaimedRewards
+      todayClaimedRewards: {
+        ...state.todayClaimedRewards,
+        heroXP: state.todayClaimedRewards.heroXP || 0,
+        ascensionEssences: state.todayClaimedRewards.ascensionEssences || 0
+      },
+      
+      // ✅ NOUVEAU : Infos des déblocages
+      unlockInfo: {
+        unlockedRewards: unlockInfo.unlocked,
+        nextUnlocks: unlockInfo.upcoming,
+        progressPercentage: unlockInfo.totalAvailable > 0 ? 
+          Math.round((unlockInfo.unlocked.length / unlockInfo.totalAvailable) * 100) : 0
+      }
     };
   }
 
   /**
-   * claimEnhanced() - Récupère toutes les récompenses (or + nouvelles)
+   * ✅ MODIFIÉ : claimEnhanced() - Applique Hero XP et Ascension Essences au joueur
    */
   static async claimEnhanced(playerId: string): Promise<ClaimResultEnhanced> {
     const session: ClientSession = await mongoose.startSession();
@@ -309,6 +372,8 @@ export class AfkServiceEnhanced {
           gold: claimResult.goldClaimed,
           gems: 0,
           tickets: 0,
+          heroXP: 0,          // ✅ NOUVEAU
+          ascensionEssences: 0, // ✅ NOUVEAU
           materialsAdded: {} as Record<string, number>,
           fragmentsAdded: {} as Record<string, number>
         };
@@ -328,6 +393,18 @@ export class AfkServiceEnhanced {
                 case "tickets":
                   player.tickets += reward.quantity;
                   playerUpdates.tickets += reward.quantity;
+                  break;
+                // ✅ NOUVEAU : Hero XP
+                case "heroXP":
+                  player.heroXP += reward.quantity;
+                  playerUpdates.heroXP += reward.quantity;
+                  console.log(`💪 Player ${player.displayName} gained ${reward.quantity} Hero XP from AFK`);
+                  break;
+                // ✅ NOUVEAU : Ascension Essences
+                case "ascensionEssences":
+                  player.ascensionEssences += reward.quantity;
+                  playerUpdates.ascensionEssences += reward.quantity;
+                  console.log(`🌟 Player ${player.displayName} gained ${reward.quantity} Ascension Essences from AFK`);
                   break;
               }
               break;
@@ -372,40 +449,38 @@ export class AfkServiceEnhanced {
         };
       });
 
-      // 🔥 NOUVEAU : Notifier via WebSocket
+      // 🔥 NOUVEAU : Notifier via WebSocket avec Hero XP et Ascension Essences
       try {
-        // Calculer les données pour la notification
         const offlineTime = result.totalValue > 1000 ? 
-          Math.floor(Math.random() * 3600000) + 1800000 : // 0.5-1h pour gros claims
-          Math.floor(Math.random() * 1800000) + 600000;   // 10-40min pour petits claims
+          Math.floor(Math.random() * 3600000) + 1800000 : 
+          Math.floor(Math.random() * 1800000) + 600000;
 
         WebSocketService.notifyAfkOfflineRewardsClaimed(playerId, {
           offlineTime,
           totalRewards: {
             gold: result.goldClaimed,
-            exp: 0, // À calculer selon le contexte
+            exp: result.playerUpdates.heroXP, // ✅ NOUVEAU : Utiliser Hero XP comme EXP
             gems: result.playerUpdates.gems,
             materials: result.playerUpdates.materialsAdded,
             fragments: result.playerUpdates.fragmentsAdded
           },
           bonusMultiplier: result.totalValue > 2000 ? 2.0 : 1.0,
-          cappedAt: 12 // Utiliser la valeur du state si disponible
+          cappedAt: 12
         });
 
-        // Si gros claim, notifier aussi un milestone
-        if (result.totalValue > 5000) {
-          WebSocketService.notifyAfkMilestoneReached(playerId, {
-            milestoneType: 'time_played',
-            value: Math.floor(offlineTime / 3600000),
-            description: `${Math.floor(offlineTime / 3600000)} hours of AFK rewards claimed!`,
-            rewards: { gold: result.goldClaimed, gems: result.playerUpdates.gems },
-            isSpecial: result.totalValue > 10000
+        // ✅ NOUVEAU : Notification spéciale pour Ascension Essences (rare)
+        if (result.playerUpdates.ascensionEssences > 0) {
+          WebSocketService.notifyAfkRareDrop(playerId, {
+            itemName: "Ascension Essences",
+            itemRarity: 'epic',
+            location: "AFK Rewards",
+            dropChance: 0.1,
+            itemValue: result.playerUpdates.ascensionEssences * 100
           });
         }
 
       } catch (wsError) {
         console.error('❌ Erreur notification WebSocket AFK:', wsError);
-        // Ne pas faire échouer le claim pour une erreur WebSocket
       }
 
       return result;
@@ -415,7 +490,7 @@ export class AfkServiceEnhanced {
   }
 
   /**
-   * upgradeToEnhanced() - Migrer un joueur vers le système enhanced
+   * ✅ MODIFIÉ : upgradeToEnhanced() - Utilise afkRewardsConfig pour l'éligibilité
    */
   static async upgradeToEnhanced(playerId: string): Promise<{
     success: boolean;
@@ -424,10 +499,14 @@ export class AfkServiceEnhanced {
     multipliers?: any;
   }> {
     try {
-      if (!await this.canUseEnhancedSystem(playerId)) {
+      // ✅ MODIFIÉ : Utiliser afkRewardsConfig au lieu de logique fixe
+      if (!await this.canUseEnhancedSystemFromConfig(playerId)) {
+        const player = await Player.findOne({ playerId: playerId }).select("world level");
+        const requirement = DEBUG_UNLOCK_ALL_AT_WORLD_1 ? "World 1, Level 1" : "World 2, Level 15 (for Hero XP)";
+        
         return {
           success: false,
-          message: "Player not eligible for enhanced system yet"
+          message: `Player not eligible for enhanced system yet. Requirement: ${requirement}. Current: World ${player?.world || 1}, Level ${player?.level || 1}`
         };
       }
 
@@ -442,6 +521,13 @@ export class AfkServiceEnhanced {
 
       await state.enableEnhancedMode();
       await state.save();
+
+      // ✅ NOUVEAU : Calculer les nouveaux taux selon afkRewardsConfig
+      const player = await Player.findOne({ playerId: playerId }).select("world level vipLevel difficulty");
+      const newRates = player ? {
+        heroXP: this.getHeroXPRateFromConfig(player.world, player.level, player.vipLevel || 0, player.difficulty || "Normal"),
+        ascensionEssences: this.getAscensionEssencesRateFromConfig(player.world, player.level, player.vipLevel || 0, player.difficulty || "Normal")
+      } : {};
 
       // 🔥 NOUVEAU : Notifier l'activation du bonus enhanced
       try {
@@ -458,7 +544,10 @@ export class AfkServiceEnhanced {
       return {
         success: true,
         message: "Successfully upgraded to enhanced AFK system",
-        newRates: state.enhancedRatesPerMinute,
+        newRates: {
+          ...state.enhancedRatesPerMinute,
+          ...newRates
+        },
         multipliers: state.activeMultipliers
       };
 
@@ -472,25 +561,94 @@ export class AfkServiceEnhanced {
   }
 
   // ==================================================================================
-  // === MÉTHODES UTILITAIRES ===
+  // === NOUVELLES MÉTHODES UTILITAIRES (AFKREWARDSCONFIG) ===
   // ==================================================================================
 
   /**
-   * Vérifier si un joueur peut utiliser le système enhanced
+   * ✅ NOUVEAU : Vérifier éligibilité selon afkRewardsConfig
    */
-  static async canUseEnhancedSystem(playerId: string): Promise<boolean> {
+  static async canUseEnhancedSystemFromConfig(playerId: string): Promise<boolean> {
     try {
       const player = await Player.findOne({ playerId: playerId }).select("world level");
       if (!player) return false;
       
-      // Conditions pour débloquer : monde 3+ OU niveau 50+
-      return player.world >= DEFAULTS.ENHANCED_UNLOCK_WORLD || player.level >= 50;
+      // ✅ NOUVEAU : Utiliser afkRewardsConfig pour déterminer l'éligibilité
+      // Si Hero XP ou Ascension Essences sont débloqués, on peut utiliser enhanced
+      const heroXPUnlocked = isAfkRewardUnlocked("heroXP", player.world, player.level);
+      const ascensionEssencesUnlocked = isAfkRewardUnlocked("ascensionEssences", player.world, player.level);
+      
+      return heroXPUnlocked || ascensionEssencesUnlocked;
       
     } catch (error) {
-      console.error("❌ Erreur canUseEnhancedSystem:", error);
+      console.error("❌ Erreur canUseEnhancedSystemFromConfig:", error);
       return false;
     }
   }
+
+  /**
+   * ✅ NOUVEAU : Générer Hero XP et Ascension Essences selon afkRewardsConfig
+   */
+  static async generateEnhancedRewardsFromConfig(playerId: string, state: HydratedDocument<IAfkState>): Promise<IPendingReward[]> {
+    try {
+      const player = await Player.findOne({ playerId: playerId }).select("world level vipLevel difficulty");
+      if (!player) return [];
+
+      const rewards: IPendingReward[] = [];
+      const timeElapsedMinutes = Math.max(0, state.accumulatedSinceClaimSec) / 60;
+
+      // ✅ HERO XP selon afkRewardsConfig
+      const heroXPCalc = calculateAfkRewardPerMinute("heroXP", player.world, player.level, player.vipLevel || 0, player.difficulty || "Normal");
+      if (heroXPCalc.isUnlocked && heroXPCalc.finalRate > 0) {
+        const heroXPGained = Math.floor(heroXPCalc.finalRate * timeElapsedMinutes);
+        if (heroXPGained > 0) {
+          rewards.push({
+            type: "currency",
+            currencyType: "heroXP",
+            quantity: heroXPGained
+          });
+        }
+      }
+
+      // ✅ ASCENSION ESSENCES selon afkRewardsConfig
+      const essencesCalc = calculateAfkRewardPerMinute("ascensionEssences", player.world, player.level, player.vipLevel || 0, player.difficulty || "Normal");
+      if (essencesCalc.isUnlocked && essencesCalc.finalRate > 0) {
+        const essencesGained = Math.floor(essencesCalc.finalRate * timeElapsedMinutes);
+        if (essencesGained > 0) {
+          rewards.push({
+            type: "currency",
+            currencyType: "ascensionEssences",
+            quantity: essencesGained
+          });
+        }
+      }
+
+      return rewards;
+
+    } catch (error) {
+      console.error("❌ Erreur generateEnhancedRewardsFromConfig:", error);
+      return [];
+    }
+  }
+
+  /**
+   * ✅ NOUVEAU : Obtenir taux Hero XP depuis afkRewardsConfig
+   */
+  static getHeroXPRateFromConfig(world: number, level: number, vipLevel: number, difficulty: string): number {
+    const calc = calculateAfkRewardPerMinute("heroXP", world, level, vipLevel, difficulty as any);
+    return calc.isUnlocked ? calc.finalRate : 0;
+  }
+
+  /**
+   * ✅ NOUVEAU : Obtenir taux Ascension Essences depuis afkRewardsConfig
+   */
+  static getAscensionEssencesRateFromConfig(world: number, level: number, vipLevel: number, difficulty: string): number {
+    const calc = calculateAfkRewardPerMinute("ascensionEssences", world, level, vipLevel, difficulty as any);
+    return calc.isUnlocked ? calc.finalRate : 0;
+  }
+
+  // ==================================================================================
+  // === MÉTHODES UTILITAIRES (CONSERVÉES) ===
+  // ==================================================================================
 
   /**
    * Obtenir les statistiques d'utilisation du système enhanced
@@ -500,6 +658,9 @@ export class AfkServiceEnhanced {
     enhancedUsers: number;
     eligibleForUpgrade: number;
     averageMultiplier: number;
+    // ✅ NOUVEAU : Stats des nouveaux déblocages
+    heroXPUsers: number;
+    ascensionEssencesUsers: number;
   }> {
     try {
       const [totalStats, enhancedStats] = await Promise.all([
@@ -514,24 +675,33 @@ export class AfkServiceEnhanced {
       ]);
 
       const enhancedUsers = enhancedStats.find(s => s._id === true)?.count || 0;
-      const regularUsers = enhancedStats.find(s => s._id === false)?.count || 0;
       const avgMultiplier = enhancedStats.find(s => s._id === true)?.avgMultiplier || 1.0;
 
-      // Calculer combien sont éligibles pour l'upgrade
-      const eligiblePlayers = await Player.countDocuments({
-        $or: [
-          { world: { $gte: DEFAULTS.ENHANCED_UNLOCK_WORLD } },
-          { level: { $gte: 50 } }
-        ]
-      });
+      // ✅ NOUVEAU : Calculer éligibilité selon afkRewardsConfig
+      const allPlayers = await Player.find({}).select("world level");
+      let eligibleForUpgrade = 0;
+      let heroXPUsers = 0;
+      let ascensionEssencesUsers = 0;
 
-      const eligibleForUpgrade = Math.max(0, eligiblePlayers - enhancedUsers);
+      for (const player of allPlayers) {
+        const heroXPUnlocked = isAfkRewardUnlocked("heroXP", player.world, player.level);
+        const ascensionEssencesUnlocked = isAfkRewardUnlocked("ascensionEssences", player.world, player.level);
+        
+        if (heroXPUnlocked || ascensionEssencesUnlocked) {
+          eligibleForUpgrade++;
+        }
+        
+        if (heroXPUnlocked) heroXPUsers++;
+        if (ascensionEssencesUnlocked) ascensionEssencesUsers++;
+      }
 
       return {
         totalPlayers: totalStats,
         enhancedUsers,
-        eligibleForUpgrade,
-        averageMultiplier: Math.round(avgMultiplier * 100) / 100
+        eligibleForUpgrade: Math.max(0, eligibleForUpgrade - enhancedUsers),
+        averageMultiplier: Math.round(avgMultiplier * 100) / 100,
+        heroXPUsers,
+        ascensionEssencesUsers
       };
 
     } catch (error) {
@@ -540,9 +710,114 @@ export class AfkServiceEnhanced {
         totalPlayers: 0,
         enhancedUsers: 0,
         eligibleForUpgrade: 0,
-        averageMultiplier: 1.0
+        averageMultiplier: 1.0,
+        heroXPUsers: 0,
+        ascensionEssencesUsers: 0
       };
     }
+  }
+
+  // === MÉTHODES EXISTANTES CONSERVÉES (Sessions, etc.) ===
+
+  private static async settleOfflineIfNeeded(playerId: string): Promise<void> {
+    const [player, state] = await Promise.all([
+      Player.findOne({ playerId: playerId }).select("lastSeenAt createdAt"),
+      AfkState.findOne({ playerId }),
+    ]);
+
+    if (!state) {
+      await this.ensureState(playerId);
+      return;
+    }
+
+    if (!state.lastTickAt) {
+      const anchor =
+        (player?.lastSeenAt as Date | undefined) ??
+        ((player as any)?.createdAt as Date | undefined) ??
+        new Date();
+
+      state.lastTickAt = anchor;
+      await state.save();
+    }
+  }
+
+  static async startSession(
+    playerId: string,
+    opts?: { deviceId?: string; source?: SourceType }
+  ): Promise<HydratedDocument<IAfkSession>> {
+    const { deviceId = null, source = "idle" } = opts || {};
+    const sessionDoc = await AfkSession.create({
+      playerId,
+      deviceId,
+      source,
+      status: "running",
+      startedAt: new Date(),
+      lastHeartbeatAt: new Date(),
+    });
+
+    await this.tick(playerId);
+    return sessionDoc as HydratedDocument<IAfkSession>;
+  }
+
+  static async heartbeat(playerId: string): Promise<{
+    state: HydratedDocument<IAfkState>;
+    session: HydratedDocument<IAfkSession> | null;
+  }> {
+    const now = new Date();
+
+    let activeSession: HydratedDocument<IAfkSession> | null =
+      (await AfkSession.findOne({ playerId, status: "running" })
+        .sort({ startedAt: -1 })) as HydratedDocument<IAfkSession> | null;
+
+    if (!activeSession) {
+      activeSession = await this.startSession(playerId, { source: "idle" });
+    } else {
+      const deltaSec = Math.floor(
+        (now.getTime() - activeSession.lastHeartbeatAt.getTime()) / 1000
+      );
+      if (deltaSec > DEFAULTS.MAX_HEARTBEAT_DELTA_SEC) {
+        activeSession.lastHeartbeatAt = new Date(
+          activeSession.lastHeartbeatAt.getTime() +
+            DEFAULTS.MAX_HEARTBEAT_DELTA_SEC * 1000
+        );
+      } else {
+        activeSession.lastHeartbeatAt = now;
+      }
+      await activeSession.save();
+    }
+
+    const state = await this.tick(playerId, now);
+    return { state, session: activeSession };
+  }
+
+  static async stopSession(
+    playerId: string
+  ): Promise<HydratedDocument<IAfkSession> | null> {
+    const sess = (await AfkSession.findOne({
+      playerId,
+      status: "running",
+    }).sort({ startedAt: -1 })) as HydratedDocument<IAfkSession> | null;
+
+    if (!sess) return null;
+
+    await this.tick(playerId);
+
+    sess.status = "ended";
+    sess.endedAt = new Date();
+    await sess.save();
+    return sess;
+  }
+
+  static async closeStaleSessions(
+    coldAfterSec = DEFAULTS.HEARTBEAT_GRACE_SEC
+  ): Promise<number> {
+    const threshold = new Date(Date.now() - coldAfterSec * 1000);
+    const res = await AfkSession.updateMany(
+      { status: "running", lastHeartbeatAt: { $lt: threshold } },
+      { $set: { status: "ended", endedAt: new Date() } }
+    );
+    // @ts-ignore
+    return res.modifiedCount ?? 0;
   }
 
   /**
@@ -680,111 +955,6 @@ export class AfkServiceEnhanced {
     } catch (error) {
       console.error('❌ Erreur checkAndNotifyProgressStuck:', error);
     }
-  }
-
-  // ==================================================================================
-  // === MÉTHODES EXISTANTES CONSERVÉES (Sessions, etc.) ===
-  // ==================================================================================
-
-  private static async settleOfflineIfNeeded(playerId: string): Promise<void> {
-    const [player, state] = await Promise.all([
-      Player.findOne({ playerId: playerId }).select("lastSeenAt createdAt"),
-      AfkState.findOne({ playerId }),
-    ]);
-
-    if (!state) {
-      await this.ensureState(playerId);
-      return;
-    }
-
-    if (!state.lastTickAt) {
-      const anchor =
-        (player?.lastSeenAt as Date | undefined) ??
-        ((player as any)?.createdAt as Date | undefined) ??
-        new Date();
-
-      state.lastTickAt = anchor;
-      await state.save();
-    }
-  }
-
-  static async startSession(
-    playerId: string,
-    opts?: { deviceId?: string; source?: SourceType }
-  ): Promise<HydratedDocument<IAfkSession>> {
-    const { deviceId = null, source = "idle" } = opts || {};
-    const sessionDoc = await AfkSession.create({
-      playerId,
-      deviceId,
-      source,
-      status: "running",
-      startedAt: new Date(),
-      lastHeartbeatAt: new Date(),
-    });
-
-    await this.tick(playerId);
-    return sessionDoc as HydratedDocument<IAfkSession>;
-  }
-
-  static async heartbeat(playerId: string): Promise<{
-    state: HydratedDocument<IAfkState>;
-    session: HydratedDocument<IAfkSession> | null;
-  }> {
-    const now = new Date();
-
-    let activeSession: HydratedDocument<IAfkSession> | null =
-      (await AfkSession.findOne({ playerId, status: "running" })
-        .sort({ startedAt: -1 })) as HydratedDocument<IAfkSession> | null;
-
-    if (!activeSession) {
-      activeSession = await this.startSession(playerId, { source: "idle" });
-    } else {
-      const deltaSec = Math.floor(
-        (now.getTime() - activeSession.lastHeartbeatAt.getTime()) / 1000
-      );
-      if (deltaSec > DEFAULTS.MAX_HEARTBEAT_DELTA_SEC) {
-        activeSession.lastHeartbeatAt = new Date(
-          activeSession.lastHeartbeatAt.getTime() +
-            DEFAULTS.MAX_HEARTBEAT_DELTA_SEC * 1000
-        );
-      } else {
-        activeSession.lastHeartbeatAt = now;
-      }
-      await activeSession.save();
-    }
-
-    const state = await this.tick(playerId, now);
-    return { state, session: activeSession };
-  }
-
-  static async stopSession(
-    playerId: string
-  ): Promise<HydratedDocument<IAfkSession> | null> {
-    const sess = (await AfkSession.findOne({
-      playerId,
-      status: "running",
-    }).sort({ startedAt: -1 })) as HydratedDocument<IAfkSession> | null;
-
-    if (!sess) return null;
-
-    await this.tick(playerId);
-
-    sess.status = "ended";
-    sess.endedAt = new Date();
-    await sess.save();
-    return sess;
-  }
-
-  static async closeStaleSessions(
-    coldAfterSec = DEFAULTS.HEARTBEAT_GRACE_SEC
-  ): Promise<number> {
-    const threshold = new Date(Date.now() - coldAfterSec * 1000);
-    const res = await AfkSession.updateMany(
-      { status: "running", lastHeartbeatAt: { $lt: threshold } },
-      { $set: { status: "ended", endedAt: new Date() } }
-    );
-    // @ts-ignore
-    return res.modifiedCount ?? 0;
   }
 }
 
