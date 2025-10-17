@@ -254,4 +254,4 @@ export class ArdenHeartEffect extends BaseEffect {
 }
 
 // Export de l'instance pour EffectManager
-export const ardenHeartEffect = new ArdenHeartEffect(
+export const ardenHeartEffect = new ArdenHeartEffect();
