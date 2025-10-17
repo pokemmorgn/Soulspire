@@ -254,12 +254,15 @@ static async tickEnhanced(
   await this.settleOfflineIfNeeded(playerId);
   const state = await this.ensureStateEnhanced(playerId);
   
-  // ✅ CORRECTION : Faire le tick enhanced AVANT de générer nos propres récompenses
+  // ✅ CORRECTION : Récupérer le temps accumulé AVANT le tick
+  const timeAccumulatedBeforeTick = state.accumulatedSinceClaimSec;
+  
+  // Faire le tick enhanced
   const result = await state.tickEnhanced(now);
   
   // ✅ NOUVEAU : Générer Hero XP et Ascension Essences selon afkRewardsConfig
-  // APRÈS le tick enhanced pour utiliser le bon timeElapsed
-  const configRewards = await this.generateEnhancedRewardsFromConfig(playerId, result.timeElapsed);
+  // Utiliser le temps accumulé depuis le dernier claim (pas le delta du tick)
+  const configRewards = await this.generateEnhancedRewardsFromConfig(playerId, timeAccumulatedBeforeTick);
   
   // Ajouter les nouvelles récompenses au state
   configRewards.forEach(reward => {
