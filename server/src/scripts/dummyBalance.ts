@@ -430,10 +430,18 @@ async function runDummyBalanceTest(): Promise<void> {
       recommendations: analysis.recommendations
     };
     
-    // Export JSON
+    // Export JSON dans le dossier debugsequilibrage
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
     const filename = `balance_${timestamp}.json`;
-    const outputPath = path.join(process.cwd(), filename);
+    
+    // Créer le dossier debugsequilibrage s'il n'existe pas
+    const debugDir = path.join(process.cwd(), 'debugsequilibrage');
+    if (!fs.existsSync(debugDir)) {
+      fs.mkdirSync(debugDir, { recursive: true });
+      console.log(`📁 Created directory: ${debugDir}`);
+    }
+    
+    const outputPath = path.join(debugDir, filename);
     
     fs.writeFileSync(outputPath, JSON.stringify(report, null, 2));
     console.log(`💾 Exported: ${outputPath}\n`);
