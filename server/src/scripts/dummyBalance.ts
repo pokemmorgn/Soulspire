@@ -18,7 +18,6 @@ const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/unity-gach
 interface DummyConfig {
   name: string;
   def: number;
-  defMagique: number;
   resistances: Record<string, number>;
   hp: number;
 }
@@ -61,7 +60,6 @@ const DUMMY_CONFIGS: Record<string, DummyConfig> = {
   neutral: {
     name: "Neutral Dummy",
     def: 0,
-    defMagique: 0,
     resistances: {},
     hp: 999999999
   },
@@ -69,7 +67,6 @@ const DUMMY_CONFIGS: Record<string, DummyConfig> = {
   resistant: {
     name: "Resistant Dummy", 
     def: 0,
-    defMagique: 0,
     resistances: {
       Fire: 50,
       Water: 50,
@@ -84,7 +81,6 @@ const DUMMY_CONFIGS: Record<string, DummyConfig> = {
   vulnerable: {
     name: "Vulnerable Dummy",
     def: 0,
-    defMagique: 0,
     resistances: {
       Fire: -50,
       Water: -50,
@@ -117,12 +113,6 @@ function createTestHero(): IBattleParticipant {
       maxHp: 5000,
       atk: 300,
       def: 150,
-      defMagique: 120,
-      vitesse: 100,
-      intelligence: 200,
-      force: 180,
-      moral: 80,
-      reductionCooldown: 10,
       speed: 100
     },
     currentHp: 5000,
@@ -141,7 +131,7 @@ function createDummy(config: DummyConfig): IBattleParticipant {
     name: config.name,
     position: 1,
     role: "Tank",
-    element: "Neutral",
+    element: "Fire", // Changé de "Neutral" vers "Fire"
     rarity: "Common",
     level: TEST_HERO_LEVEL,
     stars: 1,
@@ -150,12 +140,6 @@ function createDummy(config: DummyConfig): IBattleParticipant {
       maxHp: config.hp,
       atk: 1,
       def: config.def,
-      defMagique: config.defMagique,
-      vitesse: 1,
-      intelligence: 1,
-      force: 1,
-      moral: 1,
-      reductionCooldown: 0,
       speed: 1
     },
     currentHp: config.hp,
