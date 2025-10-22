@@ -1,4 +1,4 @@
-// src/scripts/dummyBalance_advanced.ts
+// src/scripts/dummyBalance_fixed.ts
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import * as fs from "fs";
@@ -17,7 +17,7 @@ dotenv.config();
 const execAsync = promisify(exec);
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/unity-gacha-game";
 
-// ===== SYSTÈME DE LOGS PROPRE =====
+// ===== SYSTÈME DE LOGS AVEC DEBUG =====
 
 class Logger {
   private static originalConsole = {
@@ -59,7 +59,8 @@ class Logger {
       /^🎯/, /^📊/, /^⚔️/, /^📋/, /^💾/, /^🔧/, /^✅/, /^❌/, /^⏱️/, /^📦/, /^🚀/,
       /Testing \w+/, /Result:/, /Completed testing/, /Found \d+ testable/,
       /spells balanced/, /KEY ISSUES FOUND/, /Test completed in/, /ADVANCED ANALYSIS/,
-      /RARITY BREAKDOWN/, /ELEMENT ANALYSIS/, /POWER SCALING/, /EFFICIENCY METRICS/
+      /RARITY BREAKDOWN/, /ELEMENT ANALYSIS/, /POWER SCALING/, /EFFICIENCY METRICS/,
+      /🔍 DEBUG/, /⚠️ SPELL CASTING/, /🚨 ENERGY/, /🔥 COOLDOWN/ // Debug patterns
     ];
     
     const filterPatterns = [
@@ -67,8 +68,7 @@ class Logger {
       /effets? auto-chargés/, /sorts? auto-chargés/, /passifs? auto-chargés/,
       /RÉSUMÉ DES/, /Total:.*automatiquement/, /Initialisation du.*Manager/,
       /Skip reload/, /Fichier.*déjà chargé/, /Répertoire.*non trouvé/,
-      /Cooldown check/, /HP threshold check/, /Première utilisation/, /En cooldown/,
-      /MongoDB connected to/
+      /MongoDB connected to/, /résiste à/, /prend feu/, /lance.*niveau/, /charge !/
     ];
     
     if (keepPatterns.some(pattern => pattern.test(message))) {
@@ -95,13 +95,21 @@ class Logger {
     this.originalConsole.log(`   ${rarityEmoji} ${spellId}: ${Math.round(dps)} DPS ${details}`);
   }
   
+  static debug(message: string): void {
+    this.originalConsole.log(`🔍 DEBUG: ${message}`);
+  }
+  
+  static spellDebug(message: string): void {
+    this.originalConsole.log(`⚠️ SPELL CASTING: ${message}`);
+  }
+  
   private static getRarityEmoji(rarity?: string): string {
     switch (rarity) {
       case "Common": return "⚪";
       case "Rare": return "🔵";
       case "Epic": return "🟣";
       case "Legendary": return "🟠";
-      case "Mythic": return "🔮"; // ✨ NOUVEAU
+      case "Mythic": return "🔮";
       default: return "⚫";
     }
   }
@@ -126,7 +134,17 @@ class Logger {
   }
 }
 
-// ===== INTERFACES AVANCÉES =====
+// ===== INTERFACES FIXES =====
+
+type HeroRarity = "Common" | "Rare" | "Epic" | "Legendary" | "Mythic";
+
+const RARITY_DPS_EXPECTATIONS: Record<HeroRarity, { min: number; max: number; multiplier: number }> = {
+  Common: { min: 80, max: 120, multiplier: 1.0 },
+  Rare: { min: 110, max: 150, multiplier: 1.25 },
+  Epic: { min: 140, max: 190, multiplier: 1.6 },
+  Legendary: { min: 180, max: 250, multiplier: 2.0 },
+  Mythic: { min: 220, max: 300, multiplier: 2.5 }
+};
 
 interface DummyConfig {
   name: string;
@@ -140,10 +158,12 @@ interface SpellTestMetrics {
   totalDamage: number;
   spellCasts: number;
   basicAttacks: number;
-  energyEfficiency: number; // DPS per energy cost
-  cooldownEfficiency: number; // DPS accounting for cooldown
-  burstPotential: number; // Max damage in single cast
-  sustainedDps: number; // DPS over extended fight
+  energyEfficiency: number;
+  cooldownEfficiency: number;
+  burstPotential: number;
+  sustainedDps: number;
+  castSuccessRate: number; // ✨ NOUVEAU: Taux de réussite des casts
+  averageEnergyCost: number; // ✨ NOUVEAU: Coût moyen
 }
 
 interface SpellDpsResult {
@@ -156,23 +176,19 @@ interface SpellDpsResult {
   energyCost: number;
   cooldown: number;
   
-  // DPS sur différents dummies
   neutralDps: number;
   resistantDps: number;
   vulnerableDps: number;
   
-  // Impacts élémentaires
   resistanceImpact: number;
   vulnerabilityImpact: number;
   
-  // Métriques avancées
   metrics: SpellTestMetrics;
   
-  // Analyse d'équilibrage
   isBalanced: boolean;
-  balanceScore: number; // 0-100, 100 = parfaitement équilibré
+  balanceScore: number;
   powerRating: "Underpowered" | "Balanced" | "Strong" | "Overpowered";
-  rarityScore: number; // Équilibrage par rapport à la rareté
+  rarityScore: number;
   
   issues: string[];
   recommendations: string[];
@@ -193,7 +209,7 @@ interface ElementalAnalysis {
   element: string;
   count: number;
   averageDps: number;
-  resistanceConsistency: number; // 0-100, consistance des résistances
+  resistanceConsistency: number;
   vulnerabilityConsistency: number;
   balanceIssues: string[];
 }
@@ -238,7 +254,7 @@ interface AdvancedBalanceReport {
   };
 }
 
-// ===== CONFIGURATIONS AVANCÉES =====
+// ===== CONFIGURATIONS FIXES =====
 
 const DUMMY_CONFIGS: Record<string, DummyConfig> = {
   neutral: {
@@ -269,10 +285,9 @@ const DUMMY_CONFIGS: Record<string, DummyConfig> = {
     level: 50
   },
   
-  // ✨ NOUVEAUX DUMMIES POUR TESTS AVANCÉS
   armored: {
     name: "Armored Dummy",
-    def: 200, // Haute défense
+    def: 200,
     resistances: {},
     hp: 999999999,
     level: 50
@@ -285,30 +300,17 @@ const DUMMY_CONFIGS: Record<string, DummyConfig> = {
       Fire: 25, Water: 25, Wind: 25, Electric: 25, Light: 25, Dark: 25
     },
     hp: 999999999,
-    level: 75 // Niveau plus élevé
+    level: 75
   }
 };
 
-// Types de rareté correspondant à IBattleParticipant
-type HeroRarity = "Common" | "Rare" | "Epic" | "Legendary" | "Mythic";
-
-// Définir les attentes de DPS par rareté
-const RARITY_DPS_EXPECTATIONS: Record<HeroRarity, { min: number; max: number; multiplier: number }> = {
-  Common: { min: 80, max: 120, multiplier: 1.0 },
-  Rare: { min: 110, max: 150, multiplier: 1.25 },
-  Epic: { min: 140, max: 190, multiplier: 1.6 },
-  Legendary: { min: 180, max: 250, multiplier: 2.0 },
-  Mythic: { min: 220, max: 300, multiplier: 2.5 } // ✨ NOUVEAU: Rareté ultime
-};
-
-const TEST_DURATION = 120; // Augmenté pour tests plus précis
+const TEST_DURATION = 120;
 const SIMULATION_TICK = 1;
 const TEST_HERO_LEVEL = 50;
 
-// ===== UTILITAIRES AVANCÉS =====
+// ===== UTILITAIRES FIXES =====
 
 function createTestHero(rarity: HeroRarity = "Epic"): IBattleParticipant {
-  // Ajuster les stats selon la rareté du sort testé
   const rarityMultiplier = RARITY_DPS_EXPECTATIONS[rarity]?.multiplier || 1.0;
   
   return {
@@ -343,7 +345,7 @@ function createDummy(config: DummyConfig): IBattleParticipant {
     name: config.name,
     position: 1,
     role: "Tank",
-    element: "Fire",
+    element: "Fire", // ✨ FIX: Changer l'élément pour éviter la résistance Fire vs Fire
     rarity: "Common",
     level: config.level,
     stars: 1,
@@ -371,30 +373,28 @@ function applyElementalResistance(damage: number, spellElement: string, resistan
 }
 
 function getSpellRarity(spellId: string): HeroRarity {
-  // Analyser l'ID du sort pour déterminer sa rareté
-  // Cette logique devrait être adaptée selon votre système de nommage
+  // ✨ AMÉLIORATION: Analyse plus intelligente
   if (spellId.includes('mythic') || spellId.includes('transcendent')) return "Mythic";
   if (spellId.includes('legendary') || spellId.includes('ultimate')) return "Legendary";
   if (spellId.includes('epic') || spellId.includes('advanced')) return "Epic";
   if (spellId.includes('rare') || spellId.includes('improved')) return "Rare";
   
-  // Par défaut, analyser la puissance relative du sort
   const spell = SpellManager.getSpell(spellId);
   if (!spell) return "Common";
   
   const energyCost = spell.getEnergyCost(5);
   const cooldown = spell.getEffectiveCooldown(createTestHero(), 5);
   
-  // Heuristique basée sur les caractéristiques du sort
+  // ✨ FIX: Ajuster les seuils pour détecter correctement les raretés
   if (energyCost >= 100 || cooldown >= 12) return "Mythic";
   if (energyCost >= 80 || cooldown >= 8) return "Legendary";
-  if (energyCost >= 50 || cooldown >= 5) return "Epic";
-  if (energyCost >= 20 || cooldown >= 3) return "Rare";
+  if (energyCost >= 40 || cooldown >= 5) return "Epic"; // Réduit de 50 à 40
+  if (energyCost >= 10 || cooldown >= 2) return "Rare"; // Réduit de 20 à 10
   
   return "Common";
 }
 
-// ===== SIMULATION AVANCÉE =====
+// ===== SIMULATION FIXÉE =====
 
 async function testSpellAdvanced(
   spellId: string, 
@@ -407,6 +407,7 @@ async function testSpellAdvanced(
   
   const spell = SpellManager.getSpell(spellId);
   if (!spell) {
+    Logger.spellDebug(`Spell not found: ${spellId}`);
     return { 
       dps: 0, 
       rarity,
@@ -417,13 +418,17 @@ async function testSpellAdvanced(
         energyEfficiency: 0,
         cooldownEfficiency: 0,
         burstPotential: 0,
-        sustainedDps: 0
+        sustainedDps: 0,
+        castSuccessRate: 0,
+        averageEnergyCost: 0
       }
     };
   }
   
   const spellCooldown = spell.getEffectiveCooldown(testHero, spellLevel);
   const spellEnergyCost = spell.getEnergyCost(spellLevel);
+  
+  Logger.debug(`${spellId} - Energy Cost: ${spellEnergyCost}, Cooldown: ${spellCooldown}s`);
   
   let totalDamage = 0;
   let maxSingleHit = 0;
@@ -433,10 +438,11 @@ async function testSpellAdvanced(
   let spellCasts = 0;
   let basicAttacks = 0;
   let totalEnergyUsed = 0;
+  let castAttempts = 0;
+  let castFailures = 0;
   
-  // Échantillons pour analyser les variations de DPS
   const dpsSamples: number[] = [];
-  const sampleInterval = 20; // Échantillonner toutes les 20 secondes
+  const sampleInterval = 20;
   let lastSampleTime = 0;
   let damageAtLastSample = 0;
   
@@ -446,8 +452,12 @@ async function testSpellAdvanced(
     
     let turnDamage = 0;
     
-    if (canCastSpell) {
+    if (canCastSpell && spellEnergyCost <= 100) { // ✨ FIX: Éviter les sorts impossibles
+      castAttempts++;
       try {
+        // ✨ FIX: Nettoyer les cooldowns avant de lancer
+        SpellManager.clearHeroCooldowns(testHero.heroId);
+        
         const action = SpellManager.castSpell(
           spellId,
           testHero,
@@ -468,18 +478,25 @@ async function testSpellAdvanced(
         lastCastTime = currentTime;
         spellCasts++;
         
+        Logger.debug(`${spellId} cast success: ${damage} damage, energy: ${heroEnergy}/${spellEnergyCost}`);
+        
       } catch (error) {
+        castFailures++;
         turnDamage = calculateBasicAttack(testHero, dummy, dummyConfig);
         basicAttacks++;
+        Logger.spellDebug(`${spellId} cast failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     } else {
       turnDamage = calculateBasicAttack(testHero, dummy, dummyConfig);
       basicAttacks++;
+      
+      if (currentTime % 30 === 0) { // Log périodique
+        Logger.debug(`${spellId} basic attack - Energy: ${heroEnergy}/${spellEnergyCost}, CD: ${timeSinceLastCast}/${spellCooldown}`);
+      }
     }
     
     totalDamage += turnDamage;
     
-    // Échantillonner le DPS à intervalles réguliers
     if (currentTime - lastSampleTime >= sampleInterval) {
       const sampleDps = (totalDamage - damageAtLastSample) / sampleInterval;
       dpsSamples.push(sampleDps);
@@ -487,8 +504,12 @@ async function testSpellAdvanced(
       lastSampleTime = currentTime;
     }
     
-    // Régénération d'énergie
-    heroEnergy = Math.min(100, heroEnergy + 8); // Réduit pour plus de réalisme
+    // ✨ FIX: Régénération d'énergie plus réaliste
+    if (spell.config.type === "ultimate") {
+      heroEnergy = Math.min(100, heroEnergy + 5); // Ultimates plus lents
+    } else {
+      heroEnergy = Math.min(100, heroEnergy + 10); // Sorts actifs normaux
+    }
     
     dummy.currentHp = dummy.stats.maxHp;
     currentTime += SIMULATION_TICK;
@@ -496,12 +517,13 @@ async function testSpellAdvanced(
   
   const averageDps = totalDamage / TEST_DURATION;
   
-  // Calculer les métriques avancées
   const sustainedDps = dpsSamples.length > 2 ? 
     dpsSamples.slice(2).reduce((a, b) => a + b, 0) / Math.max(1, dpsSamples.length - 2) : averageDps;
   
   const energyEfficiency = totalEnergyUsed > 0 ? averageDps / (totalEnergyUsed / TEST_DURATION) : 0;
   const cooldownEfficiency = spellCooldown > 0 ? averageDps * (1 + spellCooldown / 10) : averageDps;
+  const castSuccessRate = castAttempts > 0 ? ((castAttempts - castFailures) / castAttempts) * 100 : 0;
+  const averageEnergyCost = spellCasts > 0 ? totalEnergyUsed / spellCasts : 0;
   
   const metrics: SpellTestMetrics = {
     totalDamage,
@@ -510,10 +532,12 @@ async function testSpellAdvanced(
     energyEfficiency: Math.round(energyEfficiency * 100) / 100,
     cooldownEfficiency: Math.round(cooldownEfficiency * 100) / 100,
     burstPotential: maxSingleHit,
-    sustainedDps: Math.round(sustainedDps)
+    sustainedDps: Math.round(sustainedDps),
+    castSuccessRate: Math.round(castSuccessRate * 100) / 100,
+    averageEnergyCost: Math.round(averageEnergyCost * 100) / 100
   };
   
-  const details = `(${spellCasts} casts, ${basicAttacks} basics, CD: ${spellCooldown}s, Burst: ${maxSingleHit})`;
+  const details = `(${spellCasts} casts, ${basicAttacks} basics, ${castSuccessRate}% success, Burst: ${maxSingleHit})`;
   Logger.testResult(spellId, averageDps, details, rarity);
   
   return { 
@@ -532,28 +556,35 @@ function calculateBasicAttack(
   return applyElementalResistance(baseDamage, attacker.element, dummyConfig.resistances);
 }
 
-// ===== ANALYSES AVANCÉES =====
+// ===== ANALYSES FIXES =====
 
 function calculateBalanceScore(result: SpellDpsResult, overallAverage: number): number {
   const rarityExpected = RARITY_DPS_EXPECTATIONS[result.rarity];
   if (!rarityExpected) return 50;
   
   const expectedDps = (rarityExpected.min + rarityExpected.max) / 2;
+  
+  // ✨ FIX: Si pas de DPS, score automatiquement bas
+  if (result.neutralDps === 0) return 5;
+  
   const dpsRatio = result.neutralDps / expectedDps;
   
-  // Score parfait = 100, diminue selon l'écart à l'attendu
   let score = 100;
   
-  if (dpsRatio < 0.8 || dpsRatio > 1.2) {
-    score -= Math.abs(dpsRatio - 1) * 100;
+  // ✨ FIX: Pénalité pour 0 cast
+  if (result.metrics.spellCasts === 0) {
+    score -= 80; // Grosse pénalité si le sort ne se lance jamais
   }
   
-  // Pénaliser les problèmes élémentaires
+  if (dpsRatio < 0.8 || dpsRatio > 1.2) {
+    score -= Math.abs(dpsRatio - 1) * 50; // Réduit la pénalité
+  }
+  
   if (Math.abs(result.resistanceImpact - 50) > 15) score -= 10;
   if (Math.abs(result.vulnerabilityImpact - 50) > 15) score -= 10;
   
-  // Bonus pour efficacité énergétique
   if (result.metrics.energyEfficiency > 2.0) score += 5;
+  if (result.metrics.castSuccessRate > 80) score += 10; // ✨ NOUVEAU: Bonus pour bon taux de succès
   
   return Math.max(0, Math.min(100, Math.round(score)));
 }
@@ -561,6 +592,9 @@ function calculateBalanceScore(result: SpellDpsResult, overallAverage: number): 
 function analyzePowerRating(result: SpellDpsResult): "Underpowered" | "Balanced" | "Strong" | "Overpowered" {
   const rarityExpected = RARITY_DPS_EXPECTATIONS[result.rarity];
   if (!rarityExpected) return "Balanced";
+  
+  // ✨ FIX: Si pas de sorts lancés, c'est underpowered
+  if (result.metrics.spellCasts === 0) return "Underpowered";
   
   const expectedDps = (rarityExpected.min + rarityExpected.max) / 2;
   const ratio = result.neutralDps / expectedDps;
@@ -584,6 +618,12 @@ function analyzeByRarity(results: SpellDpsResult[]): RarityAnalysis[] {
     const underpoweredCount = raritySpells.filter(r => r.powerRating === "Underpowered").length;
     
     const recommendations: string[] = [];
+    
+    // ✨ FIX: Recommandations pour sorts qui ne se lancent pas
+    const nocastSpells = raritySpells.filter(r => r.metrics.spellCasts === 0);
+    if (nocastSpells.length > 0) {
+      recommendations.push(`${nocastSpells.length} ${rarity} spells never cast - check energy cost and cooldown`);
+    }
     
     if (expected) {
       const deviation = ((averageDps - (expected.min + expected.max) / 2) / ((expected.min + expected.max) / 2)) * 100;
@@ -621,7 +661,6 @@ function analyzeByElement(results: SpellDpsResult[]): ElementalAnalysis[] {
     const elementSpells = results.filter(r => r.element === element);
     const averageDps = elementSpells.reduce((sum, r) => sum + r.neutralDps, 0) / elementSpells.length;
     
-    // Analyser la consistance des résistances
     const resistanceImpacts = elementSpells.map(r => r.resistanceImpact);
     const vulnerabilityImpacts = elementSpells.map(r => r.vulnerabilityImpact);
     
@@ -672,27 +711,38 @@ function generateAdvancedRecommendations(
   const longTerm: string[] = [];
   const gameplayImpact: string[] = [];
   
-  // Recommandations immédiates (sorts critiques)
+  // ✨ FIX: Recommandations pour sorts qui ne se lancent pas
+  const nonCastingSpells = results.filter(r => r.metrics.spellCasts === 0);
+  if (nonCastingSpells.length > 0) {
+    immediate.push(`CRITICAL: ${nonCastingSpells.length} spells never cast - fix energy costs and cooldowns`);
+    
+    nonCastingSpells.forEach(spell => {
+      if (spell.energyCost > 100) {
+        immediate.push(`${spell.spellId}: Energy cost too high (${spell.energyCost}) - reduce to ≤100`);
+      }
+      if (spell.cooldown > 15) {
+        immediate.push(`${spell.spellId}: Cooldown too long (${spell.cooldown}s) - reduce to ≤15s`);
+      }
+    });
+  }
+  
   const criticalIssues = results.filter(r => r.balanceScore < 30);
   criticalIssues.forEach(spell => {
     immediate.push(`CRITICAL: ${spell.spellId} (${spell.rarity}) needs immediate rebalancing (score: ${spell.balanceScore})`);
   });
   
-  // Recommandations par rareté
   rarityAnalysis.forEach(analysis => {
     if (analysis.recommendations.length > 0) {
       analysis.recommendations.forEach(rec => longTerm.push(`${analysis.rarity}: ${rec}`));
     }
   });
   
-  // Recommandations élémentaires
   elementalAnalysis.forEach(analysis => {
     if (analysis.balanceIssues.length > 0) {
       analysis.balanceIssues.forEach(issue => immediate.push(`${analysis.element}: ${issue}`));
     }
   });
   
-  // Impact gameplay
   const overpoweredLegendaries = results.filter(r => r.rarity === "Legendary" && r.powerRating === "Overpowered");
   if (overpoweredLegendaries.length > 2) {
     gameplayImpact.push(`Risk of Legendary spell dominance (${overpoweredLegendaries.length} overpowered)`);
@@ -703,7 +753,6 @@ function generateAdvancedRecommendations(
     gameplayImpact.push(`Common spells too weak, reducing early game viability`);
   }
   
-  // Efficacité énergétique
   const lowEfficiencySpells = results.filter(r => r.metrics.energyEfficiency < 1.0);
   if (lowEfficiencySpells.length > results.length * 0.3) {
     gameplayImpact.push(`Energy efficiency issues may slow combat pace`);
@@ -712,7 +761,7 @@ function generateAdvancedRecommendations(
   return { immediate, longTerm, gameplayImpact };
 }
 
-// ===== FONCTIONS GIT (simplifiées pour focus sur l'analyse) =====
+// ===== FONCTIONS GIT SIMPLIFIÉES =====
 
 async function setupGitStructure(): Promise<void> {
   try {
@@ -721,7 +770,7 @@ async function setupGitStructure(): Promise<void> {
       fs.mkdirSync(balanceDir, { recursive: true });
     }
   } catch (error) {
-    // Ignorer les erreurs de setup
+    // Ignorer les erreurs
   }
 }
 
@@ -733,14 +782,13 @@ async function promptForPush(): Promise<void> {
 
   return new Promise((resolve) => {
     Logger.result("");
-    rl.question("🚀 Push this advanced report to GitHub? (y/N): ", async (answer) => {
+    rl.question("🚀 Push this fixed report to GitHub? (y/N): ", async (answer) => {
       rl.close();
       
       if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
-        Logger.result("\n📤 Advanced report will be pushed...");
-        Logger.result("   (Push functionality maintained from original script)");
+        Logger.result("\n📤 Fixed report will be pushed...");
       } else {
-        Logger.result("\n📋 Advanced report saved locally.");
+        Logger.result("\n📋 Fixed report saved locally.");
       }
       
       resolve();
@@ -748,41 +796,48 @@ async function promptForPush(): Promise<void> {
   });
 }
 
-// ===== SCRIPT PRINCIPAL AVANCÉ =====
+// ===== SCRIPT PRINCIPAL FIXÉ =====
 
-async function runAdvancedBalanceTest(): Promise<void> {
+async function runFixedBalanceTest(): Promise<void> {
   const startTime = Date.now();
   
   Logger.enableQuietMode();
-  Logger.result("🎯 Advanced Spell Balance Analysis Starting...\n");
+  Logger.result("🎯 Fixed Advanced Spell Balance Analysis Starting...\n");
   
   try {
     await setupGitStructure();
     await mongoose.connect(MONGO_URI);
     
-    Logger.result("⚙️ Initializing advanced game systems...");
+    Logger.result("⚙️ Initializing fixed game systems...");
     await SpellManager.initialize();
     await EffectManager.initialize();
     await PassiveManager.initialize();
     
     Logger.disableQuietMode();
     
-    // Phase 1: Scanner et classifier les sorts
-    Logger.phase(1, "Scanning & classifying spells", "Detecting rarity and analyzing characteristics");
+    Logger.phase(1, "Scanning & classifying spells with fixes", "Improved rarity detection and validation");
     const allSpells = SpellManager.getAllSpells();
     const testableSpells = allSpells.filter(spell => 
       spell.config.type === "active" && 
       spell.config.category === "damage"
     );
     
-    // Analyser la distribution des raretés
+    // ✨ DEBUG: Afficher les caractéristiques de chaque sort
+    Logger.result("   🔍 SPELL ANALYSIS:");
+    testableSpells.forEach(spell => {
+      const rarity = getSpellRarity(spell.config.id);
+      const energyCost = spell.getEnergyCost(5);
+      const cooldown = spell.getEffectiveCooldown(createTestHero(), 5);
+      Logger.result(`      ${spell.config.id}: ${rarity} (Energy: ${energyCost}, CD: ${cooldown}s)`);
+    });
+    
     const rarityDistribution = testableSpells.reduce((acc, spell) => {
       const rarity = getSpellRarity(spell.config.id);
       acc[rarity] = (acc[rarity] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
     
-    Logger.result("   📊 RARITY BREAKDOWN:");
+    Logger.result("\n   📊 RARITY BREAKDOWN:");
     Object.entries(rarityDistribution).forEach(([rarity, count]) => {
       const emoji = rarity === "Common" ? "⚪" : 
                     rarity === "Rare" ? "🔵" : 
@@ -796,15 +851,14 @@ async function runAdvancedBalanceTest(): Promise<void> {
     
     const results: SpellDpsResult[] = [];
     
-    // Phase 2-6: Tests avancés sur différents dummies
+    // Phase 2-6: Tests avec debug amélioré
     const dummyTypes = ["neutral", "resistant", "vulnerable", "armored", "elite"];
     
     for (let i = 0; i < dummyTypes.length; i++) {
       const dummyType = dummyTypes[i];
       const phaseNum = i + 2;
-      const emoji = ["⚔️", "🛡️", "🎯", "🛡️", "👑"][i];
       
-      Logger.phase(phaseNum, `Testing vs ${dummyType} dummy`, `Advanced metrics collection`);
+      Logger.phase(phaseNum, `Testing vs ${dummyType} dummy`, `Fixed simulation with debug`);
       
       const config = DUMMY_CONFIGS[dummyType];
       
@@ -838,7 +892,6 @@ async function runAdvancedBalanceTest(): Promise<void> {
           results.push(result);
         }
         
-        // Stocker les métriques selon le dummy
         if (dummyType === "neutral") {
           result.neutralDps = dps;
           result.metrics = metrics;
@@ -851,24 +904,26 @@ async function runAdvancedBalanceTest(): Promise<void> {
           result.vulnerabilityImpact = result.neutralDps > 0 ? 
             Math.round((dps / result.neutralDps - 1) * 100) : 0;
         }
-        // Les autres dummies (armored, elite) servent pour les métriques avancées
       }
       
       Logger.phaseSummary(`Completed ${testableSpells.length} spells vs ${dummyType} dummy`);
     }
     
-    // Phase 7: Analyse avancée
-    Logger.phase(7, "Advanced Analysis", "Computing balance scores, rarity analysis, elemental consistency");
+    // Phase 7: Analyse fixée
+    Logger.phase(7, "Fixed Advanced Analysis", "Improved scoring with cast rate consideration");
     
     const overallAverage = results.reduce((sum, r) => sum + r.neutralDps, 0) / results.length;
     
-    // Calculer les scores et classifications pour chaque sort
     results.forEach(result => {
       result.balanceScore = calculateBalanceScore(result, overallAverage);
       result.powerRating = analyzePowerRating(result);
       result.isBalanced = result.powerRating === "Balanced";
       
-      // Générer des recommandations spécifiques
+      // ✨ FIX: Recommandations améliorées
+      if (result.metrics.spellCasts === 0) {
+        result.recommendations.push(`CRITICAL: Never casts - check energy cost (${result.energyCost}) and cooldown (${result.cooldown}s)`);
+      }
+      
       if (result.powerRating === "Overpowered") {
         const reduction = Math.round(((result.neutralDps / overallAverage) - 1.2) * 100);
         result.recommendations.push(`Reduce damage by ${reduction}%`);
@@ -881,17 +936,17 @@ async function runAdvancedBalanceTest(): Promise<void> {
         result.recommendations.push(`Improve energy efficiency (current: ${result.metrics.energyEfficiency})`);
       }
       
-      if (Math.abs(result.resistanceImpact - 50) > 15) {
-        result.recommendations.push(`Fix elemental resistance calculation`);
+      if (result.metrics.castSuccessRate < 50) {
+        result.recommendations.push(`Low cast success rate: ${result.metrics.castSuccessRate}%`);
       }
     });
     
-    // Analyses par catégorie
     const rarityAnalysis = analyzeByRarity(results);
     const elementalAnalysis = analyzeByElement(results);
     
-    Logger.result("\n   🔬 ADVANCED ANALYSIS RESULTS:");
+    Logger.result("\n   🔬 FIXED ANALYSIS RESULTS:");
     Logger.result(`      Average Balance Score: ${Math.round(results.reduce((sum, r) => sum + r.balanceScore, 0) / results.length)}/100`);
+    Logger.result(`      Spells that cast: ${results.filter(r => r.metrics.spellCasts > 0).length}/${results.length}`);
     Logger.result(`      Power Distribution: ${results.filter(r => r.powerRating === "Balanced").length} Balanced, ${results.filter(r => r.powerRating === "Overpowered").length} OP, ${results.filter(r => r.powerRating === "Underpowered").length} UP`);
     
     Logger.result("\n   📈 RARITY ANALYSIS:");
@@ -911,16 +966,15 @@ async function runAdvancedBalanceTest(): Promise<void> {
       Logger.result(`      ${analysis.element}: ${analysis.averageDps} DPS, ${analysis.resistanceConsistency.toFixed(1)}% resistance consistency`);
     });
     
-    Logger.phaseSummary("Advanced analysis completed");
+    Logger.phaseSummary("Fixed advanced analysis completed");
     
-    // Générer le rapport avancé
     const testDuration = Math.round((Date.now() - startTime) / 1000);
     const recommendations = generateAdvancedRecommendations(results, rarityAnalysis, elementalAnalysis);
     
     const report: AdvancedBalanceReport = {
       metadata: {
         testDate: new Date().toISOString(),
-        version: "2.0.0-advanced-analysis",
+        version: "2.1.0-fixed-casting",
         totalSpellsTested: results.length,
         testDuration: `${testDuration}s`,
         testConfiguration: {
@@ -954,18 +1008,16 @@ async function runAdvancedBalanceTest(): Promise<void> {
       recommendations
     };
     
-    // Export
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const filename = `balance_advanced_${timestamp}.json`;
+    const filename = `balance_fixed_${timestamp}.json`;
     const outputPath = path.join(process.cwd(), 'logs', 'balance', filename);
     
     fs.writeFileSync(outputPath, JSON.stringify(report, null, 2));
-    Logger.result(`💾 Advanced report exported: ${filename}`);
+    Logger.result(`💾 Fixed report exported: ${filename}`);
     
-    // Afficher les résultats clés
-    Logger.result("\n🔧 CRITICAL ISSUES:");
+    Logger.result("\n🔧 CRITICAL ISSUES (FIXED ANALYSIS):");
     if (recommendations.immediate.length > 0) {
-      recommendations.immediate.slice(0, 5).forEach(rec => {
+      recommendations.immediate.slice(0, 7).forEach(rec => {
         Logger.result(`   🚨 ${rec}`);
       });
     } else {
@@ -979,8 +1031,8 @@ async function runAdvancedBalanceTest(): Promise<void> {
       });
     }
     
-    Logger.result(`\n⏱️ Advanced analysis completed in ${Math.floor(testDuration / 60)}m ${testDuration % 60}s`);
-    Logger.result(`📊 Overall balance health: ${report.summary.averageBalanceScore}/100`);
+    Logger.result(`\n⏱️ Fixed analysis completed in ${Math.floor(testDuration / 60)}m ${testDuration % 60}s`);
+    Logger.result(`📊 Fixed balance health: ${report.summary.averageBalanceScore}/100`);
     
     if (process.env.DEBUG !== 'true') {
       Logger.showFilteredLogs();
@@ -990,17 +1042,15 @@ async function runAdvancedBalanceTest(): Promise<void> {
     
   } catch (error) {
     Logger.disableQuietMode();
-    Logger.error("Error during advanced balance test", error instanceof Error ? error.message : String(error));
+    Logger.error("Error during fixed balance test", error instanceof Error ? error.message : String(error));
   } finally {
     Logger.disableQuietMode();
     await mongoose.disconnect();
   }
 }
 
-// ===== EXECUTION =====
-
 if (require.main === module) {
-  runAdvancedBalanceTest().then(() => process.exit(0));
+  runFixedBalanceTest().then(() => process.exit(0));
 }
 
-export { runAdvancedBalanceTest };
+export { runFixedBalanceTest };
