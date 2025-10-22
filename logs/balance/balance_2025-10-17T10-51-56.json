@@ -1,0 +1,83 @@
+{
+  "metadata": {
+    "testDate": "2025-10-17T10:51:56.235Z",
+    "version": "1.0.0",
+    "totalSpellsTested": 5,
+    "testDuration": "1s"
+  },
+  "summary": {
+    "averageDps": 313,
+    "balancedSpells": 5,
+    "overpoweredSpells": 0,
+    "underpoweredSpells": 0,
+    "elementalIssues": 0
+  },
+  "spellResults": [
+    {
+      "spellId": "blade_dance",
+      "element": "Fire",
+      "category": "damage",
+      "level": 5,
+      "neutralDps": 300,
+      "resistantDps": 150,
+      "vulnerableDps": 450,
+      "resistanceImpact": 50,
+      "vulnerabilityImpact": 50,
+      "isBalanced": true,
+      "issues": []
+    },
+    {
+      "spellId": "blazing_surge",
+      "element": "Fire",
+      "category": "damage",
+      "level": 5,
+      "neutralDps": 307,
+      "resistantDps": 150,
+      "vulnerableDps": 450,
+      "resistanceImpact": 51,
+      "vulnerabilityImpact": 47,
+      "isBalanced": true,
+      "issues": []
+    },
+    {
+      "spellId": "firelash",
+      "element": "Fire",
+      "category": "damage",
+      "level": 5,
+      "neutralDps": 326,
+      "resistantDps": 150,
+      "vulnerableDps": 450,
+      "resistanceImpact": 54,
+      "vulnerabilityImpact": 38,
+      "isBalanced": true,
+      "issues": []
+    },
+    {
+      "spellId": "incandescent_rush",
+      "element": "Fire",
+      "category": "damage",
+      "level": 5,
+      "neutralDps": 320,
+      "resistantDps": 150,
+      "vulnerableDps": 450,
+      "resistanceImpact": 53,
+      "vulnerabilityImpact": 41,
+      "isBalanced": true,
+      "issues": []
+    },
+    {
+      "spellId": "fireball",
+      "element": "Fire",
+      "category": "damage",
+      "level": 5,
+      "neutralDps": 310,
+      "resistantDps": 150,
+      "vulnerableDps": 450,
+      "resistanceImpact": 52,
+      "vulnerabilityImpact": 45,
+      "isBalanced": true,
+      "issues": []
+    }
+  ],
+  "recommendations": []
+}
