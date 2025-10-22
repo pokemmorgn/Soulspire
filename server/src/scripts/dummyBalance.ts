@@ -101,6 +101,7 @@ class Logger {
       case "Rare": return "🔵";
       case "Epic": return "🟣";
       case "Legendary": return "🟠";
+      case "Mythic": return "🔮"; // ✨ NOUVEAU
       default: return "⚫";
     }
   }
@@ -151,7 +152,7 @@ interface SpellDpsResult {
   element: string;
   category: string;
   level: number;
-  rarity: string;
+  rarity: HeroRarity;
   energyCost: number;
   cooldown: number;
   
@@ -178,7 +179,7 @@ interface SpellDpsResult {
 }
 
 interface RarityAnalysis {
-  rarity: string;
+  rarity: HeroRarity;
   count: number;
   averageDps: number;
   expectedDpsRange: { min: number; max: number };
@@ -288,12 +289,16 @@ const DUMMY_CONFIGS: Record<string, DummyConfig> = {
   }
 };
 
+// Types de rareté correspondant à IBattleParticipant
+type HeroRarity = "Common" | "Rare" | "Epic" | "Legendary" | "Mythic";
+
 // Définir les attentes de DPS par rareté
-const RARITY_DPS_EXPECTATIONS = {
+const RARITY_DPS_EXPECTATIONS: Record<HeroRarity, { min: number; max: number; multiplier: number }> = {
   Common: { min: 80, max: 120, multiplier: 1.0 },
   Rare: { min: 110, max: 150, multiplier: 1.25 },
   Epic: { min: 140, max: 190, multiplier: 1.6 },
-  Legendary: { min: 180, max: 250, multiplier: 2.0 }
+  Legendary: { min: 180, max: 250, multiplier: 2.0 },
+  Mythic: { min: 220, max: 300, multiplier: 2.5 } // ✨ NOUVEAU: Rareté ultime
 };
 
 const TEST_DURATION = 120; // Augmenté pour tests plus précis
@@ -302,9 +307,9 @@ const TEST_HERO_LEVEL = 50;
 
 // ===== UTILITAIRES AVANCÉS =====
 
-function createTestHero(rarity: string = "Epic"): IBattleParticipant {
+function createTestHero(rarity: HeroRarity = "Epic"): IBattleParticipant {
   // Ajuster les stats selon la rareté du sort testé
-  const rarityMultiplier = RARITY_DPS_EXPECTATIONS[rarity as keyof typeof RARITY_DPS_EXPECTATIONS]?.multiplier || 1.0;
+  const rarityMultiplier = RARITY_DPS_EXPECTATIONS[rarity]?.multiplier || 1.0;
   
   return {
     heroId: "test_hero_001",
@@ -365,9 +370,10 @@ function applyElementalResistance(damage: number, spellElement: string, resistan
   return Math.floor(damage * multiplier);
 }
 
-function getSpellRarity(spellId: string): string {
+function getSpellRarity(spellId: string): HeroRarity {
   // Analyser l'ID du sort pour déterminer sa rareté
   // Cette logique devrait être adaptée selon votre système de nommage
+  if (spellId.includes('mythic') || spellId.includes('transcendent')) return "Mythic";
   if (spellId.includes('legendary') || spellId.includes('ultimate')) return "Legendary";
   if (spellId.includes('epic') || spellId.includes('advanced')) return "Epic";
   if (spellId.includes('rare') || spellId.includes('improved')) return "Rare";
@@ -380,6 +386,7 @@ function getSpellRarity(spellId: string): string {
   const cooldown = spell.getEffectiveCooldown(createTestHero(), 5);
   
   // Heuristique basée sur les caractéristiques du sort
+  if (energyCost >= 100 || cooldown >= 12) return "Mythic";
   if (energyCost >= 80 || cooldown >= 8) return "Legendary";
   if (energyCost >= 50 || cooldown >= 5) return "Epic";
   if (energyCost >= 20 || cooldown >= 3) return "Rare";
@@ -393,7 +400,7 @@ async function testSpellAdvanced(
   spellId: string, 
   spellLevel: number, 
   dummyConfig: DummyConfig
-): Promise<{ dps: number; metrics: SpellTestMetrics; rarity: string }> {
+): Promise<{ dps: number; metrics: SpellTestMetrics; rarity: HeroRarity }> {
   const rarity = getSpellRarity(spellId);
   const testHero = createTestHero(rarity);
   const dummy = createDummy(dummyConfig);
@@ -528,7 +535,7 @@ function calculateBasicAttack(
 // ===== ANALYSES AVANCÉES =====
 
 function calculateBalanceScore(result: SpellDpsResult, overallAverage: number): number {
-  const rarityExpected = RARITY_DPS_EXPECTATIONS[result.rarity as keyof typeof RARITY_DPS_EXPECTATIONS];
+  const rarityExpected = RARITY_DPS_EXPECTATIONS[result.rarity];
   if (!rarityExpected) return 50;
   
   const expectedDps = (rarityExpected.min + rarityExpected.max) / 2;
@@ -552,7 +559,7 @@ function calculateBalanceScore(result: SpellDpsResult, overallAverage: number): 
 }
 
 function analyzePowerRating(result: SpellDpsResult): "Underpowered" | "Balanced" | "Strong" | "Overpowered" {
-  const rarityExpected = RARITY_DPS_EXPECTATIONS[result.rarity as keyof typeof RARITY_DPS_EXPECTATIONS];
+  const rarityExpected = RARITY_DPS_EXPECTATIONS[result.rarity];
   if (!rarityExpected) return "Balanced";
   
   const expectedDps = (rarityExpected.min + rarityExpected.max) / 2;
@@ -565,11 +572,11 @@ function analyzePowerRating(result: SpellDpsResult): "Underpowered" | "Balanced"
 }
 
 function analyzeByRarity(results: SpellDpsResult[]): RarityAnalysis[] {
-  const rarities = [...new Set(results.map(r => r.rarity))];
+  const rarities: HeroRarity[] = [...new Set(results.map(r => r.rarity))];
   
   return rarities.map(rarity => {
     const raritySpells = results.filter(r => r.rarity === rarity);
-    const expected = RARITY_DPS_EXPECTATIONS[rarity as keyof typeof RARITY_DPS_EXPECTATIONS];
+    const expected = RARITY_DPS_EXPECTATIONS[rarity];
     
     const averageDps = raritySpells.reduce((sum, r) => sum + r.neutralDps, 0) / raritySpells.length;
     const balancedCount = raritySpells.filter(r => r.powerRating === "Balanced").length;
@@ -777,7 +784,11 @@ async function runAdvancedBalanceTest(): Promise<void> {
     
     Logger.result("   📊 RARITY BREAKDOWN:");
     Object.entries(rarityDistribution).forEach(([rarity, count]) => {
-      const emoji = Logger['getRarityEmoji'](rarity);
+      const emoji = rarity === "Common" ? "⚪" : 
+                    rarity === "Rare" ? "🔵" : 
+                    rarity === "Epic" ? "🟣" : 
+                    rarity === "Legendary" ? "🟠" : 
+                    rarity === "Mythic" ? "🔮" : "⚫";
       Logger.result(`      ${emoji} ${rarity}: ${count} spells`);
     });
     
@@ -887,7 +898,12 @@ async function runAdvancedBalanceTest(): Promise<void> {
     rarityAnalysis.forEach(analysis => {
       const expectedAvg = (analysis.expectedDpsRange.min + analysis.expectedDpsRange.max) / 2;
       const deviation = expectedAvg > 0 ? ((analysis.averageDps - expectedAvg) / expectedAvg * 100) : 0;
-      Logger.result(`      ${Logger['getRarityEmoji'](analysis.rarity)} ${analysis.rarity}: ${analysis.averageDps} DPS (${deviation > 0 ? '+' : ''}${deviation.toFixed(1)}% vs expected)`);
+      const emoji = analysis.rarity === "Common" ? "⚪" : 
+                    analysis.rarity === "Rare" ? "🔵" : 
+                    analysis.rarity === "Epic" ? "🟣" : 
+                    analysis.rarity === "Legendary" ? "🟠" : 
+                    analysis.rarity === "Mythic" ? "🔮" : "⚫";
+      Logger.result(`      ${emoji} ${analysis.rarity}: ${analysis.averageDps} DPS (${deviation > 0 ? '+' : ''}${deviation.toFixed(1)}% vs expected)`);
     });
     
     Logger.result("\n   🌟 ELEMENT ANALYSIS:");
