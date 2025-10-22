@@ -345,12 +345,12 @@ Auto-pushed by: pushReports.ts`;
     console.log("🚀 Pushing to GitHub...");
     
     // Vérifier que le token est présent
-    if (!GITHUB_CONFIG.token) {
-      throw new Error("GITHUB_TOKEN not found in environment variables");
+    if (!githubToken) {
+      throw new Error("GITHUB_TOKEN not found in .env file");
     }
     
     // Utiliser le token GitHub pour l'authentification
-    const authenticatedUrl = `https://${GITHUB_CONFIG.username}:${GITHUB_CONFIG.token}@github.com/${GITHUB_CONFIG.username}/${GITHUB_CONFIG.repo}.git`;
+    const authenticatedUrl = `https://${GITHUB_CONFIG.username}:${githubToken}@github.com/${GITHUB_CONFIG.username}/${GITHUB_CONFIG.repo}.git`;
     
     // Temporairement changer l'origine pour inclure l'auth
     const { stdout: currentUrl } = await execAsync('git remote get-url origin');
@@ -358,7 +358,7 @@ Auto-pushed by: pushReports.ts`;
     
     try {
       await execAsync('git push origin main');
-      console.log("\n✅ Successfully pushed to GitHub!");
+      console.log("\n✅ Successfully pushed balance reports to GitHub!");
     } finally {
       // Remettre l'URL sans token pour sécurité (dans l'historique Git)
       const cleanUrl = currentUrl.trim();
