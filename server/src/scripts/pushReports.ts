@@ -12,8 +12,8 @@ async function loadGitHubToken(): Promise<string> {
     // Debug: afficher où on cherche
     console.log(`🔍 Debug - Current working directory: ${process.cwd()}`);
     
-    // Essayer de lire le .env manuellement
-    const envPath = path.join(process.cwd(), '.env');
+    // Chercher le .env dans le dossier server
+    const envPath = path.join(process.cwd(), 'server', '.env');
     console.log(`🔍 Debug - Looking for .env at: ${envPath}`);
     console.log(`🔍 Debug - File exists: ${fs.existsSync(envPath)}`);
     
