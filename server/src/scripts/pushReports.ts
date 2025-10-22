@@ -3,21 +3,33 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import * as fs from "fs";
 import * as path from "path";
-import dotenv from "dotenv";
-
-// Charger les variables d'environnement depuis le bon répertoire
-// Script: server/src/scripts/pushReports.ts
-// .env:   server/.env
-// Donc on remonte de 2 niveaux: ../..
-const envPath = path.join(__dirname, '../../../.env');
-dotenv.config({ path: envPath });
 
 const execAsync = promisify(exec);
 
 // ===== CONFIGURATION GITHUB =====
+async function loadGitHubToken(): Promise<string> {
+  try {
+    // Essayer de lire le .env manuellement
+    const envPath = path.join(process.cwd(), '.env');
+    
+    if (fs.existsSync(envPath)) {
+      const envContent = fs.readFileSync(envPath, 'utf8');
+      const tokenMatch = envContent.match(/GITHUB_TOKEN=(.+)/);
+      
+      if (tokenMatch && tokenMatch[1]) {
+        return tokenMatch[1].trim();
+      }
+    }
+    
+    // Fallback vers process.env
+    return process.env.GITHUB_TOKEN || "";
+  } catch (error) {
+    return "";
+  }
+}
+
 const GITHUB_CONFIG = {
   username: "pokemmorgn",
-  token: process.env.GITHUB_TOKEN || "",
   repo: "Soulspire"
 };
 
@@ -240,9 +252,16 @@ async function analyzeReports(): Promise<{ count: number; latest: string | null;
 async function pushReports(): Promise<void> {
   console.log("🚀 Pushing balance reports to GitHub...\n");
   
+  // Charger le token GitHub
+  const githubToken = await loadGitHubToken();
+  
   // Debug: vérifier que le token est chargé
   console.log("🔍 Environment check:");
-  console.log(`   GITHUB_TOKEN: ${process.env.GITHUB_TOKEN ? 'FOUND ✅' : 'NOT FOUND ❌'}`);
+  console.log(`   GITHUB_TOKEN: ${githubToken ? 'FOUND ✅' : 'NOT FOUND ❌'}`);
+  if (githubToken) {
+    console.log(`   Token preview: ${githubToken.substring(0, 8)}...`);
+  }
+  console.log("");
   
   try {
     // Vérifier qu'on est dans un repo Git
@@ -275,20 +294,27 @@ async function pushReports(): Promise<void> {
     // Tentative de configuration SSH (optionnel)
     await autoConfigureSSH();
     
-    // Ajouter les fichiers
-    console.log("\n📦 Adding files to Git...");
-    await execAsync('git add .gitignore');
-    await execAsync('git add logs/ -f');
+    // Ajouter SEULEMENT les fichiers de logs
+    console.log("\n📦 Adding ONLY balance reports to Git...");
+    await execAsync('git add logs/balance/*.json -f');
+    await execAsync('git add logs/balance/README.md || true');
+    await execAsync('git add logs/README.md || true');
+    
+    // NE PAS ajouter le .gitignore ici pour éviter d'ajouter d'autres fichiers
     
     // Vérifier s'il y a quelque chose à committer
     const { stdout: statusOutput } = await execAsync('git status --porcelain');
-    if (!statusOutput.trim()) {
-      console.log("✅ No changes to commit - everything up to date!");
+    const filesToCommit = statusOutput.split('\n').filter(line => 
+      line.includes('logs/balance/') && line.trim()
+    );
+    
+    if (filesToCommit.length === 0) {
+      console.log("✅ No new balance reports to commit - everything up to date!");
       return;
     }
     
-    console.log("   📋 Files to commit:");
-    console.log(statusOutput);
+    console.log("   📋 Balance files to commit:");
+    filesToCommit.forEach(file => console.log(`   ${file}`));
     
     // Créer un message de commit informatif
     const timestamp = new Date().toLocaleString('fr-FR');
