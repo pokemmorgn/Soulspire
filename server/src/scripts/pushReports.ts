@@ -3,8 +3,19 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import * as fs from "fs";
 import * as path from "path";
+import dotenv from "dotenv";
+
+// Charger les variables d'environnement
+dotenv.config();
 
 const execAsync = promisify(exec);
+
+// ===== CONFIGURATION GITHUB =====
+const GITHUB_CONFIG = {
+  username: "pokemmorgn",
+  token: process.env.GITHUB_TOKEN || "",
+  repo: "Soulspire"
+};
 
 // ===== FONCTIONS GIT =====
 
@@ -296,11 +307,29 @@ Auto-pushed by: pushReports.ts`;
     console.log("\n💾 Committing...");
     await execAsync(`git commit -m "${commitMessage}"`);
     
-    // Push
+    // Push avec authentification automatique
     console.log("🚀 Pushing to GitHub...");
-    await execAsync('git push origin main');
     
-    console.log("\n✅ Successfully pushed to GitHub!");
+    // Vérifier que le token est présent
+    if (!GITHUB_CONFIG.token) {
+      throw new Error("GITHUB_TOKEN not found in environment variables");
+    }
+    
+    // Utiliser le token GitHub pour l'authentification
+    const authenticatedUrl = `https://${GITHUB_CONFIG.username}:${GITHUB_CONFIG.token}@github.com/${GITHUB_CONFIG.username}/${GITHUB_CONFIG.repo}.git`;
+    
+    // Temporairement changer l'origine pour inclure l'auth
+    const { stdout: currentUrl } = await execAsync('git remote get-url origin');
+    await execAsync(`git remote set-url origin "${authenticatedUrl}"`);
+    
+    try {
+      await execAsync('git push origin main');
+      console.log("\n✅ Successfully pushed to GitHub!");
+    } finally {
+      // Remettre l'URL sans token pour sécurité (dans l'historique Git)
+      const cleanUrl = currentUrl.trim();
+      await execAsync(`git remote set-url origin "${cleanUrl}"`);
+    }
     console.log("🔗 View on: https://github.com/pokemmorgn/Soulspire/tree/main/logs/balance");
     
   } catch (error) {
