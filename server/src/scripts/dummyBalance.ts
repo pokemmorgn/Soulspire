@@ -5,6 +5,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
+import * as readline from "readline";
 import { BattleEngine, IBattleOptions } from "../services/BattleEngine";
 import { SpellManager } from "../gameplay/SpellManager";
 import { EffectManager } from "../gameplay/EffectManager";
@@ -634,6 +635,41 @@ function analyzeSpellBalance(results: SpellDpsResult[]): {
   return { overpowered, underpowered, elementalIssues, recommendations };
 }
 
+// ===== FONCTION DE PROMPT =====
+
+async function promptForPush(): Promise<void> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+
+  return new Promise((resolve) => {
+    console.log("");
+    rl.question("🚀 Push this report to GitHub? (y/N): ", async (answer) => {
+      rl.close();
+      
+      if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
+        console.log("\n📤 Launching push script...");
+        
+        try {
+          // Importer et lancer le script de push
+          const { pushReports } = await import('./pushReports');
+          await pushReports();
+        } catch (error) {
+          console.error("❌ Error launching push script:", error instanceof Error ? error.message : String(error));
+          console.log("\n📋 You can push manually later with:");
+          console.log("   npx ts-node src/scripts/pushReports.ts");
+        }
+      } else {
+        console.log("\n📋 Report saved locally. To push later, run:");
+        console.log("   npx ts-node src/scripts/pushReports.ts");
+      }
+      
+      resolve();
+    });
+  });
+}
+
 // ===== SCRIPT PRINCIPAL =====
 
 async function runDummyBalanceTest(): Promise<void> {
@@ -792,8 +828,12 @@ async function runDummyBalanceTest(): Promise<void> {
     
     console.log(`\n⏱️ Test completed in ${Math.floor(testDuration / 60)}m ${testDuration % 60}s`);
     
-    // Auto-push vers GitHub
-    await pushToGit(outputPath, report.summary);
+    // Proposer de lancer le script de push
+    console.log("\n📦 Report generated successfully!");
+    console.log(`📁 Report saved: ${outputPath}`);
+    
+    // Demander si on veut pusher
+    await promptForPush();
     
   } catch (error) {
     console.error("❌ Error during balance test:", error instanceof Error ? error.message : String(error));
