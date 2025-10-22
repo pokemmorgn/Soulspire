@@ -9,21 +9,32 @@ const execAsync = promisify(exec);
 // ===== CONFIGURATION GITHUB =====
 async function loadGitHubToken(): Promise<string> {
   try {
+    // Debug: afficher où on cherche
+    console.log(`🔍 Debug - Current working directory: ${process.cwd()}`);
+    
     // Essayer de lire le .env manuellement
     const envPath = path.join(process.cwd(), '.env');
+    console.log(`🔍 Debug - Looking for .env at: ${envPath}`);
+    console.log(`🔍 Debug - File exists: ${fs.existsSync(envPath)}`);
     
     if (fs.existsSync(envPath)) {
       const envContent = fs.readFileSync(envPath, 'utf8');
+      console.log(`🔍 Debug - File content length: ${envContent.length}`);
+      
       const tokenMatch = envContent.match(/GITHUB_TOKEN=(.+)/);
+      console.log(`🔍 Debug - Regex match found: ${!!tokenMatch}`);
       
       if (tokenMatch && tokenMatch[1]) {
-        return tokenMatch[1].trim();
+        const token = tokenMatch[1].trim();
+        console.log(`🔍 Debug - Token length: ${token.length}`);
+        return token;
       }
     }
     
     // Fallback vers process.env
     return process.env.GITHUB_TOKEN || "";
   } catch (error) {
+    console.log(`🔍 Debug - Error: ${error}`);
     return "";
   }
 }
