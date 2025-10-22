@@ -182,8 +182,8 @@ async function pushToGit(reportPath: string, reportSummary: any): Promise<void> 
     // Vérifier et corriger le .gitignore
     await fixGitignore();
     
-    // Changer l'origine vers SSH si nécessaire
-    await switchToSSH();
+    // Changer l'origine vers SSH si nécessaire (DÉSACTIVÉ pour éviter les problèmes)
+    // await switchToSSH();
     
     // Ajouter les nouveaux fichiers
     console.log("   ➕ Adding files...");
