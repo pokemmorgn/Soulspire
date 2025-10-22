@@ -170,6 +170,9 @@ async function pushToGit(reportPath: string, reportSummary: any): Promise<void> 
     // Vérifier qu'on est dans un repo Git
     await execAsync('git rev-parse --git-dir');
     
+    // Configurer Git si pas déjà fait
+    await setupGitConfig();
+    
     // Déplacer les anciens rapports vers la nouvelle structure
     await moveOldReports();
     
@@ -305,6 +308,33 @@ logs/debug/
     
   } catch (error) {
     console.error("   ⚠️ Error fixing .gitignore:", error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function setupGitConfig(): Promise<void> {
+  try {
+    console.log("   🔧 Checking Git configuration...");
+    
+    // Vérifier si user.name est configuré
+    try {
+      await execAsync('git config user.name');
+    } catch {
+      console.log("   📝 Setting Git user.name...");
+      await execAsync('git config user.name "Soulspire Auto Balance"');
+    }
+    
+    // Vérifier si user.email est configuré
+    try {
+      await execAsync('git config user.email');
+    } catch {
+      console.log("   📧 Setting Git user.email...");
+      await execAsync('git config user.email "balance-bot@soulspire.local"');
+    }
+    
+    console.log("   ✅ Git configuration ready");
+    
+  } catch (error) {
+    console.error("   ⚠️ Error setting up Git config:", error instanceof Error ? error.message : String(error));
   }
 }
 
