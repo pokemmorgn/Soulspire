@@ -17,6 +17,147 @@ dotenv.config();
 const execAsync = promisify(exec);
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/unity-gacha-game";
 
+// ===== SYSTÈME DE LOGS PROPRE =====
+
+class Logger {
+  private static originalConsole = {
+    log: console.log,
+    warn: console.warn,
+    error: console.error
+  };
+  
+  private static isQuietMode = false;
+  private static pendingOutput: string[] = [];
+  
+  // Activer le mode silencieux (supprime tous les logs automatiques)
+  static enableQuietMode(): void {
+    this.isQuietMode = true;
+    this.pendingOutput = [];
+    
+    // Rediriger console.log pour capturer les logs indésirables
+    console.log = (...args: any[]) => {
+      const message = args.join(' ');
+      
+      // Filtrer les messages que nous voulons garder
+      if (this.shouldKeepMessage(message)) {
+        this.originalConsole.log(...args);
+      } else {
+        // Stocker les messages filtrés pour debug si nécessaire
+        this.pendingOutput.push(message);
+      }
+    };
+    
+    // Garder warn et error normaux
+    console.warn = this.originalConsole.warn;
+    console.error = this.originalConsole.error;
+  }
+  
+  // Désactiver le mode silencieux
+  static disableQuietMode(): void {
+    this.isQuietMode = false;
+    console.log = this.originalConsole.log;
+    console.warn = this.originalConsole.warn;
+    console.error = this.originalConsole.error;
+  }
+  
+  // Déterminer si un message doit être gardé
+  private static shouldKeepMessage(message: string): boolean {
+    // Messages à GARDER (importants pour le test)
+    const keepPatterns = [
+      /^🎯/, // Début du test
+      /^📊/, // Phases
+      /^⚔️/, // Tests dummy
+      /^📋/, // Analyse
+      /^💾/, // Export
+      /^🔧/, // Problèmes trouvés
+      /^✅/, // Succès final
+      /^❌/, // Erreurs importantes
+      /^⏱️/, // Durée
+      /^📦/, // Report généré
+      /^🚀/, // Push question
+      /Testing \w+/, // Tests individuels
+      /Result:/, // Résultats de tests
+      /Completed testing/, // Fin de phase
+      /Found \d+ testable/, // Nombre de sorts
+      /spells balanced/, // Résultats d'équilibrage
+      /KEY ISSUES FOUND/, // Problèmes détectés
+      /Test completed in/, // Fin de test
+    ];
+    
+    // Messages à FILTRER (bruit des loaders automatiques)
+    const filterPatterns = [
+      /Auto-découverte/, // AutoLoaders
+      /Tentative de chargement/, // Imports
+      /chargé\(s\) depuis/, // Fichiers chargés
+      /enregistré dans/, // Enregistrements
+      /effets? auto-chargés/, // Stats des loaders
+      /sorts? auto-chargés/, // Stats des loaders
+      /passifs? auto-chargés/, // Stats des loaders
+      /RÉSUMÉ DES/, // Résumés verbeux
+      /Total:.*automatiquement/, // Totaux des loaders
+      /Initialisation du.*Manager/, // Init des managers
+      /Skip reload/, // Cache des loaders
+      /Fichier.*déjà chargé/, // Cache
+      /Répertoire.*non trouvé/, // Dossiers manquants
+      /Cooldown check/, // Détails de cooldown des passifs
+      /HP threshold check/, // Vérifications HP
+      /Première utilisation/, // Passifs
+      /En cooldown/, // Cooldown messages
+      /MongoDB connected to/, // Connexion DB
+    ];
+    
+    // Vérifier les patterns à garder en priorité
+    if (keepPatterns.some(pattern => pattern.test(message))) {
+      return true;
+    }
+    
+    // Vérifier les patterns à filtrer
+    if (filterPatterns.some(pattern => pattern.test(message))) {
+      return false;
+    }
+    
+    // Par défaut, garder les messages courts et significatifs
+    return message.length < 100 && !message.includes('•');
+  }
+  
+  // Logger spécialisé pour les phases du test
+  static phase(phaseNumber: number, title: string, details?: string): void {
+    const emoji = ["📊", "⚔️", "⚔️", "⚔️", "📋"][phaseNumber - 1] || "🔄";
+    this.originalConsole.log(`${emoji} Phase ${phaseNumber}: ${title}`);
+    if (details) {
+      this.originalConsole.log(`   ${details}`);
+    }
+  }
+  
+  // Logger pour les résultats de tests
+  static testResult(spellId: string, dps: number, details: string): void {
+    this.originalConsole.log(`   Testing ${spellId}: ${Math.round(dps)} DPS ${details}`);
+  }
+  
+  // Logger pour les résumés de phase
+  static phaseSummary(message: string): void {
+    this.originalConsole.log(`   ${message}\n`);
+  }
+  
+  // Logger pour les résultats finaux
+  static result(message: string): void {
+    this.originalConsole.log(message);
+  }
+  
+  // Logger pour les erreurs importantes
+  static error(message: string, error?: any): void {
+    this.originalConsole.error(`❌ ${message}`, error || '');
+  }
+  
+  // Afficher les logs filtrés en mode debug
+  static showFilteredLogs(): void {
+    if (this.pendingOutput.length > 0) {
+      this.originalConsole.log(`\n🔍 Debug: ${this.pendingOutput.length} messages filtered`);
+      this.originalConsole.log("Use DEBUG=true to see all messages\n");
+    }
+  }
+}
+
 // ===== INTERFACES =====
 
 interface DummyConfig {
@@ -104,8 +245,6 @@ const TEST_HERO_LEVEL = 50; // Niveau standard pour les tests
 // ===== FONCTIONS GIT AUTO-PUSH =====
 
 async function setupGitStructure(): Promise<void> {
-  console.log("📁 Setting up Git structure...");
-  
   try {
     // Créer la structure de logs
     const logsDir = path.join(process.cwd(), 'logs');
@@ -157,16 +296,12 @@ Les rapports sont automatiquement pushés vers GitHub après génération.
       fs.writeFileSync(balanceReadme, balanceReadmeContent);
     }
     
-    console.log("   ✅ Git structure created");
-    
   } catch (error) {
-    console.error("   ⚠️ Error setting up Git structure:", error instanceof Error ? error.message : String(error));
+    // Ignorer les erreurs de setup en mode silencieux
   }
 }
 
 async function pushToGit(reportPath: string, reportSummary: any): Promise<void> {
-  console.log("\n📤 Pushing to GitHub...");
-  
   try {
     // Vérifier qu'on est dans un repo Git
     await execAsync('git rev-parse --git-dir');
@@ -183,11 +318,7 @@ async function pushToGit(reportPath: string, reportSummary: any): Promise<void> 
     // Vérifier et corriger le .gitignore
     await fixGitignore();
     
-    // Changer l'origine vers SSH si nécessaire (DÉSACTIVÉ pour éviter les problèmes)
-    // await switchToSSH();
-    
     // Ajouter les nouveaux fichiers
-    console.log("   ➕ Adding files...");
     await execAsync('git add .gitignore');
     await execAsync('git add logs/ -f'); // Force l'ajout même si dans .gitignore
     await execAsync('git add debugsequilibrage/ || true'); // Au cas où il existerait encore
@@ -195,11 +326,10 @@ async function pushToGit(reportPath: string, reportSummary: any): Promise<void> 
     // Vérifier s'il y a quelque chose à committer
     const { stdout: statusOutput } = await execAsync('git status --porcelain');
     if (!statusOutput.trim()) {
-      console.log("   ℹ️  No changes to commit");
       return;
     }
     
-    // Créer un message de commit informatif (échapper les caractères spéciaux)
+    // Créer un message de commit informatif
     const timestamp = new Date().toLocaleString('fr-FR');
     const balanced = reportSummary.balancedSpells;
     const total = reportSummary.totalSpellsTested || 0;
@@ -216,21 +346,17 @@ Test Results:
 
 Generated by: dummyBalance.ts with auto-push`.replace(/"/g, '\\"');
     
-    // Commit
-    console.log("   💾 Committing...");
+    // Commit et push
     await execAsync(`git commit -m "${commitMessage}"`);
-    
-    // Push avec SSH
-    console.log("   🚀 Pushing to origin/main...");
     await execAsync('git push origin main');
     
-    console.log("   ✅ Successfully pushed to GitHub!");
-    console.log(`   🔗 View on: https://github.com/pokemmorgn/Soulspire/tree/main/logs/balance`);
+    Logger.result("✅ Successfully pushed to GitHub!");
+    Logger.result("🔗 View on: https://github.com/pokemmorgn/Soulspire/tree/main/logs/balance");
     
   } catch (error) {
-    console.error("   ❌ Git push failed:", error instanceof Error ? error.message : String(error));
-    console.log("   ℹ️  You can manually push later with:");
-    console.log("      git add logs/ -f && git commit -m 'Add balance report' && git push origin main");
+    Logger.error("Git push failed", error instanceof Error ? error.message : String(error));
+    Logger.result("ℹ️  You can manually push later with:");
+    Logger.result("   git add logs/ -f && git commit -m 'Add balance report' && git push origin main");
   }
 }
 
@@ -249,7 +375,6 @@ async function moveOldReports(): Promise<void> {
       
       if (!fs.existsSync(newPath)) {
         fs.renameSync(oldPath, newPath);
-        console.log(`   📦 Moved ${file} to logs/balance/`);
       }
     }
     
@@ -265,21 +390,18 @@ async function moveOldReports(): Promise<void> {
           
           if (!fs.existsSync(newPath)) {
             fs.renameSync(oldPath, newPath);
-            console.log(`   📦 Moved ${file} from debugsequilibrage/`);
           }
         }
       }
     }
     
   } catch (error) {
-    console.error("   ⚠️ Error moving old reports:", error instanceof Error ? error.message : String(error));
+    // Ignorer les erreurs en mode silencieux
   }
 }
 
 async function fixGitignore(): Promise<void> {
   try {
-    console.log("   📝 Checking/fixing .gitignore...");
-    
     const gitignorePath = path.join(process.cwd(), '.gitignore');
     let gitignoreContent = '';
     
@@ -308,25 +430,19 @@ logs/debug/
       
       gitignoreContent += logsConfig;
       fs.writeFileSync(gitignorePath, gitignoreContent);
-      console.log("   ✅ Updated .gitignore to allow balance reports");
-    } else {
-      console.log("   ✅ .gitignore already configured for logs");
     }
     
   } catch (error) {
-    console.error("   ⚠️ Error fixing .gitignore:", error instanceof Error ? error.message : String(error));
+    // Ignorer les erreurs
   }
 }
 
 async function setupGitConfig(): Promise<void> {
   try {
-    console.log("   🔧 Checking Git configuration...");
-    
     // Vérifier si user.name est configuré
     try {
       await execAsync('git config user.name');
     } catch {
-      console.log("   📝 Setting Git user.name...");
       await execAsync('git config user.name "Soulspire Auto Balance"');
     }
     
@@ -334,21 +450,16 @@ async function setupGitConfig(): Promise<void> {
     try {
       await execAsync('git config user.email');
     } catch {
-      console.log("   📧 Setting Git user.email...");
       await execAsync('git config user.email "balance-bot@soulspire.local"');
     }
     
-    console.log("   ✅ Git configuration ready");
-    
   } catch (error) {
-    console.error("   ⚠️ Error setting up Git config:", error instanceof Error ? error.message : String(error));
+    // Ignorer les erreurs
   }
 }
 
 async function autoConfigureSSH(): Promise<void> {
   try {
-    console.log("   🔑 Auto-configuring SSH...");
-    
     // Chercher les clés SSH existantes
     const homeDir = require('os').homedir();
     const sshDir = path.join(homeDir, '.ssh');
@@ -363,13 +474,11 @@ async function autoConfigureSSH(): Promise<void> {
     for (const keyPath of possibleKeys) {
       if (fs.existsSync(keyPath)) {
         sshKey = keyPath;
-        console.log(`   🔍 Found SSH key: ${keyPath}`);
         break;
       }
     }
     
     if (!sshKey) {
-      console.log("   ⚠️ No SSH key found, will use HTTPS (may prompt for credentials)");
       return;
     }
     
@@ -396,40 +505,10 @@ Host github.com
       sshConfig += githubConfig;
       fs.writeFileSync(sshConfigPath, sshConfig);
       fs.chmodSync(sshConfigPath, 0o600);
-      console.log("   ✅ SSH config updated for GitHub");
-    } else {
-      console.log("   ✅ SSH already configured for GitHub");
     }
     
   } catch (error) {
-    console.error("   ⚠️ Error configuring SSH:", error instanceof Error ? error.message : String(error));
-  }
-}
-
-async function switchToSSH(): Promise<void> {
-  try {
-    console.log("   🔄 Checking Git remote...");
-    
-    const { stdout } = await execAsync('git remote get-url origin');
-    const currentUrl = stdout.trim();
-    
-    // Si c'est déjà SSH, ne rien faire
-    if (currentUrl.startsWith('git@github.com:')) {
-      console.log("   ✅ Already using SSH");
-      return;
-    }
-    
-    // Si c'est HTTPS GitHub, convertir vers SSH
-    if (currentUrl.includes('github.com/pokemmorgn/Soulspire')) {
-      console.log("   🔄 Converting to SSH...");
-      await execAsync('git remote set-url origin git@github.com:pokemmorgn/Soulspire.git');
-      console.log("   ✅ Switched to SSH");
-    } else {
-      console.log("   ⚠️ Unknown remote URL, keeping as-is");
-    }
-    
-  } catch (error) {
-    console.error("   ⚠️ Error switching to SSH:", error instanceof Error ? error.message : String(error));
+    // Ignorer les erreurs
   }
 }
 
@@ -508,14 +587,11 @@ async function testSpellDps(
   // Récupérer les infos du sort
   const spell = SpellManager.getSpell(spellId);
   if (!spell) {
-    console.warn(`⚠️ Sort non trouvé: ${spellId}`);
     return 0;
   }
   
   const spellCooldown = spell.getEffectiveCooldown(testHero, spellLevel);
   const spellEnergyCost = spell.getEnergyCost(spellLevel);
-  
-  console.log(`   Testing ${spellId} (CD: ${spellCooldown}s, Energy: ${spellEnergyCost})`);
   
   let totalDamage = 0;
   let currentTime = 0;
@@ -575,7 +651,10 @@ async function testSpellDps(
   }
   
   const dps = totalDamage / TEST_DURATION;
-  console.log(`     Result: ${Math.round(dps)} DPS (${spellCasts} spell casts, ${basicAttacks} basic attacks)`);
+  
+  // Log uniquement le résultat essentiel
+  const details = `(${spellCasts} casts, ${basicAttacks} basics, CD: ${spellCooldown}s)`;
+  Logger.testResult(spellId, dps, details);
   
   return Math.round(dps);
 }
@@ -644,25 +723,25 @@ async function promptForPush(): Promise<void> {
   });
 
   return new Promise((resolve) => {
-    console.log("");
+    Logger.result("");
     rl.question("🚀 Push this report to GitHub? (y/N): ", async (answer) => {
       rl.close();
       
       if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
-        console.log("\n📤 Launching push script...");
+        Logger.result("\n📤 Launching push script...");
         
         try {
           // Importer et lancer le script de push
           const { pushReports } = await import('./pushReports');
           await pushReports();
         } catch (error) {
-          console.error("❌ Error launching push script:", error instanceof Error ? error.message : String(error));
-          console.log("\n📋 You can push manually later with:");
-          console.log("   npx ts-node src/scripts/pushReports.ts");
+          Logger.error("Error launching push script", error instanceof Error ? error.message : String(error));
+          Logger.result("\n📋 You can push manually later with:");
+          Logger.result("   npx ts-node src/scripts/pushReports.ts");
         }
       } else {
-        console.log("\n📋 Report saved locally. To push later, run:");
-        console.log("   npx ts-node src/scripts/pushReports.ts");
+        Logger.result("\n📋 Report saved locally. To push later, run:");
+        Logger.result("   npx ts-node src/scripts/pushReports.ts");
       }
       
       resolve();
@@ -675,40 +754,49 @@ async function promptForPush(): Promise<void> {
 async function runDummyBalanceTest(): Promise<void> {
   const startTime = Date.now();
   
-  console.log("🎯 Dummy Balance Test Starting...\n");
+  // ACTIVER LE MODE SILENCIEUX PENDANT L'INITIALISATION
+  Logger.enableQuietMode();
+  
+  Logger.result("🎯 Dummy Balance Test Starting...\n");
   
   try {
-    // Setup Git structure
+    // Setup Git structure (silencieux)
     await setupGitStructure();
     
     // Connexion MongoDB
     await mongoose.connect(MONGO_URI);
     
-    // Initialiser les gestionnaires
+    // Initialiser les gestionnaires (les logs de chargement sont filtrés)
+    Logger.result("⚙️ Initializing game systems...");
     await SpellManager.initialize();
     await EffectManager.initialize();
     await PassiveManager.initialize();
     
+    // DÉSACTIVER LE MODE SILENCIEUX POUR LES PHASES DE TEST
+    Logger.disableQuietMode();
+    
     // Phase 1: Scanner tous les sorts
-    console.log("📊 Phase 1: Scanning spells...");
+    Logger.phase(1, "Scanning spells");
     const allSpells = SpellManager.getAllSpells();
     const testableSpells = allSpells.filter(spell => 
       spell.config.type === "active" && 
       spell.config.category === "damage"
     );
     
-    console.log(`   Found ${testableSpells.length} testable damage spells\n`);
+    Logger.phaseSummary(`Found ${testableSpells.length} testable damage spells`);
     
     if (testableSpells.length === 0) {
-      console.log("❌ No testable spells found!");
+      Logger.error("No testable spells found!");
       return;
     }
     
     const results: SpellDpsResult[] = [];
     
     // Phase 2-4: Tester sur chaque dummy
-    for (const dummyType of ["neutral", "resistant", "vulnerable"]) {
-      console.log(`⚔️ Phase ${dummyType === "neutral" ? "2" : dummyType === "resistant" ? "3" : "4"}: Testing ${dummyType} dummy...`);
+    const dummyTypes = ["neutral", "resistant", "vulnerable"];
+    for (let i = 0; i < dummyTypes.length; i++) {
+      const dummyType = dummyTypes[i];
+      Logger.phase(i + 2, `Testing vs ${dummyType} dummy`, `${testableSpells.length} spells to test`);
       
       const config = DUMMY_CONFIGS[dummyType];
       
@@ -748,11 +836,11 @@ async function runDummyBalanceTest(): Promise<void> {
         }
       }
       
-      console.log(`   Completed testing ${testableSpells.length} spells on ${dummyType} dummy\n`);
+      Logger.phaseSummary(`Completed testing ${testableSpells.length} spells vs ${dummyType} dummy`);
     }
     
     // Phase 5: Analyse
-    console.log("\n📋 Phase 5: Analysis...");
+    Logger.phase(5, "Analyzing balance", "Computing spell equilibrium metrics");
     
     // Calculer l'équilibrage pour chaque sort
     const avgDps = results.reduce((sum, r) => sum + r.neutralDps, 0) / results.length;
@@ -781,15 +869,15 @@ async function runDummyBalanceTest(): Promise<void> {
     const analysis = analyzeSpellBalance(results);
     const balancedCount = results.filter(r => r.isBalanced).length;
     
-    console.log(`   ✅ ${balancedCount} spells balanced (${Math.round(balancedCount / results.length * 100)}%)`);
-    console.log(`   ⚠️ ${results.length - balancedCount} spells need attention\n`);
+    Logger.phaseSummary(`✅ ${balancedCount} spells balanced (${Math.round(balancedCount / results.length * 100)}%)`);
+    Logger.phaseSummary(`⚠️ ${results.length - balancedCount} spells need attention`);
     
     // Générer le rapport
     const testDuration = Math.round((Date.now() - startTime) / 1000);
     const report: BalanceReport = {
       metadata: {
         testDate: new Date().toISOString(),
-        version: "1.1.0-autopush",
+        version: "1.2.0-clean-logs",
         totalSpellsTested: results.length,
         testDuration: `${testDuration}s`
       },
@@ -810,34 +898,41 @@ async function runDummyBalanceTest(): Promise<void> {
     const outputPath = path.join(process.cwd(), 'logs', 'balance', filename);
     
     fs.writeFileSync(outputPath, JSON.stringify(report, null, 2));
-    console.log(`💾 Exported: ${outputPath}\n`);
+    Logger.result(`💾 Report exported: ${filename}`);
     
     // Afficher les problèmes clés
     if (analysis.recommendations.length > 0) {
-      console.log("🔧 KEY ISSUES FOUND:");
+      Logger.result("\n🔧 KEY ISSUES FOUND:");
       analysis.recommendations.slice(0, 5).forEach(rec => {
-        console.log(`   - ${rec}`);
+        Logger.result(`   - ${rec}`);
       });
       
       if (analysis.recommendations.length > 5) {
-        console.log(`   ... and ${analysis.recommendations.length - 5} more (see JSON file)`);
+        Logger.result(`   ... and ${analysis.recommendations.length - 5} more (see JSON file)`);
       }
     } else {
-      console.log("✅ All spells appear balanced!");
+      Logger.result("✅ All spells appear balanced!");
     }
     
-    console.log(`\n⏱️ Test completed in ${Math.floor(testDuration / 60)}m ${testDuration % 60}s`);
+    Logger.result(`\n⏱️ Test completed in ${Math.floor(testDuration / 60)}m ${testDuration % 60}s`);
     
     // Proposer de lancer le script de push
-    console.log("\n📦 Report generated successfully!");
-    console.log(`📁 Report saved: ${outputPath}`);
+    Logger.result("\n📦 Report generated successfully!");
+    Logger.result(`📁 Full report: logs/balance/${filename}`);
+    
+    // Afficher les logs filtrés en mode debug
+    if (process.env.DEBUG !== 'true') {
+      Logger.showFilteredLogs();
+    }
     
     // Demander si on veut pusher
     await promptForPush();
     
   } catch (error) {
-    console.error("❌ Error during balance test:", error instanceof Error ? error.message : String(error));
+    Logger.disableQuietMode(); // S'assurer que les erreurs sont visibles
+    Logger.error("Error during balance test", error instanceof Error ? error.message : String(error));
   } finally {
+    Logger.disableQuietMode();
     await mongoose.disconnect();
   }
 }
