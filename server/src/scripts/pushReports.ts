@@ -5,8 +5,12 @@ import * as fs from "fs";
 import * as path from "path";
 import dotenv from "dotenv";
 
-// Charger les variables d'environnement
-dotenv.config();
+// Charger les variables d'environnement depuis le bon répertoire
+// Script: server/src/scripts/pushReports.ts
+// .env:   server/.env
+// Donc on remonte de 2 niveaux: ../..
+const envPath = path.join(__dirname, '../../../.env');
+dotenv.config({ path: envPath });
 
 const execAsync = promisify(exec);
 
@@ -235,6 +239,10 @@ async function analyzeReports(): Promise<{ count: number; latest: string | null;
 
 async function pushReports(): Promise<void> {
   console.log("🚀 Pushing balance reports to GitHub...\n");
+  
+  // Debug: vérifier que le token est chargé
+  console.log("🔍 Environment check:");
+  console.log(`   GITHUB_TOKEN: ${process.env.GITHUB_TOKEN ? 'FOUND ✅' : 'NOT FOUND ❌'}`);
   
   try {
     // Vérifier qu'on est dans un repo Git
