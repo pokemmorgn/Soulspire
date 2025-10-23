@@ -123,15 +123,15 @@ interface TeamComposition {
 
 class HeroFactory {
   
-  static createHero(config: {
-    name: string;
-    role: string;
-    element: string;
-    rarity: string;
-    level: number;
-    spells?: HeroSpells;
-    statModifiers?: Partial<Record<string, number>>;
-  }): IBattleParticipant {
+static createHero(config: {
+  name: string;
+  role: "Tank" | "DPS Melee" | "DPS Ranged" | "Support";        // ← Type union strict
+  element: "Fire" | "Water" | "Wind" | "Electric" | "Light" | "Dark";  // ← Type union strict  
+  rarity: "Common" | "Rare" | "Epic" | "Legendary" | "Mythic";  // ← Type union strict
+  level: number;
+  spells?: HeroSpells;
+  statModifiers?: Partial<Record<string, number>>;
+}): IBattleParticipant
     
     const baseStats = this.getBaseStatsByRole(config.role, config.level);
     const rarityMultiplier = this.getRarityMultiplier(config.rarity);
@@ -173,7 +173,10 @@ class HeroFactory {
     };
   }
   
-  private static getBaseStatsByRole(role: string, level: number): {
+  private static getBaseStatsByRole(
+  role: "Tank" | "DPS Melee" | "DPS Ranged" | "Support", 
+  level: number
+): {
     hp: number; atk: number; def: number; speed: number;
   } {
     const levelMultiplier = 1 + (level - 1) * 0.1;
@@ -185,7 +188,7 @@ class HeroFactory {
       "Support": { hp: 4500, atk: 250, def: 180, speed: 95 }
     };
     
-    const base = roleStats[role as keyof typeof roleStats] || roleStats["DPS Melee"];
+    const base = roleStats[role];
     
     return {
       hp: Math.floor(base.hp * levelMultiplier),
@@ -195,7 +198,9 @@ class HeroFactory {
     };
   }
   
-  private static getRarityMultiplier(rarity: string): number {
+ private static getRarityMultiplier(
+  rarity: "Common" | "Rare" | "Epic" | "Legendary" | "Mythic"
+  ): number {
     const multipliers: Record<string, number> = {
       "Common": 1.0,
       "Rare": 1.15,
