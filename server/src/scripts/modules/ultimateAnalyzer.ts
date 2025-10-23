@@ -67,7 +67,28 @@ interface UltimateAnalysisResult {
   spellId: string;
   spellName: string;
   element: string;
+  category: string;
   metrics: UltimateMetrics;
+  
+  // ✨ NOUVEAU : Métriques DPS détaillées
+  dpsMetrics: {
+    totalDamage: number;              // Dégâts totaux infligés
+    averageDamagePerUse: number;      // Dégâts moyens par utilisation
+    dpsRating: number;                // Note DPS (0-100)
+    dpsRank: number;                  // Rang DPS parmi tous ultimates
+    healingPerSecond: number;         // HPS pour ultimates de heal
+    utilityScore: number;             // Score pour buffs/debuffs/control
+  };
+  
+  // ✨ NOUVEAU : Résumé technique
+  technicalSummary: {
+    category: string;
+    element: string;
+    energyCost: number;
+    usageRate: number;                // % d'utilisation dans les combats
+    averageTiming: number;            // Tour moyen d'utilisation
+    effectDescription: string;        // Description des effets
+  };
   
   // Scores globaux
   overallPower: number;                 // Puissance globale (0-100)
@@ -521,7 +542,26 @@ class UltimateAnalyzer {
       spellId: ultimateSpell.config.id,
       spellName: ultimateSpell.config.name,
       element: ultimateSpell.config.element || "None",
+      category: ultimateSpell.config.category,
       metrics,
+      // ✨ NOUVEAU : Métriques DPS simulées
+      dpsMetrics: {
+        totalDamage: Math.floor(Math.random() * 8000 + 2000),
+        averageDamagePerUse: Math.floor(Math.random() * 6000 + 1500),
+        dpsRating: Math.round(this.simulateMetric(ultimateSpell, "rawImpact")),
+        dpsRank: 0,
+        healingPerSecond: ultimateSpell.config.category === "heal" ? Math.floor(Math.random() * 300 + 100) : 0,
+        utilityScore: ultimateSpell.config.category === "heal" ? 0 : Math.floor(Math.random() * 60 + 20)
+      },
+      // ✨ NOUVEAU : Résumé technique simulé
+      technicalSummary: {
+        category: ultimateSpell.config.category,
+        element: ultimateSpell.config.element || "None",
+        energyCost: 100,
+        usageRate: Math.floor(Math.random() * 30 + 70),
+        averageTiming: Math.floor(Math.random() * 5 + 2),
+        effectDescription: this.getEffectDescription(ultimateSpell.config.category)
+      },
       overallPower: this.calculateOverallPower(metrics),
       designQuality: this.calculateDesignQuality(metrics, ultimateSpell),
       balanceRating: this.calculateBalanceRating(metrics, ultimateSpell),
@@ -585,12 +625,19 @@ class UltimateAnalyzer {
     // Calculer métriques dérivées
     this.calculateDerivedMetrics(metrics, scenarioResults, ultimateSpell);
     
+    // ✨ NOUVEAU : Calculer métriques DPS et résumé technique
+    const dpsMetrics = this.calculateDpsMetrics(scenarioResults, ultimateSpell);
+    const technicalSummary = this.generateTechnicalSummary(ultimateSpell, scenarioResults, metrics);
+    
     // Générer l'analyse finale
     const analysis: UltimateAnalysisResult = {
       spellId: ultimateSpell.config.id,
       spellName: ultimateSpell.config.name,
       element: ultimateSpell.config.element || "None",
+      category: ultimateSpell.config.category,
       metrics,
+      dpsMetrics,
+      technicalSummary,
       overallPower: this.calculateOverallPower(metrics),
       designQuality: this.calculateDesignQuality(metrics, ultimateSpell),
       balanceRating: this.calculateBalanceRating(metrics, ultimateSpell),
@@ -661,7 +708,6 @@ class UltimateAnalyzer {
     const ultimateHealing = ultimateActions.reduce((sum, action) => sum + (action.healing || 0), 0);
     
     // ✅ CORRIGÉ: Calculer l'impact sans propriété 'team'
-    // On va utiliser actorId pour déterminer l'équipe
     const playerTeamIds = scenario.setupTeam(ultimateSpell).map(p => p.heroId);
     
     const totalPlayerDamage = actions
@@ -669,6 +715,17 @@ class UltimateAnalyzer {
       .reduce((sum, action) => sum + (action.damage || 0), 0);
     
     const ultimateContribution = totalPlayerDamage > 0 ? ultimateDamage / totalPlayerDamage : 0;
+    
+    // ✨ NOUVEAU : Métriques DPS détaillées
+    const battleDurationTurns = battleResult.totalTurns || 1;
+    const dpsPerTurn = ultimateDamage / battleDurationTurns;
+    const hpsPerTurn = ultimateHealing / battleDurationTurns;
+    const avgDamagePerUse = ultimateUsed ? ultimateDamage / ultimateActions.length : 0;
+    
+    // ✨ NOUVEAU : Analyse des effets secondaires
+    const buffsApplied = ultimateActions.reduce((sum, action) => sum + (action.buffsApplied?.length || 0), 0);
+    const debuffsApplied = ultimateActions.reduce((sum, action) => sum + (action.debuffsApplied?.length || 0), 0);
+    const utilityScore = (buffsApplied * 15) + (debuffsApplied * 12) + (ultimateHealing > 0 ? 20 : 0);
     
     // Score de performance adapté aux ultimates
     let performance = 30; // Base
@@ -700,6 +757,16 @@ class UltimateAnalyzer {
     const notes: string[] = [];
     if (!ultimateUsed) notes.push("Ultimate jamais utilisé - problème critique");
     if (ultimateContribution > 0.8) notes.push("Contribution ultra-dominante");
+    if (avgDamagePerUse > 8000) notes.push("Dégâts par utilisation très élevés");
+    if (utilityScore > 50) notes.push("Forte utilité (buffs/heals/debuffs)");
+    
+    // ✨ NOUVEAU : Debug détaillé
+    console.log(`    🔍 DEBUG ${ultimateSpell.config.name}:`);
+    console.log(`       ⚔️ Dégâts: ${ultimateDamage} (${avgDamagePerUse}/use)`);
+    console.log(`       💚 Soins: ${ultimateHealing} (${hpsPerTurn}/turn)`);
+    console.log(`       📊 Contribution: ${Math.round(ultimateContribution * 100)}%`);
+    console.log(`       ⚡ Utilisé: ${ultimateActions.length}x, Tour: ${ultimateActions[0]?.turn || 'N/A'}`);
+    console.log(`       🎯 Utilité: ${utilityScore} (${buffsApplied} buffs, ${debuffsApplied} debuffs)`);
     
     return {
       performance: Math.max(0, Math.min(100, performance)),
@@ -710,13 +777,92 @@ class UltimateAnalyzer {
       healingDone: ultimateHealing,
       gameChanging: ultimateContribution > 0.5,
       contribution: ultimateContribution,
-      battleDuration: battleResult.totalTurns,
+      battleDuration: battleDurationTurns,
       victory: battleResult.victory,
-      timing: ultimateActions[0]?.turn || null
+      timing: ultimateActions[0]?.turn || null,
+      // ✨ NOUVEAU : Métriques détaillées
+      dpsPerTurn,
+      hpsPerTurn,
+      avgDamagePerUse,
+      utilityScore,
+      buffsApplied,
+      debuffsApplied,
+      usesCount: ultimateActions.length
     };
   }
   
   // ===== MÉTHODES UTILITAIRES =====
+  
+  // ✨ NOUVEAU : Calculer les métriques DPS détaillées
+  private calculateDpsMetrics(scenarioResults: Record<string, any>, ultimateSpell: UltimateSpell): any {
+    const results = Object.values(scenarioResults);
+    
+    const totalDamage = results.reduce((sum: number, result: any) => sum + (result.damageDealt || 0), 0);
+    const totalHealing = results.reduce((sum: number, result: any) => sum + (result.healingDone || 0), 0);
+    const totalUses = results.reduce((sum: number, result: any) => sum + (result.usesCount || 0), 0);
+    const totalTurns = results.reduce((sum: number, result: any) => sum + (result.battleDuration || 1), 0);
+    
+    const averageDamagePerUse = totalUses > 0 ? Math.round(totalDamage / totalUses) : 0;
+    const averageHealingPerUse = totalUses > 0 ? Math.round(totalHealing / totalUses) : 0;
+    const dpsPerTurn = totalTurns > 0 ? Math.round(totalDamage / totalTurns) : 0;
+    const hpsPerTurn = totalTurns > 0 ? Math.round(totalHealing / totalTurns) : 0;
+    
+    // Calculer note DPS (0-100) basée sur la catégorie
+    let dpsRating = 0;
+    if (ultimateSpell.config.category === "damage") {
+      dpsRating = Math.min(100, Math.max(0, (averageDamagePerUse - 2000) / 80));
+    } else if (ultimateSpell.config.category === "heal") {
+      dpsRating = Math.min(100, Math.max(0, (averageHealingPerUse - 1000) / 60));
+    } else {
+      // Pour control/buff/debuff, on base sur l'utilité
+      const avgUtility = results.reduce((sum: number, result: any) => sum + (result.utilityScore || 0), 0) / results.length;
+      dpsRating = Math.min(100, Math.max(0, avgUtility));
+    }
+    
+    return {
+      totalDamage,
+      averageDamagePerUse,
+      dpsRating: Math.round(dpsRating),
+      dpsRank: 0, // Sera calculé dans generateComparativeAnalysis
+      healingPerSecond: hpsPerTurn,
+      utilityScore: results.reduce((sum: number, result: any) => sum + (result.utilityScore || 0), 0) / results.length
+    };
+  }
+  
+  // ✨ NOUVEAU : Générer le résumé technique
+  private generateTechnicalSummary(ultimateSpell: UltimateSpell, scenarioResults: Record<string, any>, metrics: UltimateMetrics): any {
+    const results = Object.values(scenarioResults);
+    const usageRate = results.filter((result: any) => result.ultimateUsed).length / results.length;
+    const avgTiming = results
+      .filter((result: any) => result.timing !== null)
+      .reduce((sum: number, result: any) => sum + (result.timing || 0), 0) / 
+      results.filter((result: any) => result.timing !== null).length || 0;
+    
+    let energyCost = 100;
+    try {
+      energyCost = ultimateSpell.getEnergyCost ? ultimateSpell.getEnergyCost(5) : 100;
+    } catch (error) {
+      // Fallback
+    }
+    
+    // Description des effets basée sur la catégorie
+    const effectDescriptions: Record<string, string> = {
+      "damage": "Inflige des dégâts massifs aux ennemis",
+      "heal": "Soigne les alliés et peut ressusciter",
+      "buff": "Améliore les capacités de l'équipe",
+      "debuff": "Affaiblit et handicape les ennemis",
+      "control": "Contrôle le champ de bataille et manipule l'initiative"
+    };
+    
+    return {
+      category: ultimateSpell.config.category,
+      element: ultimateSpell.config.element || "None",
+      energyCost,
+      usageRate: Math.round(usageRate * 100),
+      averageTiming: Math.round(avgTiming),
+      effectDescription: effectDescriptions[ultimateSpell.config.category] || "Effet spécialisé unique"
+    };
+  }
   
   private simulateMetric(ultimateSpell: UltimateSpell, metricName: string): number {
     const baseValue = 30 + Math.random() * 40;
@@ -743,6 +889,19 @@ class UltimateAnalyzer {
     if (ultimateSpell.config.element === "Dark" && metricName === "gameChangingScore") elementBonus = 10;
     
     return Math.min(100, Math.max(0, baseValue + categoryBonus + elementBonus));
+  }
+  
+  // ✨ NOUVEAU : Description des effets par catégorie
+  private getEffectDescription(category: string): string {
+    const descriptions: Record<string, string> = {
+      "damage": "Inflige des dégâts massifs aux ennemis",
+      "heal": "Soigne les alliés et peut ressusciter",
+      "buff": "Améliore les capacités de l'équipe",
+      "debuff": "Affaiblit et handicape les ennemis",
+      "control": "Contrôle le champ de bataille et manipule l'initiative"
+    };
+    
+    return descriptions[category] || "Effet spécialisé unique";
   }
   
   private simulateScenarioPerformance(ultimateSpell: UltimateSpell, scenario: UltimateTestScenario): number {
@@ -919,11 +1078,36 @@ class UltimateAnalyzer {
   private generateComparativeAnalysis(): void {
     const results = Array.from(this.ultimateResults.values());
     
+    // ✨ NOUVEAU : Classement par puissance globale
     results.sort((a, b) => b.overallPower - a.overallPower);
     results.forEach((result, index) => {
       result.comparisonRank = index + 1;
     });
     
+    // ✨ NOUVEAU : Classement DPS spécialisé
+    const damageUltimates = results.filter(r => r.category === "damage");
+    const healUltimates = results.filter(r => r.category === "heal");
+    const utilityUltimates = results.filter(r => r.category === "buff" || r.category === "debuff" || r.category === "control");
+    
+    // Classer les ultimates de dégâts par DPS
+    damageUltimates.sort((a, b) => b.dpsMetrics.averageDamagePerUse - a.dpsMetrics.averageDamagePerUse);
+    damageUltimates.forEach((result, index) => {
+      result.dpsMetrics.dpsRank = index + 1;
+    });
+    
+    // Classer les ultimates de soin par HPS
+    healUltimates.sort((a, b) => b.dpsMetrics.healingPerSecond - a.dpsMetrics.healingPerSecond);
+    healUltimates.forEach((result, index) => {
+      result.dpsMetrics.dpsRank = index + 1;
+    });
+    
+    // Classer les ultimates utilitaires par score d'utilité
+    utilityUltimates.sort((a, b) => b.dpsMetrics.utilityScore - a.dpsMetrics.utilityScore);
+    utilityUltimates.forEach((result, index) => {
+      result.dpsMetrics.dpsRank = index + 1;
+    });
+    
+    // Calculer l'index d'unicité
     results.forEach(result => {
       const others = results.filter(r => r.spellId !== result.spellId);
       if (others.length > 0) {
@@ -937,7 +1121,9 @@ class UltimateAnalyzer {
       }
     });
     
-    console.log("   📊 Rangs et unicité calculés");
+    console.log("   📊 Rangs globaux et DPS calculés");
+    console.log(`   🏆 Top DPS: ${damageUltimates[0]?.spellName || 'N/A'} (${damageUltimates[0]?.dpsMetrics.averageDamagePerUse || 0} avg dmg)`);
+    console.log(`   💚 Top HPS: ${healUltimates[0]?.spellName || 'N/A'} (${healUltimates[0]?.dpsMetrics.healingPerSecond || 0}/turn)`);
   }
   
   private generateUltimateReport(mode: "real" | "simulation"): any {
@@ -1042,14 +1228,58 @@ class UltimateAnalyzer {
     const modeText = mode === "real" ? "🎮 Analyse complète avec BattleEngine" : "🔧 Analyse simulée (démo)";
     console.log(`Mode: ${modeText}\n`);
     
+    // ✨ NOUVEAU : Résumé technique détaillé par ultimate
+    console.log("📋 === RÉSUMÉS TECHNIQUES ===");
+    results.forEach(ultimate => {
+      console.log(`\n⚡ ${ultimate.spellName} (${ultimate.element} ${ultimate.category})`);
+      console.log(`   🔧 Coût: ${ultimate.technicalSummary.energyCost} énergie | Usage: ${ultimate.technicalSummary.usageRate}% | Tour moy: ${ultimate.technicalSummary.averageTiming}`);
+      console.log(`   📊 DPS Rating: ${ultimate.dpsMetrics.dpsRating}/100 | Dégâts moy: ${ultimate.dpsMetrics.averageDamagePerUse}`);
+      console.log(`   💚 HPS: ${ultimate.dpsMetrics.healingPerSecond}/turn | Utilité: ${Math.round(ultimate.dpsMetrics.utilityScore)}`);
+      console.log(`   📝 ${ultimate.technicalSummary.effectDescription}`);
+      
+      if (ultimate.urgentFixes.length > 0) {
+        console.log(`   🚨 Fix urgent: ${ultimate.urgentFixes[0]}`);
+      }
+    });
+    
+    // ✨ NOUVEAU : Classement DPS par catégorie
+    console.log("\n🏆 === CLASSEMENTS DPS ===");
+    
+    const damageUltimates = results.filter(r => r.category === "damage").sort((a, b) => b.dpsMetrics.averageDamagePerUse - a.dpsMetrics.averageDamagePerUse);
+    if (damageUltimates.length > 0) {
+      console.log("\n💥 TOP DAMAGE ULTIMATES:");
+      damageUltimates.forEach((ultimate, i) => {
+        console.log(`   ${i + 1}. ${ultimate.spellName}: ${ultimate.dpsMetrics.averageDamagePerUse} dmg/use (Rating: ${ultimate.dpsMetrics.dpsRating}/100)`);
+      });
+    }
+    
+    const healUltimates = results.filter(r => r.category === "heal").sort((a, b) => b.dpsMetrics.healingPerSecond - a.dpsMetrics.healingPerSecond);
+    if (healUltimates.length > 0) {
+      console.log("\n💚 TOP HEALING ULTIMATES:");
+      healUltimates.forEach((ultimate, i) => {
+        console.log(`   ${i + 1}. ${ultimate.spellName}: ${ultimate.dpsMetrics.healingPerSecond} HPS (Rating: ${ultimate.dpsMetrics.dpsRating}/100)`);
+      });
+    }
+    
+    const utilityUltimates = results.filter(r => r.category === "buff" || r.category === "debuff" || r.category === "control")
+      .sort((a, b) => b.dpsMetrics.utilityScore - a.dpsMetrics.utilityScore);
+    if (utilityUltimates.length > 0) {
+      console.log("\n🎯 TOP UTILITY ULTIMATES:");
+      utilityUltimates.forEach((ultimate, i) => {
+        console.log(`   ${i + 1}. ${ultimate.spellName}: ${Math.round(ultimate.dpsMetrics.utilityScore)} utilité (${ultimate.category})`);
+      });
+    }
+    
+    // Classement global par puissance
     const topUltimates = results
       .sort((a, b) => b.overallPower - a.overallPower)
       .slice(0, Math.min(3, results.length));
     
-    console.log("🏆 TOP ULTIMATES:");
+    console.log("\n🏆 TOP ULTIMATES GLOBAUX:");
     topUltimates.forEach((ultimate, i) => {
       console.log(`   ${i + 1}. ${ultimate.spellName} (${ultimate.overallPower}/100) - ${ultimate.ultimateClass}`);
       console.log(`      💥 Impact: ${ultimate.metrics.rawImpact}/100 | 🎯 Game-changing: ${ultimate.metrics.gameChangingScore}/100`);
+      console.log(`      📊 DPS: ${ultimate.dpsMetrics.averageDamagePerUse} | 💎 Rang DPS: #${ultimate.dpsMetrics.dpsRank} (${ultimate.category})`);
     });
     
     const problematic = results.filter(r => r.urgentFixes.length > 0);
@@ -1064,14 +1294,17 @@ class UltimateAnalyzer {
       });
     }
     
+    // Statistiques globales
     const avgPower = Math.round(results.reduce((sum, r) => sum + r.overallPower, 0) / results.length);
     const balanced = results.filter(r => r.balanceStatus === "balanced").length;
     const avgAccessibility = Math.round(results.reduce((sum, r) => sum + r.metrics.accessibilityScore, 0) / results.length);
+    const avgDps = Math.round(results.reduce((sum, r) => sum + r.dpsMetrics.averageDamagePerUse, 0) / results.length);
     
     console.log(`\n📈 SANTÉ GLOBALE DES ULTIMATES:`);
     console.log(`   ⚡ Puissance moyenne: ${avgPower}/100`);
     console.log(`   ⚖️ Équilibrés: ${balanced}/${results.length} (${Math.round(balanced/results.length*100)}%)`);
     console.log(`   🎯 Accessibilité moyenne: ${avgAccessibility}/100`);
+    console.log(`   💥 DPS moyen: ${avgDps} dégâts/utilisation`);
     
     if (mode === "simulation") {
       console.log(`\n💡 PROCHAINES ÉTAPES:`);
