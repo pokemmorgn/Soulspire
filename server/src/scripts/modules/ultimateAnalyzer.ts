@@ -3,73 +3,15 @@ import mongoose from "mongoose";
 import * as fs from "fs";
 import * as path from "path";
 
-// ===== IMPORTS SÉCURISÉS AVEC FALLBACKS =====
+// ===== IMPORTS CORRECTS BASÉS SUR LES VRAIS FICHIERS =====
 
-interface SafeDependencies {
-  BattleEngine?: any;
-  SpellManager?: any;
-  EffectManager?: any;
-  PassiveManager?: any;
-  loaded: boolean;
-}
+import { BattleEngine, IBattleOptions } from "../../services/BattleEngine";
+import { SpellManager, HeroSpells } from "../../gameplay/SpellManager";
+import { EffectManager } from "../../gameplay/EffectManager";
+import { PassiveManager } from "../../gameplay/PassiveManager";
+import { IBattleParticipant, IBattleAction, IBattleResult } from "../../models/Battle";
 
-let deps: SafeDependencies = { loaded: false };
-
-// Import dynamique sécurisé avec gestion d'erreur
-async function loadDependencies(): Promise<boolean> {
-  try {
-    console.log("🔍 Tentative de chargement des dépendances...");
-    
-    // Test BattleEngine
-    try {
-      const battleEngine = await import("../../services/BattleEngine");
-      deps.BattleEngine = battleEngine.BattleEngine || battleEngine.default;
-      console.log("   ✅ BattleEngine chargé");
-    } catch (e) {
-      console.log("   ⚠️ BattleEngine non disponible");
-    }
-    
-    // Test SpellManager
-    try {
-      const spellManager = await import("../../gameplay/SpellManager");
-      deps.SpellManager = spellManager.SpellManager || spellManager.default;
-      console.log("   ✅ SpellManager chargé");
-    } catch (e) {
-      console.log("   ⚠️ SpellManager non disponible");
-    }
-    
-    // Test EffectManager
-    try {
-      const effectManager = await import("../../gameplay/EffectManager");
-      deps.EffectManager = effectManager.EffectManager || effectManager.default;
-      console.log("   ✅ EffectManager chargé");
-    } catch (e) {
-      console.log("   ⚠️ EffectManager non disponible");
-    }
-    
-    // Test PassiveManager
-    try {
-      const passiveManager = await import("../../gameplay/PassiveManager");
-      deps.PassiveManager = passiveManager.PassiveManager || passiveManager.default;
-      console.log("   ✅ PassiveManager chargé");
-    } catch (e) {
-      console.log("   ⚠️ PassiveManager non disponible");
-    }
-    
-    // Déterminer si on a le minimum pour fonctionner
-    const hasMinimum = deps.BattleEngine && deps.SpellManager;
-    deps.loaded = hasMinimum;
-    
-    return hasMinimum;
-    
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.warn("⚠️ Erreur chargement dépendances:", errorMessage);
-    return false;
-  }
-}
-
-// ===== INTERFACES LOCALES (indépendantes des imports) =====
+// ===== INTERFACES SPÉCIALISÉES ULTIMATES =====
 
 interface UltimateSpell {
   config: {
@@ -81,38 +23,6 @@ interface UltimateSpell {
   };
   getEnergyCost?(level: number): number;
   getEffectiveCooldown?(caster: any, level: number): number;
-}
-
-interface HeroParticipant {
-  heroId: string;
-  name: string;
-  position: number;
-  role: "Tank" | "DPS Melee" | "DPS Ranged" | "Support";
-  element: "Fire" | "Water" | "Wind" | "Electric" | "Light" | "Dark";
-  rarity: "Common" | "Rare" | "Epic" | "Legendary" | "Mythic";
-  level: number;
-  stars: number;
-  stats: {
-    hp: number;
-    maxHp: number;
-    atk: number;
-    def: number;
-    speed: number;
-  };
-  currentHp: number;
-  energy: number;
-  status: {
-    alive: boolean;
-    buffs: any[];
-    debuffs: any[];
-  };
-}
-
-interface BattleResult {
-  victory: boolean;
-  totalTurns: number;
-  winner?: string;
-  [key: string]: any;
 }
 
 interface UltimateMetrics {
@@ -140,12 +50,12 @@ interface UltimateMetrics {
 interface UltimateTestScenario {
   name: string;
   description: string;
-  setupTeam: (ultimateSpell: UltimateSpell) => HeroParticipant[];
-  setupEnemies: () => HeroParticipant[];
+  setupTeam: (ultimateSpell: UltimateSpell) => IBattleParticipant[];
+  setupEnemies: () => IBattleParticipant[];
   specialConditions: {
     startingEnergy?: number;
     turnLimit?: number;
-    forcedTiming?: number;
+    forcedTiming?: number;  // Tour où forcer l'ultimate
     difficultyModifier?: number;
   };
   expectedOutcome: "ultimate_wins" | "close_fight" | "ultimate_insufficient";
@@ -160,9 +70,9 @@ interface UltimateAnalysisResult {
   metrics: UltimateMetrics;
   
   // Scores globaux
-  overallPower: number;
-  designQuality: number;
-  balanceRating: number;
+  overallPower: number;                 // Puissance globale (0-100)
+  designQuality: number;                // Qualité du design (0-100)
+  balanceRating: number;                // Note d'équilibrage (0-100)
   
   // Classification
   ultimateClass: "game_changer" | "finisher" | "support" | "situational" | "underwhelming";
@@ -176,10 +86,10 @@ interface UltimateAnalysisResult {
   
   // Données détaillées
   scenarioResults: Record<string, any>;
-  comparisonRank: number;
+  comparisonRank: number;               // Rang parmi tous les ultimates
 }
 
-// ===== GÉNÉRATEUR DE HÉROS POUR TESTS =====
+// ===== GÉNÉRATEUR DE HÉROS POUR TESTS ULTIMATES =====
 
 class UltimateHeroFactory {
   
@@ -188,17 +98,17 @@ class UltimateHeroFactory {
     level: number;
     element: "Fire" | "Water" | "Wind" | "Electric" | "Light" | "Dark";
     startingEnergy?: number;
-  }): HeroParticipant {
+  }): IBattleParticipant {
     
     const stats = this.getOptimizedStatsForUltimate(config.ultimateSpell, config.level);
     
     return {
       heroId: `ultimate_carrier_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name: `${config.ultimateSpell.config.name} Carrier`,
-      position: 2,
+      position: 2, // Position centrale
       role: this.determineOptimalRole(config.ultimateSpell),
       element: config.element,
-      rarity: "Legendary",
+      rarity: "Legendary", // Toujours légendaire pour tests ultimates
       level: config.level,
       stars: 5,
       stats,
@@ -248,7 +158,7 @@ class UltimateHeroFactory {
     }
   }
   
-  static createSupportTeam(carrierLevel: number): HeroParticipant[] {
+  static createSupportTeam(carrierLevel: number): IBattleParticipant[] {
     return [
       {
         heroId: `support_tank_${Date.now()}`,
@@ -281,7 +191,7 @@ class UltimateHeroFactory {
     ];
   }
   
-  static createChallengingEnemies(level: number, difficulty: "easy" | "medium" | "hard" | "extreme"): HeroParticipant[] {
+  static createChallengingEnemies(level: number, difficulty: "easy" | "medium" | "hard" | "extreme"): IBattleParticipant[] {
     const difficultyMultipliers = {
       "easy": 0.8,
       "medium": 1.0,
@@ -337,7 +247,7 @@ class UltimateHeroFactory {
   }
 }
 
-// ===== GÉNÉRATEUR DE SCÉNARIOS =====
+// ===== GÉNÉRATEUR DE SCÉNARIOS ULTIMATES SIMPLIFIÉS =====
 
 class UltimateScenarioGenerator {
   
@@ -362,6 +272,7 @@ class UltimateScenarioGenerator {
         });
         
         const support = UltimateHeroFactory.createSupportTeam(40);
+        // Team commence blessée
         support.forEach(hero => {
           hero.currentHp = Math.floor(hero.stats.hp * 0.3);
         });
@@ -372,7 +283,7 @@ class UltimateScenarioGenerator {
       specialConditions: {
         startingEnergy: 100,
         turnLimit: 8,
-        forcedTiming: 1
+        forcedTiming: 1 // Ultimate doit être utilisé tour 1
       },
       expectedOutcome: "ultimate_wins",
       weight: 2.0,
@@ -423,6 +334,7 @@ class UltimateScenarioGenerator {
         });
         
         const team = UltimateHeroFactory.createSupportTeam(45);
+        
         return [carrier, ...team];
       },
       setupEnemies: () => UltimateHeroFactory.createChallengingEnemies(46, "medium"),
@@ -437,7 +349,7 @@ class UltimateScenarioGenerator {
   }
 }
 
-// ===== ANALYSEUR PRINCIPAL =====
+// ===== ANALYSEUR SPÉCIALISÉ ULTIMATES =====
 
 class UltimateAnalyzer {
   
@@ -451,22 +363,15 @@ class UltimateAnalyzer {
   async initialize(): Promise<void> {
     console.log("⚡ Initialisation de l'analyseur d'ultimates...");
     
-    const dependenciesLoaded = await loadDependencies();
-    
-    if (dependenciesLoaded) {
-      try {
-        if (deps.SpellManager?.initialize) await deps.SpellManager.initialize();
-        if (deps.EffectManager?.initialize) await deps.EffectManager.initialize();
-        if (deps.PassiveManager?.initialize) await deps.PassiveManager.initialize();
-        console.log("✅ Analyseur d'ultimates prêt (mode complet)");
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.log("⚠️ Erreur initialisation systèmes:", errorMessage);
-        console.log("💡 Passage en mode simulation");
-        deps.loaded = false;
-      }
-    } else {
-      console.log("💡 Mode simulation activé");
+    try {
+      await SpellManager.initialize();
+      await EffectManager.initialize();
+      await PassiveManager.initialize();
+      console.log("✅ Analyseur d'ultimates prêt");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.log("⚠️ Erreur initialisation systèmes:", errorMessage);
+      console.log("💡 L'analyse continuera avec les fonctionnalités disponibles");
     }
   }
   
@@ -475,55 +380,34 @@ class UltimateAnalyzer {
     
     const startTime = Date.now();
     
-    if (!deps.loaded) {
-      await this.runSimulationAnalysis();
+    // Récupérer les ultimates depuis le SpellManager
+    const ultimateSpells = this.getUltimateSpells();
+    
+    if (ultimateSpells.length === 0) {
+      console.log("⚠️ Aucun ultimate trouvé dans le système");
+      console.log("💡 Génération d'ultimates d'exemple pour démonstration...\n");
+      
+      // Mode simulation avec exemples
+      const exampleUltimates = this.generateExampleUltimates();
+      await this.analyzeUltimateList(exampleUltimates, "simulation");
     } else {
-      await this.runRealAnalysis();
+      console.log(`🎯 Analyse de ${ultimateSpells.length} ultimates sur ${this.scenarios.length} scénarios spécialisés\n`);
+      await this.analyzeUltimateList(ultimateSpells, "real");
     }
     
     const duration = Math.round((Date.now() - startTime) / 1000);
     console.log(`⏱️ Analyse ultimates terminée en ${duration}s\n`);
   }
   
-  private async runSimulationAnalysis(): Promise<void> {
-    console.log("🔧 Mode simulation - analyse théorique des ultimates\n");
-    console.log("📊 Génération d'ultimates d'exemple pour démonstration...\n");
-    
-    const exampleUltimates = this.generateExampleUltimates();
-    
-    for (const ultimate of exampleUltimates) {
-      await this.simulateUltimatePerformance(ultimate);
-      process.stdout.write('⚡');
-    }
-    
-    console.log(" ✅\n");
-    
-    console.log("📊 Analyse comparative des exemples...");
-    this.generateComparativeAnalysis();
-    console.log("✅\n");
-    
-    console.log("📋 Génération du rapport simulation...");
-    const report = this.generateUltimateReport();
-    this.saveReport(report);
-    
-    this.displayUltimateFindings();
-  }
-  
-  private async runRealAnalysis(): Promise<void> {
-    const ultimateSpells = this.getUltimateSpells();
-    console.log(`🎯 Analyse de ${ultimateSpells.length} ultimates sur ${this.scenarios.length} scénarios spécialisés\n`);
-    
-    if (ultimateSpells.length === 0) {
-      console.log("⚠️ Aucun ultimate trouvé dans le système");
-      console.log("💡 Passage en mode simulation\n");
-      await this.runSimulationAnalysis();
-      return;
-    }
-    
+  private async analyzeUltimateList(ultimateSpells: UltimateSpell[], mode: "real" | "simulation"): Promise<void> {
     // Phase 1: Tests individuels
-    console.log("🔬 Phase 1: Tests de performance individuels...");
+    console.log(`🔬 Phase 1: Tests de performance individuels (mode ${mode})...`);
     for (const ultimate of ultimateSpells) {
-      await this.analyzeUltimatePerformance(ultimate);
+      if (mode === "real") {
+        await this.analyzeUltimatePerformance(ultimate);
+      } else {
+        await this.simulateUltimatePerformance(ultimate);
+      }
       process.stdout.write('⚡');
     }
     console.log(" ✅\n");
@@ -535,10 +419,23 @@ class UltimateAnalyzer {
     
     // Phase 3: Rapport spécialisé
     console.log("📋 Phase 3: Génération du rapport ultimates...");
-    const report = this.generateUltimateReport();
+    const report = this.generateUltimateReport(mode);
     this.saveReport(report);
     
-    this.displayUltimateFindings();
+    this.displayUltimateFindings(mode);
+  }
+  
+  private getUltimateSpells(): UltimateSpell[] {
+    try {
+      const allSpells = SpellManager.getAllSpells();
+      return allSpells
+        .filter((spell: any) => spell.config && spell.config.type === "ultimate")
+        .map((spell: any) => spell as UltimateSpell);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.warn("⚠️ Erreur récupération sorts:", errorMessage);
+      return [];
+    }
   }
   
   private generateExampleUltimates(): UltimateSpell[] {
@@ -590,6 +487,7 @@ class UltimateAnalyzer {
     ];
   }
   
+  // Mode simulation (si pas d'ultimates réels)
   private async simulateUltimatePerformance(ultimateSpell: UltimateSpell): Promise<void> {
     const metrics: UltimateMetrics = {
       rawImpact: this.simulateMetric(ultimateSpell, "rawImpact"),
@@ -640,6 +538,182 @@ class UltimateAnalyzer {
     this.ultimateResults.set(ultimateSpell.config.id, analysis);
   }
   
+  // Mode réel (avec BattleEngine)
+  private async analyzeUltimatePerformance(ultimateSpell: UltimateSpell): Promise<void> {
+    const metrics: UltimateMetrics = {
+      rawImpact: 0,
+      gameChangingScore: 0,
+      clutchFactor: 0,
+      energyEfficiency: 0,
+      timingOptimization: 0,
+      accessibilityScore: 0,
+      soloCarryPotential: 0,
+      teamSynergyAmplification: 0,
+      counterPlayResistance: 0,
+      scalingPotential: 0,
+      versatilityScore: 0,
+      uniquenessIndex: 0
+    };
+    
+    const scenarioResults: Record<string, any> = {};
+    const performanceAggregator = { total: 0, count: 0 };
+    
+    // Tester dans chaque scénario spécialisé
+    for (const scenario of this.scenarios) {
+      try {
+        const result = await this.testUltimateInScenario(ultimateSpell, scenario);
+        scenarioResults[scenario.name] = result;
+        
+        // Agréger performance globale
+        performanceAggregator.total += result.performance * scenario.weight;
+        performanceAggregator.count += scenario.weight;
+        
+        // Mettre à jour la métrique focus du scénario
+        this.updateSpecificMetric(metrics, result, scenario);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.warn(`⚠️ Erreur scénario ${scenario.name}:`, errorMessage);
+        scenarioResults[scenario.name] = {
+          performance: 0,
+          impact: "error",
+          notes: [`Erreur: ${errorMessage}`],
+          ultimateUsed: false
+        };
+      }
+    }
+    
+    // Calculer métriques dérivées
+    this.calculateDerivedMetrics(metrics, scenarioResults, ultimateSpell);
+    
+    // Générer l'analyse finale
+    const analysis: UltimateAnalysisResult = {
+      spellId: ultimateSpell.config.id,
+      spellName: ultimateSpell.config.name,
+      element: ultimateSpell.config.element || "None",
+      metrics,
+      overallPower: this.calculateOverallPower(metrics),
+      designQuality: this.calculateDesignQuality(metrics, ultimateSpell),
+      balanceRating: this.calculateBalanceRating(metrics, ultimateSpell),
+      ultimateClass: this.classifyUltimate(metrics),
+      optimalTiming: this.determineOptimalTiming(metrics, scenarioResults),
+      bestUseCase: this.determineBestUseCase(scenarioResults),
+      balanceStatus: this.determineUltimateBalanceStatus(metrics),
+      urgentFixes: this.generateUrgentFixes(metrics, ultimateSpell),
+      designSuggestions: this.generateDesignSuggestions(metrics, ultimateSpell),
+      scenarioResults,
+      comparisonRank: 0
+    };
+    
+    this.ultimateResults.set(ultimateSpell.config.id, analysis);
+  }
+  
+  private async testUltimateInScenario(ultimateSpell: UltimateSpell, scenario: UltimateTestScenario): Promise<any> {
+    // Setup teams selon le scénario
+    const playerTeam = scenario.setupTeam(ultimateSpell);
+    const enemyTeam = scenario.setupEnemies();
+    
+    // Configuration des sorts
+    const ultimateCarrier = playerTeam[0];
+    const heroSpells: HeroSpells = {
+      ultimate: { id: ultimateSpell.config.id, level: 5 }
+    };
+    
+    const playerSpells = new Map<string, HeroSpells>();
+    playerSpells.set(ultimateCarrier.heroId, heroSpells);
+    
+    // Options de combat
+    const battleOptions: IBattleOptions = {
+      mode: "auto",
+      speed: 1
+    };
+    
+    // Simulation du combat
+    const engine = new BattleEngine(
+      playerTeam,
+      enemyTeam,
+      playerSpells,
+      new Map(),
+      battleOptions
+    );
+    
+    const result = engine.simulateBattle();
+    const actions = engine.getActions();
+    
+    return this.analyzeUltimateCombatResult(result, actions, ultimateCarrier.heroId, ultimateSpell, scenario);
+  }
+  
+  private analyzeUltimateCombatResult(
+    battleResult: IBattleResult,
+    actions: IBattleAction[],
+    carrierId: string,
+    ultimateSpell: UltimateSpell,
+    scenario: UltimateTestScenario
+  ): any {
+    
+    const ultimateActions = actions.filter(action => 
+      action.actorId === carrierId && 
+      action.spellId === ultimateSpell.config.id
+    );
+    
+    const ultimateUsed = ultimateActions.length > 0;
+    const ultimateDamage = ultimateActions.reduce((sum, action) => sum + (action.damage || 0), 0);
+    const ultimateHealing = ultimateActions.reduce((sum, action) => sum + (action.healing || 0), 0);
+    
+    // Calculer l'impact de l'ultimate
+    const totalPlayerDamage = actions
+      .filter(action => action.team === "player")
+      .reduce((sum, action) => sum + (action.damage || 0), 0);
+    
+    const ultimateContribution = totalPlayerDamage > 0 ? ultimateDamage / totalPlayerDamage : 0;
+    
+    // Score de performance adapté aux ultimates
+    let performance = 30; // Base
+    
+    if (ultimateUsed) {
+      performance += 30; // Bonus gros pour utilisation
+      
+      // Bonus selon l'impact
+      performance += Math.min(25, ultimateContribution * 50);
+      
+      // Bonus selon le résultat attendu
+      if (battleResult.victory) {
+        if (scenario.expectedOutcome === "ultimate_wins") performance += 20;
+        if (scenario.expectedOutcome === "close_fight") performance += 10;
+      }
+      
+    } else {
+      // Ultimate non utilisé - très problématique
+      performance = 5;
+    }
+    
+    // Classification de l'impact
+    let impact = "minimal";
+    if (ultimateContribution > 0.7) impact = "dominant";
+    else if (ultimateContribution > 0.4) impact = "major";
+    else if (ultimateContribution > 0.2) impact = "moderate";
+    else if (ultimateUsed) impact = "minor";
+    
+    const notes: string[] = [];
+    if (!ultimateUsed) notes.push("Ultimate jamais utilisé - problème critique");
+    if (ultimateContribution > 0.8) notes.push("Contribution ultra-dominante");
+    
+    return {
+      performance: Math.max(0, Math.min(100, performance)),
+      impact,
+      notes,
+      ultimateUsed,
+      damageDealt: ultimateDamage,
+      healingDone: ultimateHealing,
+      gameChanging: ultimateContribution > 0.5,
+      contribution: ultimateContribution,
+      battleDuration: battleResult.totalTurns,
+      victory: battleResult.victory,
+      timing: ultimateActions[0]?.turn || null
+    };
+  }
+  
+  // ===== MÉTHODES UTILITAIRES =====
+  
   private simulateMetric(ultimateSpell: UltimateSpell, metricName: string): number {
     const baseValue = 30 + Math.random() * 40;
     
@@ -677,164 +751,6 @@ class UltimateAnalyzer {
     
     return Math.min(100, Math.max(0, basePerformance + synergy));
   }
-  
-  private getUltimateSpells(): UltimateSpell[] {
-    try {
-      if (!deps.SpellManager?.getAllSpells) return [];
-      
-      const allSpells = deps.SpellManager.getAllSpells();
-      return allSpells
-        .filter((spell: any) => spell.config && spell.config.type === "ultimate")
-        .map((spell: any) => spell as UltimateSpell);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.warn("⚠️ Erreur récupération sorts:", errorMessage);
-      return [];
-    }
-  }
-  
-  private async analyzeUltimatePerformance(ultimateSpell: UltimateSpell): Promise<void> {
-    const metrics: UltimateMetrics = {
-      rawImpact: 0,
-      gameChangingScore: 0,
-      clutchFactor: 0,
-      energyEfficiency: 0,
-      timingOptimization: 0,
-      accessibilityScore: 0,
-      soloCarryPotential: 0,
-      teamSynergyAmplification: 0,
-      counterPlayResistance: 0,
-      scalingPotential: 0,
-      versatilityScore: 0,
-      uniquenessIndex: 0
-    };
-    
-    const scenarioResults: Record<string, any> = {};
-    
-    for (const scenario of this.scenarios) {
-      try {
-        const result = await this.testUltimateInScenario(ultimateSpell, scenario);
-        scenarioResults[scenario.name] = result;
-        this.updateSpecificMetric(metrics, result, scenario);
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.warn(`⚠️ Erreur scénario ${scenario.name}:`, errorMessage);
-        scenarioResults[scenario.name] = {
-          performance: 0,
-          impact: "error",
-          notes: [`Erreur: ${errorMessage}`],
-          ultimateUsed: false
-        };
-      }
-    }
-    
-    this.calculateDerivedMetrics(metrics, scenarioResults, ultimateSpell);
-    
-    const analysis: UltimateAnalysisResult = {
-      spellId: ultimateSpell.config.id,
-      spellName: ultimateSpell.config.name,
-      element: ultimateSpell.config.element || "None",
-      metrics,
-      overallPower: this.calculateOverallPower(metrics),
-      designQuality: this.calculateDesignQuality(metrics, ultimateSpell),
-      balanceRating: this.calculateBalanceRating(metrics, ultimateSpell),
-      ultimateClass: this.classifyUltimate(metrics),
-      optimalTiming: this.determineOptimalTiming(metrics, scenarioResults),
-      bestUseCase: this.determineBestUseCase(scenarioResults),
-      balanceStatus: this.determineUltimateBalanceStatus(metrics),
-      urgentFixes: this.generateUrgentFixes(metrics, ultimateSpell),
-      designSuggestions: this.generateDesignSuggestions(metrics, ultimateSpell),
-      scenarioResults,
-      comparisonRank: 0
-    };
-    
-    this.ultimateResults.set(ultimateSpell.config.id, analysis);
-  }
-  
-  private async testUltimateInScenario(ultimateSpell: UltimateSpell, scenario: UltimateTestScenario): Promise<any> {
-    if (!deps.BattleEngine) {
-      throw new Error("BattleEngine non disponible");
-    }
-    
-    const playerTeam = scenario.setupTeam(ultimateSpell);
-    const enemyTeam = scenario.setupEnemies();
-    
-    const ultimateCarrier = playerTeam[0];
-    const heroSpells = {
-      ultimate: { id: ultimateSpell.config.id, level: 5 }
-    };
-    
-    const playerSpells = new Map();
-    playerSpells.set(ultimateCarrier.heroId, heroSpells);
-    
-    const battleOptions = {
-      mode: "auto",
-      speed: 1
-    };
-    
-    const engine = new deps.BattleEngine(
-      playerTeam,
-      enemyTeam,
-      playerSpells,
-      new Map(),
-      battleOptions
-    );
-    
-    const result = engine.simulateBattle();
-    const actions = engine.getActions();
-    
-    return this.analyzeUltimateCombatResult(result, actions, ultimateCarrier.heroId, ultimateSpell, scenario);
-  }
-  
-  private analyzeUltimateCombatResult(
-    battleResult: BattleResult,
-    actions: any[],
-    carrierId: string,
-    ultimateSpell: UltimateSpell,
-    scenario: UltimateTestScenario
-  ): any {
-    
-    const ultimateActions = actions.filter(action => 
-      action.actorId === carrierId && 
-      action.spellId === ultimateSpell.config.id
-    );
-    
-    const ultimateUsed = ultimateActions.length > 0;
-    const ultimateDamage = ultimateActions.reduce((sum, action) => sum + (action.damage || 0), 0);
-    
-    let performance = 30;
-    
-    if (ultimateUsed) {
-      performance += 30;
-      
-      const totalPlayerDamage = actions
-        .filter(action => action.team === "player")
-        .reduce((sum, action) => sum + (action.damage || 0), 0);
-      
-      const ultimateContribution = totalPlayerDamage > 0 ? ultimateDamage / totalPlayerDamage : 0;
-      performance += Math.min(25, ultimateContribution * 50);
-      
-      if (battleResult.victory) {
-        if (scenario.expectedOutcome === "ultimate_wins") performance += 20;
-        if (scenario.expectedOutcome === "close_fight") performance += 10;
-      }
-    } else {
-      performance = 5;
-    }
-    
-    return {
-      performance: Math.max(0, Math.min(100, performance)),
-      impact: ultimateUsed ? "moderate" : "minimal",
-      notes: ultimateUsed ? ["Ultimate utilisé"] : ["Ultimate non utilisé"],
-      ultimateUsed,
-      damageDealt: ultimateDamage,
-      gameChanging: ultimateDamage > 3000,
-      victory: battleResult.victory,
-      timing: ultimateActions[0]?.turn || null
-    };
-  }
-  
-  // ===== MÉTHODES UTILITAIRES =====
   
   private updateSpecificMetric(metrics: UltimateMetrics, result: any, scenario: UltimateTestScenario): void {
     const performance = result.performance;
@@ -1020,17 +936,17 @@ class UltimateAnalyzer {
     console.log("   📊 Rangs et unicité calculés");
   }
   
-  private generateUltimateReport(): any {
+  private generateUltimateReport(mode: "real" | "simulation"): any {
     const results = Array.from(this.ultimateResults.values());
     
     return {
       metadata: {
         timestamp: new Date().toISOString(),
-        version: "1.0.2-safe-imports",
+        version: "1.0.3-final",
         totalUltimatesAnalyzed: results.length,
         totalScenariosUsed: this.scenarios.length,
-        analysisType: deps.loaded ? "Real Battle Analysis" : "Simulation Analysis",
-        dependenciesLoaded: deps.loaded
+        analysisType: mode === "real" ? "Real Battle Analysis" : "Simulation Analysis",
+        mode
       },
       summary: {
         averageOverallPower: results.length > 0 ? Math.round(results.reduce((sum, r) => sum + r.overallPower, 0) / results.length) : 0,
@@ -1058,11 +974,11 @@ class UltimateAnalyzer {
         weight: s.weight,
         focusMetric: s.focusMetric
       })),
-      recommendations: this.generateGlobalUltimateRecommendations(results)
+      recommendations: this.generateGlobalUltimateRecommendations(results, mode)
     };
   }
   
-  private generateGlobalUltimateRecommendations(results: UltimateAnalysisResult[]): any {
+  private generateGlobalUltimateRecommendations(results: UltimateAnalysisResult[], mode: "real" | "simulation"): any {
     const critical: string[] = [];
     const balance: string[] = [];
     const design: string[] = [];
@@ -1083,8 +999,8 @@ class UltimateAnalyzer {
       design.push(`${underwhelming.length} ultimates manquent d'impact - revoir le concept global`);
     }
     
-    if (!deps.loaded) {
-      design.push("Analyse en mode simulation - connecter BattleEngine pour tests réels");
+    if (mode === "simulation") {
+      design.push("Analyse en mode simulation - créer des ultimates réels pour tests complets");
     }
     
     return { critical, balance, design };
@@ -1109,7 +1025,7 @@ class UltimateAnalyzer {
     }
   }
   
-  private displayUltimateFindings(): void {
+  private displayUltimateFindings(mode: "real" | "simulation"): void {
     const results = Array.from(this.ultimateResults.values());
     
     console.log("⚡ === RÉSULTATS SPÉCIALISÉS ULTIMATES ===\n");
@@ -1119,8 +1035,8 @@ class UltimateAnalyzer {
       return;
     }
     
-    const mode = deps.loaded ? "🎮 Analyse complète avec BattleEngine" : "🔧 Analyse simulée (démo)";
-    console.log(`Mode: ${mode}\n`);
+    const modeText = mode === "real" ? "🎮 Analyse complète avec BattleEngine" : "🔧 Analyse simulée (démo)";
+    console.log(`Mode: ${modeText}\n`);
     
     const topUltimates = results
       .sort((a, b) => b.overallPower - a.overallPower)
@@ -1153,11 +1069,11 @@ class UltimateAnalyzer {
     console.log(`   ⚖️ Équilibrés: ${balanced}/${results.length} (${Math.round(balanced/results.length*100)}%)`);
     console.log(`   🎯 Accessibilité moyenne: ${avgAccessibility}/100`);
     
-    if (!deps.loaded) {
+    if (mode === "simulation") {
       console.log(`\n💡 PROCHAINES ÉTAPES:`);
-      console.log(`   🔗 Connecter le module au BattleEngine pour analyse réelle`);
-      console.log(`   📂 Vérifier les chemins vers services/BattleEngine.ts`);
-      console.log(`   🎮 Intégrer les vrais ultimates du SpellManager`);
+      console.log(`   🎮 Créer des ultimates réels dans gameplay/ultimates/`);
+      console.log(`   🔗 Le module se connectera automatiquement au SpellManager`);
+      console.log(`   ⚡ Relancer l'analyse pour tests avec BattleEngine`);
     }
     
     console.log("");
