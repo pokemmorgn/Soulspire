@@ -78,6 +78,11 @@ interface UltimateAnalysisResult {
     dpsRank: number;                  // Rang DPS parmi tous ultimates
     healingPerSecond: number;         // HPS pour ultimates de heal
     utilityScore: number;             // Score pour buffs/debuffs/control
+    // ✨ NOUVEAU : Métriques temps réel 60s
+    realTimeUsage: number;            // Nombre d'utilisations en 60s
+    usageFrequency: number;           // Utilisations par minute
+    realTimeDPS: number;              // DPS réel par minute
+    realTimeHPS: number;              // HPS réel par minute
   };
   
   // ✨ NOUVEAU : Résumé technique
@@ -662,7 +667,12 @@ class UltimateAnalyzer {
         dpsRating: Math.round(this.simulateMetric(ultimateSpell, "rawImpact")),
         dpsRank: 0,
         healingPerSecond: ultimateSpell.config.category === "heal" ? Math.floor(Math.random() * 300 + 100) : 0,
-        utilityScore: ultimateSpell.config.category === "heal" ? 0 : Math.floor(Math.random() * 60 + 20)
+        utilityScore: ultimateSpell.config.category === "heal" ? 0 : Math.floor(Math.random() * 60 + 20),
+        // ✨ NOUVEAU : Métriques temps réel simulées
+        realTimeUsage: Math.floor(Math.random() * 4 + 1), // 1-5 utilisations
+        usageFrequency: Math.round((Math.random() * 3 + 1) * 10) / 10, // 1-4 par minute
+        realTimeDPS: ultimateSpell.config.category === "damage" ? Math.floor(Math.random() * 1000 + 500) : 0,
+        realTimeHPS: ultimateSpell.config.category === "heal" ? Math.floor(Math.random() * 800 + 400) : 0
       },
       // ✨ NOUVEAU : Résumé technique simulé
       technicalSummary: {
