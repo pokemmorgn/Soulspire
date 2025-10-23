@@ -650,18 +650,22 @@ class UltimateAnalyzer {
     scenario: UltimateTestScenario
   ): any {
     
+    // ✅ CORRIGÉ: Filtrer les actions d'ultimate par actorId et actionType
     const ultimateActions = actions.filter(action => 
       action.actorId === carrierId && 
-      action.spellId === ultimateSpell.config.id
+      action.actionType === "ultimate"
     );
     
     const ultimateUsed = ultimateActions.length > 0;
     const ultimateDamage = ultimateActions.reduce((sum, action) => sum + (action.damage || 0), 0);
     const ultimateHealing = ultimateActions.reduce((sum, action) => sum + (action.healing || 0), 0);
     
-    // Calculer l'impact de l'ultimate
+    // ✅ CORRIGÉ: Calculer l'impact sans propriété 'team'
+    // On va utiliser actorId pour déterminer l'équipe
+    const playerTeamIds = scenario.setupTeam(ultimateSpell).map(p => p.heroId);
+    
     const totalPlayerDamage = actions
-      .filter(action => action.team === "player")
+      .filter(action => playerTeamIds.includes(action.actorId))
       .reduce((sum, action) => sum + (action.damage || 0), 0);
     
     const ultimateContribution = totalPlayerDamage > 0 ? ultimateDamage / totalPlayerDamage : 0;
@@ -942,7 +946,7 @@ class UltimateAnalyzer {
     return {
       metadata: {
         timestamp: new Date().toISOString(),
-        version: "1.0.3-final",
+        version: "1.0.4-final-fixed",
         totalUltimatesAnalyzed: results.length,
         totalScenariosUsed: this.scenarios.length,
         analysisType: mode === "real" ? "Real Battle Analysis" : "Simulation Analysis",
