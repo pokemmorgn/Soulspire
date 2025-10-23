@@ -1,4 +1,4 @@
-// advancedBalanceAnalyzer_bugfixed.ts - Version corrigée avec calculs fixes
+// advancedBalanceAnalyzer_ultimateFix.ts - Version adaptée aux ultimates à usage unique
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import * as fs from "fs";
@@ -51,6 +51,10 @@ interface AdvancedSpellMetrics {
   skillCeiling: number;
   reliability: number;
   adaptability: number;
+  
+  // ✅ NOUVEAU: Métriques spécifiques aux ultimates
+  ultimateImpact: number;      // Impact quand l'ultimate est utilisé
+  gameChangingPotential: number; // Capacité à retourner un combat
 }
 
 interface CombatScenario {
@@ -63,6 +67,7 @@ interface CombatScenario {
     waveCount?: number;
     bossModifiers?: Record<string, number>;
     environmentEffects?: string[];
+    guaranteedUltimate?: boolean; // ✅ NOUVEAU: Force l'usage de l'ultimate
   };
   expectedOutcome: "player_advantage" | "balanced" | "enemy_advantage";
   weight: number;
@@ -73,6 +78,7 @@ interface SpellAnalysisResult {
   spellName: string;
   category: string;
   element: string;
+  spellType: "active" | "ultimate"; // ✅ NOUVEAU: Distinction claire
   actualRarity: "Common" | "Rare" | "Epic" | "Legendary" | "Mythic";
   
   metrics: AdvancedSpellMetrics;
@@ -115,6 +121,7 @@ class HeroFactory {
     level: number;
     spells?: HeroSpells;
     statModifiers?: Partial<Record<string, number>>;
+    startingEnergy?: number; // ✅ NOUVEAU: Pour tester les ultimates
   }): IBattleParticipant {
     
     const baseStats = this.getBaseStatsByRole(config.role, config.level);
@@ -147,7 +154,7 @@ class HeroFactory {
       stars: 5,
       stats: finalStats,
       currentHp: finalStats.hp,
-      energy: 0,
+      energy: config.startingEnergy || 0, // ✅ Énergie configurable
       status: {
         alive: true,
         buffs: [],
@@ -194,12 +201,66 @@ class ScenarioGenerator {
   
   static generateBalancedScenarios(): CombatScenario[] {
     return [
+      this.createActiveSpellScenario(),
+      this.createUltimateTestScenario(), // ✅ NOUVEAU: Scénario spécial ultimates
       this.createEarlyGameScenario(),
       this.createMidGameScenario(),
       this.createLateGameScenario(),
       this.createBossScenario(),
       this.createAoEScenario()
     ];
+  }
+  
+  // ✅ NOUVEAU: Scénario pour tester spécifiquement les sorts actifs
+  private static createActiveSpellScenario(): CombatScenario {
+    return {
+      name: "Active Spell Test",
+      description: "Combat standard pour sorts actifs - énergie normale",
+      playerTeam: [
+        HeroFactory.createHero({ name: "Active Tank", role: "Tank", element: "Fire", rarity: "Epic", level: 30 }),
+        HeroFactory.createHero({ name: "Active DPS", role: "DPS Ranged", element: "Electric", rarity: "Epic", level: 30 }),
+        HeroFactory.createHero({ name: "Active Support", role: "Support", element: "Light", rarity: "Rare", level: 30 })
+      ],
+      enemyTeam: [
+        HeroFactory.createHero({ name: "Enemy Tank", role: "Tank", element: "Water", rarity: "Epic", level: 32 }),
+        HeroFactory.createHero({ name: "Enemy DPS", role: "DPS Melee", element: "Dark", rarity: "Epic", level: 30 }),
+        HeroFactory.createHero({ name: "Enemy Support", role: "Support", element: "Dark", rarity: "Rare", level: 30 })
+      ],
+      expectedOutcome: "balanced",
+      weight: 1.0
+    };
+  }
+  
+  // ✅ NOUVEAU: Scénario spécialement conçu pour les ultimates
+  private static createUltimateTestScenario(): CombatScenario {
+    return {
+      name: "Ultimate Power Test",
+      description: "Combat long avec énergie garantie pour tester les ultimates",
+      playerTeam: [
+        HeroFactory.createHero({ 
+          name: "Ultimate Hero", 
+          role: "DPS Ranged", 
+          element: "Fire", 
+          rarity: "Legendary", 
+          level: 40,
+          startingEnergy: 100 // ✅ Commence avec ultimate ready
+        }),
+        HeroFactory.createHero({ name: "Support Tank", role: "Tank", element: "Light", rarity: "Epic", level: 40 }),
+        HeroFactory.createHero({ name: "Support Healer", role: "Support", element: "Water", rarity: "Epic", level: 40 })
+      ],
+      enemyTeam: [
+        HeroFactory.createHero({ name: "Tough Boss", role: "Tank", element: "Dark", rarity: "Legendary", level: 45,
+          statModifiers: { hp: 2.0, def: 1.5 } }),
+        HeroFactory.createHero({ name: "Boss Add 1", role: "DPS Melee", element: "Dark", rarity: "Epic", level: 40 }),
+        HeroFactory.createHero({ name: "Boss Add 2", role: "DPS Ranged", element: "Dark", rarity: "Epic", level: 40 })
+      ],
+      specialConditions: {
+        turnLimit: 25, // Combat long
+        guaranteedUltimate: true // Force l'usage d'ultimate
+      },
+      expectedOutcome: "player_advantage", // Avec ultimate, le joueur devrait gagner
+      weight: 1.5 // ✅ Poids important pour les ultimates
+    };
   }
   
   private static createEarlyGameScenario(): CombatScenario {
@@ -217,7 +278,7 @@ class ScenarioGenerator {
         HeroFactory.createHero({ name: "Enemy3", role: "Support", element: "Dark", rarity: "Rare", level: 14 })
       ],
       expectedOutcome: "balanced",
-      weight: 1.0
+      weight: 0.8 // Moins important que ultimate test
     };
   }
   
@@ -293,12 +354,12 @@ class ScenarioGenerator {
         HeroFactory.createHero({ name: "Minion4", role: "DPS Ranged", element: "Dark", rarity: "Common", level: 25 })
       ],
       expectedOutcome: "player_advantage",
-      weight: 1.0
+      weight: 0.8
     };
   }
 }
 
-// ===== ANALYSEUR PRINCIPAL CORRIGÉ =====
+// ===== ANALYSEUR PRINCIPAL ADAPTÉ AUX ULTIMATES =====
 
 class AdvancedBalanceAnalyzer {
   
@@ -318,12 +379,19 @@ class AdvancedBalanceAnalyzer {
   }
   
   async runCompleteAnalysis(): Promise<void> {
-    console.log("\n🔬 === ANALYSE AVANCÉE D'ÉQUILIBRAGE (VERSION CORRIGÉE) ===\n");
+    console.log("\n🔬 === ANALYSE AVANCÉE D'ÉQUILIBRAGE (ULTIMATE-AWARE) ===\n");
     
     const startTime = Date.now();
     const allSpells = this.getTestableSpells();
     
     console.log(`📊 Analyse de ${allSpells.length} sorts sur ${this.scenarios.length} scénarios\n`);
+    
+    // Séparer les sorts actifs et ultimates pour analyse distincte
+    const activeSpells = allSpells.filter(s => s.spell.config.type === "active");
+    const ultimateSpells = allSpells.filter(s => s.spell.config.type === "ultimate");
+    
+    console.log(`   🔥 Sorts actifs: ${activeSpells.length}`);
+    console.log(`   ⚡ Ultimates: ${ultimateSpells.length}\n`);
     
     // Phase 1: Analyse individuelle des sorts
     console.log("📈 Phase 1: Analyse des performances par sort...");
@@ -358,8 +426,9 @@ class AdvancedBalanceAnalyzer {
   
   private async analyzeSpellPerformance(spellData: { id: string; spell: BaseSpell }): Promise<void> {
     const { id, spell } = spellData;
+    const isUltimate = spell.config.type === "ultimate";
     
-    // ✅ FIX: Initialiser toutes les métriques à 0
+    // Initialiser toutes les métriques à 0
     const metrics: AdvancedSpellMetrics = {
       averageDps: 0,
       burstPotential: 0,
@@ -376,45 +445,51 @@ class AdvancedBalanceAnalyzer {
       counterResistance: 0,
       skillCeiling: 0,
       reliability: 0,
-      adaptability: 0
+      adaptability: 0,
+      ultimateImpact: 0,
+      gameChangingPotential: 0
     };
     
     const scenarioResults: Record<string, any> = {};
     const performanceSum = { total: 0, count: 0 };
     
-    // Tester le sort dans chaque scénario
-    for (const scenario of this.scenarios) {
+    // ✅ ADAPTATION: Filtrer les scénarios selon le type de sort
+    const relevantScenarios = this.getRelevantScenarios(spell);
+    
+    // Tester le sort dans chaque scénario pertinent
+    for (const scenario of relevantScenarios) {
       const result = await this.testSpellInScenario(spell, scenario);
       scenarioResults[scenario.name] = result;
       
-      // ✅ FIX: Accumuler pour moyenne globale
+      // Accumuler pour moyenne globale
       performanceSum.total += result.performance * scenario.weight;
       performanceSum.count += scenario.weight;
       
       // Contribuer aux métriques spécifiques
-      this.updateMetricsFromScenario(metrics, result, scenario);
+      this.updateMetricsFromScenario(metrics, result, scenario, isUltimate);
     }
     
-    // ✅ FIX: Calculer la moyenne DPS globale
+    // Calculer la moyenne DPS globale
     metrics.averageDps = performanceSum.count > 0 ? performanceSum.total / performanceSum.count : 0;
     
-    // ✅ FIX: Normaliser toutes les métriques qui se cumulent
-    this.normalizeMetrics(metrics);
+    // Normaliser toutes les métriques
+    this.normalizeMetrics(metrics, isUltimate);
     
-    // Calculer les scores finaux
+    // Calculer les scores finaux avec logique adaptée
     const analysis: SpellAnalysisResult = {
       spellId: id,
       spellName: spell.config.name,
       category: spell.config.category,
       element: spell.config.element || "None",
+      spellType: isUltimate ? "ultimate" : "active",
       actualRarity: this.determineActualRarity(spell, metrics),
       metrics,
-      overallScore: this.calculateOverallScore(metrics),
+      overallScore: this.calculateOverallScore(metrics, isUltimate),
       balanceScore: this.calculateBalanceScore(metrics, spell),
       designScore: this.calculateDesignScore(metrics, spell),
       archetypes: this.determineArchetypes(metrics, spell),
       optimalUseCase: this.determineOptimalUseCase(metrics, scenarioResults),
-      gameplayRole: this.determineGameplayRole(metrics),
+      gameplayRole: this.determineGameplayRole(metrics, isUltimate),
       balanceStatus: this.determineBalanceStatus(metrics, spell),
       recommendations: this.generateRecommendations(metrics, spell),
       scenarioResults
@@ -423,13 +498,38 @@ class AdvancedBalanceAnalyzer {
     this.spellResults.set(id, analysis);
   }
   
-  // ✅ FIX: Nouvelle méthode pour normaliser les métriques
-  private normalizeMetrics(metrics: AdvancedSpellMetrics): void {
-    const scenarioCount = this.scenarios.length;
+  // ✅ NOUVEAU: Sélectionner les scénarios pertinents selon le type de sort
+  private getRelevantScenarios(spell: BaseSpell): CombatScenario[] {
+    const isUltimate = spell.config.type === "ultimate";
+    
+    if (isUltimate) {
+      // Pour les ultimates, focus sur les scénarios où ils peuvent être utilisés
+      return this.scenarios.filter(scenario => 
+        scenario.name === "Ultimate Power Test" ||
+        scenario.name === "Late Game Epic Battle" ||
+        scenario.name === "Boss Fight"
+      );
+    } else {
+      // Pour les sorts actifs, tous les scénarios sauf celui des ultimates
+      return this.scenarios.filter(scenario => 
+        scenario.name !== "Ultimate Power Test"
+      );
+    }
+  }
+  
+  // ✅ ADAPTATION: Normalisation différente pour ultimates vs actifs
+  private normalizeMetrics(metrics: AdvancedSpellMetrics, isUltimate: boolean): void {
+    const scenarioCount = isUltimate ? 3 : 6; // Différent selon le type
     
     // Les métriques qui s'accumulent doivent être divisées
     metrics.reliability = metrics.reliability / scenarioCount;
     metrics.adaptability = metrics.adaptability / scenarioCount;
+    
+    if (isUltimate) {
+      // Pour les ultimates, la "reliability" n'est pas le même concept
+      // On se base plus sur l'impact quand utilisé
+      metrics.reliability = Math.max(metrics.ultimateImpact * 0.8, metrics.reliability);
+    }
     
     // Assurer que tout reste dans [0-100]
     Object.keys(metrics).forEach(key => {
@@ -443,8 +543,12 @@ class AdvancedBalanceAnalyzer {
   private async testSpellInScenario(spell: BaseSpell, scenario: CombatScenario): Promise<any> {
     const testTeam = [...scenario.playerTeam];
     const testHero = testTeam[0];
+    const isUltimate = spell.config.type === "ultimate";
     
-    const heroSpells: HeroSpells = {
+    // ✅ ADAPTATION: Configuration différente pour ultimates
+    const heroSpells: HeroSpells = isUltimate ? {
+      ultimate: { id: spell.config.id, level: 5 }
+    } : {
       active1: { id: spell.config.id, level: 5 }
     };
     
@@ -489,6 +593,8 @@ class AdvancedBalanceAnalyzer {
     scenario: CombatScenario
   ): any {
     
+    const isUltimate = spell.config.type === "ultimate";
+    
     const spellActions = actions.filter(action => 
       action.actorId === testHeroId && 
       (action.spellId === spell.config.id || action.actionType === "skill")
@@ -503,21 +609,39 @@ class AdvancedBalanceAnalyzer {
     
     const spellContribution = totalDamageInBattle > 0 ? (totalSpellDamage / totalDamageInBattle) : 0;
     
-    // ✅ FIX: Logique de performance corrigée
-    let performance = 30; // Base plus réaliste
+    // ✅ ADAPTATION: Logique de performance différente pour ultimates
+    let performance = 30;
     
-    if (battleResult.victory) {
-      performance += 30;
-      if (battleResult.totalTurns < 10) performance += 10;
+    if (isUltimate) {
+      // Pour les ultimates: focus sur l'impact quand utilisé
+      if (spellUsageCount > 0) {
+        performance = 50; // Base plus élevée si utilisé
+        performance += Math.min(30, spellContribution * 60); // Impact majeur
+        if (battleResult.victory) performance += 20;
+        if (battleResult.totalTurns < 15) performance += 10; // Victoire rapide après ultimate
+      } else {
+        // Si l'ultimate n'est pas utilisé dans un scénario d'ultimate, c'est problématique
+        if (scenario.specialConditions?.guaranteedUltimate) {
+          performance = 10; // Très mauvais
+        } else {
+          performance = 40; // Neutre - normal qu'il ne soit pas utilisé
+        }
+      }
     } else {
-      performance -= 20;
-    }
-    
-    if (spellUsageCount > 0) {
-      performance += Math.min(15, spellUsageCount * 3);
-      performance += Math.min(15, spellContribution * 25);
-    } else {
-      performance -= 10; // Pénalité si jamais utilisé
+      // Pour les sorts actifs: logique existante
+      if (battleResult.victory) {
+        performance += 30;
+        if (battleResult.totalTurns < 10) performance += 10;
+      } else {
+        performance -= 20;
+      }
+      
+      if (spellUsageCount > 0) {
+        performance += Math.min(15, spellUsageCount * 3);
+        performance += Math.min(15, spellContribution * 25);
+      } else {
+        performance -= 15; // Pénalité plus forte pour sorts actifs non utilisés
+      }
     }
     
     // Impact du sort
@@ -528,8 +652,11 @@ class AdvancedBalanceAnalyzer {
     else if (spellContribution > 0.05) impact = "minor";
     
     const notes: string[] = [];
-    if (spellUsageCount === 0) notes.push("Sort jamais utilisé");
+    if (spellUsageCount === 0) {
+      notes.push(isUltimate ? "Ultimate non utilisé" : "Sort jamais utilisé");
+    }
     if (spellContribution > 0.8) notes.push("Impact très élevé");
+    if (isUltimate && spellUsageCount > 0) notes.push("Ultimate déclenché avec succès");
     
     return {
       performance: Math.max(0, Math.min(100, performance)),
@@ -546,12 +673,20 @@ class AdvancedBalanceAnalyzer {
   private updateMetricsFromScenario(
     metrics: AdvancedSpellMetrics, 
     scenarioResult: any, 
-    scenario: CombatScenario
+    scenario: CombatScenario,
+    isUltimate: boolean
   ): void {
     const performance = scenarioResult.performance;
     
-    // ✅ FIX: Mise à jour directe sans accumulation
+    // Mise à jour directe selon le scénario
     switch (scenario.name) {
+      case "Ultimate Power Test":
+        metrics.ultimateImpact = performance;
+        metrics.gameChangingPotential = scenarioResult.contribution * 100;
+        break;
+      case "Active Spell Test":
+        metrics.sustainedDps = performance;
+        break;
       case "Early Game Clash":
         metrics.earlyGameImpact = performance;
         break;
@@ -569,16 +704,124 @@ class AdvancedBalanceAnalyzer {
         break;
     }
     
-    // Métriques de fiabilité basées sur l'usage
-    if (scenarioResult.spellUsage > 0) {
-      metrics.reliability += 20; // Accumuler seulement si utilisé
+    // Métriques de fiabilité adaptées
+    if (isUltimate) {
+      // Pour ultimates: reliability = capacité à être disponible au bon moment
+      if (scenarioResult.spellUsage > 0) {
+        metrics.reliability += 30; // Bonus important si utilisé
+      }
+    } else {
+      // Pour sorts actifs: reliability = utilisation consistante
+      if (scenarioResult.spellUsage > 0) {
+        metrics.reliability += 15;
+      }
     }
     
-    metrics.adaptability += performance * 0.15; // Petite accumulation pondérée
+    metrics.adaptability += performance * 0.1;
   }
   
+  // ✅ ADAPTATION: Score global différent pour ultimates vs actifs
+  private calculateOverallScore(metrics: AdvancedSpellMetrics, isUltimate: boolean): number {
+    if (isUltimate) {
+      return Math.round(
+        metrics.ultimateImpact * 0.4 +
+        metrics.gameChangingPotential * 0.3 +
+        metrics.bossEffectiveness * 0.2 +
+        metrics.reliability * 0.1
+      );
+    } else {
+      return Math.round(
+        metrics.averageDps * 0.3 +
+        metrics.reliability * 0.25 +
+        metrics.sustainedDps * 0.2 +
+        metrics.teamSynergy * 0.15 +
+        metrics.adaptability * 0.1
+      );
+    }
+  }
+  
+  // ✅ ADAPTATION: Rôle gameplay adapté
+  private determineGameplayRole(metrics: AdvancedSpellMetrics, isUltimate: boolean): string {
+    if (isUltimate) {
+      if (metrics.ultimateImpact > 70) return "game_changer";
+      if (metrics.bossEffectiveness > 65) return "boss_killer";
+      if (metrics.gameChangingPotential > 60) return "finisher";
+      return "ultimate_support";
+    } else {
+      if (metrics.averageDps > 65 && metrics.reliability > 60) return "core";
+      if (metrics.sustainedDps > 70) return "sustained_dps";
+      if (metrics.bossEffectiveness > 70 || metrics.aoeEffectiveness > 70) return "situational";
+      if (metrics.reliability < 30) return "unreliable";
+      return "support";
+    }
+  }
+  
+  // ✅ ADAPTATION: Statut d'équilibrage adapté aux ultimates
+  private determineBalanceStatus(metrics: AdvancedSpellMetrics, spell: BaseSpell): "underpowered" | "balanced" | "strong" | "overpowered" | "broken" {
+    const isUltimate = spell.config.type === "ultimate";
+    const score = isUltimate ? metrics.ultimateImpact : metrics.averageDps;
+    const reliability = metrics.reliability;
+    
+    if (isUltimate) {
+      // Seuils différents pour ultimates
+      if (score < 40 || reliability < 15) return "underpowered";
+      if (score > 90) return "broken";
+      if (score > 80) return "overpowered";
+      if (score > 65) return "strong";
+      return "balanced";
+    } else {
+      // Seuils existants pour sorts actifs
+      if (reliability < 10) return "underpowered";
+      if (score < 25) return "underpowered";
+      if (score > 85) return "broken";
+      if (score > 70) return "overpowered";
+      if (score > 55) return "strong";
+      return "balanced";
+    }
+  }
+  
+  // ✅ ADAPTATION: Recommandations adaptées
+  private generateRecommendations(metrics: AdvancedSpellMetrics, spell: BaseSpell): any {
+    const immediate: string[] = [];
+    const design: string[] = [];
+    const synergy: string[] = [];
+    const isUltimate = spell.config.type === "ultimate";
+    
+    if (isUltimate) {
+      if (metrics.ultimateImpact < 40) {
+        immediate.push("Augmenter l'impact de l'ultimate - dégâts ou effets insuffisants");
+      }
+      if (metrics.reliability < 20) {
+        immediate.push("Problème de timing - ultimate non utilisé au bon moment");
+      }
+      if (metrics.gameChangingPotential < 30) {
+        design.push("Ultimate pas assez game-changing - ajouter des effets uniques");
+      }
+    } else {
+      if (metrics.reliability < 20) {
+        immediate.push("Réduire coût énergie ou cooldown - sort trop peu utilisé");
+      }
+      if (metrics.averageDps < 30) {
+        const increase = Math.round((35 - metrics.averageDps) * 2);
+        immediate.push(`Augmenter puissance de ${increase}%`);
+      }
+      if (metrics.averageDps > 80) {
+        const decrease = Math.round((metrics.averageDps - 65) * 1.5);
+        immediate.push(`Réduire puissance de ${decrease}%`);
+      }
+    }
+    
+    if (metrics.teamSynergy < 30) {
+      synergy.push("Ajouter des effets de synergie élémentaire");
+    }
+    
+    return { immediate, design, synergy };
+  }
+  
+  // Méthodes existantes adaptées...
   private determineActualRarity(spell: BaseSpell, metrics: AdvancedSpellMetrics): "Common" | "Rare" | "Epic" | "Legendary" | "Mythic" {
-    const score = metrics.averageDps;
+    const isUltimate = spell.config.type === "ultimate";
+    const score = isUltimate ? metrics.ultimateImpact : metrics.averageDps;
     
     if (score >= 80) return "Mythic";
     if (score >= 65) return "Legendary";
@@ -587,19 +830,10 @@ class AdvancedBalanceAnalyzer {
     return "Common";
   }
   
-  private calculateOverallScore(metrics: AdvancedSpellMetrics): number {
-    return Math.round(
-      metrics.averageDps * 0.4 +
-      metrics.reliability * 0.2 +
-      metrics.teamSynergy * 0.15 +
-      metrics.adaptability * 0.15 +
-      (metrics.bossEffectiveness + metrics.aoeEffectiveness) * 0.05
-    );
-  }
-  
   private calculateBalanceScore(metrics: AdvancedSpellMetrics, spell: BaseSpell): number {
     const expectedScore = this.getExpectedScore(spell);
-    const actualScore = metrics.averageDps;
+    const isUltimate = spell.config.type === "ultimate";
+    const actualScore = isUltimate ? metrics.ultimateImpact : metrics.averageDps;
     
     if (actualScore === 0) return 0;
     
@@ -608,10 +842,13 @@ class AdvancedBalanceAnalyzer {
   }
   
   private getExpectedScore(spell: BaseSpell): number {
+    const isUltimate = spell.config.type === "ultimate";
+    
+    if (isUltimate) return 65; // Seuil plus élevé pour ultimates
+    
     const energyCost = spell.getEnergyCost(5);
     const cooldown = spell.getEffectiveCooldown({ stats: { speed: 100 } }, 5);
     
-    if (spell.config.type === "ultimate") return 70;
     if (energyCost > 50) return 60;
     if (cooldown > 5) return 55;
     return 45;
@@ -619,9 +856,16 @@ class AdvancedBalanceAnalyzer {
   
   private calculateDesignScore(metrics: AdvancedSpellMetrics, spell: BaseSpell): number {
     let score = 50;
+    const isUltimate = spell.config.type === "ultimate";
     
-    if (metrics.bossEffectiveness > 60 || metrics.aoeEffectiveness > 60) score += 10;
-    if (metrics.reliability > 50) score += 15;
+    if (isUltimate) {
+      if (metrics.gameChangingPotential > 50) score += 20;
+      if (metrics.ultimateImpact > 60) score += 15;
+    } else {
+      if (metrics.bossEffectiveness > 60 || metrics.aoeEffectiveness > 60) score += 10;
+      if (metrics.reliability > 50) score += 15;
+    }
+    
     if (metrics.reliability < 20) score -= 20;
     
     return Math.max(0, Math.min(100, score));
@@ -629,11 +873,18 @@ class AdvancedBalanceAnalyzer {
   
   private determineArchetypes(metrics: AdvancedSpellMetrics, spell: BaseSpell): string[] {
     const archetypes: string[] = [];
+    const isUltimate = spell.config.type === "ultimate";
     
-    if (metrics.bossEffectiveness > 65) archetypes.push("single_target");
-    if (metrics.aoeEffectiveness > 65) archetypes.push("aoe");
-    if (metrics.teamSynergy > 65) archetypes.push("synergy");
-    if (metrics.reliability > 70) archetypes.push("reliable");
+    if (isUltimate) {
+      if (metrics.gameChangingPotential > 65) archetypes.push("game_changer");
+      if (metrics.bossEffectiveness > 65) archetypes.push("boss_killer");
+      if (metrics.ultimateImpact > 70) archetypes.push("high_impact");
+    } else {
+      if (metrics.bossEffectiveness > 65) archetypes.push("single_target");
+      if (metrics.aoeEffectiveness > 65) archetypes.push("aoe");
+      if (metrics.teamSynergy > 65) archetypes.push("synergy");
+      if (metrics.reliability > 70) archetypes.push("reliable");
+    }
     
     return archetypes.length > 0 ? archetypes : ["generic"];
   }
@@ -648,80 +899,41 @@ class AdvancedBalanceAnalyzer {
     return `Optimal: ${bestScenario.name} (${Math.round(bestScenario.performance)}%)`;
   }
   
-  private determineGameplayRole(metrics: AdvancedSpellMetrics): string {
-    if (metrics.averageDps > 65 && metrics.reliability > 60) return "core";
-    if (metrics.bossEffectiveness > 70 || metrics.aoeEffectiveness > 70) return "situational";
-    if (metrics.reliability < 30) return "unreliable";
-    return "support";
-  }
-  
-  // ✅ FIX: Logique de statut d'équilibrage corrigée
-  private determineBalanceStatus(metrics: AdvancedSpellMetrics, spell: BaseSpell): "underpowered" | "balanced" | "strong" | "overpowered" | "broken" {
-    const score = metrics.averageDps;
-    const reliability = metrics.reliability;
-    
-    // Si le sort n'est jamais utilisé, c'est underpowered
-    if (reliability < 10) return "underpowered";
-    
-    // Classification par score
-    if (score < 25) return "underpowered";
-    if (score > 85) return "broken";
-    if (score > 70) return "overpowered";
-    if (score > 55) return "strong";
-    return "balanced";
-  }
-  
-  // ✅ FIX: Recommandations corrigées
-  private generateRecommendations(metrics: AdvancedSpellMetrics, spell: BaseSpell): any {
-    const immediate: string[] = [];
-    const design: string[] = [];
-    const synergy: string[] = [];
-    
-    if (metrics.reliability < 20) {
-      immediate.push("Réduire coût énergie ou cooldown - sort trop peu utilisé");
-    }
-    
-    if (metrics.averageDps < 30) {
-      const increase = Math.round((35 - metrics.averageDps) * 2);
-      immediate.push(`Augmenter puissance de ${increase}%`);
-    }
-    
-    if (metrics.averageDps > 80) {
-      const decrease = Math.round((metrics.averageDps - 65) * 1.5);
-      immediate.push(`Réduire puissance de ${decrease}%`);
-    }
-    
-    if (metrics.teamSynergy < 30) {
-      synergy.push("Ajouter des effets de synergie élémentaire");
-    }
-    
-    if (metrics.reliability < 40 && spell.config.category !== "utility") {
-      design.push("Améliorer la consistance d'utilisation");
-    }
-    
-    return { immediate, design, synergy };
-  }
-  
   private generateComparativeAnalysis(): void {
     console.log("   🔄 Analyse comparative terminée");
   }
   
   private generateComprehensiveReport(): any {
     const results = Array.from(this.spellResults.values());
+    const activeSpells = results.filter(r => r.spellType === "active");
+    const ultimateSpells = results.filter(r => r.spellType === "ultimate");
     
     return {
       metadata: {
         timestamp: new Date().toISOString(),
-        version: "3.0.1-bugfixed",
+        version: "3.0.2-ultimate-aware",
         totalSpellsAnalyzed: results.length,
+        activeSpellsAnalyzed: activeSpells.length,
+        ultimateSpellsAnalyzed: ultimateSpells.length,
         totalScenariosUsed: this.scenarios.length
       },
       summary: {
-        averageOverallScore: Math.round(results.reduce((sum, r) => sum + r.overallScore, 0) / results.length),
-        balancedSpells: results.filter(r => r.balanceStatus === "balanced").length,
-        overpoweredSpells: results.filter(r => r.balanceStatus === "overpowered" || r.balanceStatus === "broken").length,
-        underpoweredSpells: results.filter(r => r.balanceStatus === "underpowered").length,
-        averageBalanceScore: Math.round(results.reduce((sum, r) => sum + r.balanceScore, 0) / results.length)
+        overall: {
+          averageOverallScore: Math.round(results.reduce((sum, r) => sum + r.overallScore, 0) / results.length),
+          balancedSpells: results.filter(r => r.balanceStatus === "balanced").length,
+          overpoweredSpells: results.filter(r => r.balanceStatus === "overpowered" || r.balanceStatus === "broken").length,
+          underpoweredSpells: results.filter(r => r.balanceStatus === "underpowered").length,
+        },
+        activeSpells: {
+          averageScore: activeSpells.length > 0 ? Math.round(activeSpells.reduce((sum, r) => sum + r.overallScore, 0) / activeSpells.length) : 0,
+          balanced: activeSpells.filter(r => r.balanceStatus === "balanced").length,
+          problematic: activeSpells.filter(r => r.balanceStatus === "broken" || r.balanceStatus === "underpowered").length
+        },
+        ultimateSpells: {
+          averageScore: ultimateSpells.length > 0 ? Math.round(ultimateSpells.reduce((sum, r) => sum + r.overallScore, 0) / ultimateSpells.length) : 0,
+          balanced: ultimateSpells.filter(r => r.balanceStatus === "balanced").length,
+          problematic: ultimateSpells.filter(r => r.balanceStatus === "broken" || r.balanceStatus === "underpowered").length
+        }
       },
       spellAnalysis: results,
       scenarios: this.scenarios.map(s => ({
@@ -738,6 +950,9 @@ class AdvancedBalanceAnalyzer {
     const balance: string[] = [];
     const design: string[] = [];
     
+    const activeSpells = results.filter(r => r.spellType === "active");
+    const ultimateSpells = results.filter(r => r.spellType === "ultimate");
+    
     const brokenSpells = results.filter(r => r.balanceStatus === "broken");
     const underpowered = results.filter(r => r.balanceStatus === "underpowered");
     
@@ -749,9 +964,14 @@ class AdvancedBalanceAnalyzer {
       balance.push(`${underpowered.length} sorts sous-alimentés à améliorer`);
     }
     
-    const lowReliability = results.filter(r => r.metrics.reliability < 30);
-    if (lowReliability.length > 0) {
-      design.push(`${lowReliability.length} sorts peu utilisés - problème de coût/cooldown`);
+    const lowReliabilityActives = activeSpells.filter(r => r.metrics.reliability < 30);
+    if (lowReliabilityActives.length > 0) {
+      design.push(`${lowReliabilityActives.length} sorts actifs peu utilisés - problème de coût/cooldown`);
+    }
+    
+    const weakUltimates = ultimateSpells.filter(r => r.metrics.ultimateImpact < 40);
+    if (weakUltimates.length > 0) {
+      design.push(`${weakUltimates.length} ultimates manquent d'impact`);
     }
     
     return { critical, balance, design };
@@ -759,7 +979,7 @@ class AdvancedBalanceAnalyzer {
   
   private saveReport(report: any): void {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const filename = `advanced_balance_fixed_${timestamp}.json`;
+    const filename = `ultimate_aware_balance_${timestamp}.json`;
     const outputPath = path.join(process.cwd(), 'logs', 'balance', filename);
     
     const dir = path.dirname(outputPath);
@@ -768,21 +988,33 @@ class AdvancedBalanceAnalyzer {
     }
     
     fs.writeFileSync(outputPath, JSON.stringify(report, null, 2));
-    console.log(`💾 Rapport corrigé sauvegardé: ${filename}`);
+    console.log(`💾 Rapport ultimate-aware sauvegardé: ${filename}`);
   }
   
   private displayKeyFindings(): void {
     const results = Array.from(this.spellResults.values());
+    const activeSpells = results.filter(r => r.spellType === "active");
+    const ultimateSpells = results.filter(r => r.spellType === "ultimate");
     
-    console.log("🎯 === RÉSULTATS CLÉS (VERSION CORRIGÉE) ===\n");
+    console.log("🎯 === RÉSULTATS CLÉS (ULTIMATE-AWARE) ===\n");
     
-    // Top 5 meilleurs sorts
-    const topSpells = results
+    // Top sorts actifs
+    const topActives = activeSpells
       .sort((a, b) => b.overallScore - a.overallScore)
-      .slice(0, 5);
+      .slice(0, 3);
     
-    console.log("🏆 TOP 5 SORTS:");
-    topSpells.forEach((spell, i) => {
+    console.log("🔥 TOP 3 SORTS ACTIFS:");
+    topActives.forEach((spell, i) => {
+      console.log(`   ${i + 1}. ${spell.spellName} (${spell.overallScore}/100) - ${spell.gameplayRole}`);
+    });
+    
+    // Top ultimates
+    const topUltimates = ultimateSpells
+      .sort((a, b) => b.overallScore - a.overallScore)
+      .slice(0, 3);
+    
+    console.log("\n⚡ TOP 3 ULTIMATES:");
+    topUltimates.forEach((spell, i) => {
       console.log(`   ${i + 1}. ${spell.spellName} (${spell.overallScore}/100) - ${spell.gameplayRole}`);
     });
     
@@ -793,24 +1025,29 @@ class AdvancedBalanceAnalyzer {
     
     if (problematic.length > 0) {
       console.log("\n⚠️ SORTS PROBLÉMATIQUES:");
-      problematic.slice(0, 10).forEach(spell => { // Limiter à 10
-        console.log(`   🚨 ${spell.spellName}: ${spell.balanceStatus} (${spell.overallScore}/100)`);
+      problematic.slice(0, 8).forEach(spell => {
+        const type = spell.spellType === "ultimate" ? "⚡" : "🔥";
+        console.log(`   🚨 ${type} ${spell.spellName}: ${spell.balanceStatus} (${spell.overallScore}/100)`);
         if (spell.recommendations.immediate.length > 0) {
           console.log(`      → ${spell.recommendations.immediate[0]}`);
         }
       });
       
-      if (problematic.length > 10) {
-        console.log(`   ... et ${problematic.length - 10} autres sorts problématiques`);
+      if (problematic.length > 8) {
+        console.log(`   ... et ${problematic.length - 8} autres sorts problématiques`);
       }
     }
     
-    // Statistiques générales
-    const avgScore = Math.round(results.reduce((sum, r) => sum + r.overallScore, 0) / results.length);
-    const balanced = results.filter(r => r.balanceStatus === "balanced").length;
+    // Statistiques séparées
+    const avgActiveScore = activeSpells.length > 0 ? Math.round(activeSpells.reduce((sum, r) => sum + r.overallScore, 0) / activeSpells.length) : 0;
+    const avgUltimateScore = ultimateSpells.length > 0 ? Math.round(ultimateSpells.reduce((sum, r) => sum + r.overallScore, 0) / ultimateSpells.length) : 0;
     
-    console.log(`\n📊 SANTÉ GLOBALE: ${avgScore}/100`);
-    console.log(`   ⚖️ Sorts équilibrés: ${balanced}/${results.length} (${Math.round(balanced/results.length*100)}%)`);
+    const balancedActives = activeSpells.filter(r => r.balanceStatus === "balanced").length;
+    const balancedUltimates = ultimateSpells.filter(r => r.balanceStatus === "balanced").length;
+    
+    console.log(`\n📊 SANTÉ GLOBALE:`);
+    console.log(`   🔥 Sorts actifs: ${avgActiveScore}/100 - ${balancedActives}/${activeSpells.length} équilibrés (${Math.round(balancedActives/activeSpells.length*100)}%)`);
+    console.log(`   ⚡ Ultimates: ${avgUltimateScore}/100 - ${balancedUltimates}/${ultimateSpells.length} équilibrés (${Math.round(balancedUltimates/ultimateSpells.length*100)}%)`);
     console.log(""); 
   }
 }
