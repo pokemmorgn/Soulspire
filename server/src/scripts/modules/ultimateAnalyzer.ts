@@ -276,7 +276,11 @@ class UltimateScenarioGenerator {
     return [
       this.createClutchScenario(),
       this.createBossSlayerScenario(), 
-      this.createTeamFightScenario()
+      this.createTeamFightScenario(),
+      // ✨ NOUVEAU : Scénarios de combat long pour mesurer utilisations multiples
+      this.createLongCombatScenario(),
+      this.createEnduranceTestScenario(),
+      this.createRealTimeScenario()
     ];
   }
   
@@ -366,6 +370,113 @@ class UltimateScenarioGenerator {
       expectedOutcome: "ultimate_wins",
       weight: 1.5,
       focusMetric: "teamSynergyAmplification"
+    };
+  }
+  
+  // ✨ NOUVEAU : Combat long pour tester utilisations multiples (60 secondes simulées)
+  private static createLongCombatScenario(): UltimateTestScenario {
+    return {
+      name: "Long Combat Test (60s)",
+      description: "Combat de 60 secondes pour mesurer utilisations multiples",
+      setupTeam: (ultimateSpell: UltimateSpell) => {
+        const carrier = UltimateHeroFactory.createUltimateCarrier({
+          ultimateSpell,
+          level: 50,
+          element: "Electric",
+          startingEnergy: 0 // Commence à 0 pour progression réaliste
+        });
+        
+        const team = UltimateHeroFactory.createSupportTeam(50);
+        return [carrier, ...team];
+      },
+      setupEnemies: () => {
+        // Ennemis avec beaucoup de HP pour combat long
+        const enemies = UltimateHeroFactory.createChallengingEnemies(48, "medium");
+        enemies.forEach(enemy => {
+          enemy.stats.hp *= 4; // x4 HP pour combat long
+          enemy.currentHp = enemy.stats.hp;
+          enemy.stats.maxHp = enemy.stats.hp;
+        });
+        return enemies;
+      },
+      specialConditions: {
+        turnLimit: 60, // ~60 tours = ~60 secondes
+        difficultyModifier: 1.2
+      },
+      expectedOutcome: "ultimate_wins",
+      weight: 3.0, // Poids important car mesure réaliste
+      focusMetric: "accessibilityScore"
+    };
+  }
+  
+  // ✨ NOUVEAU : Test d'endurance avec régénération
+  private static createEnduranceTestScenario(): UltimateTestScenario {
+    return {
+      name: "Endurance Test",
+      description: "Combat d'endurance avec vagues d'ennemis",
+      setupTeam: (ultimateSpell: UltimateSpell) => {
+        const carrier = UltimateHeroFactory.createUltimateCarrier({
+          ultimateSpell,
+          level: 45,
+          element: "Water",
+          startingEnergy: 0
+        });
+        
+        // Team plus résistante
+        const team = UltimateHeroFactory.createSupportTeam(45);
+        team.forEach(hero => {
+          hero.stats.hp *= 1.5;
+          hero.currentHp = hero.stats.hp;
+          hero.stats.maxHp = hero.stats.hp;
+        });
+        
+        return [carrier, ...team];
+      },
+      setupEnemies: () => {
+        // Plusieurs ennemis faibles pour combat long
+        const enemies = [];
+        for (let i = 0; i < 4; i++) {
+          const enemy = UltimateHeroFactory.createChallengingEnemies(40, "easy")[0];
+          enemy.heroId = `endurance_enemy_${i}`;
+          enemies.push(enemy);
+        }
+        return enemies;
+      },
+      specialConditions: {
+        turnLimit: 50,
+        difficultyModifier: 0.8
+      },
+      expectedOutcome: "ultimate_wins",
+      weight: 2.5,
+      focusMetric: "scalingPotential"
+    };
+  }
+  
+  // ✨ NOUVEAU : Scénario temps réel simulé
+  private static createRealTimeScenario(): UltimateTestScenario {
+    return {
+      name: "Real-Time Simulation",
+      description: "Simulation temps réel avec génération d'énergie réaliste",
+      setupTeam: (ultimateSpell: UltimateSpell) => {
+        const carrier = UltimateHeroFactory.createUltimateCarrier({
+          ultimateSpell,
+          level: 55,
+          element: "Light",
+          startingEnergy: 20 // Début réaliste
+        });
+        
+        const team = UltimateHeroFactory.createSupportTeam(55);
+        return [carrier, ...team];
+      },
+      setupEnemies: () => UltimateHeroFactory.createChallengingEnemies(52, "hard"),
+      specialConditions: {
+        startingEnergy: 20,
+        turnLimit: 80, // Combat potentiellement très long
+        difficultyModifier: 1.1
+      },
+      expectedOutcome: "close_fight",
+      weight: 2.8,
+      focusMetric: "timingOptimization"
     };
   }
 }
@@ -646,7 +757,7 @@ class UltimateAnalyzer {
       bestUseCase: this.determineBestUseCase(scenarioResults),
       balanceStatus: this.determineUltimateBalanceStatus(metrics),
       urgentFixes: this.generateUrgentFixes(metrics, ultimateSpell),
-      designSuggestions: this.generateDesignSuggestions(metrics, ultimateSpell),
+      designSuggestions: this.generateDetailedSuggestions(metrics, ultimateSpell, dpsMetrics), // ✨ NOUVEAU
       scenarioResults,
       comparisonRank: 0
     };
@@ -787,13 +898,14 @@ class UltimateAnalyzer {
       utilityScore,
       buffsApplied,
       debuffsApplied,
-      usesCount: ultimateActions.length
+      usesCount: ultimateActions.length,
+      scenarioName: scenario.name // ✨ NOUVEAU : Nom du scénario pour identification
     };
   }
   
   // ===== MÉTHODES UTILITAIRES =====
   
-  // ✨ NOUVEAU : Calculer les métriques DPS détaillées
+  // ✨ NOUVEAU : Calculer les métriques DPS détaillées avec utilisation multiple
   private calculateDpsMetrics(scenarioResults: Record<string, any>, ultimateSpell: UltimateSpell): any {
     const results = Object.values(scenarioResults);
     
@@ -802,21 +914,30 @@ class UltimateAnalyzer {
     const totalUses = results.reduce((sum: number, result: any) => sum + (result.usesCount || 0), 0);
     const totalTurns = results.reduce((sum: number, result: any) => sum + (result.battleDuration || 1), 0);
     
+    // ✨ NOUVEAU : Métriques temps réel 60s
+    const longCombatResult = results.find((r: any) => r.scenarioName === "Long Combat Test (60s)");
+    const realTimeUsage = longCombatResult ? longCombatResult.usesCount || 0 : 0;
+    const usageFrequency = longCombatResult ? (realTimeUsage / (longCombatResult.battleDuration || 1)) * 60 : 0; // Par minute
+    
     const averageDamagePerUse = totalUses > 0 ? Math.round(totalDamage / totalUses) : 0;
     const averageHealingPerUse = totalUses > 0 ? Math.round(totalHealing / totalUses) : 0;
     const dpsPerTurn = totalTurns > 0 ? Math.round(totalDamage / totalTurns) : 0;
     const hpsPerTurn = totalTurns > 0 ? Math.round(totalHealing / totalTurns) : 0;
     
-    // Calculer note DPS (0-100) basée sur la catégorie
+    // ✨ NOUVEAU : Calculer DPS temps réel (dégâts par minute)
+    const realTimeDPS = longCombatResult ? (longCombatResult.damageDealt || 0) / ((longCombatResult.battleDuration || 1) / 60) : 0;
+    const realTimeHPS = longCombatResult ? (longCombatResult.healingDone || 0) / ((longCombatResult.battleDuration || 1) / 60) : 0;
+    
+    // Calculer note DPS (0-100) basée sur la catégorie ET utilisation multiple
     let dpsRating = 0;
     if (ultimateSpell.config.category === "damage") {
-      dpsRating = Math.min(100, Math.max(0, (averageDamagePerUse - 2000) / 80));
+      dpsRating = Math.min(100, Math.max(0, (averageDamagePerUse - 2000) / 80 + realTimeUsage * 5));
     } else if (ultimateSpell.config.category === "heal") {
-      dpsRating = Math.min(100, Math.max(0, (averageHealingPerUse - 1000) / 60));
+      dpsRating = Math.min(100, Math.max(0, (averageHealingPerUse - 1000) / 60 + realTimeUsage * 8));
     } else {
-      // Pour control/buff/debuff, on base sur l'utilité
+      // Pour control/buff/debuff, on base sur l'utilité ET fréquence
       const avgUtility = results.reduce((sum: number, result: any) => sum + (result.utilityScore || 0), 0) / results.length;
-      dpsRating = Math.min(100, Math.max(0, avgUtility));
+      dpsRating = Math.min(100, Math.max(0, avgUtility + realTimeUsage * 10));
     }
     
     return {
@@ -825,7 +946,12 @@ class UltimateAnalyzer {
       dpsRating: Math.round(dpsRating),
       dpsRank: 0, // Sera calculé dans generateComparativeAnalysis
       healingPerSecond: hpsPerTurn,
-      utilityScore: results.reduce((sum: number, result: any) => sum + (result.utilityScore || 0), 0) / results.length
+      utilityScore: results.reduce((sum: number, result: any) => sum + (result.utilityScore || 0), 0) / results.length,
+      // ✨ NOUVEAU : Métriques temps réel
+      realTimeUsage,
+      usageFrequency: Math.round(usageFrequency * 10) / 10,
+      realTimeDPS: Math.round(realTimeDPS),
+      realTimeHPS: Math.round(realTimeHPS)
     };
   }
   
@@ -1057,6 +1183,84 @@ class UltimateAnalyzer {
     return fixes;
   }
   
+  // ✨ NOUVEAU : Système de suggestions détaillées et spécialisées
+  private generateDetailedSuggestions(metrics: UltimateMetrics, ultimateSpell: UltimateSpell, dpsMetrics: any): string[] {
+    const suggestions: string[] = [];
+    
+    // Suggestions basées sur la catégorie
+    switch (ultimateSpell.config.category) {
+      case "damage":
+        if (dpsMetrics.averageDamagePerUse < 4000) {
+          suggestions.push(`🔥 DAMAGE BOOST: Augmenter dégâts base à ~5500 (+${5500 - dpsMetrics.averageDamagePerUse})`);
+        }
+        if (dpsMetrics.realTimeUsage < 2) {
+          suggestions.push("⚡ ENERGY: Réduire coût à 90 énergie pour plus d'utilisations");
+        }
+        if (metrics.versatilityScore < 50) {
+          suggestions.push("💥 AoE: Ajouter zone d'effet ou effets secondaires");
+        }
+        break;
+        
+      case "heal":
+        if (dpsMetrics.realTimeHPS < 800) {
+          suggestions.push(`💚 HEAL BOOST: Augmenter soins à ~1200 HPS (+${1200 - dpsMetrics.realTimeHPS})`);
+        }
+        if (metrics.teamSynergyAmplification < 60) {
+          suggestions.push("🛡️ UTILITY: Ajouter buffs défensifs (shields, résistances)");
+        }
+        break;
+        
+      case "buff":
+        if (dpsMetrics.utilityScore < 60) {
+          suggestions.push("⬆️ STRONGER BUFFS: Augmenter bonus à +50% ATQ/DEF au lieu de +30%");
+        }
+        if (metrics.scalingPotential < 50) {
+          suggestions.push("🕐 DURATION: Étendre durée des buffs à 8-10 tours");
+        }
+        break;
+        
+      case "debuff":
+        if (dpsMetrics.utilityScore < 50) {
+          suggestions.push("⬇️ STRONGER DEBUFFS: Ajouter -50% DEF ou silence 3 tours");
+        }
+        if (metrics.counterPlayResistance < 40) {
+          suggestions.push("🎯 SPREAD: Appliquer debuffs à toute l'équipe ennemie");
+        }
+        break;
+        
+      case "control":
+      case "utility":
+        if (dpsMetrics.utilityScore < 40) {
+          suggestions.push("🎛️ CONTROL: Ajouter stun/freeze 2-3 tours ou manipulation initiative");
+        }
+        if (metrics.gameChangingScore < 30) {
+          suggestions.push("🔄 UNIQUE: Créer mécaniques uniques (swap positions, reset cooldowns)");
+        }
+        break;
+    }
+    
+    // Suggestions générales basées sur les métriques
+    if (dpsMetrics.usageFrequency < 1.5) { // Moins de 1.5x par minute
+      suggestions.push("⚡ ACCESSIBILITY: Réduire coût à 80-90 énergie pour plus d'utilisations");
+    }
+    
+    if (metrics.clutchFactor < 40) {
+      suggestions.push("🚨 CLUTCH: Ajouter bonus si équipe <50% HP (+100% efficacité)");
+    }
+    
+    if (metrics.uniquenessIndex < 30) {
+      suggestions.push("💎 UNIQUE: Créer mécaniques signature non-copiables");
+    }
+    
+    // Suggestions d'équilibrage spécifiques
+    const overallPower = this.calculateOverallPower(metrics);
+    if (overallPower < 50) {
+      suggestions.push(`📈 GLOBAL BUFF: Ultimate sous-performant, buff global de ${Math.round((60 - overallPower) * 2)}%`);
+    }
+    
+    return suggestions.slice(0, 4); // Max 4 suggestions pour lisibilité
+  }
+  
   private generateDesignSuggestions(metrics: UltimateMetrics, ultimateSpell: UltimateSpell): string[] {
     const suggestions: string[] = [];
     
@@ -1235,7 +1439,18 @@ class UltimateAnalyzer {
       console.log(`   🔧 Coût: ${ultimate.technicalSummary.energyCost} énergie | Usage: ${ultimate.technicalSummary.usageRate}% | Tour moy: ${ultimate.technicalSummary.averageTiming}`);
       console.log(`   📊 DPS Rating: ${ultimate.dpsMetrics.dpsRating}/100 | Dégâts moy: ${ultimate.dpsMetrics.averageDamagePerUse}`);
       console.log(`   💚 HPS: ${ultimate.dpsMetrics.healingPerSecond}/turn | Utilité: ${Math.round(ultimate.dpsMetrics.utilityScore)}`);
+      // ✨ NOUVEAU : Métriques temps réel
+      console.log(`   ⏱️ Usage 60s: ${ultimate.dpsMetrics.realTimeUsage || 0}x | Fréq: ${ultimate.dpsMetrics.usageFrequency || 0}/min`);
+      console.log(`   🎯 DPS temps réel: ${ultimate.dpsMetrics.realTimeDPS || 0}/min | HPS: ${ultimate.dpsMetrics.realTimeHPS || 0}/min`);
       console.log(`   📝 ${ultimate.technicalSummary.effectDescription}`);
+      
+      // ✨ NOUVEAU : Afficher suggestions
+      if (ultimate.designSuggestions.length > 0) {
+        console.log(`   💡 Suggestions:`);
+        ultimate.designSuggestions.forEach(suggestion => {
+          console.log(`      ${suggestion}`);
+        });
+      }
       
       if (ultimate.urgentFixes.length > 0) {
         console.log(`   🚨 Fix urgent: ${ultimate.urgentFixes[0]}`);
@@ -1250,6 +1465,7 @@ class UltimateAnalyzer {
       console.log("\n💥 TOP DAMAGE ULTIMATES:");
       damageUltimates.forEach((ultimate, i) => {
         console.log(`   ${i + 1}. ${ultimate.spellName}: ${ultimate.dpsMetrics.averageDamagePerUse} dmg/use (Rating: ${ultimate.dpsMetrics.dpsRating}/100)`);
+        console.log(`      ⏱️ Temps réel: ${ultimate.dpsMetrics.realTimeDPS || 0} DPS/min | ${ultimate.dpsMetrics.realTimeUsage || 0} utilisations/60s`);
       });
     }
     
@@ -1258,15 +1474,17 @@ class UltimateAnalyzer {
       console.log("\n💚 TOP HEALING ULTIMATES:");
       healUltimates.forEach((ultimate, i) => {
         console.log(`   ${i + 1}. ${ultimate.spellName}: ${ultimate.dpsMetrics.healingPerSecond} HPS (Rating: ${ultimate.dpsMetrics.dpsRating}/100)`);
+        console.log(`      ⏱️ Temps réel: ${ultimate.dpsMetrics.realTimeHPS || 0} HPS/min | ${ultimate.dpsMetrics.realTimeUsage || 0} utilisations/60s`);
       });
     }
     
-    const utilityUltimates = results.filter(r => r.category === "buff" || r.category === "debuff" || r.category === "control")
+    const utilityUltimates = results.filter(r => r.category === "buff" || r.category === "debuff" || r.category === "control" || r.category === "utility")
       .sort((a, b) => b.dpsMetrics.utilityScore - a.dpsMetrics.utilityScore);
     if (utilityUltimates.length > 0) {
       console.log("\n🎯 TOP UTILITY ULTIMATES:");
       utilityUltimates.forEach((ultimate, i) => {
         console.log(`   ${i + 1}. ${ultimate.spellName}: ${Math.round(ultimate.dpsMetrics.utilityScore)} utilité (${ultimate.category})`);
+        console.log(`      ⏱️ Fréquence: ${ultimate.dpsMetrics.usageFrequency || 0}/min | ${ultimate.dpsMetrics.realTimeUsage || 0} utilisations/60s`);
       });
     }
     
