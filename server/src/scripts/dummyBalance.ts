@@ -3,13 +3,27 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
-import { BattleEngine, IBattleOptions } from "../server/src/services/BattleEngine";
-import { SpellManager, HeroSpells } from "../server/src/gameplay/SpellManager";
-import { EffectManager } from "../server/src/gameplay/EffectManager";
-import { PassiveManager } from "../server/src/gameplay/PassiveManager";
-import { IBattleParticipant, IBattleResult } from "../server/src/models/Battle";
+import { BattleEngine, IBattleOptions } from "../services/BattleEngine";
+import { SpellManager, HeroSpells } from "../gameplay/SpellManager";
+import { EffectManager } from "../gameplay/EffectManager";
+import { PassiveManager } from "../gameplay/PassiveManager";
+import { IBattleParticipant, IBattleResult } from "../models/Battle";
 
 dotenv.config();
+
+// ===== INTERFACES ET TYPES =====
+
+interface BaseSpell {
+  config: {
+    id: string;
+    name: string;
+    type: string;
+    category: string;
+    element?: string;
+  };
+  getEnergyCost(level: number): number;
+  getEffectiveCooldown(caster: any, level: number): number;
+}
 
 // ===== TYPES AVANCÉS =====
 
@@ -498,14 +512,14 @@ class AdvancedBalanceAnalyzer {
     this.displayKeyFindings();
   }
   
-  private getTestableSpells(): Array<{ id: string; spell: any }> {
+  private getTestableSpells(): Array<{ id: string; spell: BaseSpell }> {
     const allSpells = SpellManager.getAllSpells();
     return allSpells
-      .filter(spell => spell.config.type === "active" || spell.config.type === "ultimate")
-      .map(spell => ({ id: spell.config.id, spell }));
+      .filter((spell: any) => spell.config.type === "active" || spell.config.type === "ultimate")
+      .map((spell: any) => ({ id: spell.config.id, spell: spell as BaseSpell }));
   }
   
-  private async analyzeSpellPerformance(spellData: { id: string; spell: any }): Promise<void> {
+  private async analyzeSpellPerformance(spellData: { id: string; spell: BaseSpell }): Promise<void> {
     const { id, spell } = spellData;
     
     const metrics: AdvancedSpellMetrics = {
@@ -560,7 +574,7 @@ class AdvancedBalanceAnalyzer {
     this.spellResults.set(id, analysis);
   }
   
-  private async testSpellInScenario(spell: any, scenario: CombatScenario): Promise<any> {
+  private async testSpellInScenario(spell: BaseSpell, scenario: CombatScenario): Promise<any> {
     // Créer une équipe test avec le sort à analyser
     const testTeam = [...scenario.playerTeam];
     const testHero = testTeam[0]; // Héros principal qui utilisera le sort
@@ -613,12 +627,13 @@ class AdvancedBalanceAnalyzer {
     battleResult: IBattleResult, 
     actions: any[], 
     testHeroId: string, 
-    spell: any, 
+    spell: BaseSpell, 
     scenario: CombatScenario
   ): any {
     
     const spellActions = actions.filter(action => 
-      action.actorId === testHeroId && action.spellId === spell.config.id
+      action.actorId === testHeroId && 
+      (action.spellId === spell.config.id || action.actionType === "skill")
     );
     
     const totalSpellDamage = spellActions.reduce((sum, action) => sum + (action.damage || 0), 0);
@@ -720,7 +735,7 @@ class AdvancedBalanceAnalyzer {
     metrics.adaptability += performance * weight * 15;
   }
   
-  private determineActualRarity(spell: any, metrics: AdvancedSpellMetrics): "Common" | "Rare" | "Epic" | "Legendary" | "Mythic" {
+  private determineActualRarity(spell: BaseSpell, metrics: AdvancedSpellMetrics): "Common" | "Rare" | "Epic" | "Legendary" | "Mythic" {
     const score = metrics.averageDps;
     
     if (score >= 85) return "Mythic";
@@ -741,7 +756,7 @@ class AdvancedBalanceAnalyzer {
     );
   }
   
-  private calculateBalanceScore(metrics: AdvancedSpellMetrics, spell: any): number {
+  private calculateBalanceScore(metrics: AdvancedSpellMetrics, spell: BaseSpell): number {
     // Score basé sur l'écart aux attentes selon le type de sort
     const expectedScore = this.getExpectedScore(spell);
     const actualScore = metrics.averageDps;
@@ -750,7 +765,7 @@ class AdvancedBalanceAnalyzer {
     return Math.max(0, 100 - deviation * 100);
   }
   
-  private getExpectedScore(spell: any): number {
+  private getExpectedScore(spell: BaseSpell): number {
     const energyCost = spell.getEnergyCost(5);
     const cooldown = spell.getEffectiveCooldown({ stats: { speed: 100 } }, 5);
     
@@ -760,7 +775,7 @@ class AdvancedBalanceAnalyzer {
     return 50;
   }
   
-  private calculateDesignScore(metrics: AdvancedSpellMetrics, spell: any): number {
+  private calculateDesignScore(metrics: AdvancedSpellMetrics, spell: BaseSpell): number {
     let score = 50;
     
     // Bonus si le sort a une niche claire
@@ -775,7 +790,7 @@ class AdvancedBalanceAnalyzer {
     return Math.max(0, Math.min(100, score));
   }
   
-  private determineArchetypes(metrics: AdvancedSpellMetrics, spell: any): string[] {
+  private determineArchetypes(metrics: AdvancedSpellMetrics, spell: BaseSpell): string[] {
     const archetypes: string[] = [];
     
     if (metrics.burstPotential > 70) archetypes.push("burst");
@@ -805,7 +820,7 @@ class AdvancedBalanceAnalyzer {
     return "niche";
   }
   
-  private determineBalanceStatus(metrics: AdvancedSpellMetrics, spell: any): "underpowered" | "balanced" | "strong" | "overpowered" | "broken" {
+  private determineBalanceStatus(metrics: AdvancedSpellMetrics, spell: BaseSpell): "underpowered" | "balanced" | "strong" | "overpowered" | "broken" {
     const score = metrics.averageDps;
     const reliability = metrics.reliability;
     
@@ -816,7 +831,7 @@ class AdvancedBalanceAnalyzer {
     return "balanced";
   }
   
-  private generateRecommendations(metrics: AdvancedSpellMetrics, spell: any): any {
+  private generateRecommendations(metrics: AdvancedSpellMetrics, spell: BaseSpell): any {
     const immediate: string[] = [];
     const design: string[] = [];
     const synergy: string[] = [];
