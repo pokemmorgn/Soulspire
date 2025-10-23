@@ -25,6 +25,41 @@ interface UltimateSpell {
   getEffectiveCooldown?(caster: any, level: number): number;
 }
 
+// ✨ NOUVEAU : Système d'alertes automatiques
+interface UltimateAlert {
+  level: "CRITICAL" | "BALANCE" | "DESIGN";
+  type: string;
+  message: string;
+  value: number;
+  threshold: number;
+  autoFix?: string;
+  suggestion?: string;
+  priority: number; // 1 = urgent, 5 = low
+}
+
+interface AlertThresholds {
+  critical: {
+    maxUsagePerMinute: number;
+    maxDpsPerMinute: number;
+    minEnergyCost: number;
+    maxUsagesPer60s: number;
+    impossibleHealDamage: boolean;
+  };
+  balance: {
+    minDamagePerUse: number;
+    minUtilityScore: number;
+    maxRating: number;
+    minUsageRate: number;
+    minGameChanging: number;
+  };
+  design: {
+    minAccessibility: number;
+    minVersatility: number;
+    minUniqueIndex: number;
+    targetBalanceRange: [number, number];
+  };
+}
+
 interface UltimateMetrics {
   // Métriques core ultimates
   rawImpact: number;                    // Dégâts/heal bruts de l'ultimate
@@ -63,6 +98,21 @@ interface UltimateTestScenario {
   focusMetric: keyof UltimateMetrics;
 }
 
+// ✨ INTERFACE COMPLÈTE AVEC TOUTES LES MÉTRIQUES TEMPS RÉEL
+interface UltimateDpsMetrics {
+  totalDamage: number;              // Dégâts totaux infligés
+  averageDamagePerUse: number;      // Dégâts moyens par utilisation
+  dpsRating: number;                // Note DPS (0-100)
+  dpsRank: number;                  // Rang DPS parmi tous ultimates
+  healingPerSecond: number;         // HPS pour ultimates de heal
+  utilityScore: number;             // Score pour buffs/debuffs/control
+  // ✨ NOUVEAU : Métriques temps réel 60s
+  realTimeUsage: number;            // Nombre d'utilisations en 60s
+  usageFrequency: number;           // Utilisations par minute
+  realTimeDPS: number;              // DPS réel par minute
+  realTimeHPS: number;              // HPS réel par minute
+}
+
 interface UltimateAnalysisResult {
   spellId: string;
   spellName: string;
@@ -70,20 +120,8 @@ interface UltimateAnalysisResult {
   category: string;
   metrics: UltimateMetrics;
   
-  // ✨ NOUVEAU : Métriques DPS détaillées
-  dpsMetrics: {
-    totalDamage: number;              // Dégâts totaux infligés
-    averageDamagePerUse: number;      // Dégâts moyens par utilisation
-    dpsRating: number;                // Note DPS (0-100)
-    dpsRank: number;                  // Rang DPS parmi tous ultimates
-    healingPerSecond: number;         // HPS pour ultimates de heal
-    utilityScore: number;             // Score pour buffs/debuffs/control
-    // ✨ NOUVEAU : Métriques temps réel 60s
-    realTimeUsage: number;            // Nombre d'utilisations en 60s
-    usageFrequency: number;           // Utilisations par minute
-    realTimeDPS: number;              // DPS réel par minute
-    realTimeHPS: number;              // HPS réel par minute
-  };
+  // ✨ MÉTRIQUES DPS AVEC TOUTES LES PROPRIÉTÉS
+  dpsMetrics: UltimateDpsMetrics;
   
   // ✨ NOUVEAU : Résumé technique
   technicalSummary: {
@@ -94,6 +132,9 @@ interface UltimateAnalysisResult {
     averageTiming: number;            // Tour moyen d'utilisation
     effectDescription: string;        // Description des effets
   };
+  
+  // ✨ NOUVEAU : Système d'alertes
+  alerts: UltimateAlert[];
   
   // Scores globaux
   overallPower: number;                 // Puissance globale (0-100)
@@ -167,7 +208,8 @@ class UltimateHeroFactory {
       "heal": { hp: 1.2, atk: 0.7, def: 1.1, speed: 1.0 },
       "buff": { hp: 1.0, atk: 0.9, def: 1.0, speed: 1.2 },
       "debuff": { hp: 0.8, atk: 1.1, def: 0.9, speed: 1.3 },
-      "control": { hp: 0.9, atk: 0.8, def: 1.0, speed: 1.4 }
+      "control": { hp: 0.9, atk: 0.8, def: 1.0, speed: 1.4 },
+      "utility": { hp: 0.9, atk: 0.8, def: 1.0, speed: 1.4 }
     };
     
     return multipliers[category] || { hp: 1.0, atk: 1.0, def: 1.0, speed: 1.0 };
@@ -180,6 +222,7 @@ class UltimateHeroFactory {
       case "buff": return "Support";
       case "debuff": return "DPS Ranged";
       case "control": return "Support";
+      case "utility": return "Support";
       default: return "DPS Ranged";
     }
   }
@@ -273,7 +316,7 @@ class UltimateHeroFactory {
   }
 }
 
-// ===== GÉNÉRATEUR DE SCÉNARIOS ULTIMATES SIMPLIFIÉS =====
+// ===== GÉNÉRATEUR DE SCÉNARIOS ULTIMATES AVEC COMBAT LONG =====
 
 class UltimateScenarioGenerator {
   
@@ -493,6 +536,30 @@ class UltimateAnalyzer {
   private scenarios: UltimateTestScenario[];
   private ultimateResults: Map<string, UltimateAnalysisResult> = new Map();
   
+  // ✨ NOUVEAU : Seuils d'alertes configurables
+  private alertThresholds: AlertThresholds = {
+    critical: {
+      maxUsagePerMinute: 8.0,           // >8 utilisations/min = impossible
+      maxDpsPerMinute: 50000,           // >50k DPS/min = aberrant
+      minEnergyCost: 60,                // <60 énergie = trop faible pour ultimate
+      maxUsagesPer60s: 12,              // >12 utilisations en 60s = spam
+      impossibleHealDamage: true        // Heal ultimate qui fait des dégâts
+    },
+    balance: {
+      minDamagePerUse: 3500,            // <3500 dégâts/use pour damage ultimate
+      minUtilityScore: 35,              // <35 utilité pour utility ultimate
+      maxRating: 95,                    // >95 rating = trop puissant
+      minUsageRate: 60,                 // <60% usage = rarement utilisé
+      minGameChanging: 25               // <25 game-changing = pas assez impactant
+    },
+    design: {
+      minAccessibility: 50,             // <50% accessibilité = problème design
+      minVersatility: 40,               // <40 versatilité = trop situationnel
+      minUniqueIndex: 25,               // <25 unicité = trop générique
+      targetBalanceRange: [55, 75]      // Zone de balance idéale
+    }
+  };
+  
   constructor() {
     this.scenarios = UltimateScenarioGenerator.generateSpecializedScenarios();
   }
@@ -650,9 +717,17 @@ class UltimateAnalyzer {
         ultimateUsed: true,
         damageDealt: Math.floor(Math.random() * 5000 + 2000),
         gameChanging: Math.random() > 0.5,
-        victory: Math.random() > 0.3
+        victory: Math.random() > 0.3,
+        scenarioName: scenario.name,
+        usesCount: Math.floor(Math.random() * 4 + 1),
+        battleDuration: Math.floor(Math.random() * 20 + 15),
+        utilityScore: Math.floor(Math.random() * 50 + 10)
       };
     });
+    
+    // Calculer métriques DPS et résumé technique simulés
+    const dpsMetrics = this.calculateDpsMetrics(scenarioResults, ultimateSpell);
+    const technicalSummary = this.generateTechnicalSummary(ultimateSpell, scenarioResults, metrics);
     
     const analysis: UltimateAnalysisResult = {
       spellId: ultimateSpell.config.id,
@@ -660,29 +735,9 @@ class UltimateAnalyzer {
       element: ultimateSpell.config.element || "None",
       category: ultimateSpell.config.category,
       metrics,
-      // ✨ NOUVEAU : Métriques DPS simulées
-      dpsMetrics: {
-        totalDamage: Math.floor(Math.random() * 8000 + 2000),
-        averageDamagePerUse: Math.floor(Math.random() * 6000 + 1500),
-        dpsRating: Math.round(this.simulateMetric(ultimateSpell, "rawImpact")),
-        dpsRank: 0,
-        healingPerSecond: ultimateSpell.config.category === "heal" ? Math.floor(Math.random() * 300 + 100) : 0,
-        utilityScore: ultimateSpell.config.category === "heal" ? 0 : Math.floor(Math.random() * 60 + 20),
-        // ✨ NOUVEAU : Métriques temps réel simulées
-        realTimeUsage: Math.floor(Math.random() * 4 + 1), // 1-5 utilisations
-        usageFrequency: Math.round((Math.random() * 3 + 1) * 10) / 10, // 1-4 par minute
-        realTimeDPS: ultimateSpell.config.category === "damage" ? Math.floor(Math.random() * 1000 + 500) : 0,
-        realTimeHPS: ultimateSpell.config.category === "heal" ? Math.floor(Math.random() * 800 + 400) : 0
-      },
-      // ✨ NOUVEAU : Résumé technique simulé
-      technicalSummary: {
-        category: ultimateSpell.config.category,
-        element: ultimateSpell.config.element || "None",
-        energyCost: 100,
-        usageRate: Math.floor(Math.random() * 30 + 70),
-        averageTiming: Math.floor(Math.random() * 5 + 2),
-        effectDescription: this.getEffectDescription(ultimateSpell.config.category)
-      },
+      dpsMetrics,
+      technicalSummary,
+      alerts: [], // Sera rempli après
       overallPower: this.calculateOverallPower(metrics),
       designQuality: this.calculateDesignQuality(metrics, ultimateSpell),
       balanceRating: this.calculateBalanceRating(metrics, ultimateSpell),
@@ -691,10 +746,13 @@ class UltimateAnalyzer {
       bestUseCase: this.determineBestUseCase(scenarioResults),
       balanceStatus: this.determineUltimateBalanceStatus(metrics),
       urgentFixes: this.generateUrgentFixes(metrics, ultimateSpell),
-      designSuggestions: this.generateDesignSuggestions(metrics, ultimateSpell),
+      designSuggestions: this.generateDetailedSuggestions(metrics, ultimateSpell, dpsMetrics),
       scenarioResults,
       comparisonRank: 0
     };
+    
+    // ✨ NOUVEAU : Détecter anomalies et alertes
+    analysis.alerts = this.detectAnomalies(analysis);
     
     this.ultimateResults.set(ultimateSpell.config.id, analysis);
   }
@@ -738,7 +796,11 @@ class UltimateAnalyzer {
           performance: 0,
           impact: "error",
           notes: [`Erreur: ${errorMessage}`],
-          ultimateUsed: false
+          ultimateUsed: false,
+          scenarioName: scenario.name,
+          usesCount: 0,
+          battleDuration: 1,
+          utilityScore: 0
         };
       }
     }
@@ -759,6 +821,7 @@ class UltimateAnalyzer {
       metrics,
       dpsMetrics,
       technicalSummary,
+      alerts: [], // Sera rempli après
       overallPower: this.calculateOverallPower(metrics),
       designQuality: this.calculateDesignQuality(metrics, ultimateSpell),
       balanceRating: this.calculateBalanceRating(metrics, ultimateSpell),
@@ -767,10 +830,13 @@ class UltimateAnalyzer {
       bestUseCase: this.determineBestUseCase(scenarioResults),
       balanceStatus: this.determineUltimateBalanceStatus(metrics),
       urgentFixes: this.generateUrgentFixes(metrics, ultimateSpell),
-      designSuggestions: this.generateDetailedSuggestions(metrics, ultimateSpell, dpsMetrics), // ✨ NOUVEAU
+      designSuggestions: this.generateDetailedSuggestions(metrics, ultimateSpell, dpsMetrics),
       scenarioResults,
       comparisonRank: 0
     };
+    
+    // ✨ NOUVEAU : Détecter anomalies et alertes
+    analysis.alerts = this.detectAnomalies(analysis);
     
     this.ultimateResults.set(ultimateSpell.config.id, analysis);
   }
@@ -913,10 +979,208 @@ class UltimateAnalyzer {
     };
   }
   
-  // ===== MÉTHODES UTILITAIRES =====
+  // ✨ NOUVEAU : Système de détection d'anomalies automatique
+  private detectAnomalies(ultimate: UltimateAnalysisResult): UltimateAlert[] {
+    const alerts: UltimateAlert[] = [];
+    
+    // ===== ALERTES CRITIQUES (BUGS ÉVIDENTS) =====
+    
+    // 1. Spam d'ultimate impossible
+    if (ultimate.dpsMetrics.usageFrequency > this.alertThresholds.critical.maxUsagePerMinute) {
+      alerts.push({
+        level: "CRITICAL",
+        type: "IMPOSSIBLE_USAGE_SPAM",
+        message: `${ultimate.dpsMetrics.usageFrequency}/min utilisations IMPOSSIBLE`,
+        value: ultimate.dpsMetrics.usageFrequency,
+        threshold: this.alertThresholds.critical.maxUsagePerMinute,
+        autoFix: "Vérifier coût énergétique réel et système de génération d'énergie",
+        priority: 1
+      });
+    }
+    
+    // 2. Trop d'utilisations en 60s
+    if (ultimate.dpsMetrics.realTimeUsage > this.alertThresholds.critical.maxUsagesPer60s) {
+      alerts.push({
+        level: "CRITICAL",
+        type: "USAGE_COUNT_ABERRANT",
+        message: `${ultimate.dpsMetrics.realTimeUsage} utilisations/60s aberrant`,
+        value: ultimate.dpsMetrics.realTimeUsage,
+        threshold: this.alertThresholds.critical.maxUsagesPer60s,
+        autoFix: "Ultimate spammé - vérifier coût énergie/cooldown",
+        priority: 1
+      });
+    }
+    
+    // 3. DPS temps réel aberrant
+    if (ultimate.dpsMetrics.realTimeDPS > this.alertThresholds.critical.maxDpsPerMinute) {
+      alerts.push({
+        level: "CRITICAL",
+        type: "DPS_VALUES_ABERRANT", 
+        message: `${ultimate.dpsMetrics.realTimeDPS} DPS/min valeurs impossibles`,
+        value: ultimate.dpsMetrics.realTimeDPS,
+        threshold: this.alertThresholds.critical.maxDpsPerMinute,
+        autoFix: "Bug dans calcul DPS - vérifier formules",
+        priority: 1
+      });
+    }
+    
+    // 4. Ultimate heal qui fait des dégâts
+    if (ultimate.category === "heal" && ultimate.dpsMetrics.averageDamagePerUse > 0) {
+      alerts.push({
+        level: "CRITICAL",
+        type: "CATEGORY_BUG",
+        message: "Ultimate HEAL fait des dégâts - erreur de catégorie",
+        value: ultimate.dpsMetrics.averageDamagePerUse,
+        threshold: 0,
+        autoFix: "Retirer dégâts du code heal OU changer catégorie",
+        priority: 1
+      });
+    }
+    
+    // 5. Coût énergétique trop faible
+    if (ultimate.technicalSummary.energyCost < this.alertThresholds.critical.minEnergyCost) {
+      alerts.push({
+        level: "CRITICAL",
+        type: "ENERGY_COST_TOO_LOW",
+        message: `Coût ${ultimate.technicalSummary.energyCost} trop faible pour ultimate`,
+        value: ultimate.technicalSummary.energyCost,
+        threshold: this.alertThresholds.critical.minEnergyCost,
+        autoFix: "Augmenter coût à minimum 80-100 énergie",
+        priority: 2
+      });
+    }
+    
+    // ===== ALERTES BALANCE (DÉSÉQUILIBRES) =====
+    
+    // 6. Damage ultimate trop faible
+    if (ultimate.category === "damage" && ultimate.dpsMetrics.averageDamagePerUse < this.alertThresholds.balance.minDamagePerUse) {
+      alerts.push({
+        level: "BALANCE",
+        type: "DAMAGE_TOO_LOW",
+        message: `Dégâts ${ultimate.dpsMetrics.averageDamagePerUse} insuffisants pour ultimate damage`,
+        value: ultimate.dpsMetrics.averageDamagePerUse,
+        threshold: this.alertThresholds.balance.minDamagePerUse,
+        suggestion: `Augmenter à ~${this.alertThresholds.balance.minDamagePerUse + 1000} (+${this.alertThresholds.balance.minDamagePerUse + 1000 - ultimate.dpsMetrics.averageDamagePerUse})`,
+        priority: 2
+      });
+    }
+    
+    // 7. Utility ultimate inutile
+    if ((ultimate.category === "utility" || ultimate.category === "buff" || ultimate.category === "debuff" || ultimate.category === "control") 
+        && ultimate.dpsMetrics.utilityScore < this.alertThresholds.balance.minUtilityScore) {
+      alerts.push({
+        level: "BALANCE",
+        type: "UTILITY_TOO_WEAK",
+        message: `Utilité ${Math.round(ultimate.dpsMetrics.utilityScore)} trop faible`,
+        value: ultimate.dpsMetrics.utilityScore,
+        threshold: this.alertThresholds.balance.minUtilityScore,
+        suggestion: "Ajouter buffs/debuffs plus forts ou effets uniques",
+        priority: 2
+      });
+    }
+    
+    // 8. Ultimate trop puissant
+    if (ultimate.dpsMetrics.dpsRating > this.alertThresholds.balance.maxRating) {
+      alerts.push({
+        level: "BALANCE",
+        type: "OVERPOWERED",
+        message: `Rating ${ultimate.dpsMetrics.dpsRating}/100 trop élevé`,
+        value: ultimate.dpsMetrics.dpsRating,
+        threshold: this.alertThresholds.balance.maxRating,
+        suggestion: "Réduire impact de 15-25% ou augmenter coût énergie",
+        priority: 2
+      });
+    }
+    
+    // 9. Ultimate rarement utilisé
+    if (ultimate.technicalSummary.usageRate < this.alertThresholds.balance.minUsageRate) {
+      alerts.push({
+        level: "BALANCE",
+        type: "RARELY_USED",
+        message: `Usage ${ultimate.technicalSummary.usageRate}% trop faible`,
+        value: ultimate.technicalSummary.usageRate,
+        threshold: this.alertThresholds.balance.minUsageRate,
+        suggestion: "Réduire coût énergie ou améliorer timing d'activation",
+        priority: 3
+      });
+    }
+    
+    // 10. Manque de game-changing
+    if (ultimate.metrics.gameChangingScore < this.alertThresholds.balance.minGameChanging) {
+      alerts.push({
+        level: "BALANCE",
+        type: "LACKS_IMPACT",
+        message: `Game-changing ${ultimate.metrics.gameChangingScore}/100 insuffisant`,
+        value: ultimate.metrics.gameChangingScore,
+        threshold: this.alertThresholds.balance.minGameChanging,
+        suggestion: "Ajouter mécaniques uniques qui changent le cours du combat",
+        priority: 3
+      });
+    }
+    
+    // ===== ALERTES DESIGN (AMÉLIORATIONS) =====
+    
+    // 11. Accessibilité problématique
+    if (ultimate.metrics.accessibilityScore < this.alertThresholds.design.minAccessibility) {
+      alerts.push({
+        level: "DESIGN",
+        type: "ACCESSIBILITY_ISSUE",
+        message: `Accessibilité ${Math.round(ultimate.metrics.accessibilityScore)}% problématique`,
+        value: ultimate.metrics.accessibilityScore,
+        threshold: this.alertThresholds.design.minAccessibility,
+        suggestion: "Optimiser coût/timing pour meilleure accessibilité",
+        priority: 4
+      });
+    }
+    
+    // 12. Trop situationnel
+    if (ultimate.metrics.versatilityScore < this.alertThresholds.design.minVersatility) {
+      alerts.push({
+        level: "DESIGN",
+        type: "TOO_SITUATIONAL",
+        message: `Versatilité ${Math.round(ultimate.metrics.versatilityScore)}/100 limitée`,
+        value: ultimate.metrics.versatilityScore,
+        threshold: this.alertThresholds.design.minVersatility,
+        suggestion: "Ajouter effets secondaires pour plus de situations d'usage",
+        priority: 4
+      });
+    }
+    
+    // 13. Manque d'unicité
+    if (ultimate.metrics.uniquenessIndex < this.alertThresholds.design.minUniqueIndex) {
+      alerts.push({
+        level: "DESIGN",
+        type: "LACKS_UNIQUENESS",
+        message: `Unicité ${Math.round(ultimate.metrics.uniquenessIndex)}/100 générique`,
+        value: ultimate.metrics.uniquenessIndex,
+        threshold: this.alertThresholds.design.minUniqueIndex,
+        suggestion: "Créer mécaniques signature non-reproductibles",
+        priority: 5
+      });
+    }
+    
+    // 14. Hors zone de balance idéale
+    const [minBalance, maxBalance] = this.alertThresholds.design.targetBalanceRange;
+    if (ultimate.overallPower < minBalance || ultimate.overallPower > maxBalance) {
+      alerts.push({
+        level: "DESIGN",
+        type: "BALANCE_RANGE_ISSUE",
+        message: `Puissance ${ultimate.overallPower}/100 hors zone idéale [${minBalance}-${maxBalance}]`,
+        value: ultimate.overallPower,
+        threshold: ultimate.overallPower < minBalance ? minBalance : maxBalance,
+        suggestion: ultimate.overallPower < minBalance ? 
+          `Buff global de ${Math.round((minBalance - ultimate.overallPower) * 1.5)}%` :
+          `Nerf global de ${Math.round((ultimate.overallPower - maxBalance) * 1.2)}%`,
+        priority: 3
+      });
+    }
+    
+    // Trier par priorité (1 = le plus urgent)
+    return alerts.sort((a, b) => a.priority - b.priority);
+  }
   
   // ✨ NOUVEAU : Calculer les métriques DPS détaillées avec utilisation multiple
-  private calculateDpsMetrics(scenarioResults: Record<string, any>, ultimateSpell: UltimateSpell): any {
+  private calculateDpsMetrics(scenarioResults: Record<string, any>, ultimateSpell: UltimateSpell): UltimateDpsMetrics {
     const results = Object.values(scenarioResults);
     
     const totalDamage = results.reduce((sum: number, result: any) => sum + (result.damageDealt || 0), 0);
@@ -987,7 +1251,8 @@ class UltimateAnalyzer {
       "heal": "Soigne les alliés et peut ressusciter",
       "buff": "Améliore les capacités de l'équipe",
       "debuff": "Affaiblit et handicape les ennemis",
-      "control": "Contrôle le champ de bataille et manipule l'initiative"
+      "control": "Contrôle le champ de bataille et manipule l'initiative",
+      "utility": "Effet spécialisé unique"
     };
     
     return {
@@ -1034,7 +1299,8 @@ class UltimateAnalyzer {
       "heal": "Soigne les alliés et peut ressusciter",
       "buff": "Améliore les capacités de l'équipe",
       "debuff": "Affaiblit et handicape les ennemis",
-      "control": "Contrôle le champ de bataille et manipule l'initiative"
+      "control": "Contrôle le champ de bataille et manipule l'initiative",
+      "utility": "Effet spécialisé unique"
     };
     
     return descriptions[category] || "Effet spécialisé unique";
@@ -1194,7 +1460,7 @@ class UltimateAnalyzer {
   }
   
   // ✨ NOUVEAU : Système de suggestions détaillées et spécialisées
-  private generateDetailedSuggestions(metrics: UltimateMetrics, ultimateSpell: UltimateSpell, dpsMetrics: any): string[] {
+  private generateDetailedSuggestions(metrics: UltimateMetrics, ultimateSpell: UltimateSpell, dpsMetrics: UltimateDpsMetrics): string[] {
     const suggestions: string[] = [];
     
     // Suggestions basées sur la catégorie
@@ -1271,24 +1537,6 @@ class UltimateAnalyzer {
     return suggestions.slice(0, 4); // Max 4 suggestions pour lisibilité
   }
   
-  private generateDesignSuggestions(metrics: UltimateMetrics, ultimateSpell: UltimateSpell): string[] {
-    const suggestions: string[] = [];
-    
-    if (metrics.uniquenessIndex < 40) {
-      suggestions.push("Ajouter des mécaniques uniques pour différencier cet ultimate");
-    }
-    
-    if (metrics.teamSynergyAmplification < 30) {
-      suggestions.push("Considérer des effets de synergie avec les alliés");
-    }
-    
-    if (metrics.scalingPotential < 35) {
-      suggestions.push("Améliorer le scaling late game ou ajouter des effets percentage-based");
-    }
-    
-    return suggestions;
-  }
-  
   private generateComparativeAnalysis(): void {
     const results = Array.from(this.ultimateResults.values());
     
@@ -1301,7 +1549,7 @@ class UltimateAnalyzer {
     // ✨ NOUVEAU : Classement DPS spécialisé
     const damageUltimates = results.filter(r => r.category === "damage");
     const healUltimates = results.filter(r => r.category === "heal");
-    const utilityUltimates = results.filter(r => r.category === "buff" || r.category === "debuff" || r.category === "control");
+    const utilityUltimates = results.filter(r => r.category === "buff" || r.category === "debuff" || r.category === "control" || r.category === "utility");
     
     // Classer les ultimates de dégâts par DPS
     damageUltimates.sort((a, b) => b.dpsMetrics.averageDamagePerUse - a.dpsMetrics.averageDamagePerUse);
@@ -1346,10 +1594,10 @@ class UltimateAnalyzer {
     return {
       metadata: {
         timestamp: new Date().toISOString(),
-        version: "1.0.4-final-fixed",
+        version: "1.0.5-final-fixed-complete",
         totalUltimatesAnalyzed: results.length,
         totalScenariosUsed: this.scenarios.length,
-        analysisType: mode === "real" ? "Real Battle Analysis" : "Simulation Analysis",
+        analysisType: mode === "real" ? "Real Battle Analysis with 60s Combat" : "Simulation Analysis",
         mode
       },
       summary: {
@@ -1442,6 +1690,9 @@ class UltimateAnalyzer {
     const modeText = mode === "real" ? "🎮 Analyse complète avec BattleEngine" : "🔧 Analyse simulée (démo)";
     console.log(`Mode: ${modeText}\n`);
     
+    // ✨ NOUVEAU : Dashboard d'alertes en priorité
+    this.displayAlertsDashboard(results);
+    
     // ✨ NOUVEAU : Résumé technique détaillé par ultimate
     console.log("📋 === RÉSUMÉS TECHNIQUES ===");
     results.forEach(ultimate => {
@@ -1450,9 +1701,12 @@ class UltimateAnalyzer {
       console.log(`   📊 DPS Rating: ${ultimate.dpsMetrics.dpsRating}/100 | Dégâts moy: ${ultimate.dpsMetrics.averageDamagePerUse}`);
       console.log(`   💚 HPS: ${ultimate.dpsMetrics.healingPerSecond}/turn | Utilité: ${Math.round(ultimate.dpsMetrics.utilityScore)}`);
       // ✨ NOUVEAU : Métriques temps réel
-      console.log(`   ⏱️ Usage 60s: ${ultimate.dpsMetrics.realTimeUsage || 0}x | Fréq: ${ultimate.dpsMetrics.usageFrequency || 0}/min`);
-      console.log(`   🎯 DPS temps réel: ${ultimate.dpsMetrics.realTimeDPS || 0}/min | HPS: ${ultimate.dpsMetrics.realTimeHPS || 0}/min`);
+      console.log(`   ⏱️ Usage 60s: ${ultimate.dpsMetrics.realTimeUsage}x | Fréq: ${ultimate.dpsMetrics.usageFrequency}/min`);
+      console.log(`   🎯 DPS temps réel: ${ultimate.dpsMetrics.realTimeDPS}/min | HPS: ${ultimate.dpsMetrics.realTimeHPS}/min`);
       console.log(`   📝 ${ultimate.technicalSummary.effectDescription}`);
+      
+      // ✨ NOUVEAU : Afficher alertes pour cet ultimate
+      this.displayUltimateAlerts(ultimate);
       
       // ✨ NOUVEAU : Afficher suggestions
       if (ultimate.designSuggestions.length > 0) {
@@ -1475,7 +1729,7 @@ class UltimateAnalyzer {
       console.log("\n💥 TOP DAMAGE ULTIMATES:");
       damageUltimates.forEach((ultimate, i) => {
         console.log(`   ${i + 1}. ${ultimate.spellName}: ${ultimate.dpsMetrics.averageDamagePerUse} dmg/use (Rating: ${ultimate.dpsMetrics.dpsRating}/100)`);
-        console.log(`      ⏱️ Temps réel: ${ultimate.dpsMetrics.realTimeDPS || 0} DPS/min | ${ultimate.dpsMetrics.realTimeUsage || 0} utilisations/60s`);
+        console.log(`      ⏱️ Temps réel: ${ultimate.dpsMetrics.realTimeDPS} DPS/min | ${ultimate.dpsMetrics.realTimeUsage} utilisations/60s`);
       });
     }
     
@@ -1484,7 +1738,7 @@ class UltimateAnalyzer {
       console.log("\n💚 TOP HEALING ULTIMATES:");
       healUltimates.forEach((ultimate, i) => {
         console.log(`   ${i + 1}. ${ultimate.spellName}: ${ultimate.dpsMetrics.healingPerSecond} HPS (Rating: ${ultimate.dpsMetrics.dpsRating}/100)`);
-        console.log(`      ⏱️ Temps réel: ${ultimate.dpsMetrics.realTimeHPS || 0} HPS/min | ${ultimate.dpsMetrics.realTimeUsage || 0} utilisations/60s`);
+        console.log(`      ⏱️ Temps réel: ${ultimate.dpsMetrics.realTimeHPS} HPS/min | ${ultimate.dpsMetrics.realTimeUsage} utilisations/60s`);
       });
     }
     
@@ -1494,7 +1748,7 @@ class UltimateAnalyzer {
       console.log("\n🎯 TOP UTILITY ULTIMATES:");
       utilityUltimates.forEach((ultimate, i) => {
         console.log(`   ${i + 1}. ${ultimate.spellName}: ${Math.round(ultimate.dpsMetrics.utilityScore)} utilité (${ultimate.category})`);
-        console.log(`      ⏱️ Fréquence: ${ultimate.dpsMetrics.usageFrequency || 0}/min | ${ultimate.dpsMetrics.realTimeUsage || 0} utilisations/60s`);
+        console.log(`      ⏱️ Fréquence: ${ultimate.dpsMetrics.usageFrequency}/min | ${ultimate.dpsMetrics.realTimeUsage} utilisations/60s`);
       });
     }
     
@@ -1527,12 +1781,27 @@ class UltimateAnalyzer {
     const balanced = results.filter(r => r.balanceStatus === "balanced").length;
     const avgAccessibility = Math.round(results.reduce((sum, r) => sum + r.metrics.accessibilityScore, 0) / results.length);
     const avgDps = Math.round(results.reduce((sum, r) => sum + r.dpsMetrics.averageDamagePerUse, 0) / results.length);
+    const avgRealTimeUsage = Math.round((results.reduce((sum, r) => sum + r.dpsMetrics.realTimeUsage, 0) / results.length) * 10) / 10;
+    
+    // ✨ NOUVEAU : Statistiques d'alertes
+    const totalAlerts = results.reduce((sum, r) => sum + r.alerts.length, 0);
+    const criticalAlerts = results.reduce((sum, r) => sum + r.alerts.filter(a => a.level === "CRITICAL").length, 0);
+    const balanceAlerts = results.reduce((sum, r) => sum + r.alerts.filter(a => a.level === "BALANCE").length, 0);
     
     console.log(`\n📈 SANTÉ GLOBALE DES ULTIMATES:`);
     console.log(`   ⚡ Puissance moyenne: ${avgPower}/100`);
     console.log(`   ⚖️ Équilibrés: ${balanced}/${results.length} (${Math.round(balanced/results.length*100)}%)`);
     console.log(`   🎯 Accessibilité moyenne: ${avgAccessibility}/100`);
     console.log(`   💥 DPS moyen: ${avgDps} dégâts/utilisation`);
+    console.log(`   ⏱️ Usage 60s moyen: ${avgRealTimeUsage} utilisations/minute`);
+    console.log(`   🚨 Alertes: ${totalAlerts} total (${criticalAlerts} critiques, ${balanceAlerts} balance)`);
+    
+    // ✨ NOUVEAU : Indicateur de santé globale
+    const healthScore = Math.max(0, 100 - (criticalAlerts * 20) - (balanceAlerts * 5));
+    const healthStatus = healthScore >= 80 ? "🟢 EXCELLENTE" : 
+                        healthScore >= 60 ? "🟡 CORRECTE" :
+                        healthScore >= 40 ? "🟠 PROBLÉMATIQUE" : "🔴 CRITIQUE";
+    console.log(`   🏥 Santé globale: ${healthScore}/100 ${healthStatus}`);
     
     if (mode === "simulation") {
       console.log(`\n💡 PROCHAINES ÉTAPES:`);
@@ -1542,6 +1811,105 @@ class UltimateAnalyzer {
     }
     
     console.log("");
+  }
+  
+  // ✨ NOUVEAU : Dashboard d'alertes centralisé
+  private displayAlertsDashboard(results: UltimateAnalysisResult[]): void {
+    const allAlerts = results.flatMap(r => r.alerts.map(alert => ({ ...alert, ultimateName: r.spellName })));
+    
+    if (allAlerts.length === 0) {
+      console.log("✅ === DASHBOARD ALERTES ===");
+      console.log("✅ Aucune alerte détectée - Tous les ultimates sont dans les normes !\n");
+      return;
+    }
+    
+    const criticalAlerts = allAlerts.filter(a => a.level === "CRITICAL");
+    const balanceAlerts = allAlerts.filter(a => a.level === "BALANCE");
+    const designAlerts = allAlerts.filter(a => a.level === "DESIGN");
+    
+    console.log("🚨 === DASHBOARD ALERTES AUTOMATIQUES ===");
+    console.log(`Total: ${allAlerts.length} alertes | 🚨 ${criticalAlerts.length} Critiques | ⚖️ ${balanceAlerts.length} Balance | 💡 ${designAlerts.length} Design\n`);
+    
+    // Alertes critiques (priorité absolue)
+    if (criticalAlerts.length > 0) {
+      console.log("🚨 ALERTES CRITIQUES (Fix immédiat requis):");
+      criticalAlerts
+        .sort((a, b) => a.priority - b.priority)
+        .forEach(alert => {
+          console.log(`   ⚡ ${alert.ultimateName}: ${alert.message}`);
+          if (alert.autoFix) {
+            console.log(`      🔧 FIX AUTO: ${alert.autoFix}`);
+          }
+        });
+      console.log("");
+    }
+    
+    // Alertes balance (ajustements recommandés)
+    if (balanceAlerts.length > 0) {
+      console.log("⚖️ ALERTES BALANCE (Ajustements recommandés):");
+      balanceAlerts
+        .sort((a, b) => a.priority - b.priority)
+        .slice(0, 5) // Top 5 pour éviter spam
+        .forEach(alert => {
+          console.log(`   ⚡ ${alert.ultimateName}: ${alert.message}`);
+          if (alert.suggestion) {
+            console.log(`      💡 SUGGESTION: ${alert.suggestion}`);
+          }
+        });
+      if (balanceAlerts.length > 5) {
+        console.log(`   ... et ${balanceAlerts.length - 5} autres alertes balance`);
+      }
+      console.log("");
+    }
+    
+    // Alertes design (améliorations futures) - seulement les plus importantes
+    if (designAlerts.length > 0) {
+      const topDesignAlerts = designAlerts
+        .sort((a, b) => a.priority - b.priority)
+        .slice(0, 3); // Top 3 seulement
+      
+      console.log("💡 ALERTES DESIGN (Améliorations prioritaires):");
+      topDesignAlerts.forEach(alert => {
+        console.log(`   ⚡ ${alert.ultimateName}: ${alert.message}`);
+        if (alert.suggestion) {
+          console.log(`      📈 AMÉLIORATION: ${alert.suggestion}`);
+        }
+      });
+      console.log("");
+    }
+    
+    // Résumé des priorités
+    const urgentCount = criticalAlerts.length + balanceAlerts.filter(a => a.priority <= 2).length;
+    if (urgentCount > 0) {
+      console.log(`🎯 PRIORITÉ: ${urgentCount} alertes urgentes nécessitent une attention immédiate\n`);
+    }
+  }
+  
+  // ✨ NOUVEAU : Affichage des alertes spécifiques à un ultimate
+  private displayUltimateAlerts(ultimate: UltimateAnalysisResult): void {
+    if (ultimate.alerts.length === 0) return;
+    
+    const criticalAlerts = ultimate.alerts.filter(a => a.level === "CRITICAL");
+    const balanceAlerts = ultimate.alerts.filter(a => a.level === "BALANCE");
+    
+    // Afficher seulement les alertes critiques et balance urgentes
+    const urgentAlerts = [
+      ...criticalAlerts,
+      ...balanceAlerts.filter(a => a.priority <= 2)
+    ];
+    
+    if (urgentAlerts.length > 0) {
+      console.log(`   🚨 ALERTES (${urgentAlerts.length}):`);
+      urgentAlerts.forEach(alert => {
+        const icon = alert.level === "CRITICAL" ? "🚨" : "⚖️";
+        console.log(`      ${icon} ${alert.message}`);
+        if (alert.autoFix) {
+          console.log(`         🔧 ${alert.autoFix}`);
+        } else if (alert.suggestion) {
+          console.log(`         💡 ${alert.suggestion}`);
+        }
+      });
+    }
   }
 }
 
