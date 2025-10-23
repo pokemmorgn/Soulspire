@@ -1,12 +1,12 @@
-// modules/ultimateAnalyzer.ts - Module spécialisé pour l'analyse des ultimates
+// ultimateAnalyzer.ts - Module spécialisé pour l'analyse des ultimates
 import mongoose from "mongoose";
 import * as fs from "fs";
 import * as path from "path";
-import { BattleEngine, IBattleOptions } from "../../services/BattleEngine";
-import { SpellManager, HeroSpells } from "../../gameplay/SpellManager";
-import { EffectManager } from "../../gameplay/EffectManager";
-import { PassiveManager } from "../../gameplay/PassiveManager";
-import { IBattleParticipant, IBattleResult } from "../../models/Battle";
+import { BattleEngine, IBattleOptions } from "../services/BattleEngine";
+import { SpellManager, HeroSpells } from "../gameplay/SpellManager";
+import { EffectManager } from "../gameplay/EffectManager";
+import { PassiveManager } from "../gameplay/PassiveManager";
+import { IBattleParticipant, IBattleResult } from "../models/Battle";
 
 // ===== INTERFACES SPÉCIALISÉES ULTIMATES =====
 
@@ -244,7 +244,7 @@ class UltimateHeroFactory {
   }
 }
 
-// ===== GÉNÉRATEUR DE SCÉNARIOS ULTIMATES =====
+// ===== GÉNÉRATEUR DE SCÉNARIOS ULTIMATES SIMPLIFIÉS =====
 
 class UltimateScenarioGenerator {
   
@@ -252,10 +252,7 @@ class UltimateScenarioGenerator {
     return [
       this.createClutchScenario(),
       this.createBossSlayerScenario(), 
-      this.createTeamFightScenario(),
-      this.createLateGameScenario(),
-      this.createSurvivalScenario(),
-      this.createBurstTestScenario()
+      this.createTeamFightScenario()
     ];
   }
   
@@ -324,7 +321,7 @@ class UltimateScenarioGenerator {
   private static createTeamFightScenario(): UltimateTestScenario {
     return {
       name: "Team Fight Ultimate",
-      description: "Combat d'équipe 5v5 équilibré",
+      description: "Combat d'équipe 3v3 équilibré",
       setupTeam: (ultimateSpell: UltimateSpell) => {
         const carrier = UltimateHeroFactory.createUltimateCarrier({
           ultimateSpell,
@@ -334,88 +331,10 @@ class UltimateScenarioGenerator {
         });
         
         const team = UltimateHeroFactory.createSupportTeam(45);
-        team.push({
-          heroId: `extra_dps_${Date.now()}`,
-          name: "Extra DPS",
-          position: 3,
-          role: "DPS Melee",
-          element: "Wind",
-          rarity: "Epic",
-          level: 44,
-          stars: 4,
-          stats: { hp: 5200, maxHp: 5200, atk: 340, def: 190, speed: 88 },
-          currentHp: 5200,
-          energy: 0,
-          status: { alive: true, buffs: [], debuffs: [] }
-        });
-        
-        team.push({
-          heroId: `extra_support_${Date.now()}`,
-          name: "Extra Support",
-          position: 4,
-          role: "Support",
-          element: "Electric",
-          rarity: "Rare",
-          level: 43,
-          stars: 3,
-          stats: { hp: 4000, maxHp: 4000, atk: 200, def: 170, speed: 92 },
-          currentHp: 4000,
-          energy: 0,
-          status: { alive: true, buffs: [], debuffs: [] }
-        });
         
         return [carrier, ...team];
       },
-      setupEnemies: () => {
-        const enemies = UltimateHeroFactory.createChallengingEnemies(46, "medium");
-        // Ajouter plus d'ennemis pour 5v5
-        enemies.push({
-          heroId: `enemy_3_${Date.now()}`,
-          name: "Enemy Support",
-          position: 3,
-          role: "Support",
-          element: "Dark",
-          rarity: "Epic",
-          level: 45,
-          stars: 4,
-          stats: { hp: 4500, maxHp: 4500, atk: 230, def: 200, speed: 90 },
-          currentHp: 4500,
-          energy: 0,
-          status: { alive: true, buffs: [], debuffs: [] }
-        });
-        
-        enemies.push({
-          heroId: `enemy_4_${Date.now()}`,
-          name: "Enemy DPS 2",
-          position: 4,
-          role: "DPS Melee",
-          element: "Water",
-          rarity: "Epic",
-          level: 44,
-          stars: 4,
-          stats: { hp: 5000, maxHp: 5000, atk: 350, def: 180, speed: 85 },
-          currentHp: 5000,
-          energy: 0,
-          status: { alive: true, buffs: [], debuffs: [] }
-        });
-        
-        enemies.push({
-          heroId: `enemy_5_${Date.now()}`,
-          name: "Enemy Mage",
-          position: 5,
-          role: "DPS Ranged",
-          element: "Wind",
-          rarity: "Rare",
-          level: 43,
-          stars: 3,
-          stats: { hp: 3800, maxHp: 3800, atk: 320, def: 150, speed: 100 },
-          currentHp: 3800,
-          energy: 0,
-          status: { alive: true, buffs: [], debuffs: [] }
-        });
-        
-        return enemies;
-      },
+      setupEnemies: () => UltimateHeroFactory.createChallengingEnemies(46, "medium"),
       specialConditions: {
         startingEnergy: 80,
         turnLimit: 15
@@ -423,99 +342,6 @@ class UltimateScenarioGenerator {
       expectedOutcome: "ultimate_wins",
       weight: 1.5,
       focusMetric: "teamSynergyAmplification"
-    };
-  }
-  
-  private static createLateGameScenario(): UltimateTestScenario {
-    return {
-      name: "Late Game Scaling",
-      description: "Test de scaling niveau 60+ vs ennemis puissants",
-      setupTeam: (ultimateSpell: UltimateSpell) => {
-        const carrier = UltimateHeroFactory.createUltimateCarrier({
-          ultimateSpell,
-          level: 65,
-          element: "Dark",
-          startingEnergy: 100
-        });
-        
-        return [carrier, ...UltimateHeroFactory.createSupportTeam(63)];
-      },
-      setupEnemies: () => UltimateHeroFactory.createChallengingEnemies(67, "hard"),
-      specialConditions: {
-        startingEnergy: 100,
-        turnLimit: 20
-      },
-      expectedOutcome: "ultimate_wins",
-      weight: 1.3,
-      focusMetric: "scalingPotential"
-    };
-  }
-  
-  private static createSurvivalScenario(): UltimateTestScenario {
-    return {
-      name: "Survival Ultimate",
-      description: "Ultimate défensif - doit faire survivre l'équipe",
-      setupTeam: (ultimateSpell: UltimateSpell) => {
-        return [UltimateHeroFactory.createUltimateCarrier({
-          ultimateSpell,
-          level: 35,
-          element: "Water",
-          startingEnergy: 100
-        })];
-      },
-      setupEnemies: () => {
-        // Beaucoup d'ennemis avec burst damage
-        const enemies = UltimateHeroFactory.createChallengingEnemies(38, "medium");
-        enemies.push(...UltimateHeroFactory.createChallengingEnemies(36, "medium"));
-        return enemies;
-      },
-      specialConditions: {
-        startingEnergy: 100,
-        turnLimit: 25,
-        forcedTiming: 3
-      },
-      expectedOutcome: "close_fight",
-      weight: 1.4,
-      focusMetric: "gameChangingScore"
-    };
-  }
-  
-  private static createBurstTestScenario(): UltimateTestScenario {
-    return {
-      name: "Pure Burst Test",
-      description: "Test de burst pur - dégâts maximum instantané",
-      setupTeam: (ultimateSpell: UltimateSpell) => {
-        const carrier = UltimateHeroFactory.createUltimateCarrier({
-          ultimateSpell,
-          level: 40,
-          element: "Fire",
-          startingEnergy: 100
-        });
-        
-        // Team glass cannon pour maximiser les dégâts
-        carrier.stats.atk *= 1.5;
-        carrier.stats.hp *= 0.7;
-        carrier.currentHp = carrier.stats.hp;
-        
-        return [carrier];
-      },
-      setupEnemies: () => {
-        const dummy = UltimateHeroFactory.createChallengingEnemies(40, "medium")[0];
-        // Tank dummy avec beaucoup de PV pour mesurer les dégâts
-        dummy.stats.hp *= 3;
-        dummy.currentHp = dummy.stats.hp;
-        dummy.stats.maxHp = dummy.stats.hp;
-        dummy.stats.atk = 1; // Quasi pas de dégâts pour focus sur l'ultimate
-        return [dummy];
-      },
-      specialConditions: {
-        startingEnergy: 100,
-        turnLimit: 5,
-        forcedTiming: 1
-      },
-      expectedOutcome: "ultimate_wins",
-      weight: 1.2,
-      focusMetric: "rawImpact"
     };
   }
 }
@@ -533,10 +359,15 @@ class UltimateAnalyzer {
   
   async initialize(): Promise<void> {
     console.log("⚡ Initialisation de l'analyseur d'ultimates...");
-    await SpellManager.initialize();
-    await EffectManager.initialize();
-    await PassiveManager.initialize();
-    console.log("✅ Analyseur d'ultimates prêt");
+    try {
+      await SpellManager.initialize();
+      await EffectManager.initialize();
+      await PassiveManager.initialize();
+      console.log("✅ Analyseur d'ultimates prêt");
+    } catch (error) {
+      console.log("⚠️ Erreur initialisation systèmes:", error);
+      console.log("💡 L'analyse continuera avec les fonctionnalités disponibles");
+    }
   }
   
   async runCompleteAnalysis(): Promise<void> {
@@ -549,6 +380,7 @@ class UltimateAnalyzer {
     
     if (ultimateSpells.length === 0) {
       console.log("⚠️ Aucun ultimate trouvé dans le système");
+      console.log("💡 Vérifiez que SpellManager contient des sorts avec type='ultimate'");
       return;
     }
     
@@ -577,10 +409,15 @@ class UltimateAnalyzer {
   }
   
   private getUltimateSpells(): UltimateSpell[] {
-    const allSpells = SpellManager.getAllSpells();
-    return allSpells
-      .filter((spell: any) => spell.config.type === "ultimate")
-      .map((spell: any) => spell as UltimateSpell);
+    try {
+      const allSpells = SpellManager.getAllSpells();
+      return allSpells
+        .filter((spell: any) => spell.config && spell.config.type === "ultimate")
+        .map((spell: any) => spell as UltimateSpell);
+    } catch (error) {
+      console.warn("⚠️ Erreur récupération sorts:", error);
+      return [];
+    }
   }
   
   private async analyzeUltimatePerformance(ultimateSpell: UltimateSpell): Promise<void> {
@@ -712,9 +549,6 @@ class UltimateAnalyzer {
     
     const ultimateContribution = totalPlayerDamage > 0 ? ultimateDamage / totalPlayerDamage : 0;
     
-    // Analyser si l'ultimate a changé le cours du combat
-    const gameChanging = this.detectGameChangingMoment(actions, ultimateActions, battleResult);
-    
     // Score de performance adapté aux ultimates
     let performance = 30; // Base
     
@@ -724,21 +558,10 @@ class UltimateAnalyzer {
       // Bonus selon l'impact
       performance += Math.min(25, ultimateContribution * 50);
       
-      // Bonus si game-changing
-      if (gameChanging) performance += 15;
-      
       // Bonus selon le résultat attendu
       if (battleResult.victory) {
         if (scenario.expectedOutcome === "ultimate_wins") performance += 20;
         if (scenario.expectedOutcome === "close_fight") performance += 10;
-      }
-      
-      // Bonus/malus selon le timing
-      if (scenario.specialConditions.forcedTiming) {
-        const ultimateTurn = ultimateActions[0]?.turn || 999;
-        const expectedTurn = scenario.specialConditions.forcedTiming;
-        const timingDiff = Math.abs(ultimateTurn - expectedTurn);
-        performance += Math.max(0, 10 - timingDiff * 2);
       }
       
     } else {
@@ -748,19 +571,14 @@ class UltimateAnalyzer {
     
     // Classification de l'impact
     let impact = "minimal";
-    if (gameChanging) impact = "game_changing";
-    else if (ultimateContribution > 0.7) impact = "dominant";
+    if (ultimateContribution > 0.7) impact = "dominant";
     else if (ultimateContribution > 0.4) impact = "major";
     else if (ultimateContribution > 0.2) impact = "moderate";
     else if (ultimateUsed) impact = "minor";
     
     const notes: string[] = [];
     if (!ultimateUsed) notes.push("Ultimate jamais utilisé - problème critique");
-    if (gameChanging) notes.push("Ultimate a changé le cours du combat");
     if (ultimateContribution > 0.8) notes.push("Contribution ultra-dominante");
-    if (battleResult.victory && ultimateDamage === 0 && ultimateHealing === 0) {
-      notes.push("Victoire sans impact mesurable de l'ultimate");
-    }
     
     return {
       performance: Math.max(0, Math.min(100, performance)),
@@ -769,45 +587,12 @@ class UltimateAnalyzer {
       ultimateUsed,
       damageDealt: ultimateDamage,
       healingDone: ultimateHealing,
-      gameChanging,
+      gameChanging: ultimateContribution > 0.5,
       contribution: ultimateContribution,
       battleDuration: battleResult.totalTurns,
       victory: battleResult.victory,
       timing: ultimateActions[0]?.turn || null
     };
-  }
-  
-  private detectGameChangingMoment(actions: any[], ultimateActions: any[], battleResult: IBattleResult): boolean {
-    if (ultimateActions.length === 0) return false;
-    
-    const ultimateTurn = ultimateActions[0].turn;
-    
-    // Analyser la situation avant/après l'ultimate
-    const actionsBeforeUlt = actions.filter(a => a.turn < ultimateTurn);
-    const actionsAfterUlt = actions.filter(a => a.turn > ultimateTurn);
-    
-    // Simple heuristique: si le ratio de dégâts change drastiquement
-    const playerDmgBefore = actionsBeforeUlt
-      .filter(a => a.team === "player")
-      .reduce((sum, a) => sum + (a.damage || 0), 0);
-    
-    const playerDmgAfter = actionsAfterUlt
-      .filter(a => a.team === "player")
-      .reduce((sum, a) => sum + (a.damage || 0), 0);
-    
-    const enemyDmgBefore = actionsBeforeUlt
-      .filter(a => a.team === "enemy")
-      .reduce((sum, a) => sum + (a.damage || 0), 0);
-    
-    const enemyDmgAfter = actionsAfterUlt
-      .filter(a => a.team === "enemy")
-      .reduce((sum, a) => sum + (a.damage || 0), 0);
-    
-    // Si l'ultimate a significativement changé la balance
-    const ratioBefore = playerDmgBefore / Math.max(1, enemyDmgBefore);
-    const ratioAfter = playerDmgAfter / Math.max(1, enemyDmgAfter);
-    
-    return (ratioAfter / Math.max(0.1, ratioBefore)) > 2.0; // Ratio x2 minimum
   }
   
   private updateSpecificMetric(metrics: UltimateMetrics, result: any, scenario: UltimateTestScenario): void {
@@ -833,25 +618,17 @@ class UltimateAnalyzer {
         metrics.teamSynergyAmplification = performance;
         metrics.versatilityScore = performance * 0.8;
         break;
-        
-      case "Late Game Scaling":
-        metrics.scalingPotential = performance;
-        break;
-        
-      case "Survival Ultimate":
-        metrics.gameChangingScore = Math.max(metrics.gameChangingScore, performance);
-        break;
-        
-      case "Pure Burst Test":
-        metrics.rawImpact = Math.max(metrics.rawImpact, performance);
-        break;
     }
   }
   
   private calculateDerivedMetrics(metrics: UltimateMetrics, scenarioResults: Record<string, any>, ultimateSpell: UltimateSpell): void {
     // Efficacité énergétique basée sur le coût vs l'impact
-    const energyCost = ultimateSpell.getEnergyCost(5);
-    metrics.energyEfficiency = Math.max(0, 100 - (energyCost - 100) * 2 + metrics.rawImpact * 0.5);
+    try {
+      const energyCost = ultimateSpell.getEnergyCost(5);
+      metrics.energyEfficiency = Math.max(0, 100 - (energyCost - 100) * 2 + metrics.rawImpact * 0.5);
+    } catch (error) {
+      metrics.energyEfficiency = 50; // Valeur par défaut
+    }
     
     // Optimisation du timing basée sur les résultats de timing
     const timingResults = Object.values(scenarioResults)
@@ -874,8 +651,11 @@ class UltimateAnalyzer {
     const variance = performances.reduce((sum, perf) => sum + Math.pow(perf - avgPerformance, 2), 0) / performances.length;
     metrics.counterPlayResistance = Math.max(0, 100 - variance);
     
-    // Index d'unicité (placeholder - nécessiterait comparaison avec autres ultimates)
-    metrics.uniquenessIndex = 50; // Will be calculated in comparative analysis
+    // Index d'unicité (placeholder - calculé dans l'analyse comparative)
+    metrics.uniquenessIndex = 50;
+    
+    // Potentiel de scaling (simplifié)
+    metrics.scalingPotential = Math.min(100, metrics.rawImpact + metrics.gameChangingScore * 0.5);
   }
   
   private calculateOverallPower(metrics: UltimateMetrics): number {
@@ -885,7 +665,7 @@ class UltimateAnalyzer {
       metrics.clutchFactor * 0.15 +
       metrics.soloCarryPotential * 0.15 +
       metrics.teamSynergyAmplification * 0.10 +
-      metrics.scalingPotential * 0.10
+      metrics.accessibilityScore * 0.10
     );
   }
   
@@ -897,9 +677,6 @@ class UltimateAnalyzer {
     
     // Bonus pour bon timing
     if (metrics.timingOptimization > 60) score += 15;
-    
-    // Bonus pour unicité
-    if (metrics.uniquenessIndex > 60) score += 10;
     
     // Malus pour inaccessibilité
     if (metrics.accessibilityScore < 30) score -= 25;
@@ -971,10 +748,6 @@ class UltimateAnalyzer {
       fixes.push("URGENT: Manque de game-changing potential - revoir les effets uniques");
     }
     
-    if (metrics.clutchFactor < 15) {
-      fixes.push("Inefficace en situation critique - ajouter effets situationnels");
-    }
-    
     const overallPower = this.calculateOverallPower(metrics);
     if (overallPower > 90) {
       fixes.push("NERF REQUIS: Ultimate trop puissant - réduire impact de 15-25%");
@@ -998,14 +771,6 @@ class UltimateAnalyzer {
       suggestions.push("Améliorer le scaling late game ou ajouter des effets percentage-based");
     }
     
-    if (metrics.versatilityScore < 25) {
-      suggestions.push("Élargir les cas d'usage - ajouter des effets polyvalents");
-    }
-    
-    if (metrics.counterPlayResistance < 40) {
-      suggestions.push("Ajouter de la résistance aux contres ou des conditions d'activation variées");
-    }
-    
     return suggestions;
   }
   
@@ -1021,13 +786,15 @@ class UltimateAnalyzer {
     // Calculer l'index d'unicité relatif
     results.forEach(result => {
       const others = results.filter(r => r.spellId !== result.spellId);
-      const avgRawImpact = others.reduce((sum, r) => sum + r.metrics.rawImpact, 0) / others.length;
-      const avgGameChanging = others.reduce((sum, r) => sum + r.metrics.gameChangingScore, 0) / others.length;
-      
-      const impactDeviation = Math.abs(result.metrics.rawImpact - avgRawImpact) / avgRawImpact;
-      const gameChangingDeviation = Math.abs(result.metrics.gameChangingScore - avgGameChanging) / avgGameChanging;
-      
-      result.metrics.uniquenessIndex = Math.min(100, (impactDeviation + gameChangingDeviation) * 50);
+      if (others.length > 0) {
+        const avgRawImpact = others.reduce((sum, r) => sum + r.metrics.rawImpact, 0) / others.length;
+        const avgGameChanging = others.reduce((sum, r) => sum + r.metrics.gameChangingScore, 0) / others.length;
+        
+        const impactDeviation = Math.abs(result.metrics.rawImpact - avgRawImpact) / Math.max(1, avgRawImpact);
+        const gameChangingDeviation = Math.abs(result.metrics.gameChangingScore - avgGameChanging) / Math.max(1, avgGameChanging);
+        
+        result.metrics.uniquenessIndex = Math.min(100, (impactDeviation + gameChangingDeviation) * 50);
+      }
     });
     
     console.log("   📊 Rangs et unicité calculés");
@@ -1045,9 +812,9 @@ class UltimateAnalyzer {
         analysisType: "Ultimate Specialized Analysis"
       },
       summary: {
-        averageOverallPower: Math.round(results.reduce((sum, r) => sum + r.overallPower, 0) / results.length),
-        averageDesignQuality: Math.round(results.reduce((sum, r) => sum + r.designQuality, 0) / results.length),
-        averageBalanceRating: Math.round(results.reduce((sum, r) => sum + r.balanceRating, 0) / results.length),
+        averageOverallPower: results.length > 0 ? Math.round(results.reduce((sum, r) => sum + r.overallPower, 0) / results.length) : 0,
+        averageDesignQuality: results.length > 0 ? Math.round(results.reduce((sum, r) => sum + r.designQuality, 0) / results.length) : 0,
+        averageBalanceRating: results.length > 0 ? Math.round(results.reduce((sum, r) => sum + r.balanceRating, 0) / results.length) : 0,
         
         classificationBreakdown: {
           game_changer: results.filter(r => r.ultimateClass === "game_changer").length,
@@ -1095,26 +862,25 @@ class UltimateAnalyzer {
       design.push(`${underwhelming.length} ultimates manquent d'impact - revoir le concept global`);
     }
     
-    const avgUniqueness = results.reduce((sum, r) => sum + r.metrics.uniquenessIndex, 0) / results.length;
-    if (avgUniqueness < 40) {
-      design.push("Ultimates trop similaires - diversifier les mécaniques uniques");
-    }
-    
     return { critical, balance, design };
   }
   
   private saveReport(report: any): void {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const filename = `ultimate_analysis_${timestamp}.json`;
-    const outputPath = path.join(process.cwd(), 'logs', 'balance', filename);
-    
-    const dir = path.dirname(outputPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+    try {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const filename = `ultimate_analysis_${timestamp}.json`;
+      const outputPath = path.join(process.cwd(), 'logs', 'balance', filename);
+      
+      const dir = path.dirname(outputPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      
+      fs.writeFileSync(outputPath, JSON.stringify(report, null, 2));
+      console.log(`💾 Rapport ultimates sauvegardé: ${filename}`);
+    } catch (error) {
+      console.warn("⚠️ Erreur sauvegarde rapport:", error);
     }
-    
-    fs.writeFileSync(outputPath, JSON.stringify(report, null, 2));
-    console.log(`💾 Rapport ultimates sauvegardé: ${filename}`);
   }
   
   private displayUltimateFindings(): void {
@@ -1122,12 +888,17 @@ class UltimateAnalyzer {
     
     console.log("⚡ === RÉSULTATS SPÉCIALISÉS ULTIMATES ===\n");
     
+    if (results.length === 0) {
+      console.log("❌ Aucun ultimate analysé");
+      return;
+    }
+    
     // Top 3 ultimates
     const topUltimates = results
       .sort((a, b) => b.overallPower - a.overallPower)
-      .slice(0, 3);
+      .slice(0, Math.min(3, results.length));
     
-    console.log("🏆 TOP 3 ULTIMATES:");
+    console.log("🏆 TOP ULTIMATES:");
     topUltimates.forEach((ultimate, i) => {
       console.log(`   ${i + 1}. ${ultimate.spellName} (${ultimate.overallPower}/100) - ${ultimate.ultimateClass}`);
       console.log(`      💥 Impact: ${ultimate.metrics.rawImpact}/100 | 🎯 Game-changing: ${ultimate.metrics.gameChangingScore}/100`);
@@ -1145,18 +916,6 @@ class UltimateAnalyzer {
         }
       });
     }
-    
-    // Classification overview
-    console.log("\n📊 RÉPARTITION DES CLASSES:");
-    const classCount = results.reduce((count, r) => {
-      count[r.ultimateClass] = (count[r.ultimateClass] || 0) + 1;
-      return count;
-    }, {} as Record<string, number>);
-    
-    Object.entries(classCount).forEach(([className, count]) => {
-      const percentage = Math.round((count / results.length) * 100);
-      console.log(`   ${className}: ${count}/${results.length} (${percentage}%)`);
-    });
     
     // Statistiques globales
     const avgPower = Math.round(results.reduce((sum, r) => sum + r.overallPower, 0) / results.length);
