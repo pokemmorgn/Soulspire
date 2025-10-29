@@ -26,6 +26,8 @@ const log = (message: string, color: string = colors.reset) => {
 
 /**
  * Script pour reset l'inventaire de testt et ajouter des équipements variés
+ * PERMET LES DUPLICATAS : Si il n'y a pas assez d'items différents dans un slot,
+ * le script ajoutera plusieurs fois le même item avec des stats différentes
  */
 async function resetTesttInventoryWithVariedEquipment() {
   await mongoose.connect(MONGO_URI);
@@ -147,7 +149,11 @@ async function resetTesttInventoryWithVariedEquipment() {
             // Calculer la puissance approximative
             const power = calculateApproximatePower(item, randomLevel, randomEnhancement);
 
-            log(`    ✅ Added: ${item.name} (Lvl ${randomLevel}, +${randomEnhancement}, ~${power} power) - ${item.rarity}`, colors.green);
+            // Marquer si c'est un duplicata
+            const isDuplicate = selectedItems.slice(0, i).some(prevItem => prevItem.itemId === item.itemId);
+            const duplicateMarker = isDuplicate ? " [DUPLICATE]" : "";
+
+            log(`    ✅ Added: ${item.name} (Lvl ${randomLevel}, +${randomEnhancement}, ~${power} power) - ${item.rarity}${duplicateMarker}`, colors.green);
             totalAdded++;
 
           } catch (addError) {
@@ -206,12 +212,16 @@ async function resetTesttInventoryWithVariedEquipment() {
 
 /**
  * Sélectionner des items variés (différentes raretés, tiers, etc.)
+ * PERMET LES DUPLICATAS pour avoir toujours le nombre demandé
  */
 function selectVariedItems(items: any[], targetCount: number): any[] {
   const selected: any[] = [];
-  const usedItems = new Set<string>();
 
-  // Prioriser la diversité de rareté
+  if (items.length === 0) {
+    return selected;
+  }
+
+  // 1. D'abord, essayer d'avoir une diversité de rareté
   const rarityGroups: { [rarity: string]: any[] } = {};
   items.forEach(item => {
     if (!rarityGroups[item.rarity]) {
@@ -220,32 +230,24 @@ function selectVariedItems(items: any[], targetCount: number): any[] {
     rarityGroups[item.rarity].push(item);
   });
 
-  // Sélectionner au moins un item par rareté disponible
   const rarities = Object.keys(rarityGroups).sort((a, b) => {
     const rarityOrder = ["Common", "Rare", "Epic", "Legendary", "Mythic", "Ascended"];
     return rarityOrder.indexOf(a) - rarityOrder.indexOf(b);
   });
 
+  // Ajouter au moins un item de chaque rareté disponible
   for (const rarity of rarities) {
     if (selected.length >= targetCount) break;
     
     const rarityItems = rarityGroups[rarity];
     const randomItem = rarityItems[Math.floor(Math.random() * rarityItems.length)];
-    
-    if (!usedItems.has(randomItem.itemId)) {
-      selected.push(randomItem);
-      usedItems.add(randomItem.itemId);
-    }
+    selected.push(randomItem);
   }
 
-  // Compléter avec des items aléatoires si besoin
-  while (selected.length < targetCount && selected.length < items.length) {
-    const availableItems = items.filter(item => !usedItems.has(item.itemId));
-    if (availableItems.length === 0) break;
-
-    const randomItem = availableItems[Math.floor(Math.random() * availableItems.length)];
+  // 2. Compléter avec des items aléatoires (PERMET LES DUPLICATAS)
+  while (selected.length < targetCount) {
+    const randomItem = items[Math.floor(Math.random() * items.length)];
     selected.push(randomItem);
-    usedItems.add(randomItem.itemId);
   }
 
   return selected;
